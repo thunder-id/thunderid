@@ -5,7 +5,10 @@ package token
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -900,6 +903,12 @@ func (suite *TokenEventsTestSuite) ctx() context.Context {
 	return sysContext.WithTraceID(context.Background(), testTraceID)
 }
 
+// ctxForOU is the context a request to /ou/{ouId}/oauth2/token carries, where the middleware has
+// recorded the organization unit the token is being asked for.
+func (suite *TokenEventsTestSuite) ctxForOU(ouID string) context.Context {
+	return sysContext.WithAccessingOUID(suite.ctx(), ouID)
+}
+
 // lastEvent returns the single event published by the call under test.
 func (suite *TokenEventsTestSuite) lastEvent() *providers.Event {
 	suite.Require().Len(suite.published, 1)
@@ -1044,6 +1053,45 @@ func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsActorTypeWhenClient
 	assert.Equal(suite.T(), testTraceID, evt.Data[event.DataKey.CorrelationID])
 }
 
+// One application acts for many organization units, so an event saying only which client asked is
+// not enough to attribute issuance. Each of the three events carries the organization unit the
+// token was requested for.
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_ReportsTheAccessingOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctxForOU("customer-a"), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_ReportsTheAccessingOrganizationUnit() {
+	app := appClient()
+	respDTO := &model.TokenResponseDTO{AccessToken: model.TokenDTO{SubjectID: testAppEntityID}}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctxForOU("customer-a"), app, respDTO, app.ClientID, "client_credentials", "", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// The refusal a caller receives names no organization unit, so that the endpoint cannot be used to
+// discover which ones exist. This event is where an operator finds out which one was refused, which
+// makes it the one that matters most.
+func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsTheAccessingOrganizationUnit() {
+	publishTokenIssuanceFailedEvent(suite.mockObsSvc, suite.ctxForOU("customer-a"), appClient(),
+		"app-client-id", "client_credentials", "", 400, "invalid_request", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// A request to the bare endpoint names no organization unit, so the key is absent rather than
+// empty: its presence is what says the prefixed form was used.
+func (suite *TokenEventsTestSuite) TestTheBareEndpointStampsNoOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctx(), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.NotContains(suite.T(), suite.lastEvent().Data, event.DataKey.AccessingOUID)
+}
+
 // The subject's category is resolved while the token is built, so the event reports whatever the
 // token carries rather than inferring it from the client.
 func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeIsReadFromTheToken() {
@@ -1073,4 +1121,52 @@ func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeOmittedWhenTokenHasNoCa
 	evt := suite.lastEvent()
 	assert.Equal(suite.T(), "user-1", evt.Data[event.DataKey.Subject])
 	assert.NotContains(suite.T(), evt.Data, event.DataKey.SubjectType)
+}
+
+// AccessingOURefusalTestSuite covers the shape this endpoint gives a refusal when a request names
+// an organization unit it may not act for. The middleware itself is covered in system/middleware;
+// what is specific here is the answer, which is OAuth2's and is deliberately uninformative.
+type AccessingOURefusalTestSuite struct {
+	suite.Suite
+}
+
+func TestAccessingOURefusalTestSuite(t *testing.T) {
+	suite.Run(t, new(AccessingOURefusalTestSuite))
+}
+
+// refuse runs the endpoint's refusal and returns what the caller would receive.
+func (s *AccessingOURefusalTestSuite) refuse(ouID string) (*httptest.ResponseRecorder, map[string]any) {
+	recorder := httptest.NewRecorder()
+	refuseAccessingOU(recorder, httptest.NewRequest(http.MethodPost, "/oauth2/token", nil), ouID)
+
+	var body map[string]any
+	s.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+	return recorder, body
+}
+
+// The refusal is OAuth2's, so a client that speaks the protocol can read it.
+func (s *AccessingOURefusalTestSuite) TestTheRefusalIsAnOAuthError() {
+	recorder, body := s.refuse("no-such-ou")
+
+	s.Equal(http.StatusBadRequest, recorder.Code)
+	s.Equal(constants.ErrorInvalidRequest, body["error"])
+	s.Equal(constants.OUAccessRefusal, body["error_description"])
+}
+
+// The two ways of not being able to act for an organization unit answer identically, so the
+// endpoint cannot be used to tell which organization units exist. This pins the refusal an
+// unresolvable id receives; the client-auth side pins the other half against the same text.
+//
+// The refusal names no organization unit, so two different ids are answered byte for byte the
+// same. Naming the one the caller sent would have told it nothing it did not already have, while
+// leaving every test of this property to erase the id before comparing.
+func (s *AccessingOURefusalTestSuite) TestTheRefusalNamesNoOrganizationUnit() {
+	first, _ := s.refuse("ghost-a")
+	second, _ := s.refuse("ghost-b")
+
+	s.Equal(first.Code, second.Code)
+	s.Equal(first.Body.String(), second.Body.String(),
+		"two different ids must be answered identically")
+	s.NotContains(first.Body.String(), "ghost-a")
+	s.NotContains(second.Body.String(), "ghost-b")
 }

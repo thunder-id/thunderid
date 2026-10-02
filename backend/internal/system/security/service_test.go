@@ -633,3 +633,40 @@ func (suite *SecurityServiceTestSuite) TestProcess_OversizedPath_SkipsPermission
 	assert.Nil(suite.T(), ctx)
 	assert.ErrorIs(suite.T(), err, errForbidden)
 }
+
+// The organization-unit-scoped token endpoint is public for the same reason the bare one is: the
+// client authenticates with its own credentials in the request, not with a bearer token.
+//
+// The pattern is pinned to that one path rather than a subtree. "/ou/*/oauth2/**" would open every
+// future organization-unit-scoped OAuth route, including ones nobody has reviewed yet.
+func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
+	var ouPaths []string
+	for _, p := range publicPaths {
+		if len(p) >= 4 && p[:4] == "/ou/" {
+			ouPaths = append(ouPaths, p)
+		}
+	}
+
+	assert.Equal(t, []string{"/ou/*/oauth2/token"}, ouPaths,
+		"only the token endpoint is public beneath /ou/")
+
+	// Compiled the same way the security service compiles them, so the pattern is checked as it is
+	// actually matched rather than as a string.
+	compiled, err := compilePathPatterns(publicPaths)
+	assert.NoError(t, err)
+
+	matches := func(path string) bool {
+		for _, p := range compiled {
+			if p.MatchString(path) {
+				return true
+			}
+		}
+		return false
+	}
+
+	assert.True(t, matches("/ou/customer-a/oauth2/token"), "the scoped token endpoint is public")
+	assert.False(t, matches("/ou/customer-a/oauth2/introspect"),
+		"nothing else beneath the prefix is")
+	assert.False(t, matches("/ou/customer-a/applications"),
+		"and an organization unit prefix does not make a management path public")
+}

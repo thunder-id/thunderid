@@ -36,6 +36,9 @@ type SharingServiceInterface interface {
 	CreatePolicy(
 		ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
 	) (Policy, *tidcommon.ServiceError)
+	// LoadDeclarativeResources reads a resource type's declarative documents and declares the
+	// sharing policies they carry. Called once per shareable resource type, at startup.
+	LoadDeclarativeResources(ctx context.Context, cfg DeclarativeLoaderConfig) error
 	// CreateDeclarativePolicy records a policy declared by a resource file. It runs the identical
 	// validation, but the policy is held in memory and cannot later be edited through the API.
 	CreateDeclarativePolicy(
@@ -168,6 +171,13 @@ func (s *sharingService) CreatePolicy(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
 ) (Policy, *tidcommon.ServiceError) {
 	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, false)
+}
+
+// LoadDeclarativeResources reads a resource type's documents and declares the policies they carry.
+func (s *sharingService) LoadDeclarativeResources(
+	ctx context.Context, cfg DeclarativeLoaderConfig,
+) error {
+	return loadDeclarativeResources(ctx, s, s.fileStore, cfg)
 }
 
 // CreateDeclarativePolicy records a policy a resource file declares.

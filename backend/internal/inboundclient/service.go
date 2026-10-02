@@ -26,8 +26,10 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -98,6 +100,8 @@ type inboundClientService struct {
 	entityType     entitytype.EntityTypeServiceInterface
 	cryptoProvider providers.RuntimeCryptoProvider
 	jweService     jwe.JWEServiceInterface
+	sharingService sharing.SharingServiceInterface
+	sharedTypes    map[providers.EntityCategory]sharing.ResourceType
 	logger         *log.Logger
 }
 
@@ -111,6 +115,8 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	entityType entitytype.EntityTypeServiceInterface,
 	cryptoProvider providers.RuntimeCryptoProvider,
 	jweService jwe.JWEServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
 ) InboundClientServiceInterface {
 	return &inboundClientService{
 		store:          store,
@@ -123,6 +129,8 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 		entityType:     entityType,
 		cryptoProvider: cryptoProvider,
 		jweService:     jweService,
+		sharingService: sharingService,
+		sharedTypes:    sharedTypes,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientService")),
 	}
 }
@@ -583,6 +591,9 @@ func (s *inboundClientService) oauthClientForEntity(ctx context.Context, entityI
 		return nil, opErr
 	}
 	client.Certificate = certificate
+	if err := s.requireAccessibleFromAccessingOU(ctx, client); err != nil {
+		return nil, err
+	}
 	return client, nil
 }
 
@@ -597,6 +608,46 @@ func clientIDFromEntity(e *providers.Entity) string {
 	}
 	clientID, _ := attrs["clientId"].(string)
 	return clientID
+}
+
+// requireAccessibleFromAccessingOU refuses a client the request may not act as.
+//
+// It lives in resolution rather than in a caller so that every path reaching a client inherits the
+// rule instead of each one remembering to ask, including the lookup by entity id. The lookup itself
+// stays global, so one registration still serves every organization unit; what is scoped is whether
+// the client may be used.
+//
+// There is deliberately no runtime-context escape here. The token endpoint is a public path, and
+// the security layer marks every public request as an internal runtime caller so the authorization
+// layer lets it through; skipping the check on that signal would disable it on precisely the
+// requests it exists for.
+func (s *inboundClientService) requireAccessibleFromAccessingOU(
+	ctx context.Context, client *providers.OAuthClient,
+) error {
+	accessingOUID := syscontext.GetAccessingOUID(ctx)
+	if accessingOUID == "" || client == nil {
+		return nil
+	}
+	// A client's own organization unit needs no policy. The framework would answer the same, but
+	// only after resolving ownership, and this is the common case on the token path.
+	if client.OUID == accessingOUID {
+		return nil
+	}
+
+	rt, shareable := s.sharedTypes[client.EntityCategory]
+	if !shareable || s.sharingService == nil {
+		return ErrInboundClientNotAccessibleFromOU
+	}
+	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, client.ID, accessingOUID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to resolve client access for an organization unit",
+			log.String("clientID", client.ID), log.Any("error", svcErr))
+		return fmt.Errorf("failed to resolve client access for organization unit %s", accessingOUID)
+	}
+	if !accessible {
+		return ErrInboundClientNotAccessibleFromOU
+	}
+	return nil
 }
 
 // BuildOAuthClient assembles an OAuthClient from a stored OAuthProfile and entity context.

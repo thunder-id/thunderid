@@ -98,6 +98,13 @@ func GetRawHTTPClient() *http.Client {
 
 // isPublicEndpoint determines if an endpoint requires authentication
 func isPublicEndpoint(path string) bool {
+	// The organization-unit-scoped token endpoint is public for the same reason the bare form is: the
+	// caller authenticates as an OAuth client. Injecting the admin bearer here would overwrite that
+	// client authentication. Mirrors the server's own allow-list, which names this one path.
+	if strings.HasPrefix(path, "/ou/") && strings.HasSuffix(path, "/oauth2/token") {
+		return true
+	}
+
 	publicPrefixes := []string{
 		"/health/",
 		"/auth/",

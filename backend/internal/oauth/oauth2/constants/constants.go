@@ -382,3 +382,9 @@ func GetStandardClaims() []string {
 		ClaimAuthTime,
 	}
 }
+
+// OUAccessRefusal is the single answer both ways of not being able to act for an organization unit
+// receive: one that does not exist, and one the client has no standing in.
+const (
+	OUAccessRefusal = "Client is not authorized for the requested organization unit"
+)

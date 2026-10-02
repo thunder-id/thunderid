@@ -20,6 +20,7 @@ import (
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
@@ -42,6 +43,7 @@ type ApplicationServiceInterface interface {
 	GetOAuthApplication(
 		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
 	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
+	IsApplicationAccessibleFromOU(ctx context.Context, appID, ouID string) (bool, *tidcommon.ServiceError)
 	UpdateApplication(
 		ctx context.Context, appID string, app *model.ApplicationDTO) (
 		*model.ApplicationDTO, *tidcommon.ServiceError)
@@ -74,6 +76,7 @@ type applicationService struct {
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
 	resolveLifetime      artifactLifetimeResolver
+	sharingService       sharing.SharingServiceInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -85,6 +88,7 @@ func newApplicationService(
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
+	sharingService sharing.SharingServiceInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -95,6 +99,7 @@ func newApplicationService(
 		cryptoSvc:            cryptoSvc,
 		serverConfigService:  serverConfigSvc,
 		resolveLifetime:      artifactLifetime,
+		sharingService:       sharingService,
 	}
 }
 
@@ -390,6 +395,9 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 
 	fullApp, svcErr := as.getApplication(ctx, appID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.requireAccessibleFromAccessingOU(ctx, appID, fullApp.OUID); svcErr != nil {
 		return nil, svcErr
 	}
 

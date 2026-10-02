@@ -25,13 +25,17 @@ import (
 )
 
 const (
-	testType     = ResourceType("role")
-	testResource = "resource-1"
-	ownerOU      = "owner-ou"
-	rootOU       = "root-ou"
-	childOU      = "child-ou"
-	grandOU      = "grand-ou"
-	otherOU      = "other-ou"
+	testType = ResourceType("role")
+	// fieldlessType declares no overlay field. Sharing it grants the right to be named and nothing
+	// else, which is the whole of what sharing means for a resource whose configuration is global
+	// rather than per-organization-unit state layered on a shared definition.
+	fieldlessType = ResourceType("fieldless")
+	testResource  = "resource-1"
+	ownerOU       = "owner-ou"
+	rootOU        = "root-ou"
+	childOU       = "child-ou"
+	grandOU       = "grand-ou"
+	otherOU       = "other-ou"
 	// nestedOwnerOU owns a resource while sitting inside a tree, which is the case the cross-tree
 	// restriction exists for.
 	nestedOwnerOU = "nested-owner-ou"
@@ -40,6 +44,19 @@ const (
 	// same value is reused when a test re-applies the file, which is what makes that an upsert.
 	declaredID = "01900000-0000-7000-8000-0000000000d1"
 )
+
+// fieldlessDeclaration is a resource type that declares no field. It brings the two required
+// capabilities and nothing more: with no field to name, there is no delimiter to resolve, no member
+// to validate and no per-organization-unit state to clean up when visibility goes.
+type fieldlessDeclaration struct{}
+
+func (d *fieldlessDeclaration) ResourceType() ResourceType { return fieldlessType }
+func (d *fieldlessDeclaration) Fields() []FieldDeclaration { return nil }
+func (d *fieldlessDeclaration) OwningOUID(
+	_ context.Context, _ string,
+) (string, *tidcommon.ServiceError) {
+	return ownerOU, nil
+}
 
 // storeState is the in-memory state behind the generated store mock. The mock supplies the
 // interface, so a change to sharingPolicyStoreInterface breaks compilation here rather than going
@@ -489,6 +506,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.svc = newSharingService(storeMock, s.declStore, hierarchy, enumerator,
 		inlineTx(s.T()), nil, nil, false)
 	s.svc.RegisterResourceType(s.decl)
+	s.svc.RegisterResourceType(&fieldlessDeclaration{})
 }
 
 // testResolver returns the generated hierarchy and enumerator mocks over the fixture tree: two
@@ -3416,4 +3434,114 @@ func (s *ServiceTestSuite) TestADeclarationForAnotherOUIsUnaffectedByAStoredPoli
 	})
 
 	s.Require().Nil(svcErr)
+}
+
+// A resource type that declares no overlay field is the second shape the framework has to serve.
+// Sharing one hands over visibility and nothing else: there is no field to narrow, no value to
+// choose and nothing to clean up. These cover that shape; everything above exercises a type whose
+// fields are the point.
+
+// declareFieldless issues the one kind of policy a fieldless type can carry: a reach, and no rules.
+func (s *ServiceTestSuite) declareFieldless(id string, scope TargetOUScope) *tidcommon.ServiceError {
+	_, svcErr := s.svc.CreateDeclarativePolicy(context.Background(), fieldlessType, testResource,
+		ownerOU, PolicyRequest{ID: id, TargetOUScope: scope})
+	return svcErr
+}
+
+// A blanket policy reaches every organization unit, which is all sharing a fieldless type means:
+// those units may be named, and nothing about the resource changes.
+func (s *ServiceTestSuite) TestABlanketPolicyOnAFieldlessTypeReachesEveryUnit() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	for _, ouID := range []string{rootOU, childOU, grandOU, otherOU} {
+		visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ouID)
+		s.Require().Nil(svcErr)
+		s.True(visible, ouID+" is reached by a deployment-wide policy")
+	}
+}
+
+// A carve-out takes the branch beneath it, so a resource shared to everyone except one unit is not
+// reachable by that unit's children either.
+func (s *ServiceTestSuite) TestACarveOutOnAFieldlessTypeTakesTheBranchBeneathIt() {
+	s.Require().Nil(s.declareFieldless(declaredID,
+		TargetOUScope{AllOUs: true, ExcludedOUIDs: []string{childOU}}))
+
+	for ouID, want := range map[string]bool{rootOU: true, childOU: false, grandOU: false, otherOU: true} {
+		visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ouID)
+		s.Require().Nil(svcErr)
+		s.Equal(want, visible, ouID)
+	}
+}
+
+// The owner needs no policy of its own, so a fieldless resource nobody has shared is still visible
+// in the organization unit that owns it.
+func (s *ServiceTestSuite) TestTheOwnerOfAFieldlessTypeNeedsNoPolicy() {
+	visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ownerOU)
+
+	s.Require().Nil(svcErr)
+	s.True(visible)
+}
+
+// Being reached hands over no field. This is what "a sharee may not edit anything" means in the
+// framework: a policy can only speak about fields the type declares, and this type declares none.
+func (s *ServiceTestSuite) TestBeingReachedHandsOverNoFieldWhenNoneAreDeclared() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), fieldlessType, testResource, childOU)
+
+	s.Require().Nil(svcErr)
+	s.True(resolved.Visible)
+	s.Empty(resolved.Rules, "there is no field to hold a rule")
+	s.Empty(resolved.Sources)
+}
+
+// A rule naming a field the type never declared is refused rather than stored and ignored, so a file
+// that tries to hand part of the resource over fails at startup instead of taking no effect.
+func (s *ServiceTestSuite) TestARuleOnAFieldlessTypeIsRefusedHavingNoFieldToName() {
+	_, svcErr := s.svc.CreateDeclarativePolicy(context.Background(), fieldlessType, testResource, ownerOU,
+		PolicyRequest{
+			ID:            declaredID,
+			TargetOUScope: TargetOUScope{AllOUs: true},
+			OverlayRules:  map[string]OverlayRule{"anything": {Editable: true}},
+		})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorUnknownFieldKey.Code, svcErr.Code)
+}
+
+// The file owns the policy, so it cannot be deleted through the API: a resource shared by a file
+// stays shared until that file says otherwise.
+func (s *ServiceTestSuite) TestADeclaredPolicyOnAFieldlessTypeCannotBeDeleted() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	svcErr := s.svc.DeletePolicy(context.Background(), declaredID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorPolicyDeclared.Code, svcErr.Code)
+}
+
+// Re-declaring for the same organization unit replaces what was declared rather than adding to it,
+// which is what makes replaying a file on every startup idempotent instead of accumulating.
+//
+// The replacement is keyed on the resource and the initiating organization unit, not on the policy
+// id, so a file that rewrites its policy under a new id still replaces the old one. The consequence
+// worth knowing: two separate documents declaring policies for one resource and one initiator
+// collapse to whichever loaded last, rather than being reported as a conflict.
+func (s *ServiceTestSuite) TestRedeclaringForTheSameInitiatorReplacesIt() {
+	ctx := context.Background()
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+	reachedBefore, svcErr := s.svc.IsVisible(ctx, fieldlessType, testResource, otherOU)
+	s.Require().Nil(svcErr)
+	s.Require().True(reachedBefore, "a deployment-wide policy reaches another tree")
+
+	s.Require().Nil(s.declareFieldless("a-second-policy-id", TargetOUScope{AllChildren: true}))
+
+	held, svcErr := s.svc.ListPolicies(ctx, fieldlessType, testResource)
+	s.Require().Nil(svcErr)
+	s.Require().Len(held, 1, "one organization unit holds one policy, however often it is declared")
+	s.Equal("a-second-policy-id", held[0].ID, "the latest application of the file is what stands")
+
+	reachedAfter, svcErr := s.svc.IsVisible(ctx, fieldlessType, testResource, otherOU)
+	s.Require().Nil(svcErr)
+	s.False(reachedAfter, "and the reach it replaced is gone with it")
 }
