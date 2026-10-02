@@ -243,6 +243,9 @@ func (s *logoutService) clientIDFromIDTokenHint(ctx context.Context, idTokenHint
 	if err != nil {
 		return "", errInvalidIDTokenHint
 	}
+	// An rt+jwt refresh token is already refused by the typ check above. This catches the ones minted
+	// before rt+jwt existed, which share the generic type with ID tokens.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
 	if _, isRefreshToken := payload[constants.ClaimAccessTokenSubject]; isRefreshToken {
 		return "", errInvalidIDTokenHint
 	}

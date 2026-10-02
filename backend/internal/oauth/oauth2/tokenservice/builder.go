@@ -295,7 +295,7 @@ func (tb *tokenBuilder) BuildRefreshToken(
 		tokenConfig.Issuer,
 		validityPeriod,
 		claims,
-		jwt.TokenTypeJWT,
+		jwt.TokenTypeRefreshToken,
 		"",
 	)
 	if err != nil {
