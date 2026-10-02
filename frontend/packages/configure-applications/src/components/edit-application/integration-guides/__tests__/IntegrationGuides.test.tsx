@@ -130,7 +130,7 @@ describe('IntegrationGuides', () => {
     renderWithProviders(<IntegrationGuides application={{...reactApplication, template: 'unknown-template'}} />);
 
     expect(screen.getByText('Application details')).toBeInTheDocument();
-    expect(screen.getByText('app-123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('app-123')).toBeInTheDocument();
     expect(screen.queryByRole('link', {name: /Open on StackBlitz/i})).not.toBeInTheDocument();
   });
 
@@ -140,9 +140,9 @@ describe('IntegrationGuides', () => {
     renderWithProviders(<IntegrationGuides application={{...reactApplication, ouId: 'ou-1'}} />);
 
     expect(screen.getByText('Organization Unit ID')).toBeInTheDocument();
-    expect(screen.getByText('ou-1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('ou-1')).toBeInTheDocument();
     expect(screen.getByText('Organization Unit Handle')).toBeInTheDocument();
-    expect(screen.getByText('engineering')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('engineering')).toBeInTheDocument();
   });
 
   it('hides the organization unit rows when the application has no ouId', () => {
@@ -164,7 +164,7 @@ describe('IntegrationGuides', () => {
     // present) is enough to know a 'browser' app is OAuth2-based and user-facing.
     renderWithProviders(<IntegrationGuides application={reactApplication} />);
 
-    expect(screen.getByText('app-123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('app-123')).toBeInTheDocument();
     expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
     expect(screen.getByText('Preview')).toBeInTheDocument();
     expect(screen.getByRole('link', {name: /Open on StackBlitz/i})).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe('IntegrationGuides', () => {
     );
 
     expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
     expect(screen.queryByText('Client ID')).not.toBeInTheDocument();
   });
 
@@ -249,13 +249,13 @@ describe('IntegrationGuides', () => {
   it('renders application identifiers and OIDC endpoints using the configured server URL', () => {
     renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
-    expect(screen.getByText('app-123')).toBeInTheDocument();
-    expect(screen.getByText('client-123')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/.well-known/openid-configuration')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/token')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/userinfo')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/jwks')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('app-123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('client-123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/.well-known/openid-configuration')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/token')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/userinfo')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/jwks')).toBeInTheDocument();
   });
 
   // The endpoints are for someone to copy into their own application, so they name the gateway that
@@ -265,10 +265,12 @@ describe('IntegrationGuides', () => {
 
     renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
-    expect(screen.getByText('https://gateway.example.com/.well-known/openid-configuration')).toBeInTheDocument();
-    expect(screen.getByText('https://gateway.example.com/oauth2/authorize')).toBeInTheDocument();
-    expect(screen.getByText('https://gateway.example.com/oauth2/token')).toBeInTheDocument();
-    expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('https://gateway.example.com/.well-known/openid-configuration'),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://gateway.example.com/oauth2/authorize')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://gateway.example.com/oauth2/token')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
   });
 
   it('navigates to the Flows and Customization tabs via the sign-in preview links', () => {
@@ -337,21 +339,21 @@ describe('IntegrationGuides', () => {
 
       expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
       expect(screen.queryByText('OIDC endpoints')).not.toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/register/passkey/start')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/register/passkey/finish')).toBeInTheDocument();
-      expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
-      expect(screen.queryByText('https://localhost:8090/oauth2/token')).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/execute')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/meta')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/register/passkey/start')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/register/passkey/finish')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('https://localhost:8090/oauth2/token')).not.toBeInTheDocument();
     });
 
     it('shows the standard OAuth2/OIDC endpoints (not App Native ones) for a pure browser SPA', () => {
       renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
 
       expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
-      expect(screen.queryByText('https://localhost:8090/flow/execute')).not.toBeInTheDocument();
-      expect(screen.queryByText('https://localhost:8090/flow/meta')).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('https://localhost:8090/flow/execute')).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue('https://localhost:8090/flow/meta')).not.toBeInTheDocument();
     });
 
     it('shows both OAuth2/OIDC and App Native endpoints for the Custom template', () => {
@@ -363,9 +365,9 @@ describe('IntegrationGuides', () => {
       );
 
       expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/execute')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/meta')).toBeInTheDocument();
     });
 
     it('also shows App Native flow endpoints for a fullstack application (e.g. Next.js)', () => {
@@ -377,8 +379,8 @@ describe('IntegrationGuides', () => {
       );
 
       expect(screen.getByText('Useful Endpoints')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
-      expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/execute')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://localhost:8090/flow/meta')).toBeInTheDocument();
     });
 
     it('renders the sign-in preview in a phone-style frame', () => {

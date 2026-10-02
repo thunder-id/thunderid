@@ -186,7 +186,7 @@ export default function AgentOverview({
       title={t('agents:edit.overview.agentDetails.title', 'Agent details')}
       description={t('agents:edit.overview.agentDetails.description', 'Identifiers used in your integration code.')}
     >
-      <Box>
+      <Stack spacing={2}>
         <CopyableField label={t('agents:edit.general.labels.agentId', 'Agent ID')} value={agent.id} />
         {agent.clientId && (
           <CopyableField label={t('agents:edit.credentials.clientId.title', 'Client ID')} value={agent.clientId} />
@@ -202,7 +202,7 @@ export default function AgentOverview({
             value={agent.ouHandle}
           />
         )}
-      </Box>
+      </Stack>
     </OverviewCard>
   );
 
@@ -214,11 +214,11 @@ export default function AgentOverview({
         'For authenticating this agent, on its own or on behalf of a user.',
       )}
     >
-      <Box>
+      <Stack spacing={2}>
         {endpoints.map((endpoint) => (
           <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
         ))}
-      </Box>
+      </Stack>
     </OverviewCard>
   );
 

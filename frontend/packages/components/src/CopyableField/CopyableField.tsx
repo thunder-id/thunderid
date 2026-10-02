@@ -1,15 +1,19 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useLogger} from '@thunderid/logger/react';
-import {Box, Stack, Typography, Tooltip, IconButton} from '@wso2/oxygen-ui';
-import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useRef, useEffect, type JSX} from 'react';
+import {useCopyToClipboard} from '@thunderid/hooks';
+import {FormControl, FormLabel, IconButton, InputAdornment, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
+import {useId, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 
 export interface CopyableFieldProps {
   /**
-   * Small label rendered above the value (e.g. "Application ID", "Token endpoint").
+   * The `id` used to associate the label with the input. Generated when omitted.
+   */
+  id?: string;
+  /**
+   * Label rendered above the value (e.g. "Application ID", "Token endpoint").
    */
   label: string;
   /**
@@ -17,85 +21,68 @@ export interface CopyableFieldProps {
    */
   value: string;
   /**
-   * Tooltip text shown before copying. Falls back to a generic "Copy" label.
+   * Tooltip and aria-label for the copy button. Falls back to a generic "Copy" label.
    */
   copyLabel?: string;
+  /**
+   * Optional helper text shown below the label.
+   */
+  hint?: string;
 }
 
 /**
- * A labeled, bordered row displaying a monospace identifier or URL with a click-to-copy button.
- * Used for read-only identifiers and endpoints in resource overview panels (e.g. application IDs,
- * OIDC endpoints).
+ * A read-only monospace field with a copy-to-clipboard button inside the input. The single
+ * console-wide treatment for copyable identifiers, secrets, and endpoints. Confirms a copy by
+ * switching the icon to a check and the tooltip to "Copied!".
  */
-export default function CopyableField({label, value, copyLabel = undefined}: CopyableFieldProps): JSX.Element {
+export default function CopyableField({
+  id = undefined,
+  label,
+  value,
+  copyLabel = undefined,
+  hint = undefined,
+}: CopyableFieldProps): JSX.Element {
   const {t} = useTranslation();
-  const logger = useLogger('CopyableField');
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    },
-    [],
-  );
-
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => setCopied(false), 2000);
-  }, [value]);
-
-  const handleClick = () => {
-    handleCopy().catch((error: unknown) => {
-      logger.error('Failed to copy to clipboard', error instanceof Error ? error : {error});
-    });
-  };
+  const generatedId = useId();
+  const fieldId = id ?? generatedId;
+  const {copied, copy} = useCopyToClipboard();
+  const buttonLabel = copied ? t('common:actions.copied') : (copyLabel ?? t('common:actions.copy'));
 
   return (
-    <Box sx={{mb: 1.5, '&:last-child': {mb: 0}}}>
-      <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
-        {label}
-      </Typography>
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        sx={{
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: '7px',
-          px: 1.25,
-          py: 1,
-          bgcolor: 'action.hover',
-        }}
-      >
-        <Typography
-          variant="caption"
-          title={value}
-          sx={{
-            flex: 1,
-            fontFamily: 'monospace',
-            fontSize: '0.75rem',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            minWidth: 0,
-          }}
-        >
-          {value}
+    <FormControl fullWidth>
+      <FormLabel htmlFor={fieldId}>{label}</FormLabel>
+      {hint && (
+        <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
+          {hint}
         </Typography>
-        <Tooltip title={copied ? t('common:actions.copied') : (copyLabel ?? t('common:actions.copy'))}>
-          <IconButton size="small" onClick={handleClick} aria-label={copyLabel ?? t('common:actions.copy')}>
-            {copied ? <Check size={13} /> : <Copy size={13} />}
-          </IconButton>
-        </Tooltip>
-      </Stack>
-    </Box>
+      )}
+      <TextField
+        fullWidth
+        id={fieldId}
+        value={value}
+        slotProps={{
+          input: {
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={buttonLabel}>
+                  <IconButton
+                    aria-label={buttonLabel}
+                    edge="end"
+                    size="small"
+                    onClick={() => {
+                      copy(value).catch(() => null);
+                    }}
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          },
+        }}
+        sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+      />
+    </FormControl>
   );
 }

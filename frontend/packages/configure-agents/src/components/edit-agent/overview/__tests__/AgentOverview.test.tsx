@@ -69,11 +69,11 @@ describe('AgentOverview', () => {
     render(<AgentOverview agent={baseAgent} />);
 
     expect(screen.getByText('Agent details')).toBeInTheDocument();
-    expect(screen.getByText('agent-123')).toBeInTheDocument();
-    expect(screen.getByText('client-abc')).toBeInTheDocument();
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('ou-1')).toBeInTheDocument();
-    expect(screen.getByText('engineering')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('agent-123')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('client-abc')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Alice')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('ou-1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('engineering')).toBeInTheDocument();
   });
 
   it('renders the attributes summary in its own Overview-styled card, using the bare variant', () => {
@@ -86,8 +86,8 @@ describe('AgentOverview', () => {
   it('always shows the useful endpoints, built from the server URL', () => {
     render(<AgentOverview agent={baseAgent} />);
 
-    expect(screen.getByText('https://localhost:8090/oauth2/token')).toBeInTheDocument();
-    expect(screen.getByText('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/token')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://localhost:8090/oauth2/authorize')).toBeInTheDocument();
   });
 
   it('shows own identity as enabled and delegated as disabled when there is no authorization_code grant', () => {
@@ -147,7 +147,7 @@ describe('AgentOverview', () => {
 
     render(<AgentOverview agent={baseAgent} />);
 
-    expect(screen.getByText('alice.doe')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('alice.doe')).toBeInTheDocument();
   });
 
   it('falls back to the email attribute for the owner label when there is no display name or username', () => {
@@ -158,7 +158,7 @@ describe('AgentOverview', () => {
 
     render(<AgentOverview agent={baseAgent} />);
 
-    expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('alice@example.com')).toBeInTheDocument();
   });
 
   it('falls back to the user id for the owner label when the matched user has no display name or attributes', () => {
@@ -166,7 +166,7 @@ describe('AgentOverview', () => {
 
     render(<AgentOverview agent={baseAgent} />);
 
-    expect(screen.getByText('user-1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('user-1')).toBeInTheDocument();
   });
 
   it('shows the raw owner id when the owner is not among the fetched users', () => {
@@ -174,7 +174,7 @@ describe('AgentOverview', () => {
 
     render(<AgentOverview agent={baseAgent} />);
 
-    expect(screen.getByText('user-1')).toBeInTheDocument();
-    expect(screen.queryByText('Bob')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('user-1')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Bob')).not.toBeInTheDocument();
   });
 });
