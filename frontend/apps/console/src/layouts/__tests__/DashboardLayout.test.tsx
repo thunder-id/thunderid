@@ -26,6 +26,7 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+let mockIsControlPlane = false;
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -58,6 +59,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
         client: {client_id: 'CONSOLE'},
       },
       isTrustedIssuerGenericOidc: () => mockIsTrustedIssuerGenericOidc,
+      isControlPlane: () => mockIsControlPlane,
       getTrustedIssuerClientId: () => 'test-client-id',
       getClientUrl: () => 'https://localhost:5191/console',
     }),
@@ -102,6 +104,7 @@ describe('DashboardLayout', () => {
     sessionStorage.clear();
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
+    mockIsControlPlane = false;
     mockDiscovery = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
@@ -141,6 +144,20 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
+  });
+
+  it('hides gateway management outside the control plane', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.settings')).toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.gateways')).not.toBeInTheDocument();
+  });
+
+  it('shows gateway management on the control plane', () => {
+    mockIsControlPlane = true;
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
   });
 
   it('renders footer', () => {

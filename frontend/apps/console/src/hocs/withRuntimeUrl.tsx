@@ -14,8 +14,8 @@ interface RegisteredGateway {
   id: string;
   name: string;
   baseUrl?: string;
-  /** Whether this is the gateway the control plane administers directly. At most one holds it. */
-  managedByControlPlane?: boolean;
+  /** Whether this is the default gateway. At most one is. */
+  isDefault?: boolean;
 }
 
 /**
@@ -27,11 +27,14 @@ interface RegisteredGateway {
  * that will answer them. The gateways registered against this deployment are the record of
  * where that is, so this asks for them rather than taking the answer from configuration.
  *
- * The URL shown is the managed gateway's: the one the control plane administers directly, marked
- * `managedByControlPlane`. Other registered gateways only receive configuration when it is applied
- * to them, so they are not where a developer's application is expected to point.
+ * The URL shown is the default gateway's, marked `isDefault`. Other registered gateways only
+ * receive configuration when it is applied to them, so they are not where a developer's
+ * application is expected to point.
  *
- * No managed gateway, no permission to list them, or a deployment with no gateway API at all
+ * Only a console in control-plane mode asks. A standalone deployment serves its own runtime, so
+ * it has no gateway to look for and keeps the server URL without a request.
+ *
+ * No default gateway, no permission to list them, or a deployment with no gateway API at all
  * leaves the URL unset, and every consumer falls back to the server URL. That is the ordinary
  * answer for a deployment that serves its own runtime, so the failure is silent by design. A
  * failed request is left as an error rather than stored as an empty list, so it is asked again
@@ -40,7 +43,8 @@ interface RegisteredGateway {
 export default function withRuntimeUrl<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithRuntimeUrl(props: P): JSX.Element {
     const {http, isSignedIn} = useThunderID();
-    const {getServerUrl} = useConfig();
+    const {getServerUrl, isControlPlane} = useConfig();
+    const asksGateways: boolean = isSignedIn && isControlPlane();
     const queryClient = useQueryClient();
 
     // The query client outlives a session, so a sign-out has to drop the previous session's
@@ -53,7 +57,7 @@ export default function withRuntimeUrl<P extends object>(WrappedComponent: Compo
 
     const {data: gateways} = useQuery<RegisteredGateway[]>({
       queryKey: ['gateways'],
-      enabled: isSignedIn,
+      enabled: asksGateways,
       // A deployment that serves its own runtime answers this with a 404 or a 403. Retrying it on
       // every console load costs requests and changes nothing.
       retry: false,
@@ -68,8 +72,8 @@ export default function withRuntimeUrl<P extends object>(WrappedComponent: Compo
       },
     });
 
-    const runtimeUrl: string | undefined = isSignedIn
-      ? gateways?.find((gateway) => gateway.managedByControlPlane && Boolean(gateway.baseUrl))?.baseUrl
+    const runtimeUrl: string | undefined = asksGateways
+      ? gateways?.find((gateway) => gateway.isDefault && Boolean(gateway.baseUrl))?.baseUrl
       : undefined;
 
     return (

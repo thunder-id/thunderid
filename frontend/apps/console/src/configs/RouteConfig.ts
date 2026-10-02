@@ -7,6 +7,7 @@ import type {ApplicationRoutePaths} from '@thunderid/configure-applications';
 import type {ConnectionRoutePaths} from '@thunderid/configure-connections';
 import type {DesignRoutePaths} from '@thunderid/configure-design';
 import type {FlowRoutePaths} from '@thunderid/configure-flows';
+import type {GatewayRoutePaths} from '@thunderid/configure-gateways';
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
@@ -74,6 +75,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   ImportExportRoutePaths &
   DesignRoutePaths &
   FlowRoutePaths &
+  GatewayRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
   ConsoleRoutePaths;
@@ -110,6 +112,7 @@ export const ROUTE_SEGMENTS = {
   importConfiguration: 'import-configuration',
   welcome: 'welcome',
   settings: 'settings',
+  gateways: 'gateways',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -224,6 +227,10 @@ const RouteConfig: RouteConfig = {
   },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,
+  },
+  gateways: {
+    list: () => `/${ROUTE_SEGMENTS.gateways}`,
+    detail: (gatewayId) => `/${ROUTE_SEGMENTS.gateways}/${gatewayId}`,
   },
 };
 

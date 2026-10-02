@@ -22,6 +22,7 @@ const config: ProductConfig = {
   },
   client: {base: '/console', client_id: 'CONSOLE'},
   server: {public_url: 'https://cp.example.com:8090'},
+  mode: 'control_plane',
 };
 
 function TokenEndpoint() {
@@ -57,9 +58,7 @@ afterEach(() => {
 describe('withRuntimeUrl', () => {
   it('builds runtime endpoints from the registered gateway rather than the console server', async () => {
     request.mockResolvedValue({
-      data: [
-        {id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', managedByControlPlane: true},
-      ],
+      data: [{id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', isDefault: true}],
     });
 
     renderProvider();
@@ -70,12 +69,12 @@ describe('withRuntimeUrl', () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({url: 'https://cp.example.com:8090/gateways'}));
   });
 
-  // Only the managed gateway is where a developer's application points, wherever it sits in the list.
-  it('uses the managed gateway rather than the first one registered', async () => {
+  // Only the default gateway is where a developer's application points, wherever it sits in the list.
+  it('uses the default gateway rather than the first one registered', async () => {
     request.mockResolvedValue({
       data: [
         {id: 'gw-1', name: 'staging', baseUrl: 'https://staging.example.com:8090'},
-        {id: 'gw-2', name: 'production', baseUrl: 'https://gateway.example.com:8090', managedByControlPlane: true},
+        {id: 'gw-2', name: 'production', baseUrl: 'https://gateway.example.com:8090', isDefault: true},
       ],
     });
 
@@ -87,7 +86,7 @@ describe('withRuntimeUrl', () => {
   });
 
   // Gateways that only receive applied configuration are not a guess at the runtime.
-  it('falls back to the server URL when no gateway is managed', async () => {
+  it('falls back to the server URL when no gateway is the default', async () => {
     request.mockResolvedValue({
       data: [{id: 'gw-1', name: 'staging', baseUrl: 'https://staging.example.com:8090'}],
     });
@@ -123,6 +122,18 @@ describe('withRuntimeUrl', () => {
     });
   });
 
+  // A standalone deployment serves its own runtime, so it has no gateway to look for.
+  it('does not ask for gateways outside control-plane mode', async () => {
+    window.__THUNDERID_RUNTIME_CONFIG__ = {...config, mode: 'standalone'};
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-endpoint').textContent).toBe('https://cp.example.com:8090/oauth2/token');
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('does not ask for gateways before the user is signed in', async () => {
     isSignedIn = false;
 
@@ -148,9 +159,7 @@ describe('withRuntimeUrl', () => {
     unmount();
 
     request.mockResolvedValue({
-      data: [
-        {id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', managedByControlPlane: true},
-      ],
+      data: [{id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', isDefault: true}],
     });
     renderProvider(queryClient);
 
@@ -163,9 +172,7 @@ describe('withRuntimeUrl', () => {
   // once it has signed out.
   it('drops the previous session gateways on sign-out', async () => {
     request.mockResolvedValue({
-      data: [
-        {id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', managedByControlPlane: true},
-      ],
+      data: [{id: 'gw-1', name: 'production', baseUrl: 'https://gateway.example.com:8090', isDefault: true}],
     });
 
     const {queryClient, rerender} = renderProvider();

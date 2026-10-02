@@ -280,6 +280,19 @@ export interface TrustedIssuerConfig {
 export type SdkConfig = Record<string, unknown>;
 
 /**
+ * The role of the server this console is served by. The control plane and the all-in-one
+ * server serve the same console build, so features that exist only on the control plane are
+ * shown according to this value.
+ *
+ * - `standalone`: the all-in-one server. The default when no mode is configured.
+ * - `control_plane`: the control plane server, which enables control-plane features such as
+ *   gateway management.
+ *
+ * @public
+ */
+export type ConsoleMode = 'standalone' | 'control_plane';
+
+/**
  * Runtime configuration interface that contains all configuration
  * settings for applications.
  *
@@ -290,6 +303,13 @@ export type SdkConfig = Record<string, unknown>;
  * @public
  */
 export interface ProductConfig {
+  /**
+   * Optional role of the server this console is served by. Defaults to `standalone` when
+   * omitted. Set to `control_plane` to enable control-plane features such as gateway management.
+   * @example "standalone", "control_plane"
+   */
+  mode?: ConsoleMode;
+
   /** Branding configuration such as product name and logo */
   brand: BrandConfig;
 
