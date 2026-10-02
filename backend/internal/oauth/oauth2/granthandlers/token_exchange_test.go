@@ -3852,3 +3852,106 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_MappedAuthorizati
 	assert.Nil(suite.T(), errResp)
 	assert.Empty(suite.T(), scopes)
 }
+
+// A refresh token is never redeemable as a subject_token: its sub names the OAuth client rather
+// than the end user. Refusing the declared type here keeps the error specific, rather than letting
+// the token itself be rejected several layers down as a generic invalid subject_token.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_RefreshTokenNotASubjectTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     "subject-token",
+		SubjectTokenType: string(constants.TokenTypeIdentifierRefreshToken),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription, "is not supported as a subject_token_type")
+}
+
+// An ID-JAG is an authorization grant addressed to a foreign authorization server, so it is issued
+// but never redeemed here.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_IDJAGNotASubjectTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     "subject-token",
+		SubjectTokenType: string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription, "is not supported as a subject_token_type")
+}
+
+// The actor slot admits the same types as the subject slot, and refuses the same ones.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_RefreshTokenNotAnActorTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     "subject-token",
+		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
+		ActorToken:       "actor-token",
+		ActorTokenType:   string(constants.TokenTypeIdentifierRefreshToken),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription, "is not supported as an actor_token_type")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_IDJAGNotAnActorTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:        string(providers.GrantTypeTokenExchange),
+		ClientID:         testClientID,
+		SubjectToken:     "subject-token",
+		SubjectTokenType: string(constants.TokenTypeIdentifierJWT),
+		ActorToken:       "actor-token",
+		ActorTokenType:   string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription, "is not supported as an actor_token_type")
+}
+
+// ID-JAG is legal in the requested slot and only there: it is issued, never redeemed. Guards
+// against the subject and actor exclusions being applied to the requested slot too.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_IDJAGIsAValidRequestedTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierIDToken),
+		RequestedTokenType: string(constants.TokenTypeIdentifierIDJAG),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+}
+
+// A refresh token cannot be asked for either: token exchange issues access tokens, JWTs and ID-JAGs.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestValidateGrant_RefreshTokenNotARequestedTokenType() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:          string(providers.GrantTypeTokenExchange),
+		ClientID:           testClientID,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   string(constants.TokenTypeIdentifierJWT),
+		RequestedTokenType: string(constants.TokenTypeIdentifierRefreshToken),
+	}
+
+	result := suite.handler.ValidateGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.ErrorInvalidRequest, result.Error)
+	assert.Contains(suite.T(), result.ErrorDescription, "Unsupported requested_token_type")
+}
