@@ -896,22 +896,22 @@ func (suite *HandlerTestSuite) TestHandleUsersListRequest_FilterTranslatesCoreAt
 		{
 			name:           "simple string attribute",
 			filter:         `userName eq "alice"`,
-			expectedFilter: map[string]interface{}{"username": "alice"},
+			expectedFilter: map[string]interface{}{"userName": "alice"},
 		},
 		{
 			name:           "sub-attribute of complex object",
 			filter:         `name.givenName eq "Alice"`,
-			expectedFilter: map[string]interface{}{"given_name": "Alice"},
+			expectedFilter: map[string]interface{}{"name.givenName": "Alice"},
 		},
 		{
 			name:           "multi-valued complex attribute value",
 			filter:         `emails.value eq "alice@example.com"`,
-			expectedFilter: map[string]interface{}{"email": "alice@example.com"},
+			expectedFilter: map[string]interface{}{"emails.value": "alice@example.com"},
 		},
 		{
 			name:           "address sub-attribute",
 			filter:         `addresses.streetAddress eq "Main St"`,
-			expectedFilter: map[string]interface{}{"street_address": "Main St"},
+			expectedFilter: map[string]interface{}{"addresses.streetAddress": "Main St"},
 		},
 		{
 			name:           "unmapped attribute with URN passes through unchanged",
@@ -926,18 +926,18 @@ func (suite *HandlerTestSuite) TestHandleUsersListRequest_FilterTranslatesCoreAt
 		{
 			name:           "compound AND with two clauses",
 			filter:         `userName eq "alice" and title eq "Engineer"`,
-			expectedFilter: map[string]interface{}{"username": "alice", "title": "Engineer"},
+			expectedFilter: map[string]interface{}{"userName": "alice", "title": "Engineer"},
 		},
 		{
 			name:           "compound AND with case-insensitive keyword",
 			filter:         `userName eq "alice" AND title eq "Engineer"`,
-			expectedFilter: map[string]interface{}{"username": "alice", "title": "Engineer"},
+			expectedFilter: map[string]interface{}{"userName": "alice", "title": "Engineer"},
 		},
 		{
 			name:   "compound AND with three clauses",
 			filter: `userName eq "alice" and title eq "Engineer" and name.givenName eq "Alice"`,
 			expectedFilter: map[string]interface{}{
-				"username": "alice", "title": "Engineer", "given_name": "Alice",
+				"userName": "alice", "title": "Engineer", "name.givenName": "Alice",
 			},
 		},
 		{
@@ -1078,7 +1078,7 @@ func (suite *HandlerTestSuite) TestHandleUsersSearchRequest_Success() {
 		Resources:    []SCIMUser{{ID: "user-123"}},
 	}
 	mockSvc.On("ListUsers", mock.Anything, 1, constants.DefaultPageSize,
-		map[string]interface{}{"username": "alice"}, testBaseURL).
+		map[string]interface{}{"userName": "alice"}, testBaseURL).
 		Return(expectedResp, (*tidcommon.ServiceError)(nil))
 
 	body := `{

@@ -1176,7 +1176,7 @@ var defaultMessages = map[string]string{
 	"error.scim.undeclared_enterprise_schema_object": "Undeclared enterprise schema object",
 	"error.scim.undeclared_enterprise_schema_object_description": "The request body includes an enterprise extension object whose schema URN is not declared in the schemas array",
 	"error.scim.uniqueness_conflict": "Uniqueness conflict",
-	"error.scim.uniqueness_conflict_description": "A user with the same unique attribute value already exists",
+	"error.scim.uniqueness_conflict_description": "A resource with the same unique attribute value already exists",
 	"error.scim.unknown_user_type": "Unknown user type",
 	"error.scim.unknown_user_type_description": "The user type derived from the custom schema URN does not exist",
 	"error.scim.unrecognized_attribute": "Unrecognized attribute",

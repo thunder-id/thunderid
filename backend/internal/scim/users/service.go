@@ -60,6 +60,21 @@ func newSCIMUsersService(
 	}
 }
 
+// translateFilters renames the SCIM attribute keys of filters to ThunderID attribute names using the
+// core user type's mapping. A core type without a mapping leaves the keys as they are.
+func (s *scimUsersService) translateFilters(
+	ctx context.Context, filters map[string]interface{},
+) (map[string]interface{}, *tidcommon.ServiceError) {
+	if len(filters) == 0 {
+		return filters, nil
+	}
+	rules, enterpriseRules, svcErr := s.coreRules(ctx, true)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return translateSCIMFilters(filters, rules, enterpriseRules), nil
+}
+
 // ListUsers retrieves a paginated list of SCIM User resources filtered by search criteria.
 func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 	filters map[string]interface{}, baseURL string) (SCIMUserListResponse, *tidcommon.ServiceError) {
@@ -76,6 +91,11 @@ func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 	fetchLimit := count
 	if fetchLimit == 0 {
 		fetchLimit = 1
+	}
+
+	filters, svcErr := s.translateFilters(ctx, filters)
+	if svcErr != nil {
+		return SCIMUserListResponse{}, svcErr
 	}
 
 	offset := startIndex - 1
@@ -95,6 +115,9 @@ func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 	schemaPropsByType := make(map[string]map[string]scim.RawPropertyDef)
 	includeCoreAttrsByType := make(map[string]bool)
 	unresolvedTypes := make(map[string]struct{})
+	var rules []scim.CoreAttrRule
+	var enterpriseRules []scim.EnterpriseAttrRule
+	rulesResolved := false
 	for _, u := range listResp.Users {
 		if _, unresolved := unresolvedTypes[u.Type]; unresolved {
 			scimUsers = append(scimUsers, buildUnresolvedSCIMUser(u.ID, baseURL))
@@ -115,9 +138,16 @@ func (s *scimUsersService) ListUsers(ctx context.Context, startIndex, count int,
 			schemaPropsByType[u.Type] = rawProps
 			includeCoreAttrsByType[u.Type] = isCoreType(u.Type, typeID)
 		}
+		if includeCoreAttrsByType[u.Type] && !rulesResolved {
+			if rules, enterpriseRules, svcErr = s.coreRules(ctx, true); svcErr != nil {
+				return SCIMUserListResponse{}, svcErr
+			}
+			rulesResolved = true
+		}
 		extensionURN := scim.BuildSchemaURN(s.cfg.SchemaURNPrefix, u.Type)
 		scimUsers = append(scimUsers, buildSCIMUserResource(
-			ctx, s.logger, u, extensionURN, baseURL, rawProps, includeCoreAttrsByType[u.Type]))
+			ctx, s.logger, u, extensionURN, baseURL, rawProps, includeCoreAttrsByType[u.Type],
+			rules, enterpriseRules))
 	}
 
 	return buildSCIMUserListResponse(scimUsers, listResp.TotalResults, startIndex, len(scimUsers)), nil
@@ -140,8 +170,12 @@ func (s *scimUsersService) GetUser(
 		return nil, svcErr
 	}
 	includeCoreAttrs := s.coreUserTypeMatcher(security.WithRuntimeContext(ctx))(u.Type, typeID)
+	rules, enterpriseRules, svcErr := s.coreRules(ctx, includeCoreAttrs)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	scimUser := buildSCIMUserResource(
-		ctx, s.logger, *u, extensionURN, baseURL, rawProps, includeCoreAttrs)
+		ctx, s.logger, *u, extensionURN, baseURL, rawProps, includeCoreAttrs, rules, enterpriseRules)
 	return &scimUser, nil
 }
 
@@ -153,7 +187,7 @@ func (s *scimUsersService) CreateUser(
 	var resolvedUserTypeName string
 	var svcErr *tidcommon.ServiceError
 	if payload.UserTypeName == "" {
-		resolvedUserTypeName, svcErr = scim.ResolveCoreUserType(runtimeCtx, s.userTypeService, s.cfg.CoreUserTypeID)
+		resolvedUserTypeName, svcErr = scim.ResolveCoreUserType(runtimeCtx, s.userTypeService)
 		if svcErr != nil {
 			s.logger.Error(ctx, "SCIM CreateUser: no core user type available", log.Any("error", svcErr))
 			return nil, svcErr
@@ -205,8 +239,12 @@ func (s *scimUsersService) CreateUser(
 			log.String("userType", resolvedUserTypeName), log.Error(parseErr))
 		return nil, &tidcommon.InternalServerError
 	}
+	rules, enterpriseRules, svcErr := s.coreRules(ctx, isCoreUserType)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	scimUser := buildSCIMUserResource(
-		ctx, s.logger, *created, extensionURN, baseURL, rawProps, isCoreUserType)
+		ctx, s.logger, *created, extensionURN, baseURL, rawProps, isCoreUserType, rules, enterpriseRules)
 	return &scimUser, nil
 }
 
@@ -290,8 +328,12 @@ func (s *scimUsersService) ReplaceUser(
 			log.String("userType", resolvedUserTypeName), log.Error(parseErr))
 		return nil, &tidcommon.InternalServerError
 	}
+	rules, enterpriseRules, svcErr := s.coreRules(ctx, isCoreUserType)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	scimUser := buildSCIMUserResource(
-		ctx, s.logger, *result, extensionURN, baseURL, rawProps, isCoreUserType)
+		ctx, s.logger, *result, extensionURN, baseURL, rawProps, isCoreUserType, rules, enterpriseRules)
 	return &scimUser, nil
 }
 
@@ -455,7 +497,7 @@ func (s *scimUsersService) validateAttributePath(ctx context.Context, attr strin
 
 // getSchemaProps returns the parsed schema property definitions and entity type ID for the
 // given user type. The entity type ID lets callers decide whether this is the configured
-// CoreUserTypeID without a second lookup.
+// core user type without a second lookup.
 func (s *scimUsersService) getSchemaProps(
 	ctx context.Context, resolvedUserTypeName string,
 ) (map[string]scim.RawPropertyDef, string, *tidcommon.ServiceError) {
@@ -477,19 +519,25 @@ func (s *scimUsersService) getSchemaProps(
 	return rawProps, et.ID, nil
 }
 
-// coreUserTypeMatcher returns a func reporting whether a user type is the designated core user type,
-// using the same rule as resolveIsCoreUserType. With an explicit CoreUserTypeID it compares type IDs
-// with no lookup; otherwise it resolves the sole configured user type at most once, on first use.
-func (s *scimUsersService) coreUserTypeMatcher(ctx context.Context) func(typeName, typeID string) bool {
-	if s.cfg.CoreUserTypeID != "" {
-		return func(_, typeID string) bool { return typeID == s.cfg.CoreUserTypeID }
+// coreRules resolves the core user type's SCIM attribute rules; it returns none when include is false.
+func (s *scimUsersService) coreRules(
+	ctx context.Context, include bool,
+) ([]scim.CoreAttrRule, []scim.EnterpriseAttrRule, *tidcommon.ServiceError) {
+	if !include {
+		return nil, nil, nil
 	}
+	return scim.ResolveCoreUserTypeRules(security.WithRuntimeContext(ctx), s.userTypeService)
+}
+
+// coreUserTypeMatcher returns a func reporting whether a user type is the designated core user type,
+// using the same rule as resolveIsCoreUserType. It resolves the core user type at most once, on first use.
+func (s *scimUsersService) coreUserTypeMatcher(ctx context.Context) func(typeName, typeID string) bool {
 	var coreTypeName string
 	resolved := false
 	return func(typeName, _ string) bool {
 		if !resolved {
 			resolved = true
-			if name, err := scim.ResolveDefaultUserTypeName(ctx, s.userTypeService); err == nil {
+			if name, err := scim.ResolveCoreUserType(ctx, s.userTypeService); err == nil {
 				coreTypeName = name
 			}
 		}
@@ -497,10 +545,9 @@ func (s *scimUsersService) coreUserTypeMatcher(ctx context.Context) func(typeNam
 	}
 }
 
-// resolveIsCoreUserType reports whether resolvedUserTypeName is the designated core user type
-// (explicit SCIMConfig.CoreUserTypeID, or the sole configured user type when unset).
+// resolveIsCoreUserType reports whether resolvedUserTypeName is the designated core user type.
 func (s *scimUsersService) resolveIsCoreUserType(ctx context.Context, resolvedUserTypeName string) bool {
-	coreTypeName, err := scim.ResolveCoreUserType(ctx, s.userTypeService, s.cfg.CoreUserTypeID)
+	coreTypeName, err := scim.ResolveCoreUserType(ctx, s.userTypeService)
 	return err == nil && strings.EqualFold(resolvedUserTypeName, coreTypeName)
 }
 
@@ -514,6 +561,10 @@ func (s *scimUsersService) processInboundPayload(
 	if len(payload.CoreAttrs) > 0 || payload.HasEnterpriseSchema {
 		isCoreUserType = s.resolveIsCoreUserType(ctx, resolvedUserTypeName)
 	}
+	rules, enterpriseRules, svcErr := s.coreRules(ctx, isCoreUserType)
+	if svcErr != nil {
+		return false, svcErr
+	}
 
 	if len(payload.CoreAttrs) > 0 {
 		if !isCoreUserType {
@@ -521,7 +572,7 @@ func (s *scimUsersService) processInboundPayload(
 				log.String("userType", resolvedUserTypeName))
 			return false, &scim.ErrorCoreSchemaNotSupported
 		}
-		reverseMapped, undeclaredCore, err := reverseMapCoreAttrsForSchema(payload.CoreAttrs, et.Schema)
+		reverseMapped, undeclaredCore, err := reverseMapCoreAttrsForSchema(payload.CoreAttrs, et.Schema, rules)
 		if err != nil {
 			s.logger.Error(ctx, "SCIM: failed to parse user type schema", log.Error(err))
 			return false, &tidcommon.InternalServerError
@@ -544,7 +595,7 @@ func (s *scimUsersService) processInboundPayload(
 		}
 		if len(payload.EnterpriseAttrs) > 0 {
 			reverseMappedEnt, undeclaredEnt, err := reverseMapEnterpriseAttrsForSchema(
-				payload.EnterpriseAttrs, et.Schema)
+				payload.EnterpriseAttrs, et.Schema, enterpriseRules)
 			if err != nil {
 				s.logger.Error(ctx, "SCIM: failed to parse user type schema for enterprise attrs", log.Error(err))
 				return false, &tidcommon.InternalServerError

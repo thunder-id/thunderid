@@ -198,7 +198,7 @@ var (
 		},
 	}
 
-	// ErrorUniquenessConflict is returned when a user with the same unique attribute value already exists.
+	// ErrorUniquenessConflict is returned when a resource with the same unique attribute value already exists.
 	ErrorUniquenessConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SCIM-1014",
@@ -208,7 +208,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.scim.uniqueness_conflict_description",
-			DefaultValue: "A user with the same unique attribute value already exists",
+			DefaultValue: "A resource with the same unique attribute value already exists",
 		},
 	}
 

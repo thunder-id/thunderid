@@ -504,3 +504,11 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_UniqueOnlyAndType() {
 	s.True(subjectCandidates[0].Required)
 	s.Equal(TypeString, subjectCandidates[0].Type)
 }
+
+func (s *SchemaValidateTestSuite) TestHasProperty() {
+	schema, err := CompileSchema(json.RawMessage(`{"email": {"type": "string"}}`))
+	s.Require().NoError(err)
+
+	s.True(schema.HasProperty("email"))
+	s.False(schema.HasProperty("missing"))
+}

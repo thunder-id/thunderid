@@ -179,10 +179,11 @@ func enterpriseUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttri
 		)
 	}
 
+	_, rules := scimAttrRules(coreType)
 	template := rfcEnterpriseUserAttributeTemplate()
 	attrs := make([]scimSchemaAttribute, 0, len(template))
 	for _, attr := range template {
-		candidates := scim.CandidatesForEnterpriseField(scim.EnterpriseField(attr.Name))
+		candidates := scim.CandidatesForEnterpriseField(rules, scim.EnterpriseField(attr.Name))
 		matched, required, credential := scim.HasSchemaMatch(rawProps, candidates)
 		if !matched {
 			continue
@@ -204,6 +205,7 @@ func coreUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttribute, 
 		)
 	}
 
+	rules, _ := scimAttrRules(coreType)
 	template := rfcCoreUserAttributeTemplate()
 	attrs := make([]scimSchemaAttribute, 0, len(template))
 	for _, attr := range template {
@@ -211,7 +213,7 @@ func coreUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttribute, 
 			attrs = append(attrs, attr)
 			continue
 		}
-		candidates := scim.CandidatesForField(scim.CoreField(attr.Name))
+		candidates := scim.CandidatesForField(rules, scim.CoreField(attr.Name))
 		matched, required, credential := scim.HasSchemaMatch(rawProps, candidates)
 		if !matched {
 			continue
@@ -220,22 +222,50 @@ func coreUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttribute, 
 		returned, mutability := scim.CredentialCharacteristics(credential)
 		attr.Returned, attr.Mutability = scimReturned(returned), scimMutability(mutability)
 		if len(attr.SubAttributes) > 0 {
-			attr.SubAttributes = filterMatchedSubAttributes(scim.CoreField(attr.Name), attr.SubAttributes, rawProps)
+			attr.SubAttributes = filterMatchedSubAttributes(
+				rules, scim.CoreField(attr.Name), attr.SubAttributes, rawProps)
 		}
 		attrs = append(attrs, attr)
 	}
 	return attrs, nil
 }
 
+// scimAttrRules builds the SCIM attribute rules from the type's stored SCIM mapping.
+func scimAttrRules(et entitytype.EntityType) ([]scim.CoreAttrRule, []scim.EnterpriseAttrRule) {
+	if et.SystemAttributes == nil || et.SystemAttributes.ScimMapping == nil {
+		return nil, nil
+	}
+	return scim.BuildRulesFromMapping(
+		et.SystemAttributes.ScimMapping.AttributeMap, et.SystemAttributes.ScimMapping.MultiValuedMeta)
+}
+
+// isProtocolSubAttr reports whether a sub-attribute is protocol structure (value/type/primary) or
+// the value key of a multi-valued field's own mapping, rather than a mappable data sub-attribute.
+func isProtocolSubAttr(rules []scim.CoreAttrRule, field scim.CoreField, name string) bool {
+	switch name {
+	case "value", "type", "primary":
+		return true
+	}
+	for _, rule := range rules {
+		if rule.Kind == scim.KindMultiComplex && rule.SCIMField == field && rule.ValueKey == name {
+			return true
+		}
+	}
+	return false
+}
+
 // filterMatchedSubAttributes filters sub-attributes to those matching properties in rawProps.
 func filterMatchedSubAttributes(
-	field scim.CoreField, subs []scimSchemaAttribute, rawProps map[string]scim.RawPropertyDef,
+	rules []scim.CoreAttrRule, field scim.CoreField, subs []scimSchemaAttribute,
+	rawProps map[string]scim.RawPropertyDef,
 ) []scimSchemaAttribute {
 	filtered := make([]scimSchemaAttribute, 0, len(subs))
 	for _, sub := range subs {
-		candidates := scim.CandidatesForSubAttr(field, sub.Name)
+		candidates := scim.CandidatesForSubAttr(rules, field, sub.Name)
 		if len(candidates) == 0 {
-			filtered = append(filtered, sub)
+			if isProtocolSubAttr(rules, field, sub.Name) {
+				filtered = append(filtered, sub)
+			}
 			continue
 		}
 		if matched, _, _ := scim.HasSchemaMatch(rawProps, candidates); matched {
@@ -617,6 +647,16 @@ func rfcCoreUserAttributeTemplate() []scimSchemaAttribute {
 					Uniqueness: scimUniquenessNone,
 				},
 			},
+		},
+		{
+			Name:        "password",
+			Type:        scimAttrTypeString,
+			Description: "The User's cleartext password. Write-only; never returned.",
+			Required:    false,
+			CaseExact:   false,
+			Mutability:  scimMutabilityWriteOnly,
+			Returned:    scimReturnedNever,
+			Uniqueness:  scimUniquenessNone,
 		},
 	}
 }

@@ -328,6 +328,8 @@ func sanitizeSystemAttributes(sa *SystemAttributes) *SystemAttributes {
 		return nil
 	}
 	return &SystemAttributes{
-		Display: sysutils.SanitizeString(sa.Display),
+		Display:        sysutils.SanitizeString(sa.Display),
+		IsScimCoreType: sa.IsScimCoreType,
+		ScimMapping:    sa.ScimMapping,
 	}
 }

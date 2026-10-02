@@ -4,7 +4,7 @@
 import {SettingsCard} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {useResolveDisplayName} from '@thunderid/hooks';
-import {Stack, Typography, Select, MenuItem} from '@wso2/oxygen-ui';
+import {Stack, Typography, Select, MenuItem, Button} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useState, useCallback, useRef, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -18,6 +18,8 @@ export interface EditGeneralSettingsProps {
   editedDisplayAttribute: string | undefined;
   onFieldChange: (field: string, value: unknown) => void;
   eligibleDisplayProperties: SchemaPropertyInput[];
+  scimCoreUserType: boolean;
+  onRequestScimCoreChange: (next: boolean) => void;
 }
 
 /**
@@ -31,6 +33,8 @@ export default function EditGeneralSettings({
   editedDisplayAttribute,
   onFieldChange,
   eligibleDisplayProperties,
+  scimCoreUserType,
+  onRequestScimCoreChange,
 }: EditGeneralSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
@@ -139,6 +143,38 @@ export default function EditGeneralSettings({
             );
           })}
         </Select>
+      </SettingsCard>
+
+      {/* SCIM Core User Type */}
+      <SettingsCard
+        title={t('userTypes:edit.general.scimCore.title', 'SCIM Core User Type')}
+        description={
+          scimCoreUserType
+            ? t(
+                'userTypes:edit.general.scimCore.activeDescription',
+                'This is the SCIM core user type. Its schema attributes can be mapped to SCIM fields in the SCIM Mapping tab.',
+              )
+            : t('userTypes:edit.general.scimCore.inactiveDescription', 'Not currently the SCIM core user type.')
+        }
+        headerAction={
+          <Button
+            variant={scimCoreUserType ? 'outlined' : 'contained'}
+            size="small"
+            disabled={userType.isReadOnly}
+            onClick={() => onRequestScimCoreChange(!scimCoreUserType)}
+          >
+            {scimCoreUserType
+              ? t('userTypes:edit.general.scimCore.removeButton', 'Remove as SCIM Core Type')
+              : t('userTypes:edit.general.scimCore.setButton', 'Set as SCIM Core Type')}
+          </Button>
+        }
+      >
+        <Typography variant="body2" color="text.secondary">
+          {t(
+            'userTypes:edit.general.scimCore.hint',
+            'Only one user type across the system can be the SCIM core type at a time.',
+          )}
+        </Typography>
       </SettingsCard>
     </Stack>
   );

@@ -4,6 +4,7 @@
 package common
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -399,8 +400,8 @@ func isASCIIDigit(r rune) bool  { return r >= '0' && r <= '9' }
 func parseSCIMCompValue(raw string) (interface{}, error) {
 	// Quoted string — parse as a JSON string literal so escapes are handled correctly.
 	if len(raw) > 0 && raw[0] == '"' {
-		s, err := strconv.Unquote(raw)
-		if err == nil {
+		var s string
+		if err := json.Unmarshal([]byte(raw), &s); err == nil {
 			return s, nil
 		}
 		return nil, fmt.Errorf("invalid quoted string comparison value: %q", raw)

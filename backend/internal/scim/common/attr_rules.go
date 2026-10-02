@@ -23,6 +23,7 @@ const (
 	fieldPhotos            CoreField = "photos"
 	fieldLocale            CoreField = "locale"
 	fieldProfileURL        CoreField = "profileUrl"
+	fieldPassword          CoreField = "password"
 )
 
 // Returned represents the SCIM attribute "returned" characteristic (RFC 7643 §7).
@@ -66,143 +67,18 @@ type CoreAttrRule struct {
 	ParentField CoreField // for KindSubAttr/KindMultiComplexPart; complex object/entry this rolls into
 	SubAttr     string    // only for KindSubAttr/KindMultiComplexPart; key within the parent object/entry
 	ValueKey    string    // e.g. "value" (default)
+
+	EntryType    string // KindMultiComplex only; SCIM "type" of this attribute's entry
+	EntryPrimary bool   // KindMultiComplex only; whether this attribute's entry is the primary one
 }
 
-// CoreAttrRules is the pre-configured mapping table, one candidate per ThunderID library attribute.
-//
-// This table is global and static: it applies to whichever single ThunderID user type is
-// designated as SCIMConfig.CoreUserTypeID, the only user type SCIM maps to/from the core User
-// schema. Other user types are exposed through their custom extension schema only. When
-// per-user-type mapping configuration (frontend + database backed) is added, this table will
-// need to become keyed by user type instead of being one global rule set.
-var CoreAttrRules = []CoreAttrRule{
-	{
-		Candidate: "username",
-		SCIMField: fieldUserName,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "email",
-		SCIMField: fieldEmails,
-		Kind:      KindMultiComplex,
-		ValueKey:  "value",
-	},
-	{
-		Candidate:   "given_name",
-		Kind:        KindSubAttr,
-		ParentField: fieldName,
-		SubAttr:     "givenName",
-	},
-	{
-		Candidate:   "family_name",
-		Kind:        KindSubAttr,
-		ParentField: fieldName,
-		SubAttr:     "familyName",
-	},
-	{
-		Candidate: "phone_number",
-		SCIMField: fieldPhoneNumbers,
-		Kind:      KindMultiComplex,
-		ValueKey:  "value",
-	},
-	{
-		Candidate: "display_name",
-		SCIMField: fieldDisplayName,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate:   "name",
-		Kind:        KindSubAttr,
-		ParentField: fieldName,
-		SubAttr:     "formatted",
-	},
-	{
-		Candidate:   "middle_name",
-		Kind:        KindSubAttr,
-		ParentField: fieldName,
-		SubAttr:     "middleName",
-	},
-	{
-		Candidate: "nickname",
-		SCIMField: fieldNickName,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "picture",
-		SCIMField: fieldPhotos,
-		Kind:      KindMultiComplex,
-		ValueKey:  "value",
-	},
-	{
-		Candidate: "locale",
-		SCIMField: fieldLocale,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "preferred_language",
-		SCIMField: fieldPreferredLanguage,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "zoneinfo",
-		SCIMField: fieldTimezone,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "profile",
-		SCIMField: fieldProfileURL,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "title",
-		SCIMField: fieldTitle,
-		Kind:      KindSimpleString,
-	},
-	{
-		Candidate: "address",
-		SCIMField: fieldAddresses,
-		Kind:      KindMultiComplex,
-		ValueKey:  "formatted",
-	},
-	{
-		Candidate:   "street_address",
-		Kind:        KindMultiComplexPart,
-		ParentField: fieldAddresses,
-		SubAttr:     "streetAddress",
-	},
-	{
-		Candidate:   "locality",
-		Kind:        KindMultiComplexPart,
-		ParentField: fieldAddresses,
-		SubAttr:     "locality",
-	},
-	{
-		Candidate:   "region",
-		Kind:        KindMultiComplexPart,
-		ParentField: fieldAddresses,
-		SubAttr:     "region",
-	},
-	{
-		Candidate:   "postal_code",
-		Kind:        KindMultiComplexPart,
-		ParentField: fieldAddresses,
-		SubAttr:     "postalCode",
-	},
-	{
-		Candidate:   "country",
-		Kind:        KindMultiComplexPart,
-		ParentField: fieldAddresses,
-		SubAttr:     "country",
-	},
-}
-
-// CandidatesForField returns the ThunderID candidate attribute names (CoreAttrRules.Candidate)
+// CandidatesForField returns the ThunderID candidate attribute names (CoreAttrRule.Candidate)
 // that contribute to field, whether as its own value (KindSimpleString/KindMultiComplex) or as
 // a nested piece of it (KindSubAttr/KindMultiComplexPart). Used by discovery to determine
 // whether a designated user type's schema defines any attribute backing a given core SCIM field.
-func CandidatesForField(field CoreField) []string {
+func CandidatesForField(rules []CoreAttrRule, field CoreField) []string {
 	var candidates []string
-	for _, rule := range CoreAttrRules {
+	for _, rule := range rules {
 		switch rule.Kind {
 		case KindSimpleString, KindMultiComplex:
 			if rule.SCIMField == field {
@@ -224,9 +100,9 @@ func CandidatesForField(field CoreField) []string {
 // like "formatted" that is really the parent KindMultiComplex rule's own ValueKey) — such
 // sub-attributes ride along with the parent field's own match rather than being individually
 // gated.
-func CandidatesForSubAttr(field CoreField, subAttr string) []string {
+func CandidatesForSubAttr(rules []CoreAttrRule, field CoreField, subAttr string) []string {
 	var candidates []string
-	for _, rule := range CoreAttrRules {
+	for _, rule := range rules {
 		if (rule.Kind == KindSubAttr || rule.Kind == KindMultiComplexPart) &&
 			rule.ParentField == field && rule.SubAttr == subAttr {
 			candidates = append(candidates, rule.Candidate)
@@ -280,39 +156,10 @@ type EnterpriseAttrRule struct {
 	IsComplex bool            // true for manager (which has sub-attributes value and $ref)
 }
 
-// EnterpriseAttrRules is the pre-configured mapping table for the SCIM Enterprise User schema extension.
-var EnterpriseAttrRules = []EnterpriseAttrRule{
-	{
-		Candidate: "employee_number",
-		SCIMField: EnterpriseFieldEmployeeNumber,
-	},
-	{
-		Candidate: "cost_center",
-		SCIMField: EnterpriseFieldCostCenter,
-	},
-	{
-		Candidate: "organization",
-		SCIMField: EnterpriseFieldOrganization,
-	},
-	{
-		Candidate: "division",
-		SCIMField: EnterpriseFieldDivision,
-	},
-	{
-		Candidate: "department",
-		SCIMField: EnterpriseFieldDepartment,
-	},
-	{
-		Candidate: "manager",
-		SCIMField: EnterpriseFieldManager,
-		IsComplex: true,
-	},
-}
-
 // CandidatesForEnterpriseField returns the candidate attribute names for a given enterprise SCIM field.
-func CandidatesForEnterpriseField(field EnterpriseField) []string {
+func CandidatesForEnterpriseField(rules []EnterpriseAttrRule, field EnterpriseField) []string {
 	var candidates []string
-	for _, rule := range EnterpriseAttrRules {
+	for _, rule := range rules {
 		if rule.SCIMField == field {
 			candidates = append(candidates, rule.Candidate)
 		}
@@ -321,8 +168,8 @@ func CandidatesForEnterpriseField(field EnterpriseField) []string {
 }
 
 // EnterpriseFieldForCandidate returns the enterprise field matching candidate (case-insensitive).
-func EnterpriseFieldForCandidate(candidate string) (EnterpriseField, bool) {
-	for _, rule := range EnterpriseAttrRules {
+func EnterpriseFieldForCandidate(rules []EnterpriseAttrRule, candidate string) (EnterpriseField, bool) {
+	for _, rule := range rules {
 		if strings.EqualFold(rule.Candidate, candidate) {
 			return rule.SCIMField, true
 		}
@@ -331,14 +178,14 @@ func EnterpriseFieldForCandidate(candidate string) (EnterpriseField, bool) {
 }
 
 // IsEnterpriseCandidate reports whether candidate is mapped by any EnterpriseAttrRule.
-func IsEnterpriseCandidate(candidate string) bool {
-	_, ok := EnterpriseFieldForCandidate(candidate)
+func IsEnterpriseCandidate(rules []EnterpriseAttrRule, candidate string) bool {
+	_, ok := EnterpriseFieldForCandidate(rules, candidate)
 	return ok
 }
 
 // IsCoreCandidate reports whether candidate is mapped by any CoreAttrRule.
-func IsCoreCandidate(candidate string) bool {
-	for _, rule := range CoreAttrRules {
+func IsCoreCandidate(rules []CoreAttrRule, candidate string) bool {
+	for _, rule := range rules {
 		if strings.EqualFold(rule.Candidate, candidate) {
 			return true
 		}

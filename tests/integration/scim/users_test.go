@@ -24,7 +24,7 @@ const scimEnterpriseUserSchemaURN = "urn:ietf:params:scim:schemas:extension:ente
 // but not the usertype's own required attributes, and a duplicate unique
 // value.
 //
-// Only the designated core user type (scim.core_user_type_id, the declarative
+// Only the designated core user type (the SCIM core user type, the declarative
 // "decl-schema-1" here) may carry the core User schema, so this suite's own
 // usertype is extension-only: its unique identifier is the required, unique
 // "email" extension attribute. The core-schema path itself is covered against the
@@ -44,7 +44,7 @@ type SCIMUsersTestSuite struct {
 	altEntityTypeName string
 	altExtensionURN   string
 
-	// Extension URN of the designated core user type (scim.core_user_type_id).
+	// Extension URN of the designated core user type (SCIM core user type).
 	coreExtensionURN string
 }
 

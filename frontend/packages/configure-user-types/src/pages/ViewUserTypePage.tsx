@@ -27,15 +27,27 @@ import {useState, useMemo, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
 import useGetUserType from '../api/useGetUserType';
+import useGetUserTypes from '../api/useGetUserTypes';
 import useUpdateUserType from '../api/useUpdateUserType';
 import EditAdvancedSettings from '../components/edit-user-type/advanced-settings/EditAdvancedSettings';
 import EditGeneralSettings from '../components/edit-user-type/general-settings/EditGeneralSettings';
 import EditSchemaSettings from '../components/edit-user-type/schema-settings/EditSchemaSettings';
+import EditScimMappingSettings from '../components/edit-user-type/scim-settings/EditScimMappingSettings';
 import UserTypeDeleteDialog from '../components/edit-user-type/UserTypeDeleteDialog';
 import UserTypeConstraints from '../constants/user-type-constraints';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
-import type {PropertyDefinition, UserTypeDefinition, PropertyType, SchemaPropertyInput} from '../types/user-types';
+import type {
+  PropertyDefinition,
+  UserTypeDefinition,
+  PropertyType,
+  SchemaPropertyInput,
+  ScimMultiValuedMeta,
+} from '../types/user-types';
 import getBreakingSchemaChanges from '../utils/getBreakingSchemaChanges';
+import validateScimMapping from '../utils/validateScimMapping';
+
+const EMPTY_SCIM_MAP: Record<string, string> = {};
+const EMPTY_SCIM_META: Record<string, ScimMultiValuedMeta> = {};
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -170,6 +182,23 @@ export default function ViewUserTypePage(): JSX.Element {
   const [showSchemaWarning, setShowSchemaWarning] = useState(false);
   const [breakingAttributes, setBreakingAttributes] = useState<string[]>([]);
 
+  // SCIM core user type + mapping, stored in the user type's system attributes.
+  const savedScimCore = userType?.systemAttributes?.isScimCoreType ?? false;
+  const savedScimMap = userType?.systemAttributes?.scimMapping?.attributeMap ?? EMPTY_SCIM_MAP;
+  const savedScimMeta = userType?.systemAttributes?.scimMapping?.multiValuedMeta ?? EMPTY_SCIM_META;
+  const [editedScimCore, setEditedScimCore] = useState<boolean | undefined>(undefined);
+  const [editedScimMap, setEditedScimMap] = useState<Record<string, string> | undefined>(undefined);
+  const [editedScimMeta, setEditedScimMeta] = useState<Record<string, ScimMultiValuedMeta> | undefined>(undefined);
+  const effectiveScimCore = editedScimCore ?? savedScimCore;
+  const effectiveScimMap = editedScimMap ?? savedScimMap;
+  const effectiveScimMeta = editedScimMeta ?? savedScimMeta;
+
+  const [scimConfirmOpen, setScimConfirmOpen] = useState(false);
+  const [scimConfirmTarget, setScimConfirmTarget] = useState(false);
+  const [otherCoreUserTypeName, setOtherCoreUserTypeName] = useState<string | null>(null);
+
+  const {data: userTypesList} = useGetUserTypes({limit: 100});
+
   // Base properties from server data (useMemo so they're available synchronously)
   const baseProperties = useMemo(() => (userType ? convertSchemaToProperties(userType.schema) : []), [userType]);
 
@@ -204,6 +233,18 @@ export default function ViewUserTypePage(): JSX.Element {
     }
   }
 
+  // Drop SCIM mapping entries whose property was removed from the schema
+  const [prevProperties, setPrevProperties] = useState(effectiveProperties);
+  if (prevProperties !== effectiveProperties) {
+    setPrevProperties(effectiveProperties);
+    const propertyNames = new Set(effectiveProperties.map((p) => p.name.trim()));
+    if (Object.keys(effectiveScimMap).some((name) => !propertyNames.has(name))) {
+      const keep = (name: string): boolean => propertyNames.has(name);
+      setEditedScimMap(Object.fromEntries(Object.entries(effectiveScimMap).filter(([name]) => keep(name))));
+      setEditedScimMeta(Object.fromEntries(Object.entries(effectiveScimMeta).filter(([name]) => keep(name))));
+    }
+  }
+
   // Change detection — compares each edited field against its saved value (fields don't map 1:1
   // to userType keys, e.g. displayAttribute lives under systemAttributes.display) and the edited
   // schema properties against the server's, so reverting every edit by hand clears the bar.
@@ -218,9 +259,23 @@ export default function ViewUserTypePage(): JSX.Element {
       ([key, value]) => !isEqualIgnoringEmpty(value, originalOf[key]),
     );
     const propertiesChanged = editedProperties !== null && !isEqualIgnoringEmpty(editedProperties, baseProperties);
+    const scimCoreChanged = editedScimCore !== undefined && editedScimCore !== savedScimCore;
+    const scimMapChanged = editedScimMap !== undefined && !isEqualIgnoringEmpty(editedScimMap, savedScimMap);
+    const scimMetaChanged = editedScimMeta !== undefined && !isEqualIgnoringEmpty(editedScimMeta, savedScimMeta);
 
-    return fieldsChanged || propertiesChanged;
-  }, [editedUserType, editedProperties, userType, baseProperties]);
+    return fieldsChanged || propertiesChanged || scimCoreChanged || scimMapChanged || scimMetaChanged;
+  }, [
+    editedUserType,
+    editedProperties,
+    userType,
+    baseProperties,
+    editedScimCore,
+    editedScimMap,
+    editedScimMeta,
+    savedScimCore,
+    savedScimMap,
+    savedScimMeta,
+  ]);
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);
@@ -229,6 +284,14 @@ export default function ViewUserTypePage(): JSX.Element {
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
     setActiveTab(newValue);
   };
+
+  const [prevScimCore, setPrevScimCore] = useState(effectiveScimCore);
+  if (prevScimCore !== effectiveScimCore) {
+    setPrevScimCore(effectiveScimCore);
+    if (!effectiveScimCore && activeTab === 3) {
+      setActiveTab(0);
+    }
+  }
 
   const handleFieldChange = useCallback(
     (field: string, value: unknown): void => {
@@ -264,9 +327,49 @@ export default function ViewUserTypePage(): JSX.Element {
     [updateUserTypeMutation],
   );
 
+  const handleRequestScimCoreChange = useCallback(
+    (next: boolean): void => {
+      if (next) {
+        const other = userTypesList?.types.find((u) => u.id !== id && u.systemAttributes?.isScimCoreType);
+        setOtherCoreUserTypeName(other?.name ?? null);
+      }
+      setScimConfirmTarget(next);
+      setScimConfirmOpen(true);
+    },
+    [id, userTypesList],
+  );
+
+  const handleConfirmScimCoreChange = useCallback((): void => {
+    updateUserTypeMutation.reset();
+    setValidationError(null);
+    setScimConfirmOpen(false);
+    setEditedScimCore(scimConfirmTarget);
+  }, [scimConfirmTarget, updateUserTypeMutation]);
+
+  const handleScimMappingChange = useCallback(
+    (next: Record<string, string>): void => {
+      updateUserTypeMutation.reset();
+      setValidationError(null);
+      setEditedScimMap(next);
+    },
+    [updateUserTypeMutation],
+  );
+
+  const handleScimMetaChange = useCallback(
+    (next: Record<string, ScimMultiValuedMeta>): void => {
+      updateUserTypeMutation.reset();
+      setValidationError(null);
+      setEditedScimMeta(next);
+    },
+    [updateUserTypeMutation],
+  );
+
   const handleReset = useCallback((): void => {
     setEditedUserType({});
     setEditedProperties(null);
+    setEditedScimCore(undefined);
+    setEditedScimMap(undefined);
+    setEditedScimMeta(undefined);
     setValidationError(null);
     updateUserTypeMutation.reset();
   }, [updateUserTypeMutation]);
@@ -279,6 +382,13 @@ export default function ViewUserTypePage(): JSX.Element {
     const allowSelfRegistration = editedUserType.allowSelfRegistration ?? userType.allowSelfRegistration;
     const displayAttribute = editedUserType.displayAttribute ?? userType.systemAttributes?.display ?? '';
     const schema = convertPropertiesToSchema(effectiveProperties);
+    const scimMap = Object.fromEntries(Object.entries(effectiveScimMap).filter(([, target]) => target));
+    const scimMeta = Object.fromEntries(Object.entries(effectiveScimMeta).filter(([name]) => scimMap[name]));
+    const systemAttributes = {
+      ...(displayAttribute ? {display: displayAttribute} : {}),
+      ...(effectiveScimCore ? {isScimCoreType: true} : {}),
+      ...(Object.keys(scimMap).length > 0 ? {scimMapping: {attributeMap: scimMap, multiValuedMeta: scimMeta}} : {}),
+    };
 
     try {
       await updateUserTypeMutation.mutateAsync({
@@ -287,16 +397,30 @@ export default function ViewUserTypePage(): JSX.Element {
           name,
           ouId,
           allowSelfRegistration,
-          ...(displayAttribute ? {systemAttributes: {display: displayAttribute}} : {}),
+          ...(Object.keys(systemAttributes).length > 0 ? {systemAttributes} : {}),
           schema,
         },
       });
+
       setEditedUserType({});
       setEditedProperties(null);
+      setEditedScimCore(undefined);
+      setEditedScimMap(undefined);
+      setEditedScimMeta(undefined);
     } catch (err: unknown) {
       logger.error('Failed to update user type', {error: err});
     }
-  }, [id, userType, editedUserType, effectiveProperties, updateUserTypeMutation, logger]);
+  }, [
+    id,
+    userType,
+    editedUserType,
+    effectiveProperties,
+    effectiveScimCore,
+    effectiveScimMap,
+    effectiveScimMeta,
+    updateUserTypeMutation,
+    logger,
+  ]);
 
   const handleSave = useCallback(async (): Promise<void> => {
     if (!id || !userType) return;
@@ -322,6 +446,25 @@ export default function ViewUserTypePage(): JSX.Element {
       return;
     }
 
+    if (effectiveScimCore) {
+      const scimValidationError = validateScimMapping(effectiveScimMap, effectiveScimMeta);
+      if (scimValidationError) {
+        setValidationError(
+          scimValidationError.type === 'duplicateTarget'
+            ? t('userTypes:validationErrors.scimDuplicateTarget', {
+                target: scimValidationError.target,
+                defaultValue: 'Multiple properties are mapped to the SCIM attribute "{{target}}"',
+              })
+            : t('userTypes:validationErrors.scimMultiplePrimary', {
+                target: scimValidationError.target,
+                defaultValue:
+                  'Multiple properties are marked as the primary "{{target}}" — only one can be primary',
+              }),
+        );
+        return;
+      }
+    }
+
     // Warn only when a schema change could strand existing users (removed/newly-required/tightened attribute).
     const breaking = getBreakingSchemaChanges(
       convertPropertiesToSchema(baseProperties),
@@ -334,7 +477,18 @@ export default function ViewUserTypePage(): JSX.Element {
     }
 
     await performSave();
-  }, [id, userType, editedUserType, effectiveProperties, baseProperties, t, performSave]);
+  }, [
+    id,
+    userType,
+    editedUserType,
+    effectiveProperties,
+    baseProperties,
+    effectiveScimCore,
+    effectiveScimMap,
+    effectiveScimMeta,
+    t,
+    performSave,
+  ]);
 
   const handleConfirmSchemaChange = useCallback((): void => {
     setShowSchemaWarning(false);
@@ -479,6 +633,14 @@ export default function ViewUserTypePage(): JSX.Element {
           aria-controls="usertype-tabpanel-2"
           sx={{textTransform: 'none'}}
         />
+        {effectiveScimCore && (
+          <Tab
+            label={t('userTypes:edit.tabs.scimMapping', 'SCIM Mapping')}
+            id="usertype-tab-3"
+            aria-controls="usertype-tabpanel-3"
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -491,6 +653,8 @@ export default function ViewUserTypePage(): JSX.Element {
             editedDisplayAttribute={editedUserType.displayAttribute}
             onFieldChange={handleFieldChange}
             eligibleDisplayProperties={eligibleDisplayProperties}
+            scimCoreUserType={effectiveScimCore}
+            onRequestScimCoreChange={handleRequestScimCoreChange}
           />
         </TabPanel>
 
@@ -506,6 +670,20 @@ export default function ViewUserTypePage(): JSX.Element {
         <TabPanel value={activeTab} index={2}>
           <EditAdvancedSettings onDeleteClick={userType.isReadOnly ? undefined : () => setDeleteDialogOpen(true)} />
         </TabPanel>
+
+        {effectiveScimCore && (
+          <TabPanel value={activeTab} index={3}>
+            <EditScimMappingSettings
+              properties={effectiveProperties}
+              mapping={effectiveScimMap}
+              meta={effectiveScimMeta}
+              onMappingChange={handleScimMappingChange}
+              onMetaChange={handleScimMetaChange}
+              userTypeName={effectiveName}
+              disabled={userType.isReadOnly}
+            />
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -544,6 +722,48 @@ export default function ViewUserTypePage(): JSX.Element {
           <Button onClick={() => setShowSchemaWarning(false)}>{t('common:actions.cancel', 'Cancel')}</Button>
           <Button color="warning" variant="contained" onClick={handleConfirmSchemaChange}>
             {t('userTypes:schemaChangeWarning.confirm', 'Continue')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* SCIM core user type confirmation */}
+      <Dialog open={scimConfirmOpen} onClose={() => setScimConfirmOpen(false)}>
+        <DialogTitle>
+          {scimConfirmTarget
+            ? t('userTypes:edit.scimCoreConfirm.setTitle', 'Set as SCIM core user type?')
+            : t('userTypes:edit.scimCoreConfirm.removeTitle', 'Remove as SCIM core user type?')}
+        </DialogTitle>
+        <DialogContent>
+          {scimConfirmTarget && otherCoreUserTypeName ? (
+            <Alert severity="error">
+              {t(
+                'userTypes:edit.scimCoreConfirm.setWithOther',
+                '{{otherName}} is currently the SCIM core user type. Setting this type instead will unset it there.',
+                {otherName: otherCoreUserTypeName},
+              )}
+            </Alert>
+          ) : (
+            <Typography variant="body2">
+              {scimConfirmTarget
+                ? t(
+                    'userTypes:edit.scimCoreConfirm.setNoOther',
+                    'This will make this type the SCIM core user type.',
+                  )
+                : t(
+                    'userTypes:edit.scimCoreConfirm.removeDescription',
+                    'Removing this will hide the SCIM Mapping tab. Your existing mapping is kept and restored if you set this type as core again.',
+                  )}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScimConfirmOpen(false)}>{t('common:actions.cancel', 'Cancel')}</Button>
+          <Button
+            variant="contained"
+            color={scimConfirmTarget && otherCoreUserTypeName ? 'error' : 'primary'}
+            onClick={handleConfirmScimCoreChange}
+          >
+            {t('common:actions.confirm', 'Confirm')}
           </Button>
         </DialogActions>
       </Dialog>

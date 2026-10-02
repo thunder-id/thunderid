@@ -42,6 +42,15 @@ func (suite *ValidatorTestSuite) TestValidateSCIMGroupWriteRequest_MissingDispla
 	require.Equal(t, scim.ErrorInvalidRequestBody.Code, err.Code)
 }
 
+// TestValidateSCIMGroupWriteRequest_WhitespaceDisplayName tests that a whitespace-only display name is rejected.
+func (suite *ValidatorTestSuite) TestValidateSCIMGroupWriteRequest_WhitespaceDisplayName() {
+	t := suite.T()
+	body := `{"schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],"displayName":"   "}`
+	_, err := parseAndValidateSCIMGroupWriteRequest([]byte(body))
+	require.NotNil(t, err)
+	require.Equal(t, scim.ErrorInvalidRequestBody.Code, err.Code)
+}
+
 // TestValidateSCIMGroupWriteRequest_MissingCoreGroupSchema tests Validate SCIM Group Write Request for
 // Missing Core Group Schema.
 func (suite *ValidatorTestSuite) TestValidateSCIMGroupWriteRequest_MissingCoreGroupSchema() {

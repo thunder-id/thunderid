@@ -26,32 +26,68 @@ func TestUsertypeResolverTestSuite(t *testing.T) {
 	suite.Run(t, new(UsertypeResolverTestSuite))
 }
 
-// TestResolveCoreUserType_ConfiguredID_ResolvesToThatType tests that a configured
-// CoreUserTypeID resolves directly via GetEntityType, without listing user types.
-func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_ConfiguredID_ResolvesToThatType() {
+// TestResolveCoreUserType_Designated_ResolvesToThatType tests that the user type flagged as the
+// SCIM core type is chosen among several configured user types.
+func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_Designated_ResolvesToThatType() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-employee", false).
-		Return(&entitytype.EntityType{ID: "type-employee", Name: "Employee"}, (*tidcommon.ServiceError)(nil))
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			TotalResults: 2,
+			Types: []entitytype.EntityTypeListItem{
+				{Name: "Contractor"},
+				{Name: "Employee", SystemAttributes: &entitytype.SystemAttributes{IsScimCoreType: true}},
+			},
+		}, (*tidcommon.ServiceError)(nil))
 
-	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "type-employee")
+	name, svcErr := ResolveCoreUserType(context.Background(), mockET)
 
 	require.Nil(t, svcErr)
 	require.Equal(t, "Employee", name)
 }
 
-// TestResolveCoreUserType_ConfiguredID_NotFound_ReturnsError tests that a CoreUserTypeID
-// pointing at a nonexistent user type surfaces an error instead of silently falling back.
-func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_ConfiguredID_NotFound_ReturnsError() {
+// TestResolveCoreUserTypeRules_BuildsRulesFromStoredMapping tests that rules come from the
+// core type's stored SCIM mapping.
+func (suite *UsertypeResolverTestSuite) TestResolveCoreUserTypeRules_BuildsRulesFromStoredMapping() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "missing-id", false).
-		Return((*entitytype.EntityType)(nil), &entitytype.ErrorUserTypeNotFound)
+	coreAttrs := &entitytype.SystemAttributes{
+		IsScimCoreType: true,
+		ScimMapping:    &entitytype.ScimMapping{AttributeMap: map[string]string{"login": "userName"}},
+	}
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytype.EntityTypeListItem{{Name: "Employee", SystemAttributes: coreAttrs}},
+		}, (*tidcommon.ServiceError)(nil))
+	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+		Return(&entitytype.EntityType{Name: "Employee", SystemAttributes: coreAttrs}, (*tidcommon.ServiceError)(nil))
 
-	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "missing-id")
+	core, enterprise, svcErr := ResolveCoreUserTypeRules(context.Background(), mockET)
 
-	require.NotNil(t, svcErr)
-	require.Empty(t, name)
+	require.Nil(t, svcErr)
+	require.Equal(t, []CoreAttrRule{{Candidate: "login", SCIMField: fieldUserName, Kind: KindSimpleString}}, core)
+	require.Empty(t, enterprise)
+}
+
+// TestResolveCoreUserTypeRules_NoMapping_ReturnsNoRules tests that a core type without a stored
+// mapping has no rules.
+func (suite *UsertypeResolverTestSuite) TestResolveCoreUserTypeRules_NoMapping_ReturnsNoRules() {
+	t := suite.T()
+	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+		}, (*tidcommon.ServiceError)(nil))
+	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+		Return(&entitytype.EntityType{Name: "Employee"}, (*tidcommon.ServiceError)(nil))
+
+	core, enterprise, svcErr := ResolveCoreUserTypeRules(context.Background(), mockET)
+
+	require.Nil(t, svcErr)
+	require.Empty(t, core)
+	require.Empty(t, enterprise)
 }
 
 // TestResolveCoreUserType_Unset_SingleUserType_FallsBack tests that an empty CoreUserTypeID
@@ -65,7 +101,7 @@ func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_Unset_SingleUser
 			Types:        []entitytype.EntityTypeListItem{{Name: "Employee", OUID: "ou-1"}},
 		}, (*tidcommon.ServiceError)(nil))
 
-	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "")
+	name, svcErr := ResolveCoreUserType(context.Background(), mockET)
 
 	require.Nil(t, svcErr)
 	require.Equal(t, "Employee", name)
@@ -86,7 +122,7 @@ func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_Unset_MultipleUs
 			},
 		}, (*tidcommon.ServiceError)(nil))
 
-	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "")
+	name, svcErr := ResolveCoreUserType(context.Background(), mockET)
 
 	require.NotNil(t, svcErr)
 	require.Equal(t, ErrorMissingCustomSchema.Code, svcErr.Code)

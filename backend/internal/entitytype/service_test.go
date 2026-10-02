@@ -2040,3 +2040,138 @@ func TestPopulateEntityTypeOUHandles_HandleResolutionError(t *testing.T) {
 	service.populateEntityTypeOUHandles(context.Background(), schemas, log.GetLogger())
 	require.Empty(t, schemas[0].OUHandle)
 }
+
+func compileScimTestSchema(t *testing.T, schema string) *model.Schema {
+	t.Helper()
+	compiled, err := model.CompileSchema(json.RawMessage(schema))
+	require.NoError(t, err)
+	return compiled
+}
+
+func scimCoreAttrs(attributeMap map[string]string) *SystemAttributes {
+	return &SystemAttributes{IsScimCoreType: true, ScimMapping: &ScimMapping{AttributeMap: attributeMap}}
+}
+
+func TestValidateScimMapping_NotCoreTypeStillValidated(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"a":{"type":"string"}}`)
+	sa := &SystemAttributes{ScimMapping: &ScimMapping{AttributeMap: map[string]string{"missing": "title"}}}
+	svcErr := validateScimMapping(compiled, sa)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+}
+
+func TestValidateScimMapping_UnknownTarget(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"email":{"type":"string"}}`)
+	svcErr := validateScimMapping(compiled, scimCoreAttrs(map[string]string{"email": "notATarget"}))
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+}
+
+func TestValidateScimMapping_NonScalarProperty(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{
+		"addr":{"type":"object","properties":{"city":{"type":"string"}}},
+		"tags":{"type":"array","items":{"type":"string"}}}`)
+	for _, attr := range []string{"addr", "tags"} {
+		svcErr := validateScimMapping(compiled, scimCoreAttrs(map[string]string{attr: "title"}))
+		require.NotNil(t, svcErr, attr)
+		require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+	}
+	require.Nil(t, validateScimMapping(compiled, scimCoreAttrs(map[string]string{"addr.city": "title"})))
+}
+
+func TestValidateScimMapping_MultiValuedMeta(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"a":{"type":"string"},"b":{"type":"string"}}`)
+	withMeta := func(meta map[string]ScimAttrMeta) *SystemAttributes {
+		sa := scimCoreAttrs(map[string]string{"a": "emails", "b": "emails"})
+		sa.ScimMapping.MultiValuedMeta = meta
+		return sa
+	}
+
+	valid := withMeta(map[string]ScimAttrMeta{"a": {Primary: true}, "b": {Type: "home"}})
+	require.Nil(t, validateScimMapping(compiled, valid))
+
+	svcErr := validateScimMapping(compiled, withMeta(map[string]ScimAttrMeta{"gone": {Type: "work"}}))
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+
+	bothPrimary := withMeta(map[string]ScimAttrMeta{"a": {Primary: true}, "b": {Primary: true}})
+	svcErr = validateScimMapping(compiled, bothPrimary)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+}
+
+func TestValidateScimMapping_NilMapping(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"a":{"type":"string"}}`)
+	require.Nil(t, validateScimMapping(compiled, &SystemAttributes{IsScimCoreType: true}))
+}
+
+func TestValidateScimMapping_UnknownProperty(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"email":{"type":"string"}}`)
+	svcErr := validateScimMapping(compiled, scimCoreAttrs(map[string]string{"email": "userName", "gone": "title"}))
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+}
+
+func TestValidateScimMapping_DuplicateSingleValuedTarget(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"a":{"type":"string"},"b":{"type":"string"}}`)
+	svcErr := validateScimMapping(compiled, scimCoreAttrs(map[string]string{"a": "title", "b": "title"}))
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidUserTypeRequest.Code, svcErr.Code)
+}
+
+func TestValidateScimMapping_MultiValuedTargetAllowsSeveral(t *testing.T) {
+	compiled := compileScimTestSchema(t, `{"a":{"type":"string"},"b":{"type":"string"}}`)
+	svcErr := validateScimMapping(compiled, scimCoreAttrs(map[string]string{"a": "emails", "b": "emails"}))
+	require.Nil(t, svcErr)
+}
+
+func TestUpdateEntityTypeUnsetsPreviousScimCoreType(t *testing.T) {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+
+	previousMapping := &ScimMapping{AttributeMap: map[string]string{"email": "userName"}}
+	previous := EntityType{
+		ID: "type-a", Name: "type-a", OUID: testOUID1,
+		SystemAttributes: &SystemAttributes{IsScimCoreType: true, ScimMapping: previousMapping},
+	}
+
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "type-b").Return(false).Once()
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryUser, "type-b").
+		Return(EntityType{ID: "type-b", Name: "type-b", OUID: testOUID1}, nil).Once()
+	storeMock.On("GetEntityTypeList", mock.Anything, TypeCategoryUser, mock.Anything, 0).
+		Return([]EntityTypeListItem{
+			{ID: "type-a", SystemAttributes: previous.SystemAttributes},
+			{ID: "type-b"},
+		}, nil).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryUser, "type-a").Return(previous, nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "type-a", mock.MatchedBy(
+		func(et EntityType) bool {
+			return !et.SystemAttributes.IsScimCoreType && et.SystemAttributes.ScimMapping == previousMapping
+		})).Return(nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "type-b", mock.Anything).Return(nil).Once()
+
+	service := &entityTypeService{
+		entityTypeStore: storeMock,
+		ouService:       ouServiceMock,
+		transactioner:   &mockTransactioner{},
+	}
+
+	req := UpdateEntityTypeRequest{
+		Name:             "type-b",
+		OUID:             testOUID1,
+		SystemAttributes: scimCoreAttrs(map[string]string{"username": "userName"}),
+		Schema:           json.RawMessage(`{"username":{"type":"string"}}`),
+	}
+	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryUser, "type-b", req)
+
+	require.Nil(t, svcErr)
+}

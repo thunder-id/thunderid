@@ -89,6 +89,7 @@ vi.mock('react-router', async () => {
 const mockUseGetUserType = vi.fn<(id?: string) => any>();
 const mockUseUpdateUserType = vi.fn<() => any>();
 const mockUseDeleteUserType = vi.fn<() => any>();
+const mockUseGetUserTypes = vi.fn<() => any>();
 
 vi.mock('../../api/useGetUserType', () => ({
   default: (id?: string) => mockUseGetUserType(id),
@@ -96,6 +97,10 @@ vi.mock('../../api/useGetUserType', () => ({
 
 vi.mock('../../api/useUpdateUserType', () => ({
   default: () => mockUseUpdateUserType(),
+}));
+
+vi.mock('../../api/useGetUserTypes', () => ({
+  default: () => mockUseGetUserTypes(),
 }));
 
 vi.mock('../../api/useDeleteUserType', () => ({
@@ -169,6 +174,7 @@ describe('ViewUserTypePage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockUseGetUserType.mockReturnValue({
       data: mockUserType,
       isLoading: false,
@@ -187,6 +193,9 @@ describe('ViewUserTypePage', () => {
       error: null,
       reset: vi.fn(),
       mutate: vi.fn(),
+    });
+    mockUseGetUserTypes.mockReturnValue({
+      data: {types: [{id: 'schema-123', name: 'Employee Schema'}]},
     });
   });
 
@@ -1725,6 +1734,142 @@ describe('ViewUserTypePage', () => {
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith('/user-types');
+      });
+    });
+  });
+
+  describe('SCIM core user type', () => {
+    it('does not show the SCIM Mapping tab by default', () => {
+      render(<ViewUserTypePage />);
+      expect(screen.queryByRole('tab', {name: /SCIM Mapping/i})).not.toBeInTheDocument();
+    });
+
+    it('shows the SCIM Mapping tab after confirming Set as SCIM Core Type', async () => {
+      const user = userEvent.setup();
+      render(<ViewUserTypePage />);
+
+      await user.click(screen.getByRole('button', {name: /Set as SCIM Core Type/i}));
+      await user.click(screen.getByRole('button', {name: /^Confirm$/i}));
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', {name: /SCIM Mapping/i})).toBeInTheDocument();
+      });
+    });
+
+    it('warns about the existing core user type before switching', async () => {
+      const user = userEvent.setup();
+      mockUseGetUserTypes.mockReturnValue({
+        data: {
+          types: [
+            {id: 'schema-123', name: 'Employee Schema'},
+            {id: 'other-type', name: 'Contractor', systemAttributes: {isScimCoreType: true}},
+          ],
+        },
+      });
+
+      render(<ViewUserTypePage />);
+      await user.click(screen.getByRole('button', {name: /Set as SCIM Core Type/i}));
+
+      expect(screen.getByText(/Contractor is currently the SCIM core user type/i)).toBeInTheDocument();
+    });
+
+    it('shows a non-blocking warning and still allows save without userName mapped', async () => {
+      const user = userEvent.setup();
+      mockUpdateMutateAsync.mockResolvedValue({});
+      render(<ViewUserTypePage />);
+
+      await user.click(screen.getByRole('button', {name: /Set as SCIM Core Type/i}));
+      await user.click(screen.getByRole('button', {name: /^Confirm$/i}));
+      await waitFor(() => {
+        expect(screen.getByRole('tab', {name: /SCIM Mapping/i})).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole('tab', {name: /SCIM Mapping/i}));
+
+      expect(screen.getByText(/No property is mapped to the SCIM userName attribute/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockUpdateMutateAsync).toHaveBeenCalled();
+      });
+    });
+
+    it('moves primary to the last property marked primary for the same multi-valued target', async () => {
+      const user = userEvent.setup();
+      mockUseGetUserType.mockReturnValue({
+        data: {
+          id: 'schema-123',
+          name: 'Employee Schema',
+          ouId: 'root-ou',
+          allowSelfRegistration: false,
+          schema: {
+            workEmail: {type: 'string', required: false},
+            personalEmail: {type: 'string', required: false},
+          },
+        },
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      render(<ViewUserTypePage />);
+
+      await user.click(screen.getByRole('button', {name: /Set as SCIM Core Type/i}));
+      await user.click(screen.getByRole('button', {name: /^Confirm$/i}));
+      await waitFor(() => {
+        expect(screen.getByRole('tab', {name: /SCIM Mapping/i})).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole('tab', {name: /SCIM Mapping/i}));
+
+      const mapRowToEmails = async (testId: string): Promise<void> => {
+        const row = screen.getByTestId(testId);
+        await user.click(within(row).getByRole('combobox'));
+        const listbox = await screen.findByRole('listbox');
+        await user.click(within(listbox).getByRole('option', {name: 'emails'}));
+      };
+      await mapRowToEmails('scim-mapping-row-workEmail');
+      await mapRowToEmails('scim-mapping-row-personalEmail');
+
+      const workRow = screen.getByTestId('scim-mapping-row-workEmail');
+      const personalRow = screen.getByTestId('scim-mapping-row-personalEmail');
+      await user.click(within(workRow).getByRole('checkbox'));
+      expect(within(workRow).getByRole('checkbox')).toBeChecked();
+      expect(within(personalRow).getByRole('checkbox')).not.toBeChecked();
+
+      await user.click(within(personalRow).getByRole('checkbox'));
+      expect(within(workRow).getByRole('checkbox')).not.toBeChecked();
+      expect(within(personalRow).getByRole('checkbox')).toBeChecked();
+    });
+
+    it('saves the core flag and mapping in the system attributes', async () => {
+      const user = userEvent.setup();
+      mockUpdateMutateAsync.mockResolvedValue({});
+      render(<ViewUserTypePage />);
+
+      await user.click(screen.getByRole('button', {name: /Set as SCIM Core Type/i}));
+      await user.click(screen.getByRole('button', {name: /^Confirm$/i}));
+      await waitFor(() => {
+        expect(screen.getByRole('tab', {name: /SCIM Mapping/i})).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole('tab', {name: /SCIM Mapping/i}));
+
+      const emailRow = screen.getByTestId('scim-mapping-row-email');
+      await user.click(within(emailRow).getByRole('combobox'));
+      const listbox = await screen.findByRole('listbox');
+      await user.click(within(listbox).getByRole('option', {name: 'userName'}));
+
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              systemAttributes: {
+                isScimCoreType: true,
+                scimMapping: {attributeMap: {email: 'userName'}, multiValuedMeta: {}},
+              },
+            }),
+          }),
+        );
       });
     });
   });

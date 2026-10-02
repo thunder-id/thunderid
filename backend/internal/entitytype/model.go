@@ -30,10 +30,24 @@ func (c TypeCategory) IsValid() bool {
 // are kept in the model/ subdirectory to maintain clean separation and better organization.
 // This file contains only the simple DTOs and API request/response structures.
 
+// ScimAttrMeta holds the SCIM type/primary metadata for a property mapped to a multi-valued target.
+type ScimAttrMeta struct {
+	Type    string `json:"type,omitempty" yaml:"type,omitempty"`
+	Primary bool   `json:"primary,omitempty" yaml:"primary,omitempty"`
+}
+
+// ScimMapping maps schema property names to SCIM target paths.
+type ScimMapping struct {
+	AttributeMap    map[string]string       `json:"attributeMap,omitempty" yaml:"attributeMap,omitempty"`
+	MultiValuedMeta map[string]ScimAttrMeta `json:"multiValuedMeta,omitempty" yaml:"multiValuedMeta,omitempty"`
+}
+
 // SystemAttributes holds system-level metadata for an entity type.
 // Stored as a JSON column for extensibility — new fields can be added without DB migrations.
 type SystemAttributes struct {
-	Display string `json:"display,omitempty" yaml:"display,omitempty"`
+	Display        string       `json:"display,omitempty" yaml:"display,omitempty"`
+	IsScimCoreType bool         `json:"isScimCoreType,omitempty" yaml:"isScimCoreType,omitempty"`
+	ScimMapping    *ScimMapping `json:"scimMapping,omitempty" yaml:"scimMapping,omitempty"`
 }
 
 // EntityType represents an entity-type schema definition.

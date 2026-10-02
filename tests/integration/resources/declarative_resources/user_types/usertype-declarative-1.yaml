@@ -5,6 +5,11 @@ ouId: decl-ou-1
 allowSelfRegistration: false
 systemAttributes:
   display: "username"
+  isScimCoreType: true
+  scimMapping:
+    attributeMap:
+      username: userName
+      email: emails
 schema: |
   {
     "email": {

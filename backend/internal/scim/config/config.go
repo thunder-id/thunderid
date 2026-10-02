@@ -21,13 +21,6 @@ type SCIMConfig struct {
 	// used to construct SCIM resource location URIs.
 	PublicURL string
 
-	// CoreUserTypeID designates the ThunderID user type whose schema backs the SCIM
-	// core User schema. See system/config.SCIMConfig.CoreUserTypeID for details.
-	// GET responses (GetUser, ListUsers) include core schema fields (userName, emails,
-	// name, etc.) mapped from stored attributes only for users of this type; users of
-	// any other type return their custom extension schema only.
-	CoreUserTypeID string
-
 	// SchemaURNPrefix is the URN prefix of the custom per-user-type SCIM schemas, ending in
 	// a colon. The user type name and ":2.0:User" are appended to it.
 	SchemaURNPrefix string
@@ -113,7 +106,6 @@ func FromServerRuntime() SCIMConfig {
 	srv := config.GetServerRuntime().Config
 	return SCIMConfig{
 		PublicURL:                 engineconfig.GetServerURL(&srv.Server),
-		CoreUserTypeID:            srv.SCIM.CoreUserTypeID,
 		SchemaURNPrefix:           schemaURNPrefix(srv.SCIM.SchemaURNPrefix),
 		PatchSupported:            false,
 		BulkSupported:             false,

@@ -715,7 +715,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:
@@ -941,7 +941,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:
@@ -1299,7 +1299,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:
@@ -1509,7 +1509,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:
@@ -1687,7 +1687,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:
@@ -1812,7 +1812,7 @@ paths:
                 schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
                 status: "409"
                 scimType: "uniqueness"
-                detail: "A user with the same unique attribute value already exists"
+                detail: "A resource with the same unique attribute value already exists"
         '500':
           description: Internal Server Error
           content:

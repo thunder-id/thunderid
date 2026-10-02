@@ -22,7 +22,7 @@ func parseAndValidateSCIMGroupWriteRequest(body []byte) (*scimGroupPayload, *tid
 		DisplayName string            `json:"displayName"`
 		Members     []SCIMGroupMember `json:"members"`
 	}
-	if err := json.Unmarshal(body, &raw); err != nil || raw.DisplayName == "" {
+	if err := json.Unmarshal(body, &raw); err != nil || strings.TrimSpace(raw.DisplayName) == "" {
 		return nil, &scim.ErrorInvalidRequestBody
 	}
 	if !scim.HasSchemaURN(raw.Schemas, scim.SCIMCoreGroupSchemaURN) {

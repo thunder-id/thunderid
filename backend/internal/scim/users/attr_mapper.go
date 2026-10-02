@@ -6,10 +6,12 @@ package users
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	scim "github.com/thunder-id/thunderid/internal/scim/common"
 )
@@ -21,19 +23,33 @@ const (
 	scimFormattedKey = "formatted"
 )
 
+// managerSubAttrs are the enterprise manager sub-attributes a client may send: value is stored, and
+// $ref and displayName are read-only ones that a GET response includes.
+var managerSubAttrs = []string{scimValueKey, "$ref", "displayName"}
+
 // ============================================================================
 // Section 1: SCIM Filter and Query Path Rules
 // Handles translating and validating attribute paths for ?filter= and ?attributes=
 // ============================================================================
 
-// scimToThunderAttrIndex is a pre-built, lowercase-keyed map from SCIM filter
-// attribute paths to internal ThunderID attribute names.
-var scimToThunderAttrIndex = buildSCIMToThunderAttrIndex()
+// scimVocabCore and scimVocabEnterprise cover every SCIM target, identifying the recognized SCIM
+// attribute paths independently of any user type's mapping.
+var scimVocabCore, scimVocabEnterprise = buildSCIMVocabRules()
+
+func buildSCIMVocabRules() ([]scim.CoreAttrRule, []scim.EnterpriseAttrRule) {
+	identity := make(map[string]string)
+	for _, target := range entitytype.ScimTargets() {
+		identity[target] = target
+	}
+	return scim.BuildRulesFromMapping(identity, nil)
+}
 
 // buildSCIMToThunderAttrIndex builds the lookup map from SCIM attribute paths to ThunderID attribute names.
-func buildSCIMToThunderAttrIndex() map[string]string {
+func buildSCIMToThunderAttrIndex(
+	rules []scim.CoreAttrRule, enterpriseRules []scim.EnterpriseAttrRule,
+) map[string]string {
 	index := make(map[string]string)
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		switch rule.Kind {
 		case scim.KindSimpleString:
 			index[strings.ToLower(string(rule.SCIMField))] = rule.Candidate
@@ -48,7 +64,7 @@ func buildSCIMToThunderAttrIndex() map[string]string {
 			index[strings.ToLower(string(rule.ParentField)+"."+rule.SubAttr)] = rule.Candidate
 		}
 	}
-	for _, rule := range scim.EnterpriseAttrRules {
+	for _, rule := range enterpriseRules {
 		if rule.SCIMField == scim.EnterpriseFieldManager {
 			index[strings.ToLower(string(rule.SCIMField)+".value")] = rule.Candidate
 		} else {
@@ -58,21 +74,28 @@ func buildSCIMToThunderAttrIndex() map[string]string {
 	return index
 }
 
-// translateSCIMFilterAttr translates a SCIM filter attribute path to a ThunderID attribute name.
-func translateSCIMFilterAttr(attr string) string {
-	if thunderAttr, ok := scimToThunderAttrIndex[strings.ToLower(attr)]; ok {
-		return thunderAttr
+// translateSCIMFilters renames the SCIM attribute path keys of filters to ThunderID attribute names.
+func translateSCIMFilters(
+	filters map[string]interface{}, rules []scim.CoreAttrRule, enterpriseRules []scim.EnterpriseAttrRule,
+) map[string]interface{} {
+	index := buildSCIMToThunderAttrIndex(rules, enterpriseRules)
+	translated := make(map[string]interface{}, len(filters))
+	for attr, value := range filters {
+		if thunderAttr, ok := index[strings.ToLower(attr)]; ok {
+			attr = thunderAttr
+		}
+		translated[attr] = value
 	}
-	return attr
+	return translated
 }
 
 // scimCoreFilterAttrs is the set of recognized SCIM core User schema attribute paths (lowercase).
-var scimCoreFilterAttrs = buildSCIMCoreFilterAttrs()
+var scimCoreFilterAttrs = buildSCIMCoreFilterAttrs(scimVocabCore)
 
 // buildSCIMCoreFilterAttrs builds the recognized-core-attribute set used by isCoreSCIMFilterAttr.
-func buildSCIMCoreFilterAttrs() map[string]struct{} {
+func buildSCIMCoreFilterAttrs(rules []scim.CoreAttrRule) map[string]struct{} {
 	set := make(map[string]struct{})
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		switch rule.Kind {
 		case scim.KindSimpleString:
 			set[strings.ToLower(string(rule.SCIMField))] = struct{}{}
@@ -101,13 +124,13 @@ func isCoreSCIMFilterAttr(attr string) bool {
 var scimUnsupportedMultiComplexSubAttrs = []string{scimTypeKey, scimPrimaryKey}
 
 // scimUnsupportedFilterAttrs is the set of SCIM filter paths that are recognized but not supported for comparison.
-var scimUnsupportedFilterAttrs = buildSCIMUnsupportedFilterAttrs()
+var scimUnsupportedFilterAttrs = buildSCIMUnsupportedFilterAttrs(scimVocabCore)
 
 // buildSCIMUnsupportedFilterAttrs builds a set of filter paths for multi-valued complex attributes
 // and unmapped core attributes that are unsupported for direct comparison.
-func buildSCIMUnsupportedFilterAttrs() map[string]struct{} {
+func buildSCIMUnsupportedFilterAttrs(rules []scim.CoreAttrRule) map[string]struct{} {
 	unsupported := make(map[string]struct{})
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		if rule.Kind != scim.KindMultiComplex {
 			continue
 		}
@@ -133,19 +156,19 @@ func isUnsupportedSCIMFilterAttr(attr string) bool {
 var usersFilterAttrRules = scim.FilterAttrRules{
 	IsUnsupported: isUnsupportedSCIMFilterAttr,
 	IsCore:        isCoreSCIMFilterAttr,
-	Translate:     translateSCIMFilterAttr,
+	Translate:     func(attr string) string { return attr },
 }
 
 // scimCoreTopLevelAttrs is the set of top-level SCIM core User schema attribute names (lowercase).
-var scimCoreTopLevelAttrs = buildSCIMCoreTopLevelAttrs()
+var scimCoreTopLevelAttrs = buildSCIMCoreTopLevelAttrs(scimVocabCore)
 
-// buildSCIMCoreTopLevelAttrs builds scimCoreTopLevelAttrs from scim.CoreAttrRules plus the
+// buildSCIMCoreTopLevelAttrs builds scimCoreTopLevelAttrs from rules plus the
 // envelope attributes that have no entry there (id, meta, schemas).
-func buildSCIMCoreTopLevelAttrs() map[string]struct{} {
+func buildSCIMCoreTopLevelAttrs(rules []scim.CoreAttrRule) map[string]struct{} {
 	set := map[string]struct{}{
 		"id": {}, "meta": {}, "schemas": {},
 	}
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		switch {
 		case rule.SCIMField != "":
 			set[strings.ToLower(string(rule.SCIMField))] = struct{}{}
@@ -167,12 +190,12 @@ func isCoreSCIMAttrPath(attr string) bool {
 }
 
 // scimEnterpriseTopLevelAttrs is the set of top-level SCIM Enterprise User schema attribute names (lowercase).
-var scimEnterpriseTopLevelAttrs = buildSCIMEnterpriseTopLevelAttrs()
+var scimEnterpriseTopLevelAttrs = buildSCIMEnterpriseTopLevelAttrs(scimVocabEnterprise)
 
-// buildSCIMEnterpriseTopLevelAttrs builds scimEnterpriseTopLevelAttrs from scim.EnterpriseAttrRules.
-func buildSCIMEnterpriseTopLevelAttrs() map[string]struct{} {
-	set := make(map[string]struct{}, len(scim.EnterpriseAttrRules))
-	for _, rule := range scim.EnterpriseAttrRules {
+// buildSCIMEnterpriseTopLevelAttrs builds scimEnterpriseTopLevelAttrs from rules.
+func buildSCIMEnterpriseTopLevelAttrs(rules []scim.EnterpriseAttrRule) map[string]struct{} {
+	set := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
 		set[strings.ToLower(string(rule.SCIMField))] = struct{}{}
 	}
 	return set
@@ -194,7 +217,7 @@ func isEnterpriseSCIMAttrPath(attr string) bool {
 // ============================================================================
 
 // mapToCoreAttrs converts stored ThunderID user attributes into standard SCIM core attribute representations.
-func mapToCoreAttrs(rawAttrs json.RawMessage) map[string]json.RawMessage {
+func mapToCoreAttrs(rawAttrs json.RawMessage, rules []scim.CoreAttrRule) map[string]json.RawMessage {
 	if len(rawAttrs) == 0 {
 		return nil
 	}
@@ -209,7 +232,13 @@ func mapToCoreAttrs(rawAttrs json.RawMessage) map[string]json.RawMessage {
 	// entry 0, so both sources merge instead of overwriting each other.
 	multiComplexObjs := make(map[scim.CoreField][]map[string]interface{})
 	multiPartAdds := make(map[scim.CoreField]map[string]interface{})
-	for _, rule := range scim.CoreAttrRules {
+	multiComplexRuleCount := make(map[scim.CoreField]int)
+	for _, rule := range rules {
+		if rule.Kind == scim.KindMultiComplex {
+			multiComplexRuleCount[rule.SCIMField]++
+		}
+	}
+	for _, rule := range rules {
 		rawVal := findCandidateValue(attrMap, rule.Candidate)
 		if rawVal == nil {
 			continue
@@ -222,11 +251,12 @@ func mapToCoreAttrs(rawAttrs json.RawMessage) map[string]json.RawMessage {
 			}
 		case scim.KindMultiComplex:
 			arr := normalizeToMultiComplex(rawVal, rule.ValueKey)
-			if parts := multiComplexPartRules(rule.SCIMField); len(parts) > 0 {
+			if parts := multiComplexPartRules(rules, rule.SCIMField); len(parts) > 0 {
 				arr = filterAndRenameMultiComplexParts(rule.ValueKey, parts, arr)
 			}
 			if len(arr) > 0 {
-				multiComplexObjs[rule.SCIMField] = arr
+				arr = applyMultiComplexEntryMeta(arr, rule, multiComplexRuleCount[rule.SCIMField] > 1)
+				multiComplexObjs[rule.SCIMField] = append(multiComplexObjs[rule.SCIMField], arr...)
 			}
 		case scim.KindSubAttr:
 			if sv := extractStringValue(rawVal, ""); sv != "" {
@@ -268,8 +298,32 @@ func mapToCoreAttrs(rawAttrs json.RawMessage) map[string]json.RawMessage {
 	return result
 }
 
+// applyMultiComplexEntryMeta applies the mapped type and primary flag to the entries of one attribute. A lone
+// attribute mapped to a multi-valued field keeps the normalized primary entry; when several attributes share
+// the field, only the attribute chosen as primary contributes the primary entry.
+func applyMultiComplexEntryMeta(
+	arr []map[string]interface{}, rule scim.CoreAttrRule, shared bool,
+) []map[string]interface{} {
+	for i, entry := range arr {
+		if rule.EntryType != "" {
+			if _, hasType := entry[scimTypeKey]; !hasType {
+				entry[scimTypeKey] = rule.EntryType
+			}
+		}
+		if shared {
+			delete(entry, scimPrimaryKey)
+			if rule.EntryPrimary && i == 0 {
+				entry[scimPrimaryKey] = true
+			}
+		}
+	}
+	return arr
+}
+
 // mapToEnterpriseAttrs builds the SCIM Enterprise User extension object from stored ThunderID attributes.
-func mapToEnterpriseAttrs(rawAttrs json.RawMessage, baseURL string) json.RawMessage {
+func mapToEnterpriseAttrs(
+	rawAttrs json.RawMessage, baseURL string, rules []scim.EnterpriseAttrRule,
+) json.RawMessage {
 	if len(rawAttrs) == 0 {
 		return nil
 	}
@@ -280,7 +334,7 @@ func mapToEnterpriseAttrs(rawAttrs json.RawMessage, baseURL string) json.RawMess
 
 	result := make(map[string]interface{})
 
-	for _, rule := range scim.EnterpriseAttrRules {
+	for _, rule := range rules {
 		rawVal := findCandidateValue(attrMap, rule.Candidate)
 		if rawVal == nil {
 			continue
@@ -317,7 +371,9 @@ func mapToEnterpriseAttrs(rawAttrs json.RawMessage, baseURL string) json.RawMess
 // stripMappedCandidates removes attributes already surfaced through the core or enterprise SCIM
 // schemas from attrs, leaving only attributes with no core/enterprise mapping. Used to keep the
 // custom extension object free of duplicates for the designated core user type.
-func stripMappedCandidates(attrs json.RawMessage) json.RawMessage {
+func stripMappedCandidates(
+	attrs json.RawMessage, rules []scim.CoreAttrRule, enterpriseRules []scim.EnterpriseAttrRule,
+) json.RawMessage {
 	if len(attrs) == 0 {
 		return attrs
 	}
@@ -326,7 +382,7 @@ func stripMappedCandidates(attrs json.RawMessage) json.RawMessage {
 		return attrs
 	}
 	for key := range m {
-		if scim.IsCoreCandidate(key) || scim.IsEnterpriseCandidate(key) {
+		if scim.IsCoreCandidate(rules, key) || scim.IsEnterpriseCandidate(enterpriseRules, key) {
 			delete(m, key)
 		}
 	}
@@ -338,9 +394,9 @@ func stripMappedCandidates(attrs json.RawMessage) json.RawMessage {
 }
 
 // multiComplexPartRules returns all KindMultiComplexPart rules declared for the given field.
-func multiComplexPartRules(field scim.CoreField) []scim.CoreAttrRule {
+func multiComplexPartRules(rules []scim.CoreAttrRule, field scim.CoreField) []scim.CoreAttrRule {
 	var out []scim.CoreAttrRule
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		if rule.Kind == scim.KindMultiComplexPart && rule.ParentField == field {
 			out = append(out, rule)
 		}
@@ -399,7 +455,8 @@ func filterAndRenameMultiComplexParts(
 // find no matching property in the schema (e.g. "title" on a schema without a title property), come
 // back in undeclared instead of being silently dropped.
 func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
-	schema json.RawMessage) (result map[string]json.RawMessage, undeclared []string, err error) {
+	schema json.RawMessage, rules []scim.CoreAttrRule,
+) (result map[string]json.RawMessage, undeclared []string, err error) {
 	if len(coreAttrs) == 0 {
 		return nil, nil, nil
 	}
@@ -413,7 +470,7 @@ func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 	result = make(map[string]json.RawMessage)
 	matchedKeys := make(map[string]struct{}, len(coreAttrs))
 
-	for _, rule := range scim.CoreAttrRules {
+	for _, rule := range rules {
 		lookupField := reverseLookupField(rule)
 		rawVal, matchedKey := findCoreAttrValue(coreAttrs, lookupField)
 		if len(rawVal) == 0 {
@@ -426,7 +483,7 @@ func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 		}
 		matchedKeys[matchedKey] = struct{}{}
 
-		if b, ok := reverseMapRuleValue(rule, rawVal, rawProps[targetAttrName]); ok {
+		if b, ok := reverseMapRuleValue(rules, rule, rawVal, rawProps[targetAttrName]); ok {
 			result[targetAttrName] = b
 		}
 	}
@@ -436,6 +493,7 @@ func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 			undeclared = append(undeclared, k)
 		}
 	}
+	undeclared = append(undeclared, undeclaredCoreSubAttrs(coreAttrs, matchedKeys, rules, rawProps)...)
 	sort.Strings(undeclared)
 
 	if len(result) == 0 {
@@ -444,10 +502,103 @@ func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 	return result, undeclared, nil
 }
 
+// undeclaredCoreSubAttrs returns the "parent.sub" paths of sub-attributes in the matched complex core attributes
+// that no rule maps. A multi-valued attribute whose target schema property is an object keeps every entry key,
+// so its unmapped keys are left to the schema validation.
+func undeclaredCoreSubAttrs(
+	coreAttrs map[string]json.RawMessage, matchedKeys map[string]struct{}, rules []scim.CoreAttrRule,
+	rawProps map[string]scim.RawPropertyDef,
+) []string {
+	allowed := make(map[string]map[string]struct{})
+	keepsEntryKeys := make(map[string]struct{})
+	for _, rule := range rules {
+		if rule.Kind == scim.KindSimpleString {
+			continue
+		}
+		rawVal, key := findCoreAttrValue(coreAttrs, reverseLookupField(rule))
+		if len(rawVal) == 0 {
+			continue
+		}
+		if allowed[key] == nil {
+			allowed[key] = make(map[string]struct{})
+		}
+		switch rule.Kind {
+		case scim.KindSubAttr:
+			allowed[key][rule.SubAttr] = struct{}{}
+		case scim.KindMultiComplexPart:
+			allowed[key][rule.SubAttr] = struct{}{}
+			allowed[key][scimTypeKey] = struct{}{}
+			allowed[key][scimPrimaryKey] = struct{}{}
+		case scim.KindMultiComplex:
+			allowed[key][scimValueKey] = struct{}{}
+			allowed[key][rule.ValueKey] = struct{}{}
+			allowed[key][scimTypeKey] = struct{}{}
+			allowed[key][scimPrimaryKey] = struct{}{}
+			if keepsMultiComplexEntryKeys(rawProps, rule.Candidate) {
+				keepsEntryKeys[key] = struct{}{}
+			}
+		}
+	}
+
+	var out []string
+	for key, set := range allowed {
+		if _, matched := matchedKeys[key]; !matched {
+			continue
+		}
+		if _, keep := keepsEntryKeys[key]; keep {
+			continue
+		}
+		for _, sub := range subAttrKeys(coreAttrs[key]) {
+			if _, ok := set[sub]; !ok {
+				out = append(out, key+"."+sub)
+			}
+		}
+	}
+	return out
+}
+
+// keepsMultiComplexEntryKeys reports whether the schema property for candidate stores whole entry objects.
+func keepsMultiComplexEntryKeys(rawProps map[string]scim.RawPropertyDef, candidate string) bool {
+	target := findTargetAttrName(rawProps, candidate)
+	if target == "" {
+		return false
+	}
+	propDef := rawProps[target]
+	propType := strings.ToLower(propDef.Type)
+	if propType == entitytypemodel.TypeObject {
+		return true
+	}
+	return propType == entitytypemodel.TypeArray && propDef.Items != nil &&
+		strings.ToLower(propDef.Items.Type) == entitytypemodel.TypeObject
+}
+
+// subAttrKeys returns the distinct keys of raw when it is an object or an array of objects, sorted.
+func subAttrKeys(raw json.RawMessage) []string {
+	var objs []map[string]json.RawMessage
+	var single map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &single); err == nil {
+		objs = []map[string]json.RawMessage{single}
+	} else if err := json.Unmarshal(raw, &objs); err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	for _, obj := range objs {
+		for k := range obj {
+			seen[k] = struct{}{}
+		}
+	}
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // reverseMapEnterpriseAttrsForSchema maps incoming SCIM Enterprise attributes to user-type attributes.
 // Unrecognized or undeclared attributes are returned separately in undeclared.
 func reverseMapEnterpriseAttrsForSchema(
-	enterpriseAttrs map[string]json.RawMessage, schema json.RawMessage,
+	enterpriseAttrs map[string]json.RawMessage, schema json.RawMessage, rules []scim.EnterpriseAttrRule,
 ) (mapped map[string]json.RawMessage, undeclared []string, err error) {
 	if len(enterpriseAttrs) == 0 {
 		return nil, nil, nil
@@ -462,7 +613,7 @@ func reverseMapEnterpriseAttrsForSchema(
 
 	for entKey, rawVal := range enterpriseAttrs {
 		var matchedRule *scim.EnterpriseAttrRule
-		for _, rule := range scim.EnterpriseAttrRules {
+		for _, rule := range rules {
 			if strings.EqualFold(string(rule.SCIMField), entKey) {
 				ruleCopy := rule
 				matchedRule = &ruleCopy
@@ -478,6 +629,14 @@ func reverseMapEnterpriseAttrsForSchema(
 		if targetAttrName == "" {
 			undeclaredAttrsList = append(undeclaredAttrsList, entKey)
 			continue
+		}
+
+		if matchedRule.SCIMField == scim.EnterpriseFieldManager {
+			for _, sub := range subAttrKeys(rawVal) {
+				if !slices.Contains(managerSubAttrs, sub) {
+					undeclaredAttrsList = append(undeclaredAttrsList, entKey+"."+sub)
+				}
+			}
 		}
 
 		var strVal string
@@ -536,13 +695,14 @@ func findTargetAttrName(rawProps map[string]scim.RawPropertyDef, candidate strin
 }
 
 // reverseMapRuleValue converts a single core attribute value to its user-type schema representation per rule.Kind.
-func reverseMapRuleValue(rule scim.CoreAttrRule, rawVal json.RawMessage, propDef scim.RawPropertyDef,
+func reverseMapRuleValue(
+	rules []scim.CoreAttrRule, rule scim.CoreAttrRule, rawVal json.RawMessage, propDef scim.RawPropertyDef,
 ) (b json.RawMessage, ok bool) {
 	switch rule.Kind {
 	case scim.KindSimpleString:
 		return reverseMapSimpleString(rawVal)
 	case scim.KindMultiComplex:
-		return reverseMapMultiComplex(rule, rawVal, propDef)
+		return reverseMapMultiComplex(rules, rule, rawVal, propDef)
 	case scim.KindSubAttr:
 		return reverseMapSubAttr(rule, rawVal)
 	case scim.KindMultiComplexPart:
@@ -563,13 +723,14 @@ func reverseMapSimpleString(rawVal json.RawMessage) (json.RawMessage, bool) {
 }
 
 // reverseMapMultiComplex converts a multi-valued complex SCIM attribute to the target schema format.
-func reverseMapMultiComplex(rule scim.CoreAttrRule, rawVal json.RawMessage, propDef scim.RawPropertyDef,
+func reverseMapMultiComplex(
+	rules []scim.CoreAttrRule, rule scim.CoreAttrRule, rawVal json.RawMessage, propDef scim.RawPropertyDef,
 ) (json.RawMessage, bool) {
 	normalized := normalizeToMultiComplex(rawVal, rule.ValueKey)
 	if len(normalized) == 0 {
 		return nil, false
 	}
-	if parts := multiComplexPartRules(rule.SCIMField); len(parts) > 0 {
+	if parts := multiComplexPartRules(rules, rule.SCIMField); len(parts) > 0 {
 		for i, obj := range normalized {
 			normalized[i] = renameMultiComplexPartsInbound(parts, obj, propDef)
 		}
