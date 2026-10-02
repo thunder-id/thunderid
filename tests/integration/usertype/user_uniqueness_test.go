@@ -6,13 +6,18 @@ package usertype
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
+
+// nonWordCharUserType is the user type used by the RFC 7643 attribute-name coverage.
+const nonWordCharUserType = "non-word-char-employee"
 
 // UserUniquenessTestSuite contains tests for user uniqueness validation
 type UserUniquenessTestSuite struct {
@@ -143,6 +148,128 @@ func (ts *UserUniquenessTestSuite) TestCreateUserWithUniqueConstraintViolation()
 	ts.createdUsers = append(ts.createdUsers, userID5)
 }
 
+// TestCreateUserWithNonWordCharUniqueProperties covers uniqueness validation for schema property
+// names that go beyond letters, digits and underscores. The reported failure (issue #1696) was a
+// hyphenated unique property; the accepted name charset is RFC 7643 ATTRNAME, so '-' and '$' are
+// legal and must be usable as uniqueness filters.
+func (ts *UserUniquenessTestSuite) TestCreateUserWithNonWordCharUniqueProperties() {
+	schemaID := ts.createSchemaWithNonWordCharUniqueFields()
+	ts.createdSchemas = append(ts.createdSchemas, schemaID)
+
+	// Create first user - should succeed. No duplicate exists yet, which is the case that
+	// previously failed: the uniqueness lookup rejected the property name and the error surfaced
+	// as a spurious attribute conflict.
+	userID1 := ts.createUserAndExpectSuccess(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: nonWordCharUserType,
+		Attributes: json.RawMessage(`{
+			"silver-mail": "john.doe@company.com",
+			"a$ref": "JD001",
+			"work-phone-2": "111"
+		}`),
+	})
+	ts.createdUsers = append(ts.createdUsers, userID1)
+
+	// Duplicate hyphenated unique property - should conflict.
+	ts.createUserAndExpectError(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: nonWordCharUserType,
+		Attributes: json.RawMessage(`{
+			"silver-mail": "john.doe@company.com",
+			"a$ref": "JD002",
+			"work-phone-2": "222"
+		}`),
+	}, "USR-1014")
+
+	// Duplicate unique property containing "$" - should conflict.
+	ts.createUserAndExpectError(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: nonWordCharUserType,
+		Attributes: json.RawMessage(`{
+			"silver-mail": "jane.smith@company.com",
+			"a$ref": "JD001",
+			"work-phone-2": "333"
+		}`),
+	}, "USR-1014")
+
+	// Duplicate unique property mixing hyphens and digits - should conflict.
+	ts.createUserAndExpectError(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: nonWordCharUserType,
+		Attributes: json.RawMessage(`{
+			"silver-mail": "bob.wilson@company.com",
+			"a$ref": "JD003",
+			"work-phone-2": "111"
+		}`),
+	}, "USR-1014")
+
+	// All unique values different - should succeed.
+	userID2 := ts.createUserAndExpectSuccess(CreateUserRequest{
+		OUID: ts.oUID,
+		Type: nonWordCharUserType,
+		Attributes: json.RawMessage(`{
+			"silver-mail": "alice.brown@company.com",
+			"a$ref": "JD004",
+			"work-phone-2": "444"
+		}`),
+	})
+	ts.createdUsers = append(ts.createdUsers, userID2)
+
+	// The same names must also work as list filters, not just as uniqueness filters.
+	matched := ts.usersMatching("silver-mail", "alice.brown@company.com")
+	ts.Require().Len(matched, 1, "Expected exactly one user for the hyphenated attribute filter")
+	ts.Equal(userID2, matched[0].ID)
+
+	ts.Require().Empty(ts.usersMatching("silver-mail", "nobody@company.com"),
+		"A hyphenated attribute filter with no match must return no users")
+}
+
+// usersMatching returns the users matching an exact attribute value via GET /users?filter=.
+func (ts *UserUniquenessTestSuite) usersMatching(attr, value string) []testutils.User {
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/users", nil)
+	ts.Require().NoError(err, "Failed to build the user list request")
+
+	q := url.Values{}
+	q.Add("filter", attr+` eq "`+value+`"`)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err, "GET /users with a filter failed")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err, "Failed to read the user list response body")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"Expected 200 from the filtered user list, got %d: %s", resp.StatusCode, string(body))
+
+	var listResp testutils.UserListResponse
+	ts.Require().NoError(json.Unmarshal(body, &listResp), "Failed to decode the user list response")
+	return listResp.Users
+}
+
+// TestCreateUserTypeWithInvalidPropertyName covers the other half of the contract: a property name
+// the query layer cannot address unambiguously is rejected when the user type is created, rather
+// than accepted and then failing on every write.
+func (ts *UserUniquenessTestSuite) TestCreateUserTypeWithInvalidPropertyName() {
+	cases := map[string]string{
+		"dot":           `{"a.b": {"type": "string", "unique": true}}`,
+		"at sign":       `{"x@y": {"type": "string", "unique": true}}`,
+		"space":         `{"work phone": {"type": "string", "unique": true}}`,
+		"leading digit": `{"1email": {"type": "string", "unique": true}}`,
+		"nested dot":    `{"addr": {"type": "object", "properties": {"post.code": {"type": "string"}}}}`,
+	}
+
+	i := 0
+	for name, schemaJSON := range cases {
+		i++
+		ts.createSchemaAndExpectError(CreateUserTypeRequest{
+			Name:   fmt.Sprintf("invalid-prop-name-%d", i),
+			OUID:   ts.oUID,
+			Schema: json.RawMessage(schemaJSON),
+		}, name)
+	}
+}
+
 // Helper methods
 
 func (ts *UserUniquenessTestSuite) createSchemaWithUniqueFields() string {
@@ -158,6 +285,44 @@ func (ts *UserUniquenessTestSuite) createSchemaWithUniqueFields() string {
 	}
 
 	return ts.createSchema(schema)
+}
+
+func (ts *UserUniquenessTestSuite) createSchemaWithNonWordCharUniqueFields() string {
+	schema := CreateUserTypeRequest{
+		Name: nonWordCharUserType,
+		OUID: ts.oUID,
+		Schema: json.RawMessage(`{
+			"silver-mail": {"type": "string", "unique": true},
+			"a$ref": {"type": "string", "unique": true},
+			"work-phone-2": {"type": "string", "unique": true}
+		}`),
+	}
+
+	return ts.createSchema(schema)
+}
+
+// createSchemaAndExpectError posts a user type expected to be rejected as a bad request.
+func (ts *UserUniquenessTestSuite) createSchemaAndExpectError(schema CreateUserTypeRequest, caseName string) {
+	jsonData, err := json.Marshal(schema)
+	ts.Require().NoError(err, "Failed to marshal schema request")
+
+	req, err := http.NewRequest("POST", testServerURL+"/user-types", bytes.NewBuffer(jsonData))
+	ts.Require().NoError(err, "Failed to create schema request")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err, "Failed to send schema request")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err, "Failed to read schema response body")
+
+	ts.Require().Equal(400, resp.StatusCode,
+		"User type with an invalid property name (%s) should be rejected: %s", caseName, string(body))
+
+	var errorResp ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errorResp), "Failed to unmarshal error response")
+	ts.Require().Equal("USRS-1004", errorResp.Code, "Error code should match expected for %s", caseName)
 }
 
 func (ts *UserUniquenessTestSuite) createSchema(schema CreateUserTypeRequest) string {
