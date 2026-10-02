@@ -5,7 +5,6 @@
 package session
 
 import (
-	"net/http"
 	"time"
 
 	mock "github.com/stretchr/testify/mock"
@@ -39,8 +38,8 @@ func (_m *HandleTransportMock) EXPECT() *HandleTransportMock_Expecter {
 }
 
 // Clear provides a mock function for the type HandleTransportMock
-func (_mock *HandleTransportMock) Clear(w http.ResponseWriter, cookieName string) {
-	_mock.Called(w, cookieName)
+func (_mock *HandleTransportMock) Clear(x *Exchange, flowID string) {
+	_mock.Called(x, flowID)
 	return
 }
 
@@ -50,17 +49,17 @@ type HandleTransportMock_Clear_Call struct {
 }
 
 // Clear is a helper method to define mock.On call
-//   - w http.ResponseWriter
-//   - cookieName string
-func (_e *HandleTransportMock_Expecter) Clear(w interface{}, cookieName interface{}) *HandleTransportMock_Clear_Call {
-	return &HandleTransportMock_Clear_Call{Call: _e.mock.On("Clear", w, cookieName)}
+//   - x *Exchange
+//   - flowID string
+func (_e *HandleTransportMock_Expecter) Clear(x interface{}, flowID interface{}) *HandleTransportMock_Clear_Call {
+	return &HandleTransportMock_Clear_Call{Call: _e.mock.On("Clear", x, flowID)}
 }
 
-func (_c *HandleTransportMock_Clear_Call) Run(run func(w http.ResponseWriter, cookieName string)) *HandleTransportMock_Clear_Call {
+func (_c *HandleTransportMock_Clear_Call) Run(run func(x *Exchange, flowID string)) *HandleTransportMock_Clear_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 http.ResponseWriter
+		var arg0 *Exchange
 		if args[0] != nil {
-			arg0 = args[0].(http.ResponseWriter)
+			arg0 = args[0].(*Exchange)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -79,24 +78,26 @@ func (_c *HandleTransportMock_Clear_Call) Return() *HandleTransportMock_Clear_Ca
 	return _c
 }
 
-func (_c *HandleTransportMock_Clear_Call) RunAndReturn(run func(w http.ResponseWriter, cookieName string)) *HandleTransportMock_Clear_Call {
+func (_c *HandleTransportMock_Clear_Call) RunAndReturn(run func(x *Exchange, flowID string)) *HandleTransportMock_Clear_Call {
 	_c.Run(run)
 	return _c
 }
 
 // Read provides a mock function for the type HandleTransportMock
-func (_mock *HandleTransportMock) Read(r *http.Request) InboundHandle {
-	ret := _mock.Called(r)
+func (_mock *HandleTransportMock) Read(x *Exchange) InboundHandle {
+	ret := _mock.Called(x)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Read")
 	}
 
 	var r0 InboundHandle
-	if returnFunc, ok := ret.Get(0).(func(*http.Request) InboundHandle); ok {
-		r0 = returnFunc(r)
+	if returnFunc, ok := ret.Get(0).(func(*Exchange) InboundHandle); ok {
+		r0 = returnFunc(x)
 	} else {
-		r0 = ret.Get(0).(InboundHandle)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(InboundHandle)
+		}
 	}
 	return r0
 }
@@ -107,16 +108,16 @@ type HandleTransportMock_Read_Call struct {
 }
 
 // Read is a helper method to define mock.On call
-//   - r *http.Request
-func (_e *HandleTransportMock_Expecter) Read(r interface{}) *HandleTransportMock_Read_Call {
-	return &HandleTransportMock_Read_Call{Call: _e.mock.On("Read", r)}
+//   - x *Exchange
+func (_e *HandleTransportMock_Expecter) Read(x interface{}) *HandleTransportMock_Read_Call {
+	return &HandleTransportMock_Read_Call{Call: _e.mock.On("Read", x)}
 }
 
-func (_c *HandleTransportMock_Read_Call) Run(run func(r *http.Request)) *HandleTransportMock_Read_Call {
+func (_c *HandleTransportMock_Read_Call) Run(run func(x *Exchange)) *HandleTransportMock_Read_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *http.Request
+		var arg0 *Exchange
 		if args[0] != nil {
-			arg0 = args[0].(*http.Request)
+			arg0 = args[0].(*Exchange)
 		}
 		run(
 			arg0,
@@ -130,14 +131,14 @@ func (_c *HandleTransportMock_Read_Call) Return(inboundHandle InboundHandle) *Ha
 	return _c
 }
 
-func (_c *HandleTransportMock_Read_Call) RunAndReturn(run func(r *http.Request) InboundHandle) *HandleTransportMock_Read_Call {
+func (_c *HandleTransportMock_Read_Call) RunAndReturn(run func(x *Exchange) InboundHandle) *HandleTransportMock_Read_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Write provides a mock function for the type HandleTransportMock
-func (_mock *HandleTransportMock) Write(w http.ResponseWriter, cookieName string, handle string, ttl time.Duration) {
-	_mock.Called(w, cookieName, handle, ttl)
+func (_mock *HandleTransportMock) Write(x *Exchange, flowID string, handle string, ttl time.Duration) {
+	_mock.Called(x, flowID, handle, ttl)
 	return
 }
 
@@ -147,19 +148,19 @@ type HandleTransportMock_Write_Call struct {
 }
 
 // Write is a helper method to define mock.On call
-//   - w http.ResponseWriter
-//   - cookieName string
+//   - x *Exchange
+//   - flowID string
 //   - handle string
 //   - ttl time.Duration
-func (_e *HandleTransportMock_Expecter) Write(w interface{}, cookieName interface{}, handle interface{}, ttl interface{}) *HandleTransportMock_Write_Call {
-	return &HandleTransportMock_Write_Call{Call: _e.mock.On("Write", w, cookieName, handle, ttl)}
+func (_e *HandleTransportMock_Expecter) Write(x interface{}, flowID interface{}, handle interface{}, ttl interface{}) *HandleTransportMock_Write_Call {
+	return &HandleTransportMock_Write_Call{Call: _e.mock.On("Write", x, flowID, handle, ttl)}
 }
 
-func (_c *HandleTransportMock_Write_Call) Run(run func(w http.ResponseWriter, cookieName string, handle string, ttl time.Duration)) *HandleTransportMock_Write_Call {
+func (_c *HandleTransportMock_Write_Call) Run(run func(x *Exchange, flowID string, handle string, ttl time.Duration)) *HandleTransportMock_Write_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 http.ResponseWriter
+		var arg0 *Exchange
 		if args[0] != nil {
-			arg0 = args[0].(http.ResponseWriter)
+			arg0 = args[0].(*Exchange)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -188,7 +189,7 @@ func (_c *HandleTransportMock_Write_Call) Return() *HandleTransportMock_Write_Ca
 	return _c
 }
 
-func (_c *HandleTransportMock_Write_Call) RunAndReturn(run func(w http.ResponseWriter, cookieName string, handle string, ttl time.Duration)) *HandleTransportMock_Write_Call {
+func (_c *HandleTransportMock_Write_Call) RunAndReturn(run func(x *Exchange, flowID string, handle string, ttl time.Duration)) *HandleTransportMock_Write_Call {
 	_c.Run(run)
 	return _c
 }

@@ -42,10 +42,7 @@ func (s *ServiceSSOTestSuite) newTestGraph() core.GraphInterface {
 func (s *ServiceSSOTestSuite) TestApplyInboundSSO_SelectsHandleForFlow() {
 	engineCtx := &EngineContext{Graph: s.newTestGraph()}
 
-	ih := session.InboundHandle{
-		Cookies: map[string]string{session.CookieName(testFlowID): "handle-1"},
-	}
-	ctx := session.WithInbound(context.Background(), ih)
+	ctx := session.WithInbound(context.Background(), session.NewStaticInbound(testFlowID, "handle-1"))
 
 	applyInboundSSO(engineCtx, ctx)
 
@@ -62,8 +59,7 @@ func (s *ServiceSSOTestSuite) TestApplyInboundSSO_NoInbound() {
 
 func (s *ServiceSSOTestSuite) TestApplyInboundSSO_NilGraph() {
 	engineCtx := &EngineContext{}
-	ctx := session.WithInbound(context.Background(),
-		session.InboundHandle{Cookies: map[string]string{}})
+	ctx := session.WithInbound(context.Background(), session.NewStaticInbound(testFlowID, "handle-1"))
 
 	applyInboundSSO(engineCtx, ctx)
 

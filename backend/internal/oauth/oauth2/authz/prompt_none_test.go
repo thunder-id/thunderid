@@ -32,11 +32,8 @@ const (
 // promptNoneCtx returns a context carrying the SSO cookie the authorize endpoint would have read
 // from the request, named for the client's authentication flow.
 func promptNoneCtx() context.Context {
-	return flowsession.WithInbound(context.Background(), flowsession.InboundHandle{
-		Cookies: map[string]string{
-			flowsession.CookieName(promptNoneFlowID): promptNoneFlowCookie,
-		},
-	})
+	return flowsession.WithInbound(context.Background(),
+		flowsession.NewStaticInbound(promptNoneFlowID, promptNoneFlowCookie))
 }
 
 // promptNoneApp is the OAuth client the request is made for.

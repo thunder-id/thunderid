@@ -28,17 +28,18 @@ type authorizeHandler struct {
 	cfg          oauthconfig.Config
 	authZService AuthorizeServiceInterface
 	// ssoTransport reads the inbound SSO handle cookies; the authorize endpoint only reads them,
-	// the flow endpoint remains the sole writer.
+	// the flow endpoint remains the sole writer. It is nil when the deployment has no SSO session store.
 	ssoTransport session.HandleTransport
 	logger       *log.Logger
 }
 
 // newAuthorizeHandler creates a new instance of authorizeHandler with injected dependencies.
-func newAuthorizeHandler(authZService AuthorizeServiceInterface, cfg oauthconfig.Config) AuthorizeHandlerInterface {
+func newAuthorizeHandler(authZService AuthorizeServiceInterface, ssoTransport session.HandleTransport,
+	cfg oauthconfig.Config) AuthorizeHandlerInterface {
 	return &authorizeHandler{
 		cfg:          cfg,
 		authZService: authZService,
-		ssoTransport: session.NewCookieTransport(true),
+		ssoTransport: ssoTransport,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeHandler")),
 	}
 }
@@ -54,7 +55,10 @@ func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *
 
 	// Carry the inbound SSO handle cookies so prompt=none can be answered from an existing
 	// session. The per-flow cookie is selected later, once the client's flow is known.
-	ctx := session.WithInbound(r.Context(), ah.ssoTransport.Read(r))
+	ctx := r.Context()
+	if ah.ssoTransport != nil {
+		ctx = session.WithInbound(ctx, ah.ssoTransport.Read(&session.Exchange{Request: r}))
+	}
 
 	result, authErr := ah.authZService.HandleInitialAuthorizationRequest(ctx, oAuthMessage)
 	if authErr != nil {

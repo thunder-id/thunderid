@@ -34,7 +34,7 @@ func TestHandlerTestSuite(t *testing.T) {
 func (s *HandlerTestSuite) TestNewFlowExecutionHandler() {
 	t := s.T()
 	mockSvc := NewFlowExecServiceInterfaceMock(t)
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	s.NotNil(h)
 	s.Equal(mockSvc, h.flowExecService)
 }
@@ -98,7 +98,7 @@ func (s *HandlerTestSuite) TestConvertToAPIError() {
 func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_InvalidJSON() {
 	t := s.T()
 	mockSvc := NewFlowExecServiceInterfaceMock(t)
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString("not-json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -115,7 +115,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ServiceError() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, &ErrorDirectFlowInitiationNotPermitted)
 
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -131,7 +131,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ByFlowID() {
 		"", mock.Anything, "").Return(&FlowStep{
 		ExecutionID: "execution-1", Status: providers.FlowStatusComplete,
 	}, nil)
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute",
 		bytes.NewBufferString(`{"flowId":"administration-1","verbose":true}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -152,7 +152,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_Success() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(flowStep, (*tidcommon.ServiceError)(nil))
 
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -169,6 +169,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCo
 
 	var gotInbound session.InboundHandle
 	var gotOK bool
+	transport := session.NewHandleTransport(session.TransportConfig{SecureCookies: false})
 	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
@@ -178,10 +179,15 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCo
 		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
 			(*tidcommon.ServiceError)(nil))
 
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, transport, 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: session.CookieName("flow-1"), Value: "inbound-handle"})
+	// Obtain the per-flow cookie from the transport itself, as a browser would from an earlier response.
+	issued := httptest.NewRecorder()
+	transport.Write(&session.Exchange{Response: issued}, "flow-1", "inbound-handle", time.Hour)
+	for _, ck := range issued.Result().Cookies() {
+		req.AddCookie(ck)
+	}
 	w := httptest.NewRecorder()
 
 	h.HandleFlowExecutionRequest(w, req)
@@ -207,7 +213,8 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_WritesSSOHandleCookie(
 		Return(flowStep, (*tidcommon.ServiceError)(nil))
 
 	// secure=true and a non-zero TTL so the emitted cookie carries the expected transport settings.
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(true), time.Hour)
+	transport := session.NewHandleTransport(session.TransportConfig{SecureCookies: true})
+	h := newFlowExecutionHandler(mockSvc, transport, time.Hour)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -215,18 +222,53 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_WritesSSOHandleCookie(
 	h.HandleFlowExecutionRequest(w, req)
 
 	s.Equal(http.StatusOK, w.Code)
-	var ssoCookie *http.Cookie
-	for _, ck := range w.Result().Cookies() {
-		if ck.Name == session.CookieName("flow-1") {
-			ssoCookie = ck
-		}
-	}
-	s.Require().NotNil(ssoCookie, "expected the per-flow SSO handle cookie to be set")
+	cookies := w.Result().Cookies()
+	s.Require().Len(cookies, 1, "expected the per-flow SSO handle cookie to be set")
+	ssoCookie := cookies[0]
+	// Read the cookie back through the transport to prove it is keyed by the step's SSO flow ID.
+	next := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	next.AddCookie(ssoCookie)
+	s.Equal("minted-handle", transport.Read(&session.Exchange{Request: next}).HandleFor("flow-1"))
 	s.Equal("minted-handle", ssoCookie.Value)
 	s.Equal(int(time.Hour.Seconds()), ssoCookie.MaxAge)
 	s.Positive(ssoCookie.MaxAge, "cookie TTL must be non-zero")
 	s.True(ssoCookie.Secure)
 	s.True(ssoCookie.HttpOnly)
+	s.NotContains(w.Body.String(), "minted-handle", "the handle must never appear in the response body")
+}
+
+// TestHandleFlowExecutionRequest_ClearsSSOHandleCookie verifies a terminated session expires the
+// per-flow cookie of the step's SSO clear flow ID.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_ClearsSSOHandleCookie() {
+	t := s.T()
+	mockSvc := NewFlowExecServiceInterfaceMock(t)
+	flowStep := &FlowStep{
+		ExecutionID:    "exec-1",
+		Status:         providers.FlowStatusComplete,
+		SSOClearFlowID: "flow-1",
+	}
+	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(flowStep, (*tidcommon.ServiceError)(nil))
+
+	transport := session.NewHandleTransport(session.TransportConfig{SecureCookies: false})
+	h := newFlowExecutionHandler(mockSvc, transport, time.Hour)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	cookies := w.Result().Cookies()
+	s.Require().Len(cookies, 1, "expected the per-flow SSO handle cookie to be cleared")
+	s.Equal(-1, cookies[0].MaxAge)
+	s.Equal("", cookies[0].Value)
+
+	// The cleared cookie must carry the same name the transport issues for the flow.
+	issued := httptest.NewRecorder()
+	transport.Write(&session.Exchange{Response: issued}, "flow-1", "handle", time.Hour)
+	s.Equal(issued.Result().Cookies()[0].Name, cookies[0].Name)
 }
 
 // The Attestation-Token request header must be read and forwarded to the service layer as the
@@ -239,7 +281,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_AttestationTokenHeader
 		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
 			(*tidcommon.ServiceError)(nil))
 
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Attestation-Token", "play-integrity-token")
@@ -268,7 +310,7 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_StepWithError() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(flowStep, (*tidcommon.ServiceError)(nil))
 
-	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
 	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

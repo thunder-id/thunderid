@@ -56,9 +56,10 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	flowSecret := sysutils.SanitizeString(r.Header.Get(serverconst.FlowSecretHeaderName))
 	attestationToken := sysutils.SanitizeString(r.Header.Get(serverconst.AttestationTokenHeaderName))
 
-	// Read the inbound SSO transport inputs (per-flow handle cookies) and make
-	// them available to the flow service, which selects the handle once the flow is known.
-	ctx := session.WithInbound(r.Context(), h.ssoTransport.Read(r))
+	// Read the inbound SSO transport inputs and make them available to the flow service, which
+	// selects the handle once the flow is known.
+	ssoExchange := &session.Exchange{Request: r, Response: w}
+	ctx := session.WithInbound(r.Context(), h.ssoTransport.Read(ssoExchange))
 
 	var flowStep *FlowStep
 	var flowErr *tidcommon.ServiceError
@@ -87,18 +88,16 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		stepErrorResp = &resp
 	}
 
-	// Emit the per-flow SSO handle cookie when the flow minted a new session handle. This must
-	// happen before the response body is written.
+	// Emit the per-flow SSO handle when the flow minted a new session handle. This must happen
+	// before the response body is written.
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
-		// The handle has no TTL of its own; bound the cookie to the session's configured absolute
-		// lifetime.
-		h.ssoTransport.Write(w, session.CookieName(flowStep.SSOFlowID), flowStep.SSOHandleOut,
-			h.ssoHandleTTL)
+		// The handle has no TTL of its own; bound it to the session's configured absolute lifetime.
+		h.ssoTransport.Write(ssoExchange, flowStep.SSOFlowID, flowStep.SSOHandleOut, h.ssoHandleTTL)
 	}
 
-	// Clear the per-flow SSO cookie when the flow terminated the session (sign-out).
+	// Clear the per-flow SSO handle when the flow terminated the session (sign-out).
 	if flowStep.SSOClearFlowID != "" {
-		h.ssoTransport.Clear(w, session.CookieName(flowStep.SSOClearFlowID))
+		h.ssoTransport.Clear(ssoExchange, flowStep.SSOClearFlowID)
 	}
 
 	flowResp := FlowResponse{

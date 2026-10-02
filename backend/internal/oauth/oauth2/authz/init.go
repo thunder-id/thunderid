@@ -26,6 +26,7 @@ func Initialize(
 	parService par.PARServiceInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	ssoSession session.Service,
+	ssoTransport session.HandleTransport,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
 	storeProvider providers.RuntimeStoreProvider,
@@ -40,7 +41,7 @@ func Initialize(
 		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker,
 		ssoSession, flowProvider, cfg, jtiStore,
 	)
-	authzHandler := newAuthorizeHandler(authzService, cfg)
+	authzHandler := newAuthorizeHandler(authzService, ssoTransport, cfg)
 	registerRoutes(mux, authzHandler)
 	return authzService, nil
 }

@@ -57,6 +57,7 @@ func Initialize(
 	enforcementService revocation.EnforcementServiceInterface,
 	revocationSvc revocation.RevocationServiceInterface,
 	ssoSession session.Service,
+	ssoTransport session.HandleTransport,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, error) {
@@ -84,7 +85,7 @@ func Initialize(
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, revocationSvc, ssoSession, flowProvider, cfg,
+		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider, cfg,
 		runtimeStore, transactioner, jtiStore)
 	if err != nil {
 		return nil, err

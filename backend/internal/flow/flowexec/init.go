@@ -44,7 +44,7 @@ func Initialize(
 	// Mark the SSO cookie Secure unless the deployment is configured to serve over plain HTTP, and
 	// bound its lifetime to the session's configured absolute timeout (same fallback as the session
 	// executor's timeouts).
-	ssoTransport := session.NewCookieTransport(cfg.SecureCookies)
+	ssoTransport := session.NewHandleTransport(session.TransportConfig{SecureCookies: cfg.SecureCookies})
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
 		cfg.Session.ActivityRefreshIntervalSeconds)
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
