@@ -189,6 +189,27 @@ func (h *entityTypeHandler) HandleEntityTypeDeleteRequest(w http.ResponseWriter,
 		log.String("category", string(h.category)), log.String("entityTypeID", schemaID))
 }
 
+// HandleEntityTypeUsagesGetRequest handles the get entity type usages request.
+func (h *entityTypeHandler) HandleEntityTypeUsagesGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeHandlerLoggerComponentName))
+
+	schemaID, idValidationFailed := extractAndValidateSchemaID(w, r)
+	if idValidationFailed {
+		return
+	}
+
+	result, svcErr := h.entityTypeService.GetEntityTypeUsages(ctx, h.category, schemaID)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, result)
+	logger.Debug(ctx, "Successfully retrieved entity type usages",
+		log.String("category", string(h.category)), log.String("entityTypeID", schemaID))
+}
+
 // parsePaginationParams parses limit and offset from query parameters.
 func parsePaginationParams(query map[string][]string) (int, int, *tidcommon.ServiceError) {
 	var limit, offset int
@@ -220,7 +241,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		statusCode = http.StatusBadRequest
 		if svcErr.Code == ErrorEntityTypeNotFound.Code {
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorEntityTypeNameConflict.Code {
+		} else if svcErr.Code == ErrorEntityTypeNameConflict.Code || svcErr.Code == ErrorUserTypeHasExistingUsers.Code {
 			statusCode = http.StatusConflict
 		} else if svcErr.Code == ErrorCannotModifyDeclarativeResource.Code {
 			statusCode = http.StatusForbidden

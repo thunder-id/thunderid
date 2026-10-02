@@ -13,6 +13,10 @@ const UserTypeQueryKeys = {
    * Key for a single user type query
    */
   USER_TYPE: 'user-type',
+  /**
+   * Key for a user type usages query
+   */
+  USER_TYPE_USAGES: 'user-type-usages',
 } as const;
 
 export default UserTypeQueryKeys;

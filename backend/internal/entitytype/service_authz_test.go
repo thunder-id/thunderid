@@ -644,9 +644,10 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NilAuthz_NoError() {
 	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, "schema-1").Return(nil)
 
 	svc := &entityTypeService{
-		entityTypeStore: storeMock,
-		transactioner:   &mockTransactioner{},
-		authzService:    nil,
+		entityTypeStore:    storeMock,
+		transactioner:      &mockTransactioner{},
+		authzService:       nil,
+		dependencyRegistry: newNoBlockingEntityTypeUsagesRegistry(),
 	}
 
 	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "schema-1")

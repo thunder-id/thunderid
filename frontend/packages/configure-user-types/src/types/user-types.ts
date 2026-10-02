@@ -162,6 +162,27 @@ export interface UserTypeListParams {
 }
 
 /**
+ * A single resource that references a user type (e.g. a user created with it).
+ */
+export interface UserTypeUsage {
+  resourceType: string;
+  id: string;
+  displayName: string;
+  behaviorOnDelete: 'fallback' | 'cascade' | 'restrict';
+}
+
+/**
+ * Response for the user type usages endpoint (GET /user-types/{id}/usages).
+ * totalResults is null when usage data is unavailable; 0 means confirmed empty.
+ */
+export interface UserTypeUsagesResponse {
+  totalResults: number | null;
+  count: number;
+  summary: Record<string, number> | null;
+  usages: UserTypeUsage[];
+}
+
+/**
  * API Error structure
  */
 export interface ApiError {

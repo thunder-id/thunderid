@@ -335,6 +335,26 @@ func (ts *UserTypeAuthzTestSuite) TestGetSiblingOUSchema() {
 		"scoped user should be denied access to sibling OU2's schema")
 }
 
+// TestGetAncestorOUSchemaUsages verifies the scoped user can read the parent OU's
+// schema usages by ID (same read-access policy as GET /user-types/{id}).
+func (ts *UserTypeAuthzTestSuite) TestGetAncestorOUSchemaUsages() {
+	resp := ts.do(http.MethodGet, "/user-types/"+ts.ou1SchemaID+"/usages", nil)
+	defer closeBodyAuthz(resp)
+
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"scoped user should be able to read ancestor OU1's schema usages (inheritance)")
+}
+
+// TestGetSiblingOUSchemaUsages verifies the scoped user is denied access to OU2's
+// schema usages (OU2 is not in the user's OU hierarchy).
+func (ts *UserTypeAuthzTestSuite) TestGetSiblingOUSchemaUsages() {
+	resp := ts.do(http.MethodGet, "/user-types/"+ts.ou2SchemaID+"/usages", nil)
+	defer closeBodyAuthz(resp)
+
+	ts.Equal(http.StatusForbidden, resp.StatusCode,
+		"scoped user should be denied access to sibling OU2's schema usages")
+}
+
 // ---------------------------------------------------------------------------
 // Tests — WRITE operations denied on ancestor OU (OU membership policy)
 // ---------------------------------------------------------------------------
