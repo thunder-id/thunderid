@@ -66,6 +66,9 @@ const ContentTypeFormURLEncoded = "application/x-www-form-urlencoded"
 // WWWAuthenticateHeaderName is the name of the WWW-Authenticate header used in HTTP responses.
 const WWWAuthenticateHeaderName = "WWW-Authenticate"
 
+// LocationHeaderName is the name of the Location header used in HTTP responses.
+const LocationHeaderName = "Location"
+
 // XFrameOptionsHeaderName is the name of the X-Frame-Options header used in HTTP responses.
 const XFrameOptionsHeaderName = "X-Frame-Options"
 

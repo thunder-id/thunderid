@@ -540,3 +540,22 @@ CREATE TABLE "RESOURCE_OVERLAY_VALUE" (
     UPDATED_AT    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (DEPLOYMENT_ID, RESOURCE_TYPE, RESOURCE_ID, OU_ID, FIELD_KEY)
 );
+
+-- Table to store notification templates. Content is a single JSON document so a new channel can
+-- introduce its own content fields without a schema migration; the per-channel shape is validated at
+-- the service layer. HANDLE is the immutable, unique reference for a template within a channel and is
+-- unique per channel within a deployment; DISPLAY_NAME is the human-readable label.
+CREATE TABLE "NOTIFICATION_TEMPLATE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID            VARCHAR(36)  NOT NULL,
+    CHANNEL       VARCHAR(16)  NOT NULL,
+    HANDLE        VARCHAR(255) NOT NULL,
+    DISPLAY_NAME  VARCHAR(255) NOT NULL,
+    DESCRIPTION   VARCHAR(512),
+    CONTENT       TEXT         NOT NULL,
+    DESIGN        TEXT         NOT NULL DEFAULT '{}',
+    CREATED_AT    TEXT         DEFAULT (datetime('now')),
+    UPDATED_AT    TEXT         DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, ID),
+    UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)
+);

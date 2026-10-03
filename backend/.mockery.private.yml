@@ -477,6 +477,14 @@ packages:
       pkgname: users
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/notificationtemplate:
+    config:
+      all: true
+      dir: internal/notificationtemplate
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: notificationtemplate
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:
       all: true

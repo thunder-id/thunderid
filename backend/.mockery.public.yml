@@ -707,6 +707,15 @@ packages:
       pkgname: templatemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/resourcedependency:
+    interfaces:
+      Registry:
+        config:
+          dir: tests/mocks/resourcedependencymock
+          structname: 'RegistryMock'
+          pkgname: resourcedependencymock
+          filename: "Registry_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/transaction:
     config:
       all: true

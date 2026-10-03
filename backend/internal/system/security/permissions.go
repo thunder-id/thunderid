@@ -68,6 +68,8 @@ const (
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
 	ResourceTypeAgentType ResourceType = "agenttype"
+	// ResourceTypeNotificationTemplate identifies a notification template resource.
+	ResourceTypeNotificationTemplate ResourceType = "notificationtemplate"
 )
 
 // ---- Actions ----
@@ -143,6 +145,17 @@ const (
 	ActionDeleteAgentType Action = "agenttype:delete"
 	// ActionListAgentTypes lists agent types.
 	ActionListAgentTypes Action = "agenttype:list"
+
+	// ActionCreateNotificationTemplate creates a new notification template.
+	ActionCreateNotificationTemplate Action = "notificationtemplate:create"
+	// ActionReadNotificationTemplate reads a notification template.
+	ActionReadNotificationTemplate Action = "notificationtemplate:read"
+	// ActionUpdateNotificationTemplate updates a notification template.
+	ActionUpdateNotificationTemplate Action = "notificationtemplate:update"
+	// ActionDeleteNotificationTemplate deletes a notification template.
+	ActionDeleteNotificationTemplate Action = "notificationtemplate:delete"
+	// ActionListNotificationTemplates lists notification templates.
+	ActionListNotificationTemplates Action = "notificationtemplate:list"
 )
 
 // ---- Permissions ----
@@ -150,19 +163,21 @@ const (
 // SystemPermissions holds the runtime-resolved permission strings for the system resource server.
 // All values are set by InitSystemPermissions and must not be used before it is called.
 type SystemPermissions struct {
-	Root          string
-	OU            string
-	OUView        string
-	User          string
-	UserView      string
-	Group         string
-	GroupView     string
-	Agent         string
-	AgentView     string
-	UserType      string
-	UserTypeView  string
-	AgentType     string
-	AgentTypeView string
+	Root                     string
+	OU                       string
+	OUView                   string
+	User                     string
+	UserView                 string
+	Group                    string
+	GroupView                string
+	Agent                    string
+	AgentView                string
+	UserType                 string
+	UserTypeView             string
+	AgentType                string
+	AgentTypeView            string
+	NotificationTemplate     string
+	NotificationTemplateView string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -185,19 +200,21 @@ func buildPermission(parts ...string) string {
 // This function must be called once at startup before any service or middleware uses permissions.
 func InitSystemPermissions(handle string) {
 	p := &SystemPermissions{
-		Root:          buildPermission(handle, "system"),
-		OU:            buildPermission(handle, "system", "ou"),
-		OUView:        buildPermission(handle, "system", "ou", "view"),
-		User:          buildPermission(handle, "system", "user"),
-		UserView:      buildPermission(handle, "system", "user", "view"),
-		Group:         buildPermission(handle, "system", "group"),
-		GroupView:     buildPermission(handle, "system", "group", "view"),
-		Agent:         buildPermission(handle, "system", "agent"),
-		AgentView:     buildPermission(handle, "system", "agent", "view"),
-		UserType:      buildPermission(handle, "system", "usertype"),
-		UserTypeView:  buildPermission(handle, "system", "usertype", "view"),
-		AgentType:     buildPermission(handle, "system", "agenttype"),
-		AgentTypeView: buildPermission(handle, "system", "agenttype", "view"),
+		Root:                     buildPermission(handle, "system"),
+		OU:                       buildPermission(handle, "system", "ou"),
+		OUView:                   buildPermission(handle, "system", "ou", "view"),
+		User:                     buildPermission(handle, "system", "user"),
+		UserView:                 buildPermission(handle, "system", "user", "view"),
+		Group:                    buildPermission(handle, "system", "group"),
+		GroupView:                buildPermission(handle, "system", "group", "view"),
+		Agent:                    buildPermission(handle, "system", "agent"),
+		AgentView:                buildPermission(handle, "system", "agent", "view"),
+		UserType:                 buildPermission(handle, "system", "usertype"),
+		UserTypeView:             buildPermission(handle, "system", "usertype", "view"),
+		AgentType:                buildPermission(handle, "system", "agenttype"),
+		AgentTypeView:            buildPermission(handle, "system", "agenttype", "view"),
+		NotificationTemplate:     buildPermission(handle, "system", "notificationtemplate"),
+		NotificationTemplateView: buildPermission(handle, "system", "notificationtemplate", "view"),
 	}
 	sysPerms = p
 
@@ -244,6 +261,13 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAgentType: p.AgentType,
 		ActionDeleteAgentType: p.AgentType,
 		ActionListAgentTypes:  p.AgentTypeView,
+
+		// Notification template actions.
+		ActionCreateNotificationTemplate: p.NotificationTemplate,
+		ActionReadNotificationTemplate:   p.NotificationTemplateView,
+		ActionUpdateNotificationTemplate: p.NotificationTemplate,
+		ActionDeleteNotificationTemplate: p.NotificationTemplate,
+		ActionListNotificationTemplates:  p.NotificationTemplateView,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -337,6 +361,14 @@ func InitSystemPermissions(handle string) {
 		{"GET /secrets/**", p.Root},
 		{"PUT /secrets/**", p.Root},
 		{"DELETE /secrets/**", p.Root},
+
+		// Notification template APIs. The {channel} segment is matched by "*"; item sub-paths by "**".
+		// Collection rules are listed before the "**" rules so first-match-wins picks them for the list.
+		{"GET /notification-templates/*/templates", p.NotificationTemplateView},
+		{"POST /notification-templates/*/templates", p.NotificationTemplate},
+		{"GET /notification-templates/**", p.NotificationTemplateView},
+		{"PUT /notification-templates/**", p.NotificationTemplate},
+		{"DELETE /notification-templates/**", p.NotificationTemplate},
 
 		// Import APIs.
 		{"POST /import", p.Root},

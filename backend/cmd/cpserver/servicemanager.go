@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -204,6 +205,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	notifSenderMgtSvc, _, _, err := notification.Initialize(jwtService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
+	notifTemplateSvc, err := notificationtemplate.Initialize(mux)
+	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
+
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender management services.
 	connectionExporter, err := connection.Initialize(
@@ -297,17 +301,18 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// identity provider or notification sender. Every consumer and provider here is a management
 	// service.
 	registerDependencyRegistry(dependencyConsumers{
-		theme:       themeMgtService,
-		layout:      layoutMgtService,
-		flow:        flowMgtService,
-		user:        userService,
-		idp:         idpService,
-		notifSender: notifSenderMgtSvc,
-		application: applicationService,
-		agent:       agentService,
-		group:       groupService,
-		ou:          ouService,
-		resource:    resourceService,
+		theme:         themeMgtService,
+		layout:        layoutMgtService,
+		flow:          flowMgtService,
+		user:          userService,
+		idp:           idpService,
+		notifSender:   notifSenderMgtSvc,
+		application:   applicationService,
+		agent:         agentService,
+		group:         groupService,
+		ou:            ouService,
+		resource:      resourceService,
+		notifTemplate: notifTemplateSvc,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, resourceService)
 
@@ -384,17 +389,18 @@ func initializeFlowValidation(
 // dependencyConsumers groups the services that check the dependency registry before deleting their
 // own resources.
 type dependencyConsumers struct {
-	theme       thememgt.ThemeMgtServiceInterface
-	layout      layoutmgt.LayoutMgtServiceInterface
-	flow        flowmgt.FlowMgtServiceInterface
-	user        user.UserServiceInterface
-	idp         idp.IDPServiceInterface
-	notifSender notification.NotificationSenderMgtSvcInterface
-	application application.ApplicationServiceInterface
-	agent       agent.AgentServiceInterface
-	group       group.GroupServiceInterface
-	ou          ou.ConfigurableOUService
-	resource    resource.ResourceServiceInterface
+	theme         thememgt.ThemeMgtServiceInterface
+	layout        layoutmgt.LayoutMgtServiceInterface
+	flow          flowmgt.FlowMgtServiceInterface
+	user          user.UserServiceInterface
+	idp           idp.IDPServiceInterface
+	notifSender   notification.NotificationSenderMgtSvcInterface
+	application   application.ApplicationServiceInterface
+	agent         agent.AgentServiceInterface
+	group         group.GroupServiceInterface
+	ou            ou.ConfigurableOUService
+	resource      resource.ResourceServiceInterface
+	notifTemplate notificationtemplate.NotificationTemplateServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -412,6 +418,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.group.SetDependencyRegistry(registry)
 	consumers.ou.SetDependencyRegistry(registry)
 	consumers.resource.SetDependencyRegistry(registry)
+	consumers.notifTemplate.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.
