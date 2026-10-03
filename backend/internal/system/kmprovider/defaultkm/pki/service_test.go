@@ -9,8 +9,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/pem"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -23,8 +29,8 @@ import (
 )
 
 // TestLoadCertKeyPairMLDSA loads the RFC 9881 ML-DSA cert/key fixtures (generated
-// with OpenSSL, "both" private-key format) and exercises the full path: detection,
-// key reconstruction, certificate thumbprint, and a sign/verify round trip.
+// with OpenSSL, seed-only private-key format) and exercises the full path: detection,
+// key parsing, certificate thumbprint, and a sign/verify round trip.
 func TestLoadCertKeyPairMLDSA(t *testing.T) {
 	cases := []struct {
 		file    string
@@ -59,6 +65,57 @@ func TestLoadCertKeyPairMLDSA(t *testing.T) {
 			assert.NoError(t, cryptolib.Verify(data, sig, tc.signAlg, signer.Public()))
 		})
 	}
+}
+
+// TestLoadCertKeyPairMLDSARejectsBothFormat confirms a private key in the RFC 9881
+// "both" (seed + expandedKey) encoding is rejected; only seed-only keys load.
+func TestLoadCertKeyPairMLDSARejectsBothFormat(t *testing.T) {
+	keyPEM, err := os.ReadFile(filepath.Join("testdata", "mldsa65.key"))
+	require.NoError(t, err)
+	block, _ := pem.Decode(keyPEM)
+	require.NotNil(t, block)
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+
+	var pkcs8 struct {
+		Version    int
+		Algo       pkix.AlgorithmIdentifier
+		PrivateKey []byte
+	}
+	_, err = asn1.Unmarshal(block.Bytes, &pkcs8)
+	require.NoError(t, err)
+	pkcs8.PrivateKey, err = asn1.Marshal(struct {
+		Seed        []byte
+		ExpandedKey []byte
+	}{Seed: key.(*mldsa.PrivateKey).Bytes(), ExpandedKey: []byte{0x01}})
+	require.NoError(t, err)
+	der, err := asn1.Marshal(pkcs8)
+	require.NoError(t, err)
+
+	keyPath := filepath.Join(t.TempDir(), "both.key")
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600))
+
+	_, _, err = loadCertKeyPair(filepath.Join("testdata", "mldsa65.cert"), keyPath)
+	assert.ErrorContains(t, err, "seed-only")
+}
+
+func TestLoadCertKeyPairMLDSARejectsMismatchedKey(t *testing.T) {
+	_, _, err := loadCertKeyPair(filepath.Join("testdata", "mldsa65.cert"), filepath.Join("testdata", "mldsa44.key"))
+	assert.ErrorContains(t, err, "private key does not match public key")
+}
+
+func TestLoadCertKeyPairMLDSAKeepsCertificateChain(t *testing.T) {
+	leaf, err := os.ReadFile(filepath.Join("testdata", "mldsa65.cert"))
+	require.NoError(t, err)
+	intermediate, err := os.ReadFile(filepath.Join("testdata", "mldsa44.cert"))
+	require.NoError(t, err)
+	chainPath := filepath.Join(t.TempDir(), "chain.cert")
+	require.NoError(t, os.WriteFile(chainPath, append(leaf, intermediate...), 0o600))
+
+	tlsCert, alg, err := loadCertKeyPair(chainPath, filepath.Join("testdata", "mldsa65.key"))
+	require.NoError(t, err)
+	assert.Equal(t, MLDSA65, alg)
+	assert.Len(t, tlsCert.Certificate, 2)
 }
 
 func TestLoadCertKeyPairClassicalUnaffected(t *testing.T) {

@@ -4,6 +4,7 @@
 package jws
 
 import (
+	"crypto/mldsa"
 	"encoding/base64"
 	"encoding/json"
 	"testing"
@@ -11,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 )
 
 type JWSUtilsTestSuite struct {
@@ -118,10 +117,9 @@ func TestComputeJKTAKPMissingMembers(t *testing.T) {
 }
 
 func TestComputeJKTAKP(t *testing.T) {
-	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
+	signer, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	require.NoError(t, err)
-	pubBytes, ok := cryptolib.MLDSAPublicKeyBytes(signer.Public())
-	require.True(t, ok)
+	pubBytes := signer.PublicKey().Bytes()
 
 	jwk := map[string]interface{}{
 		"kty": "AKP",

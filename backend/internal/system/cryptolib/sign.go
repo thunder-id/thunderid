@@ -7,6 +7,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -14,8 +15,6 @@ import (
 	"errors"
 	"hash"
 	"math/big"
-
-	"github.com/cloudflare/circl/sign"
 )
 
 // Sign errors.
@@ -220,36 +219,23 @@ func verifyED25519(data, signature []byte, publicKey crypto.PublicKey) error {
 }
 
 // newMLDSASign produces an ML-DSA signature over data with an empty context, as
-// required for the JOSE binding (RFC 9964). The scheme is taken from the key.
+// required for the JOSE binding (RFC 9964).
 func newMLDSASign(data []byte, privateKey crypto.PrivateKey) ([]byte, error) {
-	sk, ok := privateKey.(sign.PrivateKey)
-	if !ok || !isMLDSAScheme(sk.Scheme().Name()) {
+	sk, ok := privateKey.(*mldsa.PrivateKey)
+	if !ok {
 		return nil, ErrInvalidPrivateKey
 	}
-	return sk.Scheme().Sign(sk, data, nil), nil
+	return sk.Sign(nil, data, &mldsa.Options{})
 }
 
 // verifyMLDSA verifies an ML-DSA signature over data with an empty context.
 func verifyMLDSA(data, signature []byte, publicKey crypto.PublicKey) error {
-	pk, ok := publicKey.(sign.PublicKey)
-	if !ok || !isMLDSAScheme(pk.Scheme().Name()) {
+	pk, ok := publicKey.(*mldsa.PublicKey)
+	if !ok {
 		return ErrInvalidPublicKey
 	}
-	if !pk.Scheme().Verify(pk, data, signature, nil) {
+	if err := mldsa.Verify(pk, data, signature, &mldsa.Options{}); err != nil {
 		return ErrInvalidSignature
 	}
 	return nil
-}
-
-// isMLDSAScheme reports whether a circl scheme name is one of the ML-DSA
-// parameter sets. sign.PrivateKey/sign.PublicKey are implemented by other
-// circl schemes (e.g. Ed448, SLH-DSA); this rejects those before signing or
-// verifying with the ML-DSA scheme.
-func isMLDSAScheme(name string) bool {
-	switch SignAlgorithm(name) {
-	case MLDSA44, MLDSA65, MLDSA87:
-		return true
-	default:
-		return false
-	}
 }
