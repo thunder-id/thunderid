@@ -67,4 +67,9 @@ var (
 		"Client authentication is required",
 		http.StatusUnauthorized,
 	)
+	errClientNotAuthorizedForOU = newAuthError(
+		constants.ErrorInvalidRequest,
+		constants.OUAccessRefusal,
+		http.StatusBadRequest,
+	)
 )

@@ -793,7 +793,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
 	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	app := newOAuthAppForClientAttributes("")
-	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -802,7 +802,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOAuthApp_ReturnsNil() {
 	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
-	claims, err := BuildClientAttributes(context.Background(), nil, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), nil, ous, nil, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -818,13 +818,50 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_HappyPath() {
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), claims)
 	assert.Equal(suite.T(), testBCCOUID, claims[constants.ClaimOUID])
 	assert.Equal(suite.T(), "Engineering", claims[constants.ClaimOUName])
 	assert.Equal(suite.T(), "eng", claims[constants.ClaimOUHandle])
+}
+
+// The organization claims name the organization the token is for. When the request named one through
+// /ou/{ouId}, that is the accessing organization unit rather than the application's own: an M2M
+// service acting for a customer must not stamp its own organization onto that customer's token.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AccessingOUWinsOverTheApplicationsOwn() {
+	const accessingOUID = "customer-a"
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
+	ous.On("GetOrganizationUnit", context.Background(), accessingOUID).Return(providers.OrganizationUnit{
+		ID:     accessingOUID,
+		Name:   "Customer A",
+		Handle: "customer-a",
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForClientAttributes(testBCCOUID)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, accessingOUID)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), accessingOUID, claims[constants.ClaimOUID])
+	assert.Equal(suite.T(), "Customer A", claims[constants.ClaimOUName])
+	ous.AssertNotCalled(suite.T(), "GetOrganizationUnit", context.Background(), testBCCOUID)
+}
+
+// An application with no organization unit of its own still emits claims when the request names one.
+// That is why the guard is split rather than checking the application and the service together.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AnOUlessApplicationStillAnswersForTheAccessingOU() {
+	const accessingOUID = "customer-a"
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
+	ous.On("GetOrganizationUnit", context.Background(), accessingOUID).Return(providers.OrganizationUnit{
+		ID: accessingOUID, Name: "Customer A", Handle: "customer-a",
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForClientAttributes("")
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, accessingOUID)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), accessingOUID, claims[constants.ClaimOUID])
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsError() {
@@ -839,7 +876,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsErro
 	)
 
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, "")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -847,7 +884,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsErro
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOUService_ReturnsNil() {
 	app := newOAuthAppForClientAttributes(testBCCOUID)
-	claims, err := BuildClientAttributes(context.Background(), app, nil, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, nil, "")
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
 }
@@ -856,7 +893,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_SkippedWhenN
 	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	app := newOAuthAppForClientAttributesWith(testBCCOUID, nil)
-	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -874,7 +911,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUOnly_SkipsEntityFetch()
 
 	app := newOAuthAppForClientAttributesWith(testBCCOUID,
 		[]string{constants.ClaimOUID, constants.ClaimOUName, constants.ClaimOUHandle})
-	claims, err := BuildClientAttributes(context.Background(), app, ous, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), testBCCOUID, claims[constants.ClaimOUID])
@@ -891,7 +928,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_PartialSelec
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForClientAttributesWith(testBCCOUID, []string{constants.ClaimOUID})
-	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
+	claims, err := BuildClientAttributes(context.Background(), app, ous, nil, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), testBCCOUID, claims[constants.ClaimOUID])
@@ -920,7 +957,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_ResolvesRegardlessOfEntit
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
 	app.EntityCategory = providers.EntityCategoryUser
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -930,7 +967,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoClientAttributesConfigu
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 
 	app := newOAuthAppForOwnAttributes(nil)
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -944,7 +981,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyP
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "model"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -960,7 +997,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsR
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"scope", "modelProvider"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -976,7 +1013,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsS
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"sub_type", "modelProvider"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -993,7 +1030,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "name", "owner"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1013,7 +1050,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved()
 		Return([]string{"admin", "editor"}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"engineering", "admins"}, claims["groups"])
@@ -1028,7 +1065,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolve
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"groups"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"engineering"}, claims["groups"])
@@ -1045,7 +1082,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupRoles_SkippedWhenNot
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1064,7 +1101,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_SkippedF
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -1078,7 +1115,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhe
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name", "owner"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -1094,7 +1131,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributeWinsOverSc
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "system-name", claims["name"])
@@ -1111,7 +1148,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_Return
 	)
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
-	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors, "")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), claims)

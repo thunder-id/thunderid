@@ -314,6 +314,7 @@ func (ts *tokenService) publishTokenIssuanceStartedEvent(
 		WithData(event.DataKey.GrantType, grantType).
 		WithData(event.DataKey.Scope, scope).
 		WithData(event.DataKey.CorrelationID, sysContext.GetTraceID(ctx))
+	addAccessingOUData(ctx, evt)
 	addActorData(evt, oauthApp)
 
 	ts.observabilitySvc.PublishEvent(ctx, evt)
@@ -347,6 +348,7 @@ func (ts *tokenService) publishTokenIssuedEvent(
 		WithData(event.DataKey.Scope, scope).
 		WithData(event.DataKey.CorrelationID, correlationID).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", duration))
+	addAccessingOUData(ctx, evt)
 	addActorData(evt, oauthApp)
 	addSubjectData(evt, &tokenRespDTO.AccessToken)
 
@@ -387,9 +389,24 @@ func publishTokenIssuanceFailedEvent(
 		}).
 		WithData(event.DataKey.CorrelationID, sysContext.GetTraceID(ctx)).
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", duration))
+	addAccessingOUData(ctx, evt)
 	addActorData(evt, oauthApp)
 
 	svc.PublishEvent(ctx, evt)
+}
+
+// addAccessingOUData stamps the organization unit a token was requested for.
+//
+// It matters most on a refusal. The answer the caller receives deliberately names no organization
+// unit, so that the endpoint cannot be used to discover which ones exist; the event is where an
+// operator finds out which one a request was about.
+//
+// Nothing is stamped when the request named none, so the key's presence means the request used the
+// /ou/{ouId} form rather than the bare endpoint.
+func addAccessingOUData(ctx context.Context, evt *providers.Event) {
+	if ouID := sysContext.GetAccessingOUID(ctx); ouID != "" {
+		evt.WithData(event.DataKey.AccessingOUID, ouID)
+	}
 }
 
 // addActorData stamps the acting principal onto a token issuance event: the entity category of the

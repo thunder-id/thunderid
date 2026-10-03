@@ -664,6 +664,15 @@ packages:
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/sharing:
+    config:
+      dir: tests/mocks/sharingmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sharingmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      SharingServiceInterface:
+
   github.com/thunder-id/thunderid/internal/system/sysauthz:
     config:
       dir: tests/mocks/sysauthzmock

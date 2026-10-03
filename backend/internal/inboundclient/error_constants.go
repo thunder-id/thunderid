@@ -20,6 +20,10 @@ var (
 	// read back as the expected Go type.
 	ErrInboundClientDataCorrupted = errors.New("inbound client data is corrupted")
 
+	// ErrInboundClientNotAccessibleFromOU is returned when a request names an organization unit the
+	// client may not act for.
+	ErrInboundClientNotAccessibleFromOU = errors.New("inbound client is not accessible from the organization unit")
+
 	// ErrCompositeResultLimitExceeded is returned when the composite list result exceeds the
 	// configured limit across file + DB stores.
 	ErrCompositeResultLimitExceeded = errors.New("composite store result limit exceeded")

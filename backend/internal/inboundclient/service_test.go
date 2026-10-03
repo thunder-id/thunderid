@@ -71,20 +71,19 @@ func (suite *InboundClientServiceTestSuite) SetupTest() {
 }
 
 func newServiceForTest(store inboundClientStoreInterface) InboundClientServiceInterface {
-	return newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, nil, nil)
+	return newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil)
 }
 
 func newServiceWithCert(certService cert.CertificateServiceInterface) *inboundClientService {
 	svc := newInboundClientService(
-		nil, transaction.NewNoOpTransactioner(), certService, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, transaction.NewNoOpTransactioner(), certService, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	return svc.(*inboundClientService)
 }
 
 func newServiceWithEntityType(et entitytypepkg.EntityTypeServiceInterface) *inboundClientService {
 	svc := newInboundClientService(
-		nil, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil,
-	)
+		nil, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil, nil, nil)
 	return svc.(*inboundClientService)
 }
 
@@ -202,7 +201,8 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_PrunesSeeded
 			entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}, {Attribute: "given_name"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -667,7 +667,8 @@ func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_Succeeds() {
 	store.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "p1").Return(nil, ErrInboundClientNotFound)
 	store.EXPECT().CreateOAuthProfile(mock.Anything, "p1", mock.Anything).Return(nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil)
 	err := svc.UpdateInboundClient(context.Background(), ptrInboundClient(), validOAuthProfile(), true, "")
 	assert.NoError(suite.T(), err)
 }
@@ -762,7 +763,8 @@ func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_StripsUndecl
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}}, nil).
 		Once()
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -806,7 +808,8 @@ func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_PrunesScopeC
 			entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -848,7 +851,8 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_SeedsAttribu
 			{Attribute: "email"}, {Attribute: "given_name"}, {Attribute: "family_name"},
 		}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -886,7 +890,8 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_NoAttributes
 			entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}, {Attribute: "given_name"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -917,7 +922,8 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_KeepsSupplie
 			entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}, {Attribute: "given_name"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et,
+		nil, nil, nil, nil)
 
 	client := ptrInboundClient()
 	client.AllowedUserTypes = []string{"users"}
@@ -2418,7 +2424,8 @@ func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_DisabledReco
 	})).Return(nil)
 	store.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "p1").Return(nil, ErrInboundClientNotFound)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil)
 	client := ptrInboundClient()
 	client.RecoveryFlowID = "rec-stale"
 	client.IsRecoveryFlowEnabled = false
@@ -2453,7 +2460,8 @@ func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_WithRecovery
 	})).Return(nil)
 	store.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "p1").Return(nil, ErrInboundClientNotFound)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil)
 	client := ptrInboundClient()
 	client.RecoveryFlowID = "recovery-1"
 	client.IsRecoveryFlowEnabled = true
@@ -2756,7 +2764,7 @@ func (suite *InboundClientServiceTestSuite) TestRevalidateFKs_FlowMismatchSurfac
 	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
 		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
 	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(),
-		nil, nil, nil, nil, flowMgt, nil, nil, nil).(*inboundClientService)
+		nil, nil, nil, nil, flowMgt, nil, nil, nil, nil, nil).(*inboundClientService)
 
 	err := svc.RevalidateFKs(context.Background(), "app-1")
 	var fm *FlowMismatchError
@@ -3224,7 +3232,8 @@ func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_RejectsInval
 		entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, us, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, us,
+		nil, nil, nil, nil)
 
 	c := validInboundClient()
 	c.AllowedUserTypes = []string{"employee"}
@@ -3248,7 +3257,8 @@ func (suite *InboundClientServiceTestSuite) TestValidate_RejectsInvalidUserAttri
 		entitytypepkg.AttributeFilter{AllowNonCredential: true}).
 		Return([]entitytypepkg.AttributeInfo{{Attribute: "email"}}, nil)
 
-	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, us, nil, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, us,
+		nil, nil, nil, nil)
 
 	c := validInboundClient()
 	c.AllowedUserTypes = []string{"employee"}

@@ -50,6 +50,12 @@ func (p *actorProvider) GetOAuthClientByClientID(
 ) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	client, err := p.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
+		// Resolution is scoped by the organization unit the request named, so a client that exists
+		// but may not act for it does not resolve. That is a different answer from a bad credential
+		// and has to read as one.
+		if errors.Is(err, inboundclient.ErrInboundClientNotAccessibleFromOU) {
+			return nil, &tidcommon.ErrorUnauthorized
+		}
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}

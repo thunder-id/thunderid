@@ -1185,6 +1185,55 @@ type ValidationRule struct {
 	CompiledRegex *regexp.Regexp `json:"-"`
 }
 
+// SharingPolicy is one sharing decision a resource file declares: which organization units it
+// reaches, and on what terms.
+type SharingPolicy struct {
+	ID             string                 `yaml:"id" json:"id"`
+	InitiatingOuID string                 `yaml:"initiatingOuId,omitempty" json:"initiatingOuId,omitempty"`
+	TargetOuScope  SharingTargetOUScope   `yaml:"targetOuScope" json:"targetOuScope"`
+	OverlayRules   map[string]OverlayRule `yaml:"overlayRules,omitempty" json:"overlayRules,omitempty"`
+}
+
+// SharingTargetOUScope selects which organization units a declared policy reaches. Exactly one of
+// the three modes may be populated: blanket, root, or children.
+type SharingTargetOUScope struct {
+	// AllOUs reaches every organization unit in the deployment. Owner only, first hop only.
+	AllOUs bool `yaml:"allOus,omitempty" json:"allOus,omitempty"`
+	// AllRoots reaches every tree's root organization unit. Owner only.
+	AllRoots bool `yaml:"allRoots,omitempty" json:"allRoots,omitempty"`
+	// RootOUIDs names specific root organization units. Owner only.
+	RootOUIDs []string `yaml:"rootOuIds,omitempty" json:"rootOuIds,omitempty"`
+	// ExcludedRootOUIDs carves roots out of an AllRoots selection.
+	ExcludedRootOUIDs []string `yaml:"excludedRootOuIds,omitempty" json:"excludedRootOuIds,omitempty"`
+	// AllChildren reaches everything beneath the initiator, at any depth, but not the initiator.
+	AllChildren bool `yaml:"allChildren,omitempty" json:"allChildren,omitempty"`
+	// ChildOUIDs names organization units directly beneath the initiator.
+	ChildOUIDs []SharingTargetOUEntry `yaml:"childOuIds,omitempty" json:"childOuIds,omitempty"`
+	// ExcludedOUIDs carves organization units, and their subtrees, out of the selection.
+	ExcludedOUIDs []string `yaml:"excludedOuIds,omitempty" json:"excludedOuIds,omitempty"`
+}
+
+// SharingTargetOUEntry names one organization unit a declared policy reaches. It must be a direct
+// child of the initiating organization unit; depth comes from AllChildren, not from naming deeper.
+type SharingTargetOUEntry struct {
+	OUID        string `yaml:"ouId" json:"ouId"`
+	AllChildren bool   `yaml:"allChildren,omitempty" json:"allChildren,omitempty"`
+}
+
+// OverlayRule is what a declared policy says a target organization unit may do with one field.
+type OverlayRule struct {
+	// Editable reports whether the target organization unit may write the field.
+	Editable bool `yaml:"editable" json:"editable"`
+	// Value is what the target starts with, or is pinned to when the field is not editable.
+	// Omitted with Editable false means the owner's own value.
+	Value *[]string `yaml:"value,omitempty" json:"value,omitempty"`
+	// AllowedValues bounds what the target may choose from. Combining it with Editable false is an
+	// error, because a menu nobody may choose from means the author misunderstood the shape.
+	AllowedValues *[]string `yaml:"allowedValues,omitempty" json:"allowedValues,omitempty"`
+	// ExcludedValues is subtracted from both Value and AllowedValues, last.
+	ExcludedValues *[]string `yaml:"excludedValues,omitempty" json:"excludedValues,omitempty"`
+}
+
 // Application represents the structure for application which returns in GetApplicationById.
 type Application struct {
 	ID          string `yaml:"id,omitempty" json:"id,omitempty" jsonschema:"Application ID. Auto-generated unique identifier."`
@@ -1207,6 +1256,11 @@ type Application struct {
 	// EntityCategory is the category of the entity backing this runtime application view (app or
 	// agent). Runtime-only: never serialized on the application API or in declarative resources.
 	EntityCategory EntityCategory `yaml:"-" json:"-"`
+
+	// SharingPolicies names the organization units this application may be used on behalf of. An
+	// application is shared for one purpose only: to be named as the accessing organization unit on
+	// a token request. It stays out of those units' listings and is not readable or editable there.
+	SharingPolicies []SharingPolicy `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty" jsonschema:"Organization units this application may issue tokens for."`
 }
 
 // OAuthClientID returns the client_id of the application's OAuth inbound auth config, or an empty

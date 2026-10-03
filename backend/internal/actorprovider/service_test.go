@@ -44,6 +44,22 @@ func (s *ActorProviderTestSuite) SetupTest() {
 	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole)
 }
 
+// A client that exists but may not act for the organization unit the request named does not
+// resolve. That answer has to reach the caller as "unauthorized" rather than as an internal error,
+// because client authentication turns it into an OAuth refusal indistinguishable from the one an
+// unknown organization unit receives, and a 500 would stand out.
+func (s *ActorProviderTestSuite) TestAClientOutOfReachResolvesAsUnauthorized() {
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "client-1").
+		Return(nil, inboundclient.ErrInboundClientNotAccessibleFromOU)
+
+	client, svcErr := s.provider.GetOAuthClientByClientID(context.Background(), "client-1")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	s.NotEqual(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.Nil(client)
+}
+
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
 	expected := &providers.OAuthClient{ID: "app-1", ClientID: "client-1"}
 	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "client-1").Return(expected, nil)

@@ -264,3 +264,41 @@ func (s *ContextTestSuite) TestWithCSPNonce_NilContext() {
 	ctx := WithCSPNonce(nil, "abc123") //nolint:staticcheck // Testing nil context handling
 	s.Equal("abc123", GetCSPNonce(ctx))
 }
+
+// The accessing organization unit is the one a request is made on behalf of, which is not the
+// caller's own. Admission and claim resolution both read it from here, so a round trip through the
+// context is what holds them to the same answer.
+func (s *ContextTestSuite) TestAccessingOUIDRoundTrips() {
+	ctx := WithAccessingOUID(context.Background(), "customer-a")
+
+	s.Equal("customer-a", GetAccessingOUID(ctx))
+}
+
+// A request that names no organization unit reads back empty rather than failing, because the bare
+// token endpoint shares one handler with the prefixed one and passes through untouched.
+func (s *ContextTestSuite) TestGetAccessingOUIDWithoutOne() {
+	s.Empty(GetAccessingOUID(context.Background()))
+	s.Empty(GetAccessingOUID(nil)) //nolint:staticcheck // Testing nil context handling
+}
+
+// Recording an empty id is not the same as recording nothing, but it reads back the same way, so a
+// caller cannot tell the two apart and no path has to special-case it.
+func (s *ContextTestSuite) TestAccessingOUIDAcceptsAnEmptyValue() {
+	s.Empty(GetAccessingOUID(WithAccessingOUID(context.Background(), "")))
+}
+
+// A nil context is replaced rather than panicked on, so a caller that builds one from scratch does
+// not have to start with Background itself.
+func (s *ContextTestSuite) TestWithAccessingOUIDHandlesANilContext() {
+	ctx := WithAccessingOUID(nil, "customer-a") //nolint:staticcheck // Testing nil context handling
+
+	s.Require().NotNil(ctx)
+	s.Equal("customer-a", GetAccessingOUID(ctx))
+}
+
+// The last write wins, which is what lets a nested call narrow the organization unit it acts for.
+func (s *ContextTestSuite) TestAccessingOUIDIsOverwritten() {
+	ctx := WithAccessingOUID(WithAccessingOUID(context.Background(), "customer-a"), "customer-b")
+
+	s.Equal("customer-b", GetAccessingOUID(ctx))
+}

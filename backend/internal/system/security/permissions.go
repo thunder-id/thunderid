@@ -13,6 +13,7 @@ import "strings"
 // The Direct API paths (/auth/**, /register/passkey/**, /access/**) are public here; their Direct
 // Auth Secret gating is owned by the authn service (internal/authn).
 var publicPaths = []string{
+	"/ou/*/oauth2/token",
 	"/health/**",
 	"/flow/execute/**",
 	"/flow/meta",
