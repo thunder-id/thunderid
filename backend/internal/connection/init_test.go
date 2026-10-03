@@ -95,7 +95,7 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockResource = &testResourceServerLister{}
 	s.mux = http.NewServeMux()
 	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif, s.mockResource,
-		s.authZENPDP)
+		s.authZENPDP, nil)
 	s.Require().NoError(err)
 }
 

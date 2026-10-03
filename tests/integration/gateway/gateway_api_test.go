@@ -239,8 +239,10 @@ func (ts *GatewayAPITestSuite) registerDefault(suffix string) gateway {
 	ts.T().Helper()
 
 	resp := ts.post("/gateways", map[string]any{
-		"name":                  ts.name(suffix),
-		"baseUrl":               "https://" + suffix + ".integration.test:8090",
+		"name": ts.name(suffix),
+		// The run's prefix keeps the address unique too: one gateway registers once per address, so an
+		// interrupted run that leaves one behind would otherwise refuse the next run's registration.
+		"baseUrl":   "https://" + ts.name(suffix) + ".integration.test:8090",
 		"isDefault": true,
 	})
 	defer func() { _ = resp.Body.Close() }()

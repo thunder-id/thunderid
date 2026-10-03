@@ -1237,6 +1237,14 @@ func (m *MockParameterizer) ToParameterizedYAML(_ context.Context, obj interface
 	return "id: test\nname: test\n", nil, nil, nil
 }
 
+func (m *MockParameterizer) PlaceholderValues(_ context.Context, _ interface{}, _ string, _ string,
+	_ *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
+	if m.shouldFail {
+		return nil, nil, fmt.Errorf("%s", m.errorMsg)
+	}
+	return map[string]string{}, map[string]string{}, nil
+}
+
 func (m *MockParameterizer) VarPrefix(resourceName string) string {
 	return newParameterizer(templatingRules{}, TemplatePlaceholders).VarPrefix(resourceName)
 }

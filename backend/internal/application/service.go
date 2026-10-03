@@ -24,6 +24,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -74,6 +75,7 @@ type applicationService struct {
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
 	resolveLifetime      artifactLifetimeResolver
+	valueCapturer        declarativeresource.ValueCapturer
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -85,6 +87,7 @@ func newApplicationService(
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
+	valueCapturer declarativeresource.ValueCapturer,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -95,6 +98,7 @@ func newApplicationService(
 		cryptoSvc:            cryptoSvc,
 		serverConfigService:  serverConfigSvc,
 		resolveLifetime:      artifactLifetime,
+		valueCapturer:        valueCapturer,
 	}
 }
 
@@ -215,6 +219,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		inboundAuthConfig, oauthToken, userInfo, scopeClaims)
 	// Surface the Flow Secret once, on creation only.
 	returnDTO.FlowSecret = flowSecret
+	as.captureValues(ctx, returnDTO)
 	return returnDTO, nil
 }
 
@@ -468,8 +473,10 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 			inboundAuthConfig.OAuthConfig.Certificate = nil
 		}
 	}
-	return buildReturnApplicationDTO(appID, &appForReturn, inboundClient.Assertion, processedDTO.Metadata,
-		inboundAuthConfig, oauthToken, userInfo, scopeClaims), nil
+	returnDTO := buildReturnApplicationDTO(appID, &appForReturn, inboundClient.Assertion, processedDTO.Metadata,
+		inboundAuthConfig, oauthToken, userInfo, scopeClaims)
+	as.captureValues(ctx, returnDTO)
+	return returnDTO, nil
 }
 
 func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.Context,
@@ -801,6 +808,7 @@ func (as *applicationService) ApplyCredentialAction(
 			log.String("appID", appID))
 		return "", &tidcommon.InternalServerError
 	}
+	as.captureRegeneratedSecret(ctx, appID, secret)
 	return secret, nil
 }
 

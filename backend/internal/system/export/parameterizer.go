@@ -220,6 +220,108 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 	return buf.String(), variableValues, p.secrets, nil
 }
 
+// PlaceholderValues returns the values an export of the object would refer to by name, split into
+// ordinary variables and credentials, each keyed by the name the export writes for it.
+//
+// The values are read the way a template-style export reads them, whatever this instance's style,
+// because only that style reads them at all: a reference-style export writes no value beside the
+// document. The names are the same in either style, so they are the ones a reference names.
+//
+// Three kinds of value are left out, as no reference would find them:
+//   - an empty one, which there is nothing to keep for;
+//   - one that is already a well-formed reference, which the export keeps as it stands rather than
+//     naming it again, so storing it would put a reference where its value belongs;
+//   - a list, since no reference expands into list items and a reference-style export leaves
+//     a list as it is.
+func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
+	resourceType string, resourceName string,
+	rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
+	variables, secrets := map[string]string{}, map[string]string{}
+	if rules == nil {
+		return variables, secrets, nil
+	}
+
+	reader := *p
+	reader.style = TemplatePlaceholders
+	_, values, credentials, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceName, rules)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// A list is named from its YAML path, as every value is when it is read.
+	named := p.forResourceType(resourceType)
+	yamlPaths := named.convertStructPathsToYAMLPaths(ctx, obj, &resourceRules{ArrayVariables: rules.ArrayVariables})
+	lists := make(map[string]bool, len(yamlPaths.ArrayVariables))
+	for _, path := range yamlPaths.ArrayVariables {
+		lists[named.pathToVariableName(resourceName, path)] = true
+	}
+	for name, value := range values {
+		if value == "" || valueref.IsWellFormedReference(value) || lists[name] {
+			continue
+		}
+		if credentials[name] {
+			secrets[name] = value
+		} else {
+			variables[name] = value
+		}
+	}
+
+	for name, value := range named.mappedCredentials(obj, rules, resourceName) {
+		if value != "" && !valueref.IsWellFormedReference(value) {
+			secrets[name] = value
+		}
+	}
+	return variables, secrets, nil
+}
+
+// mappedCredentials reads the string entries of a map named as a dynamic property field, each under
+// the name generatePropertyVarName gives its key.
+//
+// The parameterizer walks only a slice of properties, which carries IsSecret on each element. A user's
+// credentials are a map instead, so its exporter writes their placeholders itself, naming each the way
+// generatePropertyVarName would, and the parameterizer never sees a value to report. Every string entry
+// is taken as a credential, since a user's credentials are the only string-valued map held under a
+// dynamic property field. A map whose values are not strings, such as a presentation definition's list
+// of allowed values per claim, holds no value a single name can stand for and is skipped.
+func (p *parameterizer) mappedCredentials(
+	obj interface{}, rules *declarativeresource.ResourceRules, resourceName string,
+) map[string]string {
+	values := map[string]string{}
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return values
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return values
+	}
+
+	for _, fieldPath := range rules.DynamicPropertyFields {
+		field, found := p.findFieldByNameCaseInsensitive(v.Type(), fieldPath)
+		if !found {
+			continue
+		}
+		fieldVal := v.FieldByName(field.Name)
+		if fieldVal.Kind() != reflect.Map || fieldVal.Type().Key().Kind() != reflect.String {
+			continue
+		}
+		iter := fieldVal.MapRange()
+		for iter.Next() {
+			entry := iter.Value()
+			if entry.Kind() == reflect.Interface {
+				entry = entry.Elem()
+			}
+			if entry.Kind() != reflect.String {
+				continue
+			}
+			values[p.generatePropertyVarName(resourceName, iter.Key().String())] = entry.String()
+		}
+	}
+	return values
+}
+
 // extractValuesFromNode reads the original values of parameterization variables from the node
 // tree before they are replaced with template placeholders.
 func (p *parameterizer) extractValuesFromNode(

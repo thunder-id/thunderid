@@ -127,6 +127,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// List to collect exporters from each package
 	var exporters []declarativeresource.ResourceExporter
 
+	// The services that write a resource whose export refers to a value hand it here, so the value
+	// reaches the default gateway's store under the name the export refers to it by. It is bound to the
+	// export and the gateways once both exist below, since the export is built from these services.
+	valueCapture := gateway.NewValueCapture()
+
 	// Initialize i18n service for internationalization support.
 	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation)
 	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
@@ -160,7 +165,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
-		mux, entityService, ouService, entityTypeService, ouAuthzService,
+		mux, entityService, ouService, entityTypeService, ouAuthzService, valueCapture,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
@@ -207,7 +212,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender management services.
 	connectionExporter, err := connection.Initialize(
-		mux, idpService, notifSenderMgtSvc, resourceService, authZENPDPService)
+		mux, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -283,12 +288,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, nil)
+		runtimeCryptoSvc, serverConfigService, nil, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService)
+		roleService, ouAuthzService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
@@ -314,11 +319,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export
 	// carries references naming where each value lives rather than the values themselves.
-	_ = export.Initialize(mux, exporters, export.ValueReferences)
+	exportService := export.Initialize(mux, exporters, export.ValueReferences)
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux)
+	gatewayService, err := gateway.Initialize(mux, exportService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

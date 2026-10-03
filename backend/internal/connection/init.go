@@ -19,12 +19,17 @@ import (
 // Initialize wires the connection service over the identity-provider and notification-sender
 // services, registers the /connections routes, loads declarative connection resources, and
 // returns the connection exporter for the export API.
+//
+// valueCapturer is optional. Given one, the service hands it every connection it creates or changes,
+// so the values the connection's export refers to are kept where a reference finds them.
 func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
-	authZENPDPService authzenpdp.AuthZENPDPServiceInterface) (
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer) (
 	declarativeresource.ResourceExporter, error) {
 	svc := newService(idpService, notificationService, resourceService, authZENPDPService)
+	svc.valueCapturer = valueCapturer
 	h := newHandler(svc)
 	registerRoutes(mux, h)
 

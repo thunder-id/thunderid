@@ -18,15 +18,19 @@ import (
 )
 
 // Initialize initializes the user service and registers its routes.
+//
+// valueCapturer is optional. Given one, the service hands it every credential it sets on a user, so
+// the values the user's export refers to are kept where a reference finds them.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (UserServiceInterface, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Create service with entity service
-	userService := newUserService(authzService, entityService, ouService, entityTypeService)
+	userService := newUserService(authzService, entityService, ouService, entityTypeService, valueCapturer)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
 	if err := entityService.LoadIndexedAttributes(getUserIndexedAttributes()); err != nil {
