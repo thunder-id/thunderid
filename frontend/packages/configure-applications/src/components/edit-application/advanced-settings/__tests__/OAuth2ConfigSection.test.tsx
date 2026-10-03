@@ -878,4 +878,66 @@ describe('OAuth2ConfigSection', () => {
       expect(onValidationChange).toHaveBeenLastCalledWith(false);
     });
   });
+
+  describe('Back-Channel Logout URI', () => {
+    const baseConfig: OAuth2Config = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      pkceRequired: false,
+      publicClient: false,
+    };
+    const placeholder = 'https://example.com/backchannel-logout';
+    const defaultThunderID: unknown = mockUseThunderID();
+
+    const withBackchannelSupport = (supported: boolean): void => {
+      mockUseThunderID.mockReturnValue({
+        discovery: {
+          wellKnown: {grant_types_supported: ['authorization_code'], backchannel_logout_supported: supported},
+        },
+      });
+    };
+
+    afterEach(() => {
+      mockUseThunderID.mockReturnValue(defaultThunderID);
+    });
+
+    it('is hidden when discovery does not advertise back-channel logout', () => {
+      render(<OAuth2ConfigSection oauth2Config={baseConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();
+    });
+
+    it('commits backchannelLogoutUri on blur when discovery advertises it', async () => {
+      withBackchannelSupport(true);
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OAuth2ConfigSection oauth2Config={baseConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(screen.getByPlaceholderText(placeholder), 'https://example.com/bcl');
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({backchannelLogoutUri: 'https://example.com/bcl'});
+    });
+
+    it('reports a validation error for an http URI on a public client', () => {
+      withBackchannelSupport(true);
+      const onValidationChange = vi.fn();
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{...baseConfig, publicClient: true, backchannelLogoutUri: 'http://example.com/bcl'}}
+          onOAuth2ConfigChange={vi.fn()}
+          onValidationChange={onValidationChange}
+        />,
+      );
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('is hidden with the other redirect fields', () => {
+      withBackchannelSupport(true);
+      render(<OAuth2ConfigSection oauth2Config={baseConfig} onOAuth2ConfigChange={vi.fn()} showRedirectUris={false} />);
+
+      expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();
+    });
+  });
 });

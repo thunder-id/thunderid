@@ -400,6 +400,13 @@ export interface OAuth2Config {
   postLogoutRedirectUris?: string[];
 
   /**
+   * OIDC Back-Channel Logout endpoint. ThunderID POSTs a logout token here when a session the client
+   * took part in ends. Empty means the client is not notified.
+   * @example 'https://myapp.com/backchannel-logout'
+   */
+  backchannelLogoutUri?: string;
+
+  /**
    * Allowed OAuth2 grant types
    * Defines which OAuth2 flows the application can use
    * @example [OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.REFRESH_TOKEN]

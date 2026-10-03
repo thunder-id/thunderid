@@ -180,6 +180,7 @@ vi.mock('react-i18next', () => ({
       return result;
     },
   }),
+  Trans: ({defaults = ''}: {defaults?: string}) => <span>{defaults}</span>,
 }));
 
 describe('AgentEditPage', () => {
@@ -889,6 +890,39 @@ describe('AgentEditPage', () => {
       await triggerAChange(user);
 
       expect(screen.getByText('Before saving, add a certificate.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('disables Save when the back-channel logout URI is http on a public client, even without visiting the advanced tab', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['person'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials', 'authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://agent.example.com/cb'],
+                publicClient: true,
+                backchannelLogoutUri: 'http://agent.example.com/bcl',
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, fix the back-channel logout URI.')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 

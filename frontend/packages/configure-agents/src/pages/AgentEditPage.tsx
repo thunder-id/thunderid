@@ -3,6 +3,7 @@
 
 import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {hasUserAccess, validateBackchannelLogoutUri} from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -231,8 +232,16 @@ export default function AgentEditPage(): JSX.Element {
   const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
   const isMissingCertificate =
     oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt' && !oauth2Config?.certificate?.value;
+  // The field shows only with a user-facing grant, so a hidden value never blocks saving.
+  const isInvalidBackchannelLogoutUri =
+    hasUserAccess(oauth2Config?.grantTypes) &&
+    !validateBackchannelLogoutUri(oauth2Config?.backchannelLogoutUri, oauth2Config?.publicClient ?? false).valid;
   const hasAnyValidationError =
-    hasAnyOtherValidationError || isMissingRedirectUri || isMissingAllowedUserType || isMissingCertificate;
+    hasAnyOtherValidationError ||
+    isMissingRedirectUri ||
+    isMissingAllowedUserType ||
+    isMissingCertificate ||
+    isInvalidBackchannelLogoutUri;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
@@ -251,6 +260,11 @@ export default function AgentEditPage(): JSX.Element {
   }
   if (isMissingCertificate) {
     validationIssues.push(t('agents:edit.page.validation.missingCertificate', 'add a certificate'));
+  }
+  if (isInvalidBackchannelLogoutUri) {
+    validationIssues.push(
+      t('agents:edit.page.validation.invalidBackchannelLogoutUri', 'fix the back-channel logout URI'),
+    );
   }
   if (hasAnyOtherValidationError) {
     validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));

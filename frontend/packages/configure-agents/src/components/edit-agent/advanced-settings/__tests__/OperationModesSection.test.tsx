@@ -20,6 +20,7 @@ vi.mock('@thunderid/react', async (importOriginal) => ({
     discovery: {
       wellKnown: {
         token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+        backchannel_logout_supported: true,
       },
     },
   }),
@@ -148,6 +149,40 @@ describe('OperationModesSection', () => {
       render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
 
       expect(screen.queryByText('Authorized redirect URIs')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Back-Channel Logout URI', () => {
+    it('shows the registered URI once a user-facing grant is selected', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{...delegatedConfig, backchannelLogoutUri: 'https://agent.example.com/bcl'}}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Back-Channel Logout URI')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
+    });
+
+    it('is hidden in Autonomous-only mode, where the agent never joins a session', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByText('Back-Channel Logout URI')).not.toBeInTheDocument();
+    });
+
+    it('commits backchannelLogoutUri on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(
+        screen.getByPlaceholderText('https://example.com/backchannel-logout'),
+        'https://agent.example.com/bcl',
+      );
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({backchannelLogoutUri: 'https://agent.example.com/bcl'});
     });
   });
 

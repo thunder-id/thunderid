@@ -1131,6 +1131,7 @@ const translations = {
     'edit.page.validation.missingRedirectUri': 'add a redirect URI',
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
+    'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.tokenSettings': 'fix the token settings',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
@@ -3040,6 +3041,12 @@ const translations = {
     'edit.general.postLogoutRedirectUris.sameAsRedirect.title': 'Use the same URLs for post-logout redirect',
     'edit.general.postLogoutRedirectUris.sameAsRedirect.description':
       'Reuse the redirect URIs above instead of maintaining a separate list',
+    'edit.general.backchannelLogoutUri.title': 'Back-Channel Logout URI',
+    'edit.general.backchannelLogoutUri.description':
+      'Endpoint that receives a logout token when a session this client took part in ends. Leave empty to turn off notifications.',
+    'edit.general.backchannelLogoutUri.error.invalid':
+      'Enter an absolute http or https URL with a host, and no user info, fragment, or wildcard.',
+    'edit.general.backchannelLogoutUri.error.requiresHttps': 'A public client must use an https URL.',
     'onboarding.configure.details.devServer.banner': 'Using {{label}}? Its dev server runs on',
     'onboarding.configure.details.devServer.byDefault': 'by default.',
     'onboarding.configure.details.devServer.addToRedirectAndCors': 'Add it to redirect URIs & CORS origins',

@@ -39,6 +39,7 @@ import {
   getPublicClientCaption,
   isGrantItemDisabled,
 } from '../../../utils/oauth2Rules';
+import BackchannelLogoutUriField from '../../common/BackchannelLogoutUriField';
 
 interface OidcDiscovery {
   grant_types_supported?: string[];
@@ -91,6 +92,7 @@ interface OAuth2ConfigSectionProps {
  * - Allowed grant types (multi-select dropdown from OIDC discovery)
  * - Allowed response types (multi-select dropdown from OIDC discovery)
  * - Authorized redirect URIs and post-logout redirect URIs (add/remove/edit with validation)
+ * - Back-channel logout URI, when the server supports back-channel logout
  * - Public client status (toggle)
  * - PKCE requirement status (toggle)
  *
@@ -119,12 +121,14 @@ export default function OAuth2ConfigSection({
     () => oauth2Config?.postLogoutRedirectUris ?? [],
   );
   const [postLogoutUriErrors, setPostLogoutUriErrors] = useState<Record<number, string>>({});
+  const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
 
   useEffect(() => {
     const hasUriErrors =
-      showRedirectUris && (Object.keys(uriErrors).length > 0 || Object.keys(postLogoutUriErrors).length > 0);
+      showRedirectUris &&
+      (Object.keys(uriErrors).length > 0 || Object.keys(postLogoutUriErrors).length > 0 || backchannelLogoutUriInvalid);
     onValidationChange?.(hasUriErrors);
-  }, [uriErrors, postLogoutUriErrors, onValidationChange, showRedirectUris]);
+  }, [uriErrors, postLogoutUriErrors, backchannelLogoutUriInvalid, onValidationChange, showRedirectUris]);
 
   if (!oauth2Config) return null;
 
@@ -505,6 +509,16 @@ export default function OAuth2ConfigSection({
               </Box>
             </Stack>
           </FormControl>
+        )}
+
+        {showRedirectUris && (
+          <BackchannelLogoutUriField
+            value={oauth2Config.backchannelLogoutUri}
+            publicClient={oauth2Config.publicClient}
+            onChange={onOAuth2ConfigChange ? (uri) => onOAuth2ConfigChange({backchannelLogoutUri: uri}) : undefined}
+            onValidationChange={setBackchannelLogoutUriInvalid}
+            disabled={!isEditable}
+          />
         )}
 
         {/* Token Endpoint Auth Method */}

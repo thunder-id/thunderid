@@ -3,6 +3,7 @@
 
 import {OAuth2Logo, SettingsCard} from '@thunderid/components';
 import {
+  BackchannelLogoutUriField,
   OAuth2GrantTypes,
   TokenEndpointAuthMethods,
   type OAuth2Config,
@@ -10,6 +11,7 @@ import {
   applyGrantTypesChange,
   applyTokenEndpointAuthMethodChange,
   deriveOAuth2Flags,
+  hasUserAccess,
 } from '@thunderid/configure-applications';
 import {useThunderID} from '@thunderid/react';
 import {
@@ -177,6 +179,16 @@ export default function OperationModesSection({
           onOAuth2ConfigChange={onOAuth2ConfigChange}
           disabled={disabled}
         />
+
+        {/* Only a user-facing grant joins a session, so only then can the agent be notified. */}
+        {hasUserAccess(grantTypes) && (
+          <BackchannelLogoutUriField
+            value={oauth2Config.backchannelLogoutUri}
+            publicClient={oauth2Config.publicClient}
+            onChange={onOAuth2ConfigChange ? (uri) => onOAuth2ConfigChange({backchannelLogoutUri: uri}) : undefined}
+            disabled={!isEditable}
+          />
+        )}
 
         <Divider />
 
