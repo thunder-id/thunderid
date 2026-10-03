@@ -319,6 +319,8 @@ func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) 
 			attrs[inputData.Identifier] = value
 		} else if value, ok := ctx.RuntimeData[inputData.Identifier]; ok {
 			attrs[inputData.Identifier] = value
+		} else if value, ok := core.GetExternalClaim(ctx.RuntimeData, inputData.Identifier); ok {
+			attrs[inputData.Identifier] = value
 		}
 	}
 	return attrs

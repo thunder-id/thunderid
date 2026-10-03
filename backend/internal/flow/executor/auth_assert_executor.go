@@ -102,6 +102,11 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		}
 
 		token, err := a.generateAuthAssertion(ctx, execResp, logger)
+		// A client-classified failure records itself on the response and is answered as itself. A
+		// plain error is a server fault and collapses to 500.
+		if execResp.Status == providers.ExecFailure {
+			return execResp, nil
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -337,6 +342,11 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching entity references")
 		}
+		// The entity reference not resolving is the identity not naming a local user: a federated
+		// sign-in with no account and no allowance lands here, and that is the caller's input, not
+		// a server fault.
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return "", errors.New("failed to fetch entity references: " + svcErr.ErrorDescription.DefaultValue)
 	}
 
@@ -353,6 +363,8 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching user attributes")
 		}
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrAttributeRetrievalFailed
 		return "", errors.New("failed to fetch user attributes: " + svcErr.ErrorDescription.DefaultValue)
 	}
 
@@ -548,6 +560,10 @@ func (a *authAssertExecutor) resolveUserAttributes(
 
 		// Check runtime data
 		if val, exists := ctx.RuntimeData[attr]; exists && val != "" {
+			attributes[attr] = val
+			continue
+		}
+		if val, exists := core.GetExternalClaim(ctx.RuntimeData, attr); exists && val != "" {
 			attributes[attr] = val
 			continue
 		}

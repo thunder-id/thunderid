@@ -20,10 +20,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
-	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -36,15 +35,12 @@ const (
 	testUserID        = "user123"
 )
 
-var errEntityNotFound = &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}
-
 type OAuthAuthnServiceTestSuite struct {
 	suite.Suite
-	mockHTTPClient     *httpmock.HTTPClientInterfaceMock
-	mockIDPService     *idpmock.IDPServiceInterfaceMock
-	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
-	service            OAuthAuthnServiceInterface
-	endpoints          OAuthEndpoints
+	mockHTTPClient *httpmock.HTTPClientInterfaceMock
+	mockIDPService *idpmock.IDPServiceInterfaceMock
+	service        OAuthAuthnServiceInterface
+	endpoints      OAuthEndpoints
 }
 
 func TestOAuthAuthnServiceTestSuite(t *testing.T) {
@@ -54,14 +50,13 @@ func TestOAuthAuthnServiceTestSuite(t *testing.T) {
 func (suite *OAuthAuthnServiceTestSuite) SetupTest() {
 	suite.mockHTTPClient = httpmock.NewHTTPClientInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
-	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.endpoints = OAuthEndpoints{
 		AuthorizationEndpoint: "https://localhost:8090/oauth/authorize",
 		TokenEndpoint:         "https://localhost:8090/oauth/token",
 		UserInfoEndpoint:      "https://localhost:8090/oauth/userinfo",
 	}
 	// Use the constructor to properly initialize the service including logger
-	suite.service = newOAuthAuthnService(suite.mockHTTPClient, suite.mockIDPService, suite.mockEntityProvider)
+	suite.service = newOAuthAuthnService(suite.mockHTTPClient, suite.mockIDPService)
 }
 
 func createTestIDPDTO() *providers.IDPDTO {
@@ -511,131 +506,6 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoWithClientConfigEmptyA
 	suite.Equal(ErrorEmptyAccessToken.Code, err.Code)
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
-	svcImpl := suite.service.(*oAuthAuthnService)
-
-	userID := testUserID
-	user := &providers.Entity{
-		ID:   userID,
-		Type: "person",
-		OUID: "test-ou",
-	}
-
-	suite.mockEntityProvider.On("IdentifyEntity", mock.MatchedBy(
-		func(filters map[string]interface{}) bool {
-			return filters["sub"] == testSub
-		}),
-	).Return(&userID, nil)
-	suite.mockEntityProvider.On("GetEntity", userID).Return(user, nil)
-
-	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
-	suite.Nil(err)
-	suite.NotNil(result)
-	suite.Equal(userID, result.ID)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_EmptySub() {
-	svcImpl := suite.service.(*oAuthAuthnService)
-
-	result, err := svcImpl.GetInternalUser(context.Background(), "")
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorEmptySubClaim.Code, err.Code)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_UserNotFound() {
-	svcImpl := suite.service.(*oAuthAuthnService)
-
-	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
-
-	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(common.ErrorUserNotFound.Code, err.Code)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_AmbiguousUser() {
-	svcImpl := suite.service.(*oAuthAuthnService)
-
-	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
-
-	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(common.ErrorAmbiguousUser.Code, err.Code)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
-	tests := []struct {
-		name            string
-		mockSetup       func(m *entityprovidermock.EntityProviderInterfaceMock)
-		expectedErrCode string
-	}{
-		{
-			name: "IdentifyServerError",
-			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				serverErr := &entityprovider.EntityProviderError{
-					Code:    entityprovider.ErrorCodeSystemError,
-					Message: "Database unavailable",
-				}
-				m.On("IdentifyEntity", mock.Anything).Return(nil, serverErr)
-			},
-			expectedErrCode: tidcommon.InternalServerError.Code,
-		},
-		{
-			name: "GetUserServerError",
-			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				userID := testUserID
-				serverErr := &entityprovider.EntityProviderError{
-					Code:    entityprovider.ErrorCodeSystemError,
-					Message: "Database unavailable",
-				}
-				m.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-				m.On("GetEntity", userID).Return(nil, serverErr)
-			},
-			expectedErrCode: tidcommon.InternalServerError.Code,
-		},
-		{
-			name: "GetUserNotFound",
-			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				userID := testUserID
-				notFoundErr := &entityprovider.EntityProviderError{
-					Code: entityprovider.ErrorCodeEntityNotFound,
-				}
-				m.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-				m.On("GetEntity", userID).Return(nil, notFoundErr)
-			},
-			expectedErrCode: common.ErrorUserNotFound.Code,
-		},
-		{
-			name: "IdentifyNilUserID",
-			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				m.On("IdentifyEntity", mock.Anything).Return(nil, (*entityprovider.EntityProviderError)(nil))
-			},
-			expectedErrCode: common.ErrorUserNotFound.Code,
-		},
-	}
-
-	for _, tc := range tests {
-		suite.Run(tc.name, func() {
-			freshUserMock := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			svcImpl := suite.service.(*oAuthAuthnService)
-			svcImpl.entityProvider = freshUserMock
-
-			if tc.mockSetup != nil {
-				tc.mockSetup(freshUserMock)
-			}
-
-			result, err := svcImpl.GetInternalUser(context.Background(), testSub)
-			suite.Nil(result)
-			suite.NotNil(err)
-			suite.Equal(tc.expectedErrCode, err.Code)
-		})
-	}
-}
-
 func (suite *OAuthAuthnServiceTestSuite) TestValidateTokenResponseSuccess() {
 	tokenResp := &TokenResponse{
 		AccessToken: "access_token_123",
@@ -1055,181 +925,138 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAppliesMapp
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
 		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
 		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
-			UserType:   "person",
-			Attributes: []providers.AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}},
+			UserType: "person",
+			Attributes: []providers.AttributeMapping{
+				{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
+			},
 		}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
-		context.Background(), testIDPID, testSub, map[string]interface{}{"given_name": "Jane", "sub": testSub})
+		context.Background(), testIDPID, testSub, map[string]interface{}{"given_name": "Jane"})
 	suite.Nil(svcErr)
 	suite.Equal("Jane", result.AuthenticatedClaims["firstName"])
-	// Mappings copy rather than rename, so the source claim survives alongside the local attribute.
-	suite.Equal("Jane", result.AuthenticatedClaims["given_name"])
-	// No account linking configured, so the lookup falls back to sub without a query.
-	suite.Equal(testSub, result.Token["sub"])
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultLinksByAttribute() {
-	// sub does not resolve, so the configured account-linking attribute is returned as the filter,
-	// deferring the actual lookup to the caller.
+// A mapping onto the local attribute sub must not change the subject the flow links.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultKeepsVerifiedSub() {
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+			UserType: "person",
+			Attributes: []providers.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "sub"},
+			},
+		}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
+
+	result, svcErr := suite.service.BuildFederatedAuthResult(
+		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "victim@example.com"})
+	suite.Nil(svcErr)
+	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.UserAttributeSub])
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultNilClaimsCarrySub() {
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(createTestIDPDTO(), nil)
+
+	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub, nil)
+	suite.Nil(svcErr)
+	suite.Equal(testSub, result.AuthenticatedClaims[authnprovidercm.UserAttributeSub])
+}
+
+// The token names the identity rather than an entity. Resolving it is the authn provider's job, so
+// this service performs no lookup of its own.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultNamesTheIdentity() {
+	idpDTO := createTestIDPDTO()
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
 	suite.Nil(svcErr)
-	suite.Equal("user@example.com", result.Token["email"])
-	suite.NotContains(result.Token, "sub")
+	suite.Equal(testIDPID, result.Token[authnprovidercm.UserAttributeFederatedIdpID])
+	suite.Equal(testSub, result.Token[authnprovidercm.UserAttributeSub])
+	suite.NotContains(result.Token, common.UserAttributeUserID)
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultPrefersSubWhenResolved() {
-	// When sub resolves an existing user, the configured account-linking attributes are not consulted.
-	idpDTO := createTestIDPDTO()
-	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
-	}
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	resolvedID := testUserID
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(&resolvedID, nil)
-
-	result, svcErr := suite.service.BuildFederatedAuthResult(
-		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
-	suite.Nil(svcErr)
-	suite.Equal(testUserID, result.Token[common.UserAttributeUserID])
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity",
-		map[string]interface{}{"email": "user@example.com"})
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultCombinesLinkedAttributes() {
-	// All configured account-linking attributes with a value are combined into a single filter, so
-	// the caller's lookup resolves a unique user by all of them together.
+// The linking lookups travel in the token under their own key so the Account Linking node can match
+// on them.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultCarriesLinkingFilters() {
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email", "username"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub,
 		map[string]interface{}{"email": "user@example.com", "username": "jdoe"})
 	suite.Nil(svcErr)
-	suite.Equal("user@example.com", result.Token["email"])
-	suite.Equal("jdoe", result.Token["username"])
-	suite.NotContains(result.Token, "sub")
+	suite.Equal([]map[string]interface{}{{"email": "user@example.com", "username": "jdoe"}},
+		result.Token[authnprovidercm.AccountLinkingFiltersKey])
+	suite.NotContains(result.Token, "email")
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultResolvesExternalToLocalAttribute() {
-	// The account-linking attribute is an external name mapped to a different local attribute; both the
-	// mapped claim and the lookup key must be the local attribute.
+// An identity with nothing to match on carries no linking key at all.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultOmitsLinkingWithoutValues() {
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		UserTypeResolution: &providers.UserTypeResolution{Default: "Person"},
-		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
-			{UserType: "Person", Attributes: []providers.AttributeMapping{
-				{ExternalAttribute: "email", LocalAttribute: "family_name"},
-			}},
-		},
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
-		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "sadil@example.com"})
+		context.Background(), testIDPID, testSub, map[string]interface{}{"name": "Jane"})
 	suite.Nil(svcErr)
-	suite.Equal("sadil@example.com", result.AuthenticatedClaims["family_name"])
-	suite.Equal("sadil@example.com", result.Token["family_name"])
-	suite.NotContains(result.Token, "sub")
+	suite.NotContains(result.Token, authnprovidercm.AccountLinkingFiltersKey)
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSubFallsBackToSubWhenNoAttributeValue() {
-	// An ambiguous sub match does not short-circuit; account-linking attributes are still tried. With
-	// none of them having a value here, the original sub filter is returned, so the ambiguity is
-	// surfaced when the caller looks it up.
+// A linking attribute named by its external claim matches on the local attribute the mapping declares
+// and, since mappings copy, on the local attribute of its own name.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultMatchesMappedAndSameNamedAttribute() {
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+		AccountLinking:     &providers.AccountLinking{Attributes: []string{"email"}},
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+			UserType: "person",
+			Attributes: []providers.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "username"},
+			},
+		}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	ambiguousErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(nil, ambiguousErr)
-
-	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub, nil)
-	suite.Nil(svcErr)
-	suite.Equal(testSub, result.Token["sub"])
-	suite.NotContains(result.Token, common.UserAttributeUserID)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSubFallsThroughToAccountLinking() {
-	// An ambiguous sub match must not skip account-linking resolution: a configured attribute that
-	// would uniquely identify the user still gets a chance to resolve the login.
-	idpDTO := createTestIDPDTO()
-	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
-	}
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	ambiguousErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity",
-		map[string]interface{}{"sub": testSub}).Return(nil, ambiguousErr)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
 	suite.Nil(svcErr)
-	suite.Equal("user@example.com", result.Token["email"])
-	suite.NotContains(result.Token, "sub")
+	suite.Equal([]map[string]interface{}{{"username": "user@example.com"}, {"email": "user@example.com"}},
+		result.Token[authnprovidercm.AccountLinkingFiltersKey])
 }
 
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultSurfacesServerErrorOnSubLookup() {
-	// A real (non not-found/ambiguous) entity provider error while resolving the sub must be surfaced,
-	// not silently treated as "not found".
+// No linking value can take the place of the keys that name the identity or be read as an entity id.
+func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultLinkingCannotRenameTheIdentity() {
 	idpDTO := createTestIDPDTO()
 	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+		AccountLinking:     &providers.AccountLinking{Attributes: []string{"userID", "email"}},
+		UserTypeResolution: &providers.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+			UserType: "person",
+			Attributes: []providers.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "sub"},
+			},
+		}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	serverErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSystemError}
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"sub": testSub}).Return(nil, serverErr)
 
-	result, svcErr := suite.service.BuildFederatedAuthResult(
-		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
-	suite.Nil(result)
-	suite.NotNil(svcErr)
-	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultFallsBackToSubWhenNotConfigured() {
-	// No account linking configured: the sub filter is returned as-is, with no lookup performed here
-	// (original, pre-account-linking behavior).
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(createTestIDPDTO(), nil)
-
-	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub, nil)
+	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub,
+		map[string]interface{}{"userID": "victim-id", "email": "user@example.com"})
 	suite.Nil(svcErr)
-	suite.Equal(testSub, result.Token["sub"])
-}
-
-func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultFallsBackToSubWhenAttributeMissing() {
-	idpDTO := createTestIDPDTO()
-	idpDTO.AttributeConfiguration = &providers.AttributeConfiguration{
-		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
-	}
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, errEntityNotFound)
-
-	result, svcErr := suite.service.BuildFederatedAuthResult(
-		context.Background(), testIDPID, testSub, map[string]interface{}{"name": "no-email"})
-	suite.Nil(svcErr)
-	suite.Equal(testSub, result.Token["sub"])
+	suite.Equal(testSub, result.Token[authnprovidercm.UserAttributeSub])
+	suite.Equal(testIDPID, result.Token[authnprovidercm.UserAttributeFederatedIdpID])
+	suite.NotContains(result.Token, authnprovidercm.UserAttributeUserID)
+	suite.NotContains(result.Token, authnprovidercm.AccountLinkingFiltersKey)
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultClientError() {

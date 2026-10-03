@@ -67,6 +67,8 @@ describe('elements models', () => {
       expect(ElementTypes.Resend).toBe('RESEND');
       expect(ElementTypes.Timer).toBe('TIMER');
       expect(ElementTypes.QrCode).toBe('QR_CODE');
+      expect(ElementTypes.CopyableText).toBe('COPYABLE_TEXT');
+      expect(ElementTypes.KeyValueList).toBe('KEY_VALUE_LIST');
     });
 
     it('should have consent types', () => {
@@ -78,8 +80,8 @@ describe('elements models', () => {
       expect(ElementTypes.Custom).toBe('CUSTOM');
     });
 
-    it('should have exactly 25 element types', () => {
-      expect(Object.keys(ElementTypes)).toHaveLength(25);
+    it('should have exactly 27 element types', () => {
+      expect(Object.keys(ElementTypes)).toHaveLength(27);
     });
   });
 

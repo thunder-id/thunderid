@@ -191,8 +191,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.OwnerResolver).toBe('OwnerResolver');
     });
 
-    it('should have exactly 32 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(32);
+    it('should have Linking type', () => {
+      expect(ExecutionTypes.Linking).toBe('LinkingExecutor');
+    });
+
+    it('should have exactly 33 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(33);
     });
   });
 

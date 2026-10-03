@@ -75,6 +75,7 @@ class VisualFlowConstants {
     WidgetTypes.PasskeyAuthentication,
     WidgetTypes.Provisioning,
     WidgetTypes.Consent,
+    WidgetTypes.AccountLinkingVerification,
     WidgetTypes.MagicLink,
     WidgetTypes.SelfSignUpLink,
     WidgetTypes.SignInLink,

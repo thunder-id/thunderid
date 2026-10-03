@@ -56,7 +56,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "emailTemplate", IsRequired: true},
 		},
 	},
-	ExecutorNameFederatedAuthResolver: {},
 	ExecutorNameGitHubAuth: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "idpId", IsRequired: true},
@@ -94,6 +93,9 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "inviteBaseURL"},
 		},
+	},
+	ExecutorNameLinking: {
+		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION", "REGISTRATION"},
 	},
 	ExecutorNameMagicLink: {
 		SupportedModes: []string{"generate", "verify"},

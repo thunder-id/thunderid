@@ -1527,13 +1527,14 @@ components:
     AccountLinking:
       type: object
       description: >
-        Configures how an incoming federated identity is resolved to an existing local user when the
-        subject identifier does not resolve one. All configured attributes that have a value are
-        combined into a single lookup filter.
+        Configures how an incoming federated identity is matched to an existing local user when it
+        has no recorded link. Every configured attribute that has a value must match.
       properties:
         attributes:
           type: array
-          description: External attribute names used together to resolve the local user.
+          description: >
+            External attribute names used together to find the local user. Each one matches on
+            every local attribute it is mapped to, and on the local attribute of the same name.
           items:
             type: string
           example:

@@ -10,14 +10,14 @@ import type {CommonResourcePropertiesPropsInterface} from '../CommonResourceProp
 
 /**
  * The options offered by the Action selector. `Submit` and `Trigger` are the
- * button's `eventType`; `Confirm` is a submit button that additionally raises
- * the `CONFIRM` prompt action, so one selection maps onto two fields.
+ * button's `eventType`; `Confirm` and `Reject` are submit buttons that
+ * additionally raise a prompt action, so one selection maps onto two fields.
  *
- * `Confirm` deliberately carries the same literal that is persisted as
+ * The prompt actions deliberately carry the same literals that are persisted as
  * `prompts[].action.type`, so the value selected here and the value in the flow
- * definition are one vocabulary rather than a UI-only alias. It is not specific
- * to signing out: the session sign-out executor reads it today, but any executor
- * that routes to a confirmation prompt can.
+ * definition are one vocabulary rather than a UI-only alias. Neither is specific
+ * to a use case: the session sign-out executor reads `CONFIRM` and the account
+ * linking executor reads `REJECT`, but any executor routing to such a prompt can.
  *
  * The remaining `ActionEventTypes` (navigate, cancel, reset, back) are handled
  * by the SDK renderers but deliberately not offered here.
@@ -26,9 +26,13 @@ const ACTION_OPTIONS = {
   Submit: 'SUBMIT',
   Trigger: 'TRIGGER',
   Confirm: PromptActionTypes.Confirm,
+  Reject: PromptActionTypes.Reject,
 } as const;
 
 type ActionOption = (typeof ACTION_OPTIONS)[keyof typeof ACTION_OPTIONS];
+
+/** The options that are a submit button plus a prompt action. */
+const PROMPT_ACTION_OPTIONS = new Set<string>([ACTION_OPTIONS.Confirm, ACTION_OPTIONS.Reject]);
 
 /**
  * Props interface of {@link ButtonExtendedProperties}
@@ -48,28 +52,28 @@ function ButtonExtendedProperties({resource, onChange}: ButtonExtendedProperties
   const element = resource as Element & {eventType?: string};
   const eventTypeValue = element?.eventType ?? ActionEventTypes.Trigger;
 
-  // Confirm is a submit button carrying an extra prompt action type, so it
-  // takes precedence over the plain event type when deriving the selection.
-  const actionValue: ActionOption =
-    element?.actionType === PromptActionTypes.Confirm
-      ? ACTION_OPTIONS.Confirm
-      : eventTypeValue === ActionEventTypes.Submit
-        ? ACTION_OPTIONS.Submit
-        : ACTION_OPTIONS.Trigger;
+  // A prompt action is carried by a submit button, so it takes precedence over
+  // the plain event type when deriving the selection.
+  const hasPromptAction = PROMPT_ACTION_OPTIONS.has(element?.actionType ?? '');
+  const actionValue: ActionOption = hasPromptAction
+    ? (element.actionType as ActionOption)
+    : eventTypeValue === ActionEventTypes.Submit
+      ? ACTION_OPTIONS.Submit
+      : ACTION_OPTIONS.Trigger;
 
   const handleActionChange = (nextAction: ActionOption): void => {
-    if (nextAction === ACTION_OPTIONS.Confirm) {
+    if (PROMPT_ACTION_OPTIONS.has(nextAction)) {
       onChange('eventType', ActionEventTypes.Submit, resource);
-      onChange('actionType', PromptActionTypes.Confirm, resource);
+      onChange('actionType', nextAction, resource);
       return;
     }
 
     onChange('eventType', nextAction, resource);
-    // Clearing keeps the button from silently staying a confirmation action
-    // after the author picks a plain action. Only the type this selector owns is
-    // cleared, so an action type it does not model (e.g. REJECT, authored in the
-    // flow definition directly) is left untouched rather than discarded.
-    if (element?.actionType === PromptActionTypes.Confirm) {
+    // Clearing keeps the button from silently staying a prompt action after the
+    // author picks a plain action. Only the types this selector owns are cleared,
+    // so one it does not model, authored in the flow definition directly, is left
+    // untouched rather than discarded.
+    if (hasPromptAction) {
       onChange('actionType', '', resource);
     }
   };
@@ -129,6 +133,9 @@ function ButtonExtendedProperties({resource, onChange}: ButtonExtendedProperties
           </MenuItem>
           <MenuItem value={ACTION_OPTIONS.Confirm}>
             {t('flows:core.buttonExtendedProperties.action.confirm', 'Confirm Action')}
+          </MenuItem>
+          <MenuItem value={ACTION_OPTIONS.Reject}>
+            {t('flows:core.buttonExtendedProperties.action.reject', 'Reject Action')}
           </MenuItem>
         </Select>
         <FormHelperText>

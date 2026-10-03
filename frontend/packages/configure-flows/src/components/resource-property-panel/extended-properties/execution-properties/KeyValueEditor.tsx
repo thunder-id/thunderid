@@ -1,8 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {IconButton, Stack, TextField} from '@wso2/oxygen-ui';
-import {memo, useEffect, useMemo, useReducer, useState, type ReactNode} from 'react';
+import {Box, Button, IconButton, Stack, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Plus, Trash} from '@wso2/oxygen-ui-icons-react';
+import {Fragment, memo, useEffect, useMemo, useReducer, useState, type ReactNode} from 'react';
 
 let nextId = 0;
 const generateId = (): string => {
@@ -36,6 +37,9 @@ interface KeyValueRowProps {
   onRemove: (index: number) => void;
   keyPlaceholder: string;
   valuePlaceholder: string;
+  keyLabel: string;
+  valueLabel: string;
+  removeLabel: string;
 }
 
 /**
@@ -51,6 +55,9 @@ const KeyValueRow = memo(function KeyValueRow({
   onRemove,
   keyPlaceholder,
   valuePlaceholder,
+  keyLabel,
+  valueLabel,
+  removeLabel,
 }: KeyValueRowProps): ReactNode {
   const [localKey, setLocalKey] = useState(entryKey);
   const [localValue, setLocalValue] = useState(entryValue);
@@ -64,7 +71,7 @@ const KeyValueRow = memo(function KeyValueRow({
   }, [entryValue]);
 
   return (
-    <Stack direction="row" gap={1} alignItems="center">
+    <Fragment>
       <TextField
         value={localKey}
         onChange={(e) => setLocalKey(e.target.value)}
@@ -75,7 +82,7 @@ const KeyValueRow = memo(function KeyValueRow({
         }}
         placeholder={keyPlaceholder}
         size="small"
-        sx={{flex: 1}}
+        slotProps={{htmlInput: {'aria-label': keyLabel}}}
       />
       <TextField
         value={localValue}
@@ -87,12 +94,14 @@ const KeyValueRow = memo(function KeyValueRow({
         }}
         placeholder={valuePlaceholder}
         size="small"
-        sx={{flex: 1}}
+        slotProps={{htmlInput: {'aria-label': valueLabel}}}
       />
-      <IconButton size="small" onClick={() => onRemove(index)} aria-label="Remove entry">
-        &times;
-      </IconButton>
-    </Stack>
+      <Tooltip title={removeLabel}>
+        <IconButton size="small" color="error" onClick={() => onRemove(index)} aria-label={removeLabel}>
+          <Trash size={18} />
+        </IconButton>
+      </Tooltip>
+    </Fragment>
   );
 });
 
@@ -104,6 +113,14 @@ interface KeyValueEditorProps {
   onValueChange: (index: number, newValue: string) => void;
   keyPlaceholder: string;
   valuePlaceholder: string;
+  /** Column heading, and accessible name, of every row's key field (e.g. "Label"). */
+  keyLabel: string;
+  /** Column heading, and accessible name, of every row's value field (e.g. "Attribute"). */
+  valueLabel: string;
+  /** Text of the button that appends a row, naming what is being added (e.g. "Add Header"). */
+  addLabel: string;
+  /** Accessible name and tooltip of each row's remove button. */
+  removeLabel: string;
 }
 
 function KeyValueEditor({
@@ -114,6 +131,10 @@ function KeyValueEditor({
   onValueChange,
   keyPlaceholder,
   valuePlaceholder,
+  keyLabel,
+  valueLabel,
+  addLabel,
+  removeLabel,
 }: KeyValueEditorProps): ReactNode {
   // Stable IDs for each entry — used as React keys so rows survive re-renders.
   // useReducer allows synchronous state transitions during render without cascading effects.
@@ -138,22 +159,50 @@ function KeyValueEditor({
 
   return (
     <Stack gap={1}>
-      {entries.map(([key, value], index) => (
-        <KeyValueRow
-          key={syncedIds[index]}
-          index={index}
-          entryKey={key}
-          entryValue={value}
-          onKeyCommit={onKeyChange}
-          onValueCommit={onValueChange}
-          onRemove={handleRemove}
-          keyPlaceholder={keyPlaceholder}
-          valuePlaceholder={valuePlaceholder}
-        />
-      ))}
-      <IconButton size="small" onClick={onAdd} sx={{alignSelf: 'flex-start'}} aria-label="Add entry">
-        +
-      </IconButton>
+      {/* One grid for the headings and every row, so each caption sits over the field it names. */}
+      <Box
+        sx={{
+          alignItems: 'center',
+          columnGap: 1,
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr auto',
+          rowGap: 1,
+        }}
+      >
+        {/* Headed once rather than per row: the fields repeat, so labelling each would too. */}
+        {entries.length > 0 && (
+          <Fragment>
+            <Typography variant="caption" color="text.secondary">
+              {keyLabel}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {valueLabel}
+            </Typography>
+            <Box />
+          </Fragment>
+        )}
+        {entries.map(([key, value], index) => (
+          <KeyValueRow
+            key={syncedIds[index]}
+            index={index}
+            entryKey={key}
+            entryValue={value}
+            onKeyCommit={onKeyChange}
+            onValueCommit={onValueChange}
+            onRemove={handleRemove}
+            keyPlaceholder={keyPlaceholder}
+            valuePlaceholder={valuePlaceholder}
+            keyLabel={keyLabel}
+            valueLabel={valueLabel}
+            removeLabel={removeLabel}
+          />
+        ))}
+      </Box>
+      <Box>
+        <Button variant="text" color="primary" size="small" startIcon={<Plus />} onClick={onAdd}>
+          {addLabel}
+        </Button>
+      </Box>
     </Stack>
   );
 }

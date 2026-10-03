@@ -10,7 +10,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -187,8 +186,11 @@ func (e *openid4vpVerifier) authenticate(
 		return
 	}
 
-	for key, value := range authenticatedClaims {
-		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	if err := publishExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+		logger.Error(ctx.Context, "Failed to publish the presented claims", log.Error(err))
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrOpenID4VPVerificationFailed
+		return
 	}
 
 	if ctx.FlowType == providers.FlowTypeAuthentication && isAuthenticationWithoutLocalUserAllowed(ctx) {

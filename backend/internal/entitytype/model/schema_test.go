@@ -504,3 +504,44 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_UniqueOnlyAndType() {
 	s.True(subjectCandidates[0].Required)
 	s.Equal(TypeString, subjectCandidates[0].Type)
 }
+
+func (s *SchemaValidateTestSuite) TestValidateUniqueness_ArrayWithUniqueItems() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "array", "items": {"type": "string", "unique": true}}
+	}`))
+	s.Require().NoError(err)
+
+	var lookups []map[string]interface{}
+	exists := func(filters map[string]interface{}) (bool, error) {
+		lookups = append(lookups, filters)
+		return filters["email"] == "taken@example.com", nil
+	}
+
+	ok, err := schema.ValidateUniqueness(context.Background(),
+		map[string]interface{}{"email": []interface{}{"a@example.com", "b@example.com"}}, exists, s.logger)
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}, {"email": "b@example.com"}}, lookups,
+		"each item is looked up under the array's attribute name")
+
+	ok, err = schema.ValidateUniqueness(context.Background(),
+		map[string]interface{}{"email": []interface{}{"a@example.com", "taken@example.com"}}, exists, s.logger)
+	s.Require().NoError(err)
+	s.False(ok, "an item another entity holds is a conflict")
+}
+
+func (s *SchemaValidateTestSuite) TestValidateUniqueness_ArrayWithoutUniqueItemsSkipsLookup() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "array", "items": {"type": "string"}}
+	}`))
+	s.Require().NoError(err)
+
+	ok, err := schema.ValidateUniqueness(context.Background(),
+		map[string]interface{}{"email": []interface{}{"a@example.com"}},
+		func(map[string]interface{}) (bool, error) {
+			s.Fail("lookup must not run for non-unique items")
+			return false, nil
+		}, s.logger)
+	s.Require().NoError(err)
+	s.True(ok)
+}

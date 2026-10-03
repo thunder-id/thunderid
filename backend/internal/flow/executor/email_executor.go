@@ -159,6 +159,10 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 		return recipientEmail, nil
 	}
 
+	if recipientEmail, ok := core.GetExternalClaim(ctx.RuntimeData, emailAttr); ok && recipientEmail != "" {
+		return recipientEmail, nil
+	}
+
 	if recipientEmail, ok := ctx.UserInputs[emailAttr]; ok && recipientEmail != "" {
 		return recipientEmail, nil
 	}
@@ -188,6 +192,11 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 func (e *emailExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
 	templateData := template.TemplateData{}
 
+	if identity := core.GetExternalIdentity(ctx.RuntimeData); identity != nil {
+		for k, v := range identity.Claims {
+			templateData[k] = fmt.Sprintf("%v", v)
+		}
+	}
 	if ctx.RuntimeData != nil {
 		for k, v := range ctx.RuntimeData {
 			templateData[k] = fmt.Sprintf("%v", v)

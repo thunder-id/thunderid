@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -381,4 +382,59 @@ func (s *UtilsTestSuite) TestResolvePlaceholderSpecialCharactersInValue() {
 			s.Equal(tt.expected, result)
 		})
 	}
+}
+
+// externalIdentityData is runtime data holding an external identity with the given claims.
+func externalIdentityData(claims map[string]interface{}) map[string]string {
+	encoded, err := json.Marshal(ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims})
+	if err != nil {
+		panic(err)
+	}
+	return map[string]string{common.RuntimeKeyExternalIdentity: string(encoded)}
+}
+
+func (s *UtilsTestSuite) TestGetExternalClaim() {
+	data := externalIdentityData(map[string]interface{}{"email": "a@example.com", "email_verified": true})
+
+	value, ok := GetExternalClaim(data, "email")
+	s.True(ok)
+	s.Equal("a@example.com", value)
+
+	value, ok = GetExternalClaim(data, "email_verified")
+	s.True(ok)
+	s.Equal("true", value)
+
+	_, ok = GetExternalClaim(data, "given_name")
+	s.False(ok)
+	_, ok = GetExternalClaim(map[string]string{}, "email")
+	s.False(ok)
+	_, ok = GetExternalClaim(map[string]string{common.RuntimeKeyExternalIdentity: "{"}, "email")
+	s.False(ok)
+}
+
+// A claim resolves a placeholder, and a value an executor set in runtime data still wins over it.
+func (s *UtilsTestSuite) TestResolvePlaceholderFromExternalClaims() {
+	ctx := &providers.NodeContext{
+		RuntimeData: externalIdentityData(map[string]interface{}{"email": "claim@example.com"}),
+		UserInputs:  map[string]string{},
+	}
+	s.Equal("claim@example.com", ResolvePlaceholder(ctx, "{{ctx(email)}}", nil, nil, nil))
+
+	ctx.RuntimeData["email"] = "runtime@example.com"
+	s.Equal("runtime@example.com", ResolvePlaceholder(ctx, "{{ctx(email)}}", nil, nil, nil))
+}
+
+func (s *UtilsTestSuite) TestCollectMissingInputsSatisfiedByExternalClaim() {
+	ctx := &providers.NodeContext{
+		Context:     context.Background(),
+		RuntimeData: externalIdentityData(map[string]interface{}{"email": "a@example.com"}),
+	}
+
+	missing := collectMissingInputs(ctx, nil, []providers.Input{
+		{Identifier: "email", Required: true},
+		{Identifier: "given_name", Required: true},
+	}, log.GetLogger())
+
+	s.Len(missing, 1)
+	s.Equal("given_name", missing[0].Identifier)
 }

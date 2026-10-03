@@ -5,7 +5,6 @@ package executor
 
 import (
 	"errors"
-	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -24,9 +23,6 @@ import (
 const (
 	oidcAuthLoggerComponentName = "OIDCAuthExecutor"
 )
-
-// idTokenNonUserAttributes contains the list of non-user attributes that are expected in the ID token.
-var idTokenNonUserAttributes = []string{"aud", "exp", "iat", "iss", "at_hash", "azp", "nonce", "sub"}
 
 // oidcAuthExecutorInterface defines the interface for OIDC authentication executors.
 type oidcAuthExecutorInterface interface {
@@ -148,10 +144,12 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return nil
 	}
 
+	returnedState := consumeFederatedCallbackInputs(ctx)
+
 	// Validate the OAuth state parameter to prevent CSRF attacks.
 	// State is validated only when the client sends it back. Clients that handle CSRF
 	// protection client-side (e.g., via sessionStorage) may omit it.
-	if returnedState, ok := ctx.UserInputs[userInputState]; ok && returnedState != "" {
+	if returnedState != "" {
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
 			logger.Debug(ctx.Context, "OAuth state mismatch")
@@ -207,13 +205,18 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 	execResp.AuthUser = authUser
 
-	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
+	if !validateFederatedIdentifierConsistency(ctx, idpID, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
 
-	copyFederatedAttributesToRuntimeData(execResp, federatedAttributes)
+	// The connection id lives in this node's properties, which later nodes cannot read. Publish it
+	// with the subject so linking and provisioning can record the federated link.
+	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
+	if err := publishExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
+		return err
+	}
 
 	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
 
@@ -232,29 +235,4 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	execResp.Status = providers.ExecComplete
 	return nil
-}
-
-// getContextUserAttributes extracts user-facing attributes from the external claims map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oidcAuthExecutor) getContextUserAttributes(execResp *providers.ExecutorResponse,
-	claims map[string]interface{}) map[string]interface{} {
-	userClaims := make(map[string]interface{})
-
-	for attr, val := range claims {
-		if !slices.Contains(idTokenNonUserAttributes, attr) {
-			userClaims[attr] = systemutils.ConvertInterfaceValueToString(val)
-		}
-	}
-
-	// Append email to runtime data if available.
-	if email, ok := userClaims[userAttributeEmail]; ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-			execResp.RuntimeData[userAttributeEmail] = emailStr
-		}
-	}
-
-	return userClaims
 }

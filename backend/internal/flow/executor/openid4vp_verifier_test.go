@@ -191,9 +191,9 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, providers.ExecComplete, resp.Status)
-	// Runtime attributes from authn provider are stored in RuntimeData
-	assert.Equal(t, "sub-1", resp.RuntimeData[userAttributeSub])
-	assert.Equal(t, "Erika", resp.RuntimeData["given_name"])
+	// Claims from the authn provider are published in the external identity entry
+	assert.Equal(t, "sub-1", publishedClaim(resp.RuntimeData, userAttributeSub))
+	assert.Equal(t, "Erika", publishedClaim(resp.RuntimeData, "given_name"))
 	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
 	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
 	mockAuthnProvider.AssertExpectations(t)

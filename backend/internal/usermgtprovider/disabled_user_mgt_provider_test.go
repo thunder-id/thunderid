@@ -37,3 +37,10 @@ func (suite *DisabledUserMgtProviderTestSuite) TestCreateUserIsRejected() {
 	suite.NotNil(svcErr)
 	suite.Equal(ErrorUserProvisioningDisabled.Code, svcErr.Code)
 }
+
+func (suite *DisabledUserMgtProviderTestSuite) TestDeleteUserIsRejected() {
+	svcErr := suite.provider.DeleteUser(context.Background(), testUserID)
+
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorUserProvisioningDisabled.Code, svcErr.Code)
+}

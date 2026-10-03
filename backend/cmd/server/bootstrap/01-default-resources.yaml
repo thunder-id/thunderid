@@ -5856,6 +5856,10 @@ translations:
     forms.credentials.links.sign_up.label: Sign up
     forms.schema_attrs.title: Tell us about you
     forms.schema_attrs.actions.continue.label: Continue
+    forms.link_prompt.title: Link your account
+    forms.link_prompt.description: This sign-in matched the account below. Do you want to link to it permanently?
+    forms.link_prompt.actions.confirm.label: Link account
+    forms.link_prompt.actions.reject.label: No, I want a separate account
   signup:
     images.app_logo.alt: Application logo
     forms.credentials.title: Sign Up

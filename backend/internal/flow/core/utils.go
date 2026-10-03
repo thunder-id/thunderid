@@ -4,13 +4,53 @@
 package core
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// ExternalIdentity is what an external party (a federated identity provider or a credential issuer)
+// asserted, as published under common.RuntimeKeyExternalIdentity. IdpID and Sub are set only for a
+// federated connection.
+type ExternalIdentity struct {
+	IdpID  string                 `json:"idpId,omitempty"`
+	Sub    string                 `json:"sub,omitempty"`
+	Claims map[string]interface{} `json:"claims,omitempty"`
+}
+
+// GetExternalIdentity decodes the external identity from runtime data. It returns nil when none is
+// published or the entry does not decode.
+func GetExternalIdentity(runtimeData map[string]string) *ExternalIdentity {
+	raw := runtimeData[common.RuntimeKeyExternalIdentity]
+	if raw == "" {
+		return nil
+	}
+	var identity ExternalIdentity
+	if err := json.Unmarshal([]byte(raw), &identity); err != nil {
+		return nil
+	}
+	return &identity
+}
+
+// GetExternalClaim returns one claim of the external identity as a string, and whether it is present.
+// Readers of attribute values consult it after their own sources. Reads of flow control state never
+// do, which is what keeps an external party from steering the flow.
+func GetExternalClaim(runtimeData map[string]string, name string) (string, bool) {
+	identity := GetExternalIdentity(runtimeData)
+	if identity == nil {
+		return "", false
+	}
+	value, ok := identity.Claims[name]
+	if !ok {
+		return "", false
+	}
+	return systemutils.ConvertInterfaceValueToString(value), true
+}
 
 // placeholderPattern matches {{ctx(key)}} with optional whitespace.
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
@@ -21,6 +61,13 @@ var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
 func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
 	authnProvider providers.AuthnProviderManager, logger *log.Logger) string {
+	return resolvePlaceholder(ctx, value, execResp, authnProvider, logger, true)
+}
+
+// resolvePlaceholder resolves placeholders as ResolvePlaceholder does, falling back to the external
+// identity's claims only when allowExternalClaims is set. Flow control reads leave it unset.
+func resolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager, logger *log.Logger, allowExternalClaims bool) string {
 	if ctx == nil {
 		return value
 	}
@@ -67,6 +114,11 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		// Check runtime data first
 		if runtimeValue, ok := ctx.RuntimeData[key]; ok && runtimeValue != "" {
 			return runtimeValue
+		}
+		if allowExternalClaims {
+			if claimValue, ok := GetExternalClaim(ctx.RuntimeData, key); ok && claimValue != "" {
+				return claimValue
+			}
 		}
 
 		// Check user inputs next
@@ -155,6 +207,11 @@ func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs ma
 					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
 				continue
 			}
+		}
+		if _, ok := GetExternalClaim(ctx.RuntimeData, input.Identifier); ok {
+			logger.Debug(ctx.Context, "Input available in external claims, skipping",
+				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+			continue
 		}
 		if !input.Required && IsOptionalInputPrompted(presentedOptionalInputs, input.Identifier) {
 			logger.Debug(ctx.Context, "Optional input already prompted, skipping",

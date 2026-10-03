@@ -25,6 +25,10 @@ var (
 	// ErrAmbiguousEntity is returned when multiple entities match the provided filters.
 	ErrAmbiguousEntity = errors.New("ambiguous entity")
 
+	// ErrFederatedIdentityConflict is returned when a federated identity is already linked to another
+	// entity.
+	ErrFederatedIdentityConflict = errors.New("federated identity is linked to another entity")
+
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
 

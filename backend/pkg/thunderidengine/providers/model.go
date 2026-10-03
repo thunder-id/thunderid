@@ -445,6 +445,15 @@ type EntityReference struct {
 	OUID           string `json:"ouId"`
 }
 
+// FederatedCandidates are the entities a pending federated identity's account-linking attributes
+// matched, sorted by id, along with the attribute values that matched, keyed by local attribute
+// name. Different attributes can match different entities and one attribute several, and
+// verification decides which one is the End-User's.
+type FederatedCandidates struct {
+	EntityIDs         []string
+	MatchedAttributes map[string]string
+}
+
 // GetAttributesMetadata holds metadata used when retrieving entity attributes.
 type GetAttributesMetadata struct {
 	Locale          string              `json:"locale"`
@@ -806,10 +815,10 @@ type UserTypeAttributeMapping struct {
 	Attributes []AttributeMapping `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
 
-// AccountLinking configures which attributes resolve the local user for an incoming federated
-// identity when the subject identifier does not. Attributes is a list of external claim names (each
-// resolved to its local counterpart via the IdP's attribute mappings); those with a value are matched
-// together to resolve a unique local user.
+// AccountLinking configures which attributes name an existing local user for an incoming federated
+// identity that has no recorded link. Attributes is a list of external claim names. Each one matches
+// on every local attribute the IdP's attribute mappings copy it to and on the local attribute of the
+// same name; every attribute with a value must match.
 type AccountLinking struct {
 	Attributes []string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
 }
