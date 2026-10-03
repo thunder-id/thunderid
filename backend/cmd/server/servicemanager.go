@@ -278,7 +278,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	otpCoreService := otp.Initialize(notifOTPService)
 
 	// Initialize federated authentication services.
-	oauthAuthnService := authnOAuth.Initialize(idpService, entityProvider)
+	oauthAuthnService := authnOAuth.Initialize(idpService)
 	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService)
 	googleAuthnService := google.Initialize(oidcAuthnService, jwtService)
 	githubAuthnService := github.Initialize(oauthAuthnService)

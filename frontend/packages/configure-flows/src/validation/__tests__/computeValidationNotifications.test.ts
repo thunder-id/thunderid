@@ -694,6 +694,105 @@ describe('computeValidationNotifications', () => {
     });
   });
 
+  describe('Account linking reject action rule', () => {
+    const rejectButtonNode = (nodeId: string, buttonId: string): Node =>
+      createNode({
+        id: nodeId,
+        data: {
+          components: [
+            {
+              id: 'block_1',
+              type: 'BLOCK',
+              category: 'BLOCK',
+              components: [
+                {id: buttonId, type: 'ACTION', category: 'ACTION', eventType: 'SUBMIT', actionType: 'REJECT'},
+              ],
+            },
+          ],
+        } as unknown as StepData,
+      });
+
+    const linkingExecutorNode = (nodeId: string): Node =>
+      createNode({
+        id: nodeId,
+        data: {action: {executor: {name: 'LinkingExecutor'}}} as unknown as StepData,
+      });
+
+    const edge = (source: string, sourceHandle: string, target: string) =>
+      ({id: `${source}-${target}`, source, sourceHandle, target}) as Edge;
+
+    it('should accept a reject button wired back to the linking step', () => {
+      const nodes = [rejectButtonNode('prompt_1', 'action_reject'), linkingExecutorNode('linking')];
+      const edges = [edge('prompt_1', 'action_reject_NEXT', 'linking')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, edges);
+
+      expect(result.has('action_reject_LINKING_REJECT_INVALID_TARGET')).toBe(false);
+      expect(result.has('action_reject_LINKING_REJECT_NOT_CONNECTED')).toBe(false);
+    });
+
+    it('should report a reject button that leads somewhere else', () => {
+      const nodes = [
+        rejectButtonNode('prompt_1', 'action_reject'),
+        linkingExecutorNode('linking'),
+        createNode({id: 'provisioning'}),
+      ];
+      const edges = [edge('prompt_1', 'action_reject_NEXT', 'provisioning')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, edges);
+
+      const notification = result.get('action_reject_LINKING_REJECT_INVALID_TARGET')!;
+      expect(notification).toBeDefined();
+      // Semantically wrong rather than structurally broken: the server refuses the
+      // save either way, so this must not block the author mid-draw.
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('action_reject')).toBe(true);
+    });
+
+    it('should report a reject button with no outgoing connection', () => {
+      const nodes = [rejectButtonNode('prompt_1', 'action_reject'), linkingExecutorNode('linking')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, []);
+
+      const notification = result.get('action_reject_LINKING_REJECT_NOT_CONNECTED')!;
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('action_reject')).toBe(true);
+    });
+
+    it('should stay silent in a flow with no linking step', () => {
+      const nodes = [rejectButtonNode('prompt_1', 'action_reject')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, []);
+
+      const linkingIds = [...result.keys()].filter((id) => id.includes('LINKING_REJECT'));
+      expect(linkingIds).toEqual([]);
+    });
+
+    // The confirmation is deliberately unchecked: it leads to the
+    // verification step and may point anywhere, so a rule here would flag a correct graph.
+    it('should ignore a confirm button pointing away from the linking step', () => {
+      const nodes = [
+        createNode({
+          id: 'prompt_1',
+          data: {
+            components: [
+              {id: 'action_confirm', type: 'ACTION', category: 'ACTION', eventType: 'SUBMIT', actionType: 'CONFIRM'},
+            ],
+          } as unknown as StepData,
+        }),
+        linkingExecutorNode('linking'),
+        createNode({id: 'password_prompt'}),
+      ];
+      const edges = [edge('prompt_1', 'action_confirm_NEXT', 'password_prompt')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES, edges);
+
+      const linkingIds = [...result.keys()].filter((id) => id.includes('LINKING_REJECT'));
+      expect(linkingIds).toEqual([]);
+    });
+  });
+
   describe('Rich text action wiring rule', () => {
     const NOTIFICATION_ID = 'rt_1_RICH_TEXT_ACTION_NOT_CONNECTED';
 

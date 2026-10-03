@@ -3,6 +3,7 @@
 
 import type {Edge, Node} from '@xyflow/react';
 import generateResourceId from './generateResourceId';
+import {toApiInputType} from './inputTypeMapping';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
@@ -273,6 +274,8 @@ function cleanComponents(components: Element[], promoteSubmit = false): Record<s
       const componentWithProps = component as Element & {name?: string; ref?: string};
       const ref = componentWithProps.name ?? componentWithProps.ref ?? component.id;
       cleanedComponent['ref'] = ref;
+      // The API names the boolean input BOOLEAN_INPUT and rejects the Console's CHECKBOX.
+      cleanedComponent['type'] = toApiInputType(component.type);
     }
 
     // For ACTION category components, derive eventType based on context.
@@ -319,7 +322,7 @@ function extractInputs(components: Element[]): FlowInput[] {
 
       inputs.push({
         ref: component.id,
-        type: component.type, // The type is already the API type (TEXT_INPUT, PASSWORD_INPUT, etc.)
+        type: toApiInputType(component.type),
         identifier,
         required: isRequired,
       });
@@ -372,7 +375,7 @@ function extractPrompts(components: Element[], nodeId: string, edges: Edge[]): F
 
         inputs.push({
           ref: component.id,
-          type: component.type,
+          type: toApiInputType(component.type),
           identifier,
           required: componentWithProps.required ?? false,
         });
@@ -793,8 +796,16 @@ function collectInputsForExecutionNodes(
       return flowNode;
     }
 
-    // Extract inputs from the PROMPT node's components
-    const inputs = extractInputs(precedingPromptNode.data.components);
+    // A chooser offers several alternatives from one screen, each with its own inputs. Prefer the
+    // inputs of the option that routes here, already scoped by extractPrompts, over every input on
+    // the screen: the latter makes this executor demand fields that a different option collects.
+    // Screens with no matching prompt (display-only views wired through `next`) still fall back to
+    // the whole component tree.
+    const routingPrompt = flowNodes
+      .find((node) => node.id === precedingPromptNode.id)
+      ?.prompts?.find((prompt) => prompt.action?.nextNode === flowNode.id);
+
+    const inputs = routingPrompt ? (routingPrompt.inputs ?? []) : extractInputs(precedingPromptNode.data.components);
 
     if (inputs.length > 0 && flowNode.executor?.name) {
       return {

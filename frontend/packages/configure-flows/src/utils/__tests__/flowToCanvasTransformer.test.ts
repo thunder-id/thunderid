@@ -3,6 +3,7 @@
 
 import {describe, it, expect} from 'vitest';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
+import {ElementTypes} from '../../models/elements';
 import type {FlowDefinitionResponse, FlowNode} from '../../models/responses';
 import {StaticStepTypes, StepTypes} from '../../models/steps';
 import {transformFlowToCanvas} from '../flowToCanvasTransformer';
@@ -94,6 +95,43 @@ describe('flowToCanvasTransformer', () => {
           category: 'INTERFACE',
         });
         expect(result.nodes[0].data.components).toHaveLength(1);
+      });
+
+      it('should map a BOOLEAN_INPUT component back to the checkbox element', () => {
+        const flowData = createBaseFlowData([
+          {
+            id: 'prompt-node',
+            type: 'PROMPT',
+            layout: {position: {x: 200, y: 0}, size: {width: 300, height: 200}},
+            meta: {
+              components: [
+                {
+                  id: 'block-1',
+                  type: 'BLOCK',
+                  category: 'BLOCK',
+                  components: [
+                    {
+                      id: 'checkbox-1',
+                      type: 'BOOLEAN_INPUT',
+                      category: 'FIELD',
+                      ref: 'remember_me',
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        const components = result.nodes[0].data.components as unknown as Record<string, unknown>[];
+        const block = components[0];
+        const checkbox = (block.components as Record<string, unknown>[])[0];
+
+        expect(checkbox.type).toBe(ElementTypes.Checkbox);
+        expect(checkbox.ref).toBe('remember_me');
       });
 
       it('should transform TASK_EXECUTION node correctly', () => {

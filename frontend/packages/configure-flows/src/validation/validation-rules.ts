@@ -414,6 +414,81 @@ export const signOutConfirmActionRule: GraphValidationRule = (nodes: Node[], edg
 };
 
 /**
+ * Collects every element in a step that raises the linking refusal action,
+ * including ones nested inside containers such as a form block.
+ */
+function collectLinkingRejectElements(elements: FlowElement[] | undefined): FlowElement[] {
+  if (!elements) {
+    return [];
+  }
+
+  return elements.flatMap((element) => [
+    ...((element as FlowElement & {actionType?: string}).actionType === PromptActionTypes.Reject ? [element] : []),
+    ...collectLinkingRejectElements(element.components),
+  ]);
+}
+
+/**
+ * The linking node reads the refusal, so the button raising it has to lead back
+ * to that node: a prompt forwards its action type to whatever the action points
+ * at, and no further. Wired elsewhere, or left unwired, the refusal never
+ * arrives and the node reads the pass as a verification nobody completed.
+ *
+ * Only the refusal is checked here. The confirmation must lead to a CALL step
+ * that runs a verification flow, or to verification steps in this flow that
+ * return to the linking node, which the server enforces when the flow is saved.
+ *
+ * Mirrors the handle convention the serializer uses, where a button's outgoing
+ * edge leaves the step from `${elementId}_NEXT`.
+ */
+export const linkingRejectActionRule: GraphValidationRule = (nodes: Node[], edges: Edge[]): Notification[] => {
+  const notifications: Notification[] = [];
+
+  const linkingNodeIds = new Set(
+    nodes.filter((node) => getNodeExecutorName(node) === ExecutionTypes.Linking).map((node) => node.id),
+  );
+
+  // Without a linking node in the flow, a REJECT button belongs to something else.
+  if (linkingNodeIds.size === 0) {
+    return notifications;
+  }
+
+  for (const node of nodes) {
+    const elements = collectLinkingRejectElements((node.data as StepData | undefined)?.components);
+
+    for (const element of elements) {
+      const handleId = `${element.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`;
+      const edge = edges.find((candidate) => candidate.source === node.id && candidate.sourceHandle === handleId);
+
+      if (!edge) {
+        notifications.push(
+          createGraphElementNotification(
+            `${element.id}_LINKING_REJECT_NOT_CONNECTED`,
+            'flows:core.validation.linking.rejectNotConnected',
+            element,
+            NotificationType.WARNING,
+          ),
+        );
+        continue;
+      }
+
+      if (!linkingNodeIds.has(edge.target)) {
+        notifications.push(
+          createGraphElementNotification(
+            `${element.id}_LINKING_REJECT_INVALID_TARGET`,
+            'flows:core.validation.linking.rejectInvalidTarget',
+            element,
+            NotificationType.WARNING,
+          ),
+        );
+      }
+    }
+  }
+
+  return notifications;
+};
+
+/**
  * Collects every rich text that is wired as an interactive link, including ones
  * nested inside containers such as a form block.
  */
@@ -477,7 +552,11 @@ export const richTextActionWiringRule: GraphValidationRule = (nodes: Node[], edg
  */
 export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [richTextActionWiringRule];
 
-export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [ssoPairingRule, ...COMMON_GRAPH_VALIDATION_RULES];
+export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
+  ssoPairingRule,
+  linkingRejectActionRule,
+  ...COMMON_GRAPH_VALIDATION_RULES,
+];
 
 /**
  * Rules that apply to sign-out flows.

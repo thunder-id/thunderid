@@ -135,9 +135,6 @@ var (
 			"username": map[string]interface{}{
 				"type": "string",
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},
@@ -435,8 +432,8 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) TestGoogleRegistrationWithGroupA
 	ts.Require().Equal(googleRegGroupRoleTestAppID, jwtClaims.Aud, "Expected aud to match application ID")
 
 	// Step 4: Verify user was created
-	user, err := testutils.FindUserByAttribute("sub", "google-group-role-user-789")
-	ts.Require().NoError(err, "Failed to retrieve user by sub")
+	user, err := testutils.GetUserFromAssertion(completeFlowStep.Assertion)
+	ts.Require().NoError(err, "Failed to retrieve the user the assertion was issued for")
 	ts.Require().NotNil(user, "User should be found after registration")
 
 	// Store the created user for cleanup

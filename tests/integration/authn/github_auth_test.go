@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	flowcommon "github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -38,9 +39,6 @@ var githubEntityType = testutils.UserType{
 		"password": map[string]interface{}{
 			"type":       "string",
 			"credential": true,
-		},
-		"sub": map[string]interface{}{
-			"type": "string",
 		},
 		"email": map[string]interface{}{
 			"type": "string",
@@ -105,7 +103,6 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "githubuser",
 		"password":   "Test@1234",
-		"sub":        "12345",
 		"email":      "testuser@github.com",
 		"givenName":  "Test",
 		"familyName": "User",
@@ -150,11 +147,29 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Linking on email is what matches the identity to the local user while SetupSuite records
+		// its link through a verified linking flow.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(idp)
 	suite.Require().NoError(err, "Failed to create GitHub IDP")
 	suite.idpID = idpID
+
+	// This endpoint resolves a federated identity only through a recorded link and cannot record one
+	// itself, so record the local user's link once through a verified linking flow.
+	err = flowcommon.LinkFederatedIdentity(flowcommon.LinkRequest{
+		Handle:       "authn-github-link",
+		ExecutorName: "GithubOAuthExecutor",
+		IDPID:        idpID,
+		OUID:         suite.ouID,
+		UserType:     githubEntityType.Name,
+		Username:     "githubuser",
+		Password:     "Test@1234",
+	})
+	suite.Require().NoError(err, "Failed to record the federated link for the local user")
 }
 
 func (suite *GithubAuthTestSuite) TearDownSuite() {

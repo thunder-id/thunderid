@@ -1974,7 +1974,6 @@ spec:
         given_name: "Admin"
         name: "Administrator"
         phone_number: "+12345678920"
-        sub: "admin"
         username: "admin"
       credentials:
         password: "{{.ADMIN_PASSWORD}}"
@@ -1988,7 +1987,7 @@ spec:
       ouId: 01900000-0000-7000-8000-000000000001
       systemAttributes:
         display: username
-      schema: {"email":{"displayName":"Email","regex":"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$","required":true,"type":"string","unique":true},"family_name":{"displayName":"Last Name","required":false,"type":"string"},"given_name":{"displayName":"First Name","required":false,"type":"string"},"mobile_number":{"displayName":"Mobile Number","required":false,"type":"string"},"name":{"displayName":"Full Name","required":false,"type":"string"},"password":{"credential":true,"displayName":"Password","required":false,"type":"string"},"phone_number":{"displayName":"Phone Number","required":false,"type":"string"},"picture":{"displayName":"Picture","required":false,"type":"string"},"sub":{"displayName":"Subject","required":false,"type":"string"},"username":{"displayName":"Username","required":true,"type":"string","unique":true}}
+      schema: {"email":{"displayName":"Email","regex":"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$","required":true,"type":"string","unique":true},"family_name":{"displayName":"Last Name","required":false,"type":"string"},"given_name":{"displayName":"First Name","required":false,"type":"string"},"mobile_number":{"displayName":"Mobile Number","required":false,"type":"string"},"name":{"displayName":"Full Name","required":false,"type":"string"},"password":{"credential":true,"displayName":"Password","required":false,"type":"string"},"phone_number":{"displayName":"Phone Number","required":false,"type":"string"},"picture":{"displayName":"Picture","required":false,"type":"string"},"username":{"displayName":"Username","required":true,"type":"string","unique":true}}
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: ResourceReleaseBinding

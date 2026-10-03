@@ -4,14 +4,12 @@
 package oauth
 
 import (
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/idp"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 )
 
 // Initialize initializes the OAuth authentication service.
-func Initialize(idpSvc idp.IDPServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) OAuthAuthnServiceInterface {
+func Initialize(idpSvc idp.IDPServiceInterface) OAuthAuthnServiceInterface {
 	httpClient := syshttp.NewHTTPClient()
-	return newOAuthAuthnService(httpClient, idpSvc, entityProvider)
+	return newOAuthAuthnService(httpClient, idpSvc)
 }

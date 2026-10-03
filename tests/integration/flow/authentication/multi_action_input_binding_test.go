@@ -128,9 +128,6 @@ var (
 			"email": map[string]interface{}{
 				"type": "string",
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"givenName": map[string]interface{}{
 				"type": "string",
 			},
@@ -146,7 +143,6 @@ var (
 			"username": "multiactionuser",
 			"password": "testpassword",
 			"email": "multiactionuser@example.com",
-			"sub": "google-multi-action-user-123",
 			"givenName": "Multi",
 			"familyName": "Action"
 		}`),
@@ -227,11 +223,29 @@ func (ts *MultiActionInputBindingTestSuite) SetupSuite() {
 			{Name: "redirect_uri", Value: "http://localhost:3000/callback", IsSecret: false},
 			{Name: "scopes", Value: "openid email profile", IsSecret: false},
 		},
+		// Resolution is by recorded link only. Linking on email is what matches the identity to the
+		// local user while SetupSuite records that link through a verified linking flow.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(googleIDP)
 	ts.Require().NoError(err, "Failed to create Google IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// A federated sign-in resolves a local user only through a recorded link, so record the existing
+	// user's link once, the way an End-User would: through a verified linking flow.
+	err = common.LinkFederatedIdentity(common.LinkRequest{
+		Handle:       "multi-action-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         multiActionInputBindingTestOUID,
+		UserType:     multiActionInputBindingEntityType.Name,
+		Username:     "multiactionuser",
+		Password:     "testpassword",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := multiActionInputBindingFlow.Nodes.([]map[string]interface{})

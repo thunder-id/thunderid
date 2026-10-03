@@ -14,12 +14,30 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// publishExternalIdentity publishes what an external party (a federated identity provider or a
+// credential issuer) asserted as one RuntimeData entry, replacing any earlier one whole so the claims of
+// two sign-ins never mix. Claims never reach RuntimeData under their own names, so none can stand in
+// for flow control state.
+func publishExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string,
+	claims map[string]interface{}) error {
+	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
+	if err != nil {
+		return fmt.Errorf("failed to encode the external identity: %w", err)
+	}
+	if execResp.RuntimeData == nil {
+		execResp.RuntimeData = make(map[string]string)
+	}
+	execResp.RuntimeData[common.RuntimeKeyExternalIdentity] = string(encoded)
+	return nil
+}
 
 // revocationPlan is the trusted intent a flow's pre-processing node produces and the executors that
 // follow act on. It is never built from request input, so the criteria, breadth and reason recorded
@@ -231,36 +249,18 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
 	authnProvider providers.AuthnProviderManager) {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+
+	// An AuthUser with a side missing names nobody. GetEntityReference treats being asked in that
+	// state as a fault, logging an error that reads as a bug rather than the ordinary outcome it is
+	// here, so only ask when there is something to resolve.
+	if !execResp.AuthUser.IsAuthenticated() {
+		return
+	}
+
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr == nil && entityRef != nil {
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
-	}
-}
-
-// reservedAuthorizationRuntimeKeys must never be overwritten by an external claim of the same name.
-var reservedAuthorizationRuntimeKeys = map[string]bool{
-	common.RuntimeKeyMappedRoleIDs:     true,
-	common.RuntimeKeyMappedGroupIDs:    true,
-	common.RuntimeKeyMappedPermissions: true,
-}
-
-// copyFederatedAttributesToRuntimeData copies federatedAttributes into execResp.RuntimeData, skipping
-// reservedAuthorizationRuntimeKeys.
-func copyFederatedAttributesToRuntimeData(
-	execResp *providers.ExecutorResponse, federatedAttributes map[string]interface{},
-) {
-	if len(federatedAttributes) == 0 {
-		return
-	}
-	if execResp.RuntimeData == nil {
-		execResp.RuntimeData = make(map[string]string)
-	}
-	for key, value := range federatedAttributes {
-		if reservedAuthorizationRuntimeKeys[key] {
-			continue
-		}
-		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 	}
 }
 
@@ -315,39 +315,53 @@ func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *providers.NodeContex
 	return ok && val == dataValueTrue
 }
 
-// validateFederatedIdentifierConsistency checks if the federated identifiers from the authentication result
-// are consistent with any existing identifiers in the context (runtime data, user inputs, authenticated
-// user attributes).
-func validateFederatedIdentifierConsistency(ctx *providers.NodeContext,
+// validateFederatedIdentifierConsistency checks if the federated identity from the authentication result
+// is consistent with what the flow already holds. An earlier federated sign-in must be the same
+// identity: subjects are unique only within a connection, so the connection and subject are compared
+// together. The email is compared with runtime data, the earlier external identity's claims, user
+// inputs and the authenticated user's attributes.
+func validateFederatedIdentifierConsistency(ctx *providers.NodeContext, idpID string,
 	federatedIdentifiers, existingIdentifiers map[string]interface{}) bool {
 	if len(federatedIdentifiers) == 0 {
 		return true
 	}
 
+	sub := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[userAttributeSub])
+	if earlier := core.GetExternalIdentity(ctx.RuntimeData); earlier != nil && earlier.Sub != "" &&
+		(earlier.IdpID != idpID || earlier.Sub != sub) {
+		return false
+	}
+
 	// TODO: Refine this well-known-key comparison when IDP-to-local attribute mapping is supported
-	fedIdfConsistencyKeys := []string{userAttributeEmail, userAttributeSub}
-	for _, key := range fedIdfConsistencyKeys {
-		federatedValue := ""
-		if value, ok := federatedIdentifiers[key]; ok {
-			federatedValue = systemutils.ConvertInterfaceValueToString(value)
-		}
-
-		if federatedValue == "" {
-			continue
-		}
-
-		if value, ok := ctx.RuntimeData[key]; ok && value != "" && value != federatedValue {
-			return false
-		}
-		if value, ok := ctx.UserInputs[key]; ok && value != "" && value != federatedValue {
-			return false
-		}
-		if value := existingIdentifiers[key]; value != nil &&
-			systemutils.ConvertInterfaceValueToString(value) != "" &&
-			systemutils.ConvertInterfaceValueToString(value) != federatedValue {
-			return false
-		}
+	email := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[userAttributeEmail])
+	if email == "" {
+		return true
+	}
+	if value := ctx.RuntimeData[userAttributeEmail]; value != "" && value != email {
+		return false
+	}
+	if value, _ := core.GetExternalClaim(ctx.RuntimeData, userAttributeEmail); value != "" && value != email {
+		return false
+	}
+	if value := ctx.UserInputs[userAttributeEmail]; value != "" && value != email {
+		return false
+	}
+	if value := systemutils.ConvertInterfaceValueToString(existingIdentifiers[userAttributeEmail]); value != "" &&
+		value != email {
+		return false
 	}
 
 	return true
+}
+
+// consumeFederatedCallbackInputs takes the authorization code and state off the context and returns
+// the state, so the caller can still validate it. UserInputs persist for the whole execution, so a
+// code left behind is read by the next federated node as its own: that node skips its redirect and
+// exchanges this connection's code at its own token endpoint. A linking node that sends a candidate
+// to verification forwards to exactly such a node.
+func consumeFederatedCallbackInputs(ctx *providers.NodeContext) string {
+	returnedState := ctx.UserInputs[userInputState]
+	delete(ctx.UserInputs, userInputCode)
+	delete(ctx.UserInputs, userInputState)
+	return returnedState
 }

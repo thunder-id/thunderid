@@ -887,6 +887,8 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateSSOCheckExecutor(node, nodeIndex)
 	case executormeta.ExecutorNameSession:
 		return v.validateSessionExecutor(node, nodes)
+	case executormeta.ExecutorNameLinking:
+		return v.validateLinkingExecutor(node, nodeIndex)
 	}
 	return nil
 }
@@ -1077,6 +1079,226 @@ func (v *flowValidator) validateSessionExecutor(
 			"by any SSOCheckExecutor via checkpointRef",
 		Params: map[string]string{"nodeID": node.ID},
 	})
+}
+
+// validateLinkingExecutor checks what a linking node needs beyond its own properties: somewhere to
+// forward a candidate it withholds, and a prompt there that raises its refusal where this node can
+// read it.
+func (v *flowValidator) validateLinkingExecutor(
+	node *providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if node.OnIncomplete == "" {
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.linking_requires_on_incomplete_description",
+			DefaultValue: "Node '{{param(nodeID)}}': LinkingExecutor requires " +
+				"onIncomplete, which must point to the step that verifies the account",
+			Params: map[string]string{"nodeID": node.ID},
+		})
+	}
+	prompt := nodeIndex[node.OnIncomplete]
+	if err := validateLinkingRejectActions(node, prompt); err != nil {
+		return err
+	}
+	if err := validateLinkingConfirmActions(node, prompt, nodeIndex); err != nil {
+		return err
+	}
+	return validateLinkingFailurePath(node, nodeIndex)
+}
+
+// validateLinkingRejectActions checks that every REJECT action on the linking prompt points back
+// at the linking node itself. A prompt forwards the action type it raised to the node that action
+// points at, and no further, so one routed anywhere else is silently inert at runtime: the linking
+// node sees no refusal and reports a verification that nobody completed.
+//
+// A missing target is left to the rule that validates node references, and any action type this
+// node does not read is none of its business.
+func validateLinkingRejectActions(
+	node *providers.NodeDefinition, target *providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if target == nil {
+		return nil
+	}
+	for _, prompt := range target.Prompts {
+		if prompt.Action == nil || common.ActionType(prompt.Action.Type) != common.ActionTypeReject {
+			continue
+		}
+		if prompt.Action.NextNode == node.ID {
+			continue
+		}
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.linking_decision_action_misrouted_description",
+			DefaultValue: "Node '{{param(nodeID)}}': the '{{param(actionType)}}' action " +
+				"'{{param(actionRef)}}' on '{{param(promptNodeID)}}' must point back to this node, " +
+				"since a forwarded action type reaches only the node it points at",
+			Params: map[string]string{
+				"nodeID":       node.ID,
+				"actionType":   string(common.ActionTypeReject),
+				"actionRef":    prompt.Action.Ref,
+				"promptNodeID": target.ID,
+			},
+		})
+	}
+	return nil
+}
+
+// validateLinkingConfirmActions checks that every CONFIRM action on the linking prompt starts a
+// verification that comes back to the linking node. It may call a verification flow through a CALL
+// node whose onSuccess returns to the linking node, or run verification steps in this flow. Either
+// way the linking node restores its checkpoint when verification comes back, which is what removes
+// whatever the steps wrote. Returning anywhere else skips that pass, and with it the check of the
+// verified account against the candidates and the link write.
+func validateLinkingConfirmActions(node, prompt *providers.NodeDefinition,
+	nodeIndex map[string]*providers.NodeDefinition) *tidcommon.ServiceError {
+	if prompt == nil {
+		return nil
+	}
+	for _, p := range prompt.Prompts {
+		if p.Action == nil || common.ActionType(p.Action.Type) != common.ActionTypeConfirm {
+			continue
+		}
+		target := nodeIndex[p.Action.NextNode]
+		if target == nil {
+			continue
+		}
+		params := map[string]string{
+			"nodeID":       node.ID,
+			"actionType":   string(common.ActionTypeConfirm),
+			"actionRef":    p.Action.Ref,
+			"promptNodeID": prompt.ID,
+		}
+		if target.Type == string(common.NodeTypeCall) {
+			if target.OnSuccess != node.ID {
+				params["callNodeID"] = target.ID
+				return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+					Key: "error.flowmgtservice.linking_verification_call_not_returning_description",
+					DefaultValue: "Node '{{param(nodeID)}}': the CALL node '{{param(callNodeID)}}' that " +
+						"the '{{param(actionType)}}' action '{{param(actionRef)}}' on " +
+						"'{{param(promptNodeID)}}' points to must return to this node through onSuccess",
+					Params: params,
+				})
+			}
+			continue
+		}
+		if err := validateLinkingVerificationSegment(node, target, nodeIndex, params); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// linkingSegmentForbiddenExecutors are the executors that must not run between CONFIRM and the
+// return to the linking node: each would act before the checkpoint is restored and the verified
+// account is checked against the candidates.
+var linkingSegmentForbiddenExecutors = map[string]bool{
+	executormeta.ExecutorNameLinking:      true,
+	executormeta.ExecutorNameProvisioning: true,
+	executormeta.ExecutorNameAuthAssert:   true,
+}
+
+// validateLinkingVerificationSegment checks the verification steps a CONFIRM action runs in this
+// flow. The segment is every node reachable from the action's target without passing through the
+// linking node. It must not end the flow or run an executor that acts before the linking node settles
+// the verification, and it must lead back to the linking node.
+func validateLinkingVerificationSegment(node, start *providers.NodeDefinition,
+	nodeIndex map[string]*providers.NodeDefinition, params map[string]string) *tidcommon.ServiceError {
+	returns := false
+	visited := map[string]bool{start.ID: true}
+	queue := []*providers.NodeDefinition{start}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		forbidden := current.Type == string(common.NodeTypeEnd) ||
+			(current.Executor != nil && linkingSegmentForbiddenExecutors[current.Executor.Name])
+		if forbidden {
+			params["segmentNodeID"] = current.ID
+			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.linking_verification_segment_forbidden_node_description",
+				DefaultValue: "Node '{{param(nodeID)}}': the verification that the '{{param(actionType)}}' " +
+					"action '{{param(actionRef)}}' on '{{param(promptNodeID)}}' starts reaches " +
+					"'{{param(segmentNodeID)}}' before returning to this node, and must not end the flow, " +
+					"link, provision or sign in before it returns",
+				Params: params,
+			})
+		}
+
+		for _, ref := range collectAllNodeReferences([]providers.NodeDefinition{*current}) {
+			if ref.targetNodeID == node.ID {
+				returns = true
+				continue
+			}
+			next := nodeIndex[ref.targetNodeID]
+			if next == nil || visited[next.ID] {
+				continue
+			}
+			visited[next.ID] = true
+			queue = append(queue, next)
+		}
+	}
+
+	if !returns {
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.linking_verification_segment_not_returning_description",
+			DefaultValue: "Node '{{param(nodeID)}}': the verification that the '{{param(actionType)}}' " +
+				"action '{{param(actionRef)}}' on '{{param(promptNodeID)}}' starts never returns to " +
+				"this node",
+			Params: params,
+		})
+	}
+	return nil
+}
+
+// linkingFederatedExecutors are the executors that sign in at a connection, replacing whoever
+// verified with the identity the connection returns.
+var linkingFederatedExecutors = map[string]bool{
+	executormeta.ExecutorNameOAuth:      true,
+	executormeta.ExecutorNameOIDCAuth:   true,
+	executormeta.ExecutorNameGoogleAuth: true,
+	executormeta.ExecutorNameGitHubAuth: true,
+}
+
+// validateLinkingFailurePath checks that the linking node's onFailure does not lead back to it
+// without a federated sign-in on the way. A failure ends the linking node's cycle and leaves whoever
+// verified authenticated, so a node reached straight from its own failure would run a first pass,
+// find that account, and complete as it with no link written. A path through a federated executor's
+// onSuccess, such as onFailure to the sign-in prompt, signs in again first, so the search does not
+// follow that edge. A federated executor's other edges are taken without a sign-in, so they are
+// followed.
+func validateLinkingFailurePath(node *providers.NodeDefinition,
+	nodeIndex map[string]*providers.NodeDefinition) *tidcommon.ServiceError {
+	start := nodeIndex[node.OnFailure]
+	if start == nil {
+		return nil
+	}
+	visited := map[string]bool{start.ID: true}
+	queue := []*providers.NodeDefinition{start}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		federated := current.Executor != nil && linkingFederatedExecutors[current.Executor.Name]
+
+		for _, ref := range collectAllNodeReferences([]providers.NodeDefinition{*current}) {
+			if federated && ref.fieldName == "onSuccess" {
+				continue
+			}
+			if ref.targetNodeID == node.ID {
+				return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+					Key: "error.flowmgtservice.linking_failure_path_returns_description",
+					DefaultValue: "Node '{{param(nodeID)}}': the path from its onFailure target " +
+						"'{{param(failureNodeID)}}' must sign in at a connection again before it returns to " +
+						"this node",
+					Params: map[string]string{"nodeID": node.ID, "failureNodeID": start.ID},
+				})
+			}
+			next := nodeIndex[ref.targetNodeID]
+			if next == nil || visited[next.ID] {
+				continue
+			}
+			visited[next.ID] = true
+			queue = append(queue, next)
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

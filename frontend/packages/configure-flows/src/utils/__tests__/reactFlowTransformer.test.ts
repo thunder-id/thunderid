@@ -216,6 +216,53 @@ describe('reactFlowTransformer', () => {
         });
       });
 
+      it('should serialize a checkbox input as BOOLEAN_INPUT', () => {
+        const components: Element[] = [
+          {
+            id: 'block-1',
+            type: 'BLOCK',
+            category: ElementCategories.Block,
+            components: [
+              {
+                id: 'checkbox-1',
+                type: ElementTypes.Checkbox,
+                category: ElementCategories.Field,
+                ref: 'remember_me',
+                required: true,
+              } as unknown as Element,
+              {
+                id: 'button-1',
+                type: ElementTypes.Action,
+                category: ElementCategories.Action,
+                action: {onSuccess: 'next-node'},
+              } as Element,
+            ],
+          } as unknown as Element,
+        ];
+
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components})],
+          edges: [createEdge('edge-1', 'view-1', 'next-node', 'button-1_NEXT')],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        expect(result.nodes[0].prompts?.[0].inputs?.[0]).toEqual({
+          ref: 'checkbox-1',
+          type: 'BOOLEAN_INPUT',
+          identifier: 'remember_me',
+          required: true,
+        });
+
+        const block = result.nodes[0].meta?.components?.[0] as {components: Record<string, unknown>[]};
+
+        expect(block.components[0]).toMatchObject({
+          id: 'checkbox-1',
+          type: 'BOOLEAN_INPUT',
+          ref: 'remember_me',
+        });
+      });
+
       it('should extract actions from buttons', () => {
         const components: Element[] = [
           {
@@ -772,6 +819,63 @@ describe('reactFlowTransformer', () => {
         // Inputs are now inside executor
         expect(execNode?.executor?.inputs).toHaveLength(1);
         expect(execNode?.executor?.inputs?.[0].identifier).toBe('username');
+      });
+
+      it('should collect only the inputs of the chooser option that routes to the executor', () => {
+        const optionBlock = (id: string, fields: [string, string][], buttonId: string): Element =>
+          ({
+            id,
+            type: 'BLOCK',
+            category: ElementCategories.Block,
+            components: [
+              ...fields.map(
+                ([fieldId, fieldType]) =>
+                  ({
+                    id: fieldId,
+                    type: fieldType,
+                    category: ElementCategories.Field,
+                    name: fieldId,
+                  }) as unknown as Element,
+              ),
+              {id: buttonId, type: ElementTypes.Action, category: ElementCategories.Action} as Element,
+            ],
+          }) as unknown as Element;
+
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode(
+              'view-1',
+              StepTypes.View,
+              {x: 0, y: 0},
+              {
+                components: [
+                  optionBlock(
+                    'password-option',
+                    [
+                      ['username', ElementTypes.TextInput],
+                      ['password', ElementTypes.PasswordInput],
+                    ],
+                    'password-submit',
+                  ),
+                  optionBlock('otp-option', [['otp', ElementTypes.OtpInput]], 'otp-submit'),
+                ],
+              },
+            ),
+            createNode('exec-password', StepTypes.Execution, {x: 100, y: 0}, {action: {executor: {name: 'A'}}}),
+            createNode('exec-otp', StepTypes.Execution, {x: 100, y: 100}, {action: {executor: {name: 'B'}}}),
+          ],
+          edges: [
+            createEdge('edge-1', 'view-1', 'exec-password', 'password-submit_NEXT'),
+            createEdge('edge-2', 'view-1', 'exec-otp', 'otp-submit_NEXT'),
+          ],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const identifiersOf = (id: string): (string | undefined)[] | undefined =>
+          result.nodes.find((n) => n.id === id)?.executor?.inputs?.map((input) => input.identifier);
+        expect(identifiersOf('exec-password')).toEqual(['username', 'password']);
+        expect(identifiersOf('exec-otp')).toEqual(['otp']);
       });
 
       it('should use ref as execution input identifier when name is missing', () => {

@@ -901,7 +901,6 @@ bootstrap:
       ouHandle: default
       attributes:
         username: alice
-        sub: alice
         email: alice@example.com
         name: Alice Johnson
       credentials:

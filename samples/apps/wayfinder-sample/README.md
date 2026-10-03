@@ -120,7 +120,7 @@ The import creates:
 
 | Resource | Type | What it creates |
 |----------|------|-----------------|
-| `Customer` | User type | Consumer schema (`username`, `email`, `password`, `given_name`, `family_name`, `mobile_number`, `sub`) with self-registration enabled |
+| `Customer` | User type | Consumer schema (`username`, `email`, `password`, `given_name`, `family_name`, `mobile_number`) with self-registration enabled |
 | `Staff` | User type | Internal team schema (`username`, `email`, `password`, `displayName`) |
 | `wayfinder-agent` | Resource server | `agent:access` permission. Identifier: `http://localhost:8790/chat` |
 | `wayfinder` | Resource server | Booking and upgrade permissions, such as `booking:read` and `upgrade:process`. Protects both `/api/*` (REST) and `/mcp` (MCP tools) on the Wayfinder server. |

@@ -393,3 +393,63 @@ func (suite *RestAuthnProviderTestSuite) TestEnroll_Failure() {
 	suite.Equal(tidcommon.ClientErrorType, err.Type)
 	suite.Equal(authnprovidercm.ErrorCodeEnrollmentFailed, err.Code)
 }
+
+// --- LinkFederatedIdentity ---
+
+func (suite *RestAuthnProviderTestSuite) TestLinkFederatedIdentity_PostsTheDocumentedBody() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("/link-federated-identity", r.URL.Path)
+		suite.Equal(http.MethodPost, r.Method)
+
+		var req LinkFederatedIdentityRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		suite.Equal("idp-a", req.IDPID)
+		suite.Equal("sub-1", req.Sub)
+		token, _ := req.EntityReferenceToken.(map[string]interface{})
+		suite.Equal("user123", token["userID"])
+
+		// The success response carries no body, which is why postAndCheck exists.
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "apikey123", "X-Correlation-ID", suite.setupMockClient())
+	token := map[string]interface{}{"userID": "user123"}
+
+	suite.Nil(provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "sub-1"))
+}
+
+func (suite *RestAuthnProviderTestSuite) TestLinkFederatedIdentity_ClientErrorDecodes() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"code":        authnprovidercm.ErrorCodeInvalidRequest,
+			"message":     "Unsupported",
+			"description": "This provider does not store federated links",
+		})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
+	svcErr := provider.LinkFederatedIdentity(context.Background(),
+		map[string]interface{}{"userID": "user123"}, "idp-a", "sub-1")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest, svcErr.Code)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestLinkFederatedIdentity_ServerErrorIsInternal() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"code": "SOME-500", "message": "boom"})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
+	svcErr := provider.LinkFederatedIdentity(context.Background(),
+		map[string]interface{}{"userID": "user123"}, "idp-a", "sub-1")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
+}

@@ -234,9 +234,6 @@ var (
 	httpRequestRuntimeDataEntityType = testutils.UserType{
 		Name: "http_request_runtime_user",
 		Schema: map[string]interface{}{
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},
@@ -560,7 +557,7 @@ func (ts *HTTPRequestRuntimeDataRegistrationFlowTestSuite) TestHTTPRequestRuntim
 	ts.Require().Contains(notificationRequest.Headers["X-Idp-Id"], ts.idpID)
 	ts.Require().Contains(notificationRequest.Headers["X-Sender-Id"], ts.senderID)
 
-	user, err := testutils.FindUserByAttribute("sub", "runtime-data-google-user-123")
+	user, err := testutils.GetUserFromAssertion(flowStep.Assertion)
 	ts.Require().NoError(err, "User lookup should succeed after registration")
 	ts.Require().NotNil(user, "User should be created after flow completion")
 	if user != nil {

@@ -100,6 +100,10 @@ const (
 	DataOTPNumericOnly = "otpNumericOnly"
 	// DataClientSecret carries a regenerated client secret back to the caller.
 	DataClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
+	// DataLinkingPromptDetails is the key used to surface the account-linking attribute values the
+	// matched candidate was found on to the linking prompt, as a JSON array of {"label","value"}
+	// objects.
+	DataLinkingPromptDetails = "linkingPromptDetails"
 )
 
 // Error assertion claims.
@@ -241,8 +245,31 @@ const (
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"
 	// RuntimeKeyEntityState holds the entity existence state, set by the IdentifyingExecutor in
-	// check_state mode or by the federated auth executors from their account-linking result.
+	// check_state mode, or by the federated auth executors and the linking executor once the
+	// identity resolves to an entity.
 	RuntimeKeyEntityState = "entityState"
+	// RuntimeKeyExternalIdentity holds what an external party asserted, as the JSON encoding of
+	// core.ExternalIdentity: the connection and subject of a federated authentication, and the claims.
+	// Published by the federated auth executors and the OpenID4VP verifier. Claims live only here, never
+	// under their own names, so no claim can stand in for the state executors keep in RuntimeData.
+	RuntimeKeyExternalIdentity = "externalIdentity"
+	// RuntimeKeyLinkingCandidateUserIDs holds the candidates the linking executor sent to
+	// verification, as a JSON array of entity ids. It is the check on re-entry: the entity that
+	// authenticated must be one of these. A federated link is indexed by connection alone, so an
+	// offered federated branch proves an account at that connection rather than which account it was.
+	RuntimeKeyLinkingCandidateUserIDs = "linkingCandidateUserIds"
+	// RuntimeKeyLinkingVerificationRequested marks that the linking executor asked for verification
+	// and has not settled it yet. It is set by the pass that asks, kept while the wrong account
+	// verified and the prompt is offered again, and cleared by every other settling outcome, so a
+	// later linking node starts afresh. A settling pass that finds nobody authenticated fails rather
+	// than prompting again, since the engine has no visited-node tracking and no step cap.
+	RuntimeKeyLinkingVerificationRequested = "linkingVerificationRequested"
+	// RuntimeKeyLinkingCheckpoint holds, as a JSON object, RuntimeData as the linking executor left it
+	// when it asked for verification, and the AuthUser it found then. The executor restores RuntimeData
+	// before it settles the verification, so whatever the verification steps wrote is gone, the same as
+	// when a called flow returns. It puts the AuthUser back only when the wrong account verified. The
+	// checkpoint lives exactly as long as RuntimeKeyLinkingVerificationRequested.
+	RuntimeKeyLinkingCheckpoint = "linkingCheckpoint"
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"

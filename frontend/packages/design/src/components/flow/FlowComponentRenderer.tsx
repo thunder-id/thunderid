@@ -9,6 +9,7 @@ import CopyableTextAdapter from './adapters/CopyableTextAdapter';
 import DividerAdapter from './adapters/DividerAdapter';
 import IconAdapter from './adapters/IconAdapter';
 import ImageAdapter from './adapters/ImageAdapter';
+import KeyValueListAdapter from './adapters/KeyValueListAdapter';
 import QrCodeAdapter from './adapters/QrCodeAdapter';
 import RichTextAdapter from './adapters/RichTextAdapter';
 import StackAdapter from './adapters/StackAdapter';
@@ -24,6 +25,7 @@ import type {FlowComponent, FlowComponentRendererProps} from '../../models/flow'
  * - `TEXT` → {@link TextAdapter}
  * - `RICH_TEXT` → {@link RichTextAdapter}
  * - `IMAGE` → {@link ImageAdapter}
+ * - `KEY_VALUE_LIST` → {@link KeyValueListAdapter}
  * - `ICON` → {@link IconAdapter}
  * - `STACK` → {@link StackAdapter}
  * - `DIVIDER` → {@link DividerAdapter}
@@ -159,6 +161,11 @@ export default function FlowComponentRenderer({
         additionalData={additionalData}
       />
     );
+  }
+
+  // KEY_VALUE_LIST
+  if (comp.type === 'KEY_VALUE_LIST') {
+    return <KeyValueListAdapter component={comp} resolve={resolve} additionalData={additionalData} />;
   }
 
   // COPYABLE_TEXT

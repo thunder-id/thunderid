@@ -24,3 +24,7 @@ func (p *disabledUserMgtProvider) CreateUser(
 ) (*providers.User, *tidcommon.ServiceError) {
 	return nil, &ErrorUserProvisioningDisabled
 }
+
+func (p *disabledUserMgtProvider) DeleteUser(_ context.Context, _ string) *tidcommon.ServiceError {
+	return &ErrorUserProvisioningDisabled
+}

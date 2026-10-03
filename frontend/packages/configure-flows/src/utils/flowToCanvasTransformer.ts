@@ -3,6 +3,7 @@
 
 import type {Edge, Node} from '@xyflow/react';
 import {MarkerType} from '@xyflow/react';
+import {toElementType} from './inputTypeMapping';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import executors from '../data/executors.json';
 import type {Element} from '../models/elements';
@@ -258,11 +259,13 @@ function restoreComponents(components: unknown[] | undefined, nodeActions: FlowN
 
   return components.map((comp) => {
     const component = comp as Record<string, unknown>;
-    let restoredComponent: Record<string, unknown> = component;
+    const elementType: string = toElementType(component['type'] as string);
+    let restoredComponent: Record<string, unknown> =
+      elementType === component['type'] ? component : {...component, type: elementType};
 
     // Normalize INPUT element properties (ensure inputType is set)
-    if (INPUT_ELEMENT_TYPES.has(component['type'] as string)) {
-      restoredComponent = normalizeInputProperties(component);
+    if (INPUT_ELEMENT_TYPES.has(restoredComponent['type'] as string)) {
+      restoredComponent = normalizeInputProperties(restoredComponent);
     }
 
     // Restore action for ACTION elements

@@ -128,6 +128,11 @@ func (s *CompositeStoreTestSuite) TestUpdateSystemAttributes_Delegates() {
 	s.NoError(s.store.UpdateSystemAttributes(s.ctx, "u1", nil))
 }
 
+func (s *CompositeStoreTestSuite) TestLockEntity_Delegates() {
+	s.dbStore.On("LockEntity", mock.Anything, "u1").Return(nil)
+	s.NoError(s.store.LockEntity(s.ctx, "u1"))
+}
+
 func (s *CompositeStoreTestSuite) TestUpdateCredentials_Delegates() {
 	s.dbStore.On("UpdateCredentials", mock.Anything, "u1", mock.Anything).Return(nil)
 	s.NoError(s.store.UpdateCredentials(s.ctx, "u1", nil))

@@ -89,9 +89,6 @@ var githubEntityType = testutils.UserType{
 			"type":       "string",
 			"credential": true,
 		},
-		"sub": map[string]interface{}{
-			"type": "string",
-		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
@@ -163,7 +160,6 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "githubflowuser",
 		"password":   "Test@1234",
-		"sub":        "12345",
 		"email":      "testuser@github.com",
 		"givenName":  "Test",
 		"familyName": "User",
@@ -210,11 +206,29 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Resolution is by recorded link only. Linking on email is what matches the identity to the
+		// local user while SetupSuite records that link through a verified linking flow.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(githubIDP)
 	ts.Require().NoError(err, "Failed to create GitHub IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// A federated sign-in resolves a local user only through a recorded link, so record the existing
+	// user's link once, the way an End-User would: through a verified linking flow.
+	err = common.LinkFederatedIdentity(common.LinkRequest{
+		Handle:       "github-flow-link",
+		ExecutorName: "GithubOAuthExecutor",
+		IDPID:        idpID,
+		OUID:         githubAuthTestOU.ID,
+		UserType:     githubEntityType.Name,
+		Username:     "githubflowuser",
+		Password:     "Test@1234",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := githubAuthFlow.Nodes.([]map[string]interface{})

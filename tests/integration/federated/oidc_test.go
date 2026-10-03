@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/http"
 	"time"
@@ -20,24 +21,25 @@ import (
 ID token and UserInfo handling on a generic OIDC connection.
 
 Every rejection here surfaces as the same opaque error, so none of these assert an error code. The cause
-is collapsed three times over: ValidateIDToken turns every verifier failure into
-ErrorInvalidIDTokenSignature, the provider manager's default branch turns that into AUTHN-MGR-1001, and
-the direct endpoint maps it again to AUTHN-FED-1001. That is G14. Each scenario is therefore distinguished
-by its setup, and asserts only that authentication did not succeed.
+is collapsed twice over: ValidateIDToken turns every verifier failure into ErrorInvalidIDTokenSignature,
+and the provider manager's default branch turns that into AUTHN-MGR-1001. That is G14. Each scenario is
+therefore distinguished by its setup, and asserts only that the token was not accepted.
 */
 
-// authenticateKnown creates a local user carrying the identity's subject and then authenticates it.
+// authenticateKnown creates a local user the identity can link to, signs the identity in through a
+// linking flow, and reports whether the token was accepted: whether the flow reached the linking prompt
+// for that user.
 //
-// The local user matters: on the direct endpoint there is no provisioning, so an identity that matches
-// nobody fails whatever its token contained. Without a user to resolve to, every scenario in this file
-// would pass for that reason alone rather than because the token was rejected — the assertion would be
-// vacuous. With one present, a valid token authenticates, so a failure here is the token's doing.
-func (s *FederatedMappingSuite) authenticateKnown(user *OIDCUser) int {
+// The local user matters: the prompt is only reached when the identity matches someone, so without a
+// user to match every scenario in this file would pass for that reason alone rather than because the
+// token was rejected — the assertion would be vacuous. With one present, a valid token reaches the
+// prompt, so a failure here is the token's doing.
+func (s *FederatedMappingSuite) authenticateKnown(user *OIDCUser) bool {
 	s.T().Helper()
 	email := user.Sub + "@example.com"
-	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": user.Sub})
-	status, _, _ := s.authenticateDirect(mapping(fedPersonType.Name, pair("email", "email")), user)
-	return status
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
+	return maps.Equal(s.matchedOn(linkOn([]string{"email"}, pair("email", "email")), user),
+		map[string]string{"Email": email})
 }
 
 // authFails asserts that an identity did not authenticate, whatever shape the failure takes. Some
@@ -63,8 +65,8 @@ func (s *FederatedMappingSuite) TestExpiredIDTokenRejected() {
 		})
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "an expired ID token must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"an expired ID token must not authenticate")
 }
 
 // B26: an ID token whose signature does not verify against the published JWKS is rejected.
@@ -86,8 +88,8 @@ func (s *FederatedMappingSuite) TestInvalidIDTokenSignatureRejected() {
 		return token[:len(token)-4] + "AAAA", nil
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a token whose signature does not verify must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a token whose signature does not verify must not authenticate")
 }
 
 // B27: the nonce in the ID token must match the one the server generated. This is validated
@@ -105,8 +107,8 @@ func (s *FederatedMappingSuite) TestNonceMismatchRejected() {
 		})
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a mismatched nonce must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a mismatched nonce must not authenticate")
 }
 
 // BO1: the token response carries no ID token at all.
@@ -116,8 +118,8 @@ func (s *FederatedMappingSuite) TestMissingIDTokenRejected() {
 		return http.StatusOK, `{"access_token":"at","token_type":"Bearer","expires_in":3600}`
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a token response without an ID token must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a token response without an ID token must not authenticate")
 }
 
 // BO2: the ID token is not a JWT at all.
@@ -127,8 +129,8 @@ func (s *FederatedMappingSuite) TestMalformedIDTokenRejected() {
 		return "this-is-not-a-jwt", nil
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a structurally invalid ID token must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a structurally invalid ID token must not authenticate")
 }
 
 // BO3 and BO4: the subject is the identity. A token carrying none, or an empty one, identifies nobody.
@@ -150,8 +152,8 @@ func (s *FederatedMappingSuite) TestIDTokenWithoutUsableSubRejected() {
 				return s.signedIDToken(claims)
 			})
 
-			status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-			s.authFails(status, "%s sub must not authenticate", name)
+			s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+				"%s sub must not authenticate", name)
 		})
 	}
 }
@@ -164,8 +166,8 @@ func (s *FederatedMappingSuite) TestUnreachableJWKSRejected() {
 		return http.StatusServiceUnavailable, `{"error":"unavailable"}`
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "an unreachable key set must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"an unreachable key set must not authenticate")
 }
 
 // BO8: the JWKS document is not valid JSON.
@@ -176,8 +178,8 @@ func (s *FederatedMappingSuite) TestMalformedJWKSRejected() {
 		return http.StatusOK, `{"keys": [`
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "an unparseable key set must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"an unparseable key set must not authenticate")
 }
 
 // BO9: the key set is valid but contains no key matching the token's kid.
@@ -189,8 +191,8 @@ func (s *FederatedMappingSuite) TestUnknownKeyIDRejected() {
 			`"alg":"RS256","n":"AQAB","e":"AQAB"}]}`
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a token signed by an unpublished key must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a token signed by an unpublished key must not authenticate")
 }
 
 // BO10: the token declares an algorithm the verifier does not accept.
@@ -209,8 +211,8 @@ func (s *FederatedMappingSuite) TestUnsupportedSigningAlgorithmRejected() {
 			})
 	})
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "an unaccepted algorithm must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"an unaccepted algorithm must not authenticate")
 }
 
 // rotatedKey is a signing key the mock knows nothing about, so a token signed with it verifies only if
@@ -267,8 +269,7 @@ func (s *FederatedMappingSuite) TestKeyRotationToNewlyPublishedKey() {
 	user := s.baseUser(s.nextSubject())
 
 	// Key A: the mock's own, verified against the key set it publishes.
-	status := s.authenticateKnown(user)
-	s.Require().Equal(http.StatusOK, status, "the original key should verify the token")
+	s.Require().True(s.authenticateKnown(user), "the original key should verify the token")
 
 	// Key B: generated here, published, and used to sign the next token.
 	key := s.newRotatedKey("rotated-key-b")
@@ -287,8 +288,7 @@ func (s *FederatedMappingSuite) TestKeyRotationToNewlyPublishedKey() {
 	})
 
 	rotated := s.baseUser(s.nextSubject())
-	status = s.authenticateKnown(rotated)
-	s.Equal(http.StatusOK, status,
+	s.True(s.authenticateKnown(rotated),
 		"a token signed with the newly published key should verify after rotation")
 }
 
@@ -300,8 +300,8 @@ func (s *FederatedMappingSuite) TestKeyRotationInvalidatesOldSignature() {
 	defer s.mockOIDC.ClearOverrides()
 	s.mockOIDC.SetJWKSOverride(func() (int, string) { return http.StatusOK, key.jwks() })
 
-	status := s.authenticateKnown(s.baseUser(s.nextSubject()))
-	s.authFails(status, "a token signed by a key that is no longer published must not authenticate")
+	s.False(s.authenticateKnown(s.baseUser(s.nextSubject())),
+		"a token signed by a key that is no longer published must not authenticate")
 }
 
 // BO12: when UserInfo reports a different subject from the ID token, the whole merge is skipped rather

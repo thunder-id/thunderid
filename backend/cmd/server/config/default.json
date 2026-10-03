@@ -199,7 +199,7 @@
     }
   },
   "user": {
-    "indexed_attributes": ["username", "email", "mobile_number", "sub"],
+    "indexed_attributes": ["username", "email", "mobile_number"],
     "store": "composite"
   },
   "group": {

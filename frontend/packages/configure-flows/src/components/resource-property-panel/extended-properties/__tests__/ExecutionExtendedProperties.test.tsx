@@ -170,7 +170,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={googleResource} onChange={mockOnChange} />);
 
-      const select = screen.getByRole('combobox');
+      const [select] = screen.getAllByRole('combobox');
       await user.click(select);
 
       expect(screen.getByText('My Google IDP')).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={googleResource} onChange={mockOnChange} />);
 
-      const select = screen.getByRole('combobox');
+      const [select] = screen.getAllByRole('combobox');
       await user.click(select);
       await user.click(screen.getByText('My Google IDP'));
 
@@ -247,7 +247,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={googleResource} onChange={mockOnChange} />);
 
-      const select = screen.getByRole('combobox');
+      const [select] = screen.getAllByRole('combobox');
       expect(select).toHaveAttribute('aria-disabled', 'true');
     });
 
@@ -260,7 +260,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={googleResource} onChange={mockOnChange} />);
 
-      const select = screen.getByRole('combobox');
+      const [select] = screen.getAllByRole('combobox');
       await user.click(select);
 
       expect(screen.getByText('Loading...')).toBeInTheDocument();
@@ -282,7 +282,8 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={resourceWithSelection} onChange={mockOnChange} />);
 
-      expect(screen.getByRole('combobox')).toHaveTextContent('My Google IDP');
+      const [select] = screen.getAllByRole('combobox');
+      expect(select).toHaveTextContent('My Google IDP');
     });
   });
 
@@ -324,7 +325,7 @@ describe('ExecutionExtendedProperties', () => {
 
       render(<ExecutionExtendedProperties resource={githubResource} onChange={mockOnChange} />);
 
-      const select = screen.getByRole('combobox');
+      const [select] = screen.getAllByRole('combobox');
       await user.click(select);
 
       expect(screen.getByText('GitHub IDP')).toBeInTheDocument();
@@ -1693,6 +1694,26 @@ describe('ExecutionExtendedProperties', () => {
       await user.click(screen.getByText('flows:core.executions.entityMode.agent'));
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.mode', 'agent', attributeUniquenessResource);
+    });
+  });
+
+  describe('Linking Executor', () => {
+    const linkingResource = {
+      id: 'linking-1',
+      data: {
+        action: {
+          executor: {
+            name: ExecutionTypes.Linking,
+          },
+        },
+        properties: {},
+      },
+    } as unknown as Resource;
+
+    it('should render NoConfigProperties message', () => {
+      render(<ExecutionExtendedProperties resource={linkingResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
     });
   });
 

@@ -1,0 +1,171 @@
+[
+  {
+    "id": "start",
+    "type": "START",
+    "layout": {
+      "size": {
+        "width": 101,
+        "height": 34
+      },
+      "position": {
+        "x": 62,
+        "y": 87
+      }
+    },
+    "onSuccess": "login_options"
+  },
+  {
+    "id": "login_options",
+    "type": "PROMPT",
+    "variant": "LOGIN_OPTIONS",
+    "layout": {
+      "size": {
+        "width": 300,
+        "height": 260
+      },
+      "position": {
+        "x": 1662,
+        "y": 62
+      }
+    },
+    "prompts": [
+      {
+        "action": {
+          "ref": "verify_password",
+          "nextNode": "credentials_auth"
+        }
+      },
+      {
+        "action": {
+          "ref": "verify_federated",
+          "nextNode": "federated_verify"
+        }
+      }
+    ]
+  },
+  {
+    "id": "credentials_auth",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 217,
+        "height": 113
+      },
+      "position": {
+        "x": 2062,
+        "y": 0
+      }
+    },
+    "executor": {
+      "name": "CredentialsAuthExecutor",
+      "inputs": [
+        {
+          "identifier": "username",
+          "type": "TEXT_INPUT",
+          "required": true
+        },
+        {
+          "identifier": "password",
+          "type": "PASSWORD_INPUT",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "auth_assert",
+    "onIncomplete": "password_prompt"
+  },
+  {
+    "id": "password_prompt",
+    "type": "PROMPT",
+    "layout": {
+      "size": {
+        "width": 300,
+        "height": 180
+      },
+      "position": {
+        "x": 2462,
+        "y": 0
+      }
+    },
+    "prompts": [
+      {
+        "inputs": [
+          {
+            "identifier": "username",
+            "type": "TEXT_INPUT",
+            "required": true
+          },
+          {
+            "identifier": "password",
+            "type": "PASSWORD_INPUT",
+            "required": true
+          }
+        ],
+        "action": {
+          "ref": "submit_credentials",
+          "nextNode": "credentials_auth"
+        }
+      }
+    ]
+  },
+  {
+    "id": "federated_verify",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 217,
+        "height": 113
+      },
+      "position": {
+        "x": 2062,
+        "y": 200
+      }
+    },
+    "properties": {
+      "idpId": "conn-existing-idp"
+    },
+    "executor": {
+      "name": "GithubOAuthExecutor",
+      "inputs": [
+        {
+          "identifier": "code",
+          "type": "TEXT_INPUT",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "auth_assert"
+  },
+  {
+    "id": "auth_assert",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 244,
+        "height": 113
+      },
+      "position": {
+        "x": 2462,
+        "y": 250
+      }
+    },
+    "executor": {
+      "name": "AuthAssertExecutor"
+    },
+    "onSuccess": "end"
+  },
+  {
+    "id": "end",
+    "type": "END",
+    "layout": {
+      "size": {
+        "width": 85,
+        "height": 34
+      },
+      "position": {
+        "x": 2862,
+        "y": 87
+      }
+    }
+  }
+]

@@ -426,6 +426,73 @@
     "category": "INTERFACE",
     "type": "VIEW",
     "display": {
+      "label": "Link Prompt View",
+      "description": "Screen asking the user to approve linking to the matched account",
+      "image": "assets/images/icons/checkbox-check.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_3",
+          "label": "{{ t(signin:forms.link_prompt.title) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "{{ t(signin:forms.link_prompt.description) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "KEY_VALUE_LIST",
+          "source": "linkingPromptDetails"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "actionType": "CONFIRM",
+              "label": "{{ t(signin:forms.link_prompt.actions.confirm.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "SECONDARY",
+              "eventType": "SUBMIT",
+              "actionType": "REJECT",
+              "label": "{{ t(signin:forms.link_prompt.actions.reject.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
       "label": "Email Input",
       "description": "Screen for collecting the user's email address",
       "image": "assets/images/icons/email.svg",

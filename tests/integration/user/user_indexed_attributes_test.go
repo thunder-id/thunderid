@@ -40,9 +40,6 @@ var (
 				"mobile_number": map[string]interface{}{
 					"type": "string",
 				},
-				"sub": map[string]interface{}{
-					"type": "string",
-				},
 				"password": map[string]interface{}{
 					"type":       "string",
 					"credential": true,
@@ -174,7 +171,6 @@ func (suite *IndexedAttributesTestSuite) TestCreateUserWithAllIndexedAttributes(
 		"username":      "indexed_user1",
 		"email":         "indexed1@example.com",
 		"mobile_number": "+1234567890",
-		"sub":           "user-sub-123",
 		"password":      "SecurePass123!",
 	}
 
@@ -430,7 +426,6 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 		"username":      "update_user3",
 		"email":         "charlie@example.com",
 		"mobile_number": "+9876543210",
-		"sub":           "sub-charlie",
 		"password":      "Pass123!",
 	}
 
@@ -457,7 +452,6 @@ func (suite *IndexedAttributesTestSuite) TestUpdateUserRemoveIndexedAttribute() 
 	updatedAttributes := map[string]interface{}{
 		"username": "update_user3",
 		"email":    "charlie@example.com",
-		"sub":      "sub-charlie",
 	}
 
 	updatedAttrsJSON, err := json.Marshal(updatedAttributes)
@@ -623,7 +617,6 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithMultipleIndexedAttr
 		"username":      "auth_user3",
 		"email":         "auth3@test.com",
 		"mobile_number": "+2222222222",
-		"sub":           "sub-auth3",
 		"password":      "TestPass123!",
 	}
 
@@ -652,7 +645,6 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithMultipleIndexedAttr
 			"username":      "auth_user3",
 			"email":         "auth3@test.com",
 			"mobile_number": "+2222222222",
-			"sub":           "sub-auth3",
 		},
 		"credentials": map[string]interface{}{
 			"password": "TestPass123!",
@@ -760,7 +752,6 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithDifferentIndexedAtt
 		"username":      "auth_user_variations",
 		"email":         "auth_variations@test.com",
 		"mobile_number": "+3333333333",
-		"sub":           "sub-variations",
 		"password":      "TestPass123!",
 	}
 
@@ -814,17 +805,6 @@ func (suite *IndexedAttributesTestSuite) TestAuthenticateWithDifferentIndexedAtt
 			authRequest: map[string]interface{}{
 				"identifiers": map[string]interface{}{
 					"mobile_number": "+3333333333",
-				},
-				"credentials": map[string]interface{}{
-					"password": "TestPass123!",
-				},
-			},
-		},
-		{
-			name: "Sub only",
-			authRequest: map[string]interface{}{
-				"identifiers": map[string]interface{}{
-					"sub": "sub-variations",
 				},
 				"credentials": map[string]interface{}{
 					"password": "TestPass123!",

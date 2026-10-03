@@ -148,6 +148,11 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
 	templateData := template.TemplateData{}
 
+	if identity := core.GetExternalIdentity(ctx.RuntimeData); identity != nil {
+		for k, v := range identity.Claims {
+			templateData[k] = fmt.Sprintf("%v", v)
+		}
+	}
 	for k, v := range ctx.RuntimeData {
 		templateData[k] = v
 	}
@@ -179,6 +184,9 @@ func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAt
 		return mobile
 	}
 	if mobile, ok := ctx.RuntimeData[phoneAttr]; ok && mobile != "" {
+		return mobile
+	}
+	if mobile, ok := core.GetExternalClaim(ctx.RuntimeData, phoneAttr); ok && mobile != "" {
 		return mobile
 	}
 	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {

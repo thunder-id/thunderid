@@ -674,3 +674,10 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateCredentials_DoesNotInvalidat
 	s.True(ok)
 	s.Equal(entity.ID, *cachedID)
 }
+
+func (s *CacheBackedEntityStoreTestSuite) TestLockEntity_PassesThrough() {
+	s.mockStore.On("LockEntity", mock.Anything, testEntityID).Return(nil).Once()
+
+	s.NoError(s.cachedStore.LockEntity(context.Background(), testEntityID))
+	s.mockStore.AssertExpectations(s.T())
+}

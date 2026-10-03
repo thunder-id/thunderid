@@ -17,16 +17,23 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.httpRequest.url.placeholder': 'https://example.com',
         'flows:core.executions.httpRequest.method.label': 'Method',
         'flows:core.executions.httpRequest.headers.label': 'Headers',
+        'flows:core.executions.httpRequest.headers.keyLabel': 'Name',
+        'flows:core.executions.httpRequest.headers.valueLabel': 'Value',
         'flows:core.executions.httpRequest.headers.keyPlaceholder': 'Header name',
         'flows:core.executions.httpRequest.headers.valuePlaceholder': 'Header value',
+        'flows:core.executions.httpRequest.headers.addLabel': 'Add Header',
         'flows:core.executions.httpRequest.body.label': 'Body',
         'flows:core.executions.httpRequest.body.placeholder': '{}',
         'flows:core.executions.httpRequest.timeout.label': 'Timeout',
         'flows:core.executions.httpRequest.timeout.placeholder': '10',
         'flows:core.executions.httpRequest.timeout.hint': 'Timeout in seconds (1-20)',
         'flows:core.executions.httpRequest.responseMapping.label': 'Response Mapping',
+        'flows:core.executions.httpRequest.responseMapping.keyLabel': 'Runtime data key',
+        'flows:core.executions.httpRequest.responseMapping.valueLabel': 'Response path',
         'flows:core.executions.httpRequest.responseMapping.keyPlaceholder': 'Response key',
         'flows:core.executions.httpRequest.responseMapping.valuePlaceholder': 'Variable name',
+        'flows:core.executions.httpRequest.responseMapping.addLabel': 'Add Mapping',
+        'common:actions.delete': 'Delete',
         'flows:core.executions.httpRequest.errorHandling.label': 'Error Handling',
         'flows:core.executions.httpRequest.errorHandling.failOnError.label': 'Fail on error',
         'flows:core.executions.httpRequest.errorHandling.retryCount.label': 'Retry count',
@@ -94,9 +101,7 @@ describe('HttpRequestProperties', () => {
 
       render(<HttpRequestProperties resource={resource} onChange={mockOnChange} />);
 
-      const addButtons = screen.getAllByLabelText('Add entry');
-      // First "Add entry" button belongs to headers KeyValueEditor
-      await user.click(addButtons[0]);
+      await user.click(screen.getByRole('button', {name: 'Add Header'}));
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.headers', {'': ''}, resource);
     });
@@ -126,7 +131,7 @@ describe('HttpRequestProperties', () => {
 
       render(<HttpRequestProperties resource={resource} onChange={mockOnChange} />);
 
-      const removeButtons = screen.getAllByLabelText('Remove entry');
+      const removeButtons = screen.getAllByLabelText('Delete');
       // Remove the first header entry
       await user.click(removeButtons[0]);
 
@@ -141,9 +146,7 @@ describe('HttpRequestProperties', () => {
 
       render(<HttpRequestProperties resource={resource} onChange={mockOnChange} />);
 
-      const addButtons = screen.getAllByLabelText('Add entry');
-      // Second "Add entry" button belongs to responseMapping KeyValueEditor
-      await user.click(addButtons[1]);
+      await user.click(screen.getByRole('button', {name: 'Add Mapping'}));
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.responseMapping', {'': ''}, resource);
     });
@@ -155,7 +158,7 @@ describe('HttpRequestProperties', () => {
       render(<HttpRequestProperties resource={resource} onChange={mockOnChange} />);
 
       // There should be remove buttons for both headers (0 entries) and responseMapping (2 entries)
-      const removeButtons = screen.getAllByLabelText('Remove entry');
+      const removeButtons = screen.getAllByLabelText('Delete');
       // Remove the first response mapping entry
       await user.click(removeButtons[0]);
 

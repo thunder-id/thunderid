@@ -168,3 +168,20 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserHandlesEmptyServiceR
 	suite.Nil(svcErr)
 	suite.Nil(resp)
 }
+
+// Deleting a user the runtime provisioned runs as the runtime, like creating it.
+func (suite *DefaultUserMgtProviderTestSuite) TestDeleteUserDelegatesAsRuntime() {
+	suite.mockService.On("DeleteUser", mock.MatchedBy(security.IsRuntimeContext), testUserID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+
+	suite.Nil(suite.provider.DeleteUser(context.Background(), testUserID))
+}
+
+func (suite *DefaultUserMgtProviderTestSuite) TestDeleteUserPreservesServiceErrors() {
+	suite.mockService.On("DeleteUser", mock.Anything, testUserID).Return(&user.ErrorUserNotFound).Once()
+
+	svcErr := suite.provider.DeleteUser(context.Background(), testUserID)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(user.ErrorUserNotFound.Code, svcErr.Code)
+}
