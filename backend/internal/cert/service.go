@@ -292,6 +292,12 @@ func isValidReferenceType(refType CertificateReferenceType) bool {
 	}
 }
 
+// IsValidCertificateValue reports whether a certificate value, such as an inline JWKS or a JWKS URI, has a
+// length the certificate store accepts.
+func IsValidCertificateValue(value string) bool {
+	return len(value) >= 10 && len(value) <= 4096
+}
+
 // isValidCertificateType checks if the provided certificate type is valid.
 func isValidCertificateType(certType CertificateType) bool {
 	switch certType {
@@ -319,7 +325,7 @@ func validateCertificate(cert *Certificate) *tidcommon.ServiceError {
 	if !isValidCertificateType(cert.Type) {
 		return &ErrorInvalidCertificateType
 	}
-	if len(cert.Value) < 10 || len(cert.Value) > 4096 {
+	if !IsValidCertificateValue(cert.Value) {
 		return &ErrorInvalidCertificateValue
 	}
 	return nil
@@ -339,7 +345,7 @@ func validateCertificateForCreation(cert *Certificate) *tidcommon.ServiceError {
 	if !isValidCertificateType(cert.Type) {
 		return &ErrorInvalidCertificateType
 	}
-	if len(cert.Value) < 10 || len(cert.Value) > 4096 {
+	if !IsValidCertificateValue(cert.Value) {
 		return &ErrorInvalidCertificateValue
 	}
 	return nil

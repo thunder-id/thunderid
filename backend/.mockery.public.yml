@@ -63,6 +63,14 @@ packages:
       pkgname: certmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: tests/mocks/cimdmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimdmock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/jose/jwt:
     config:
       all: true

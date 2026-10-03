@@ -196,6 +196,9 @@ components:
           items:
             type: string
           description: Authorization grant profiles supported, e.g. the ID-JAG profile (`urn:ietf:params:oauth:grant-profile:id-jag`).
+        client_id_metadata_document_supported:
+          type: boolean
+          description: Whether clients registered from a Client ID Metadata Document are supported. Present only when true.
 
     OIDCProviderMetadata:
       allOf:

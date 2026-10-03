@@ -881,6 +881,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(true)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(true)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(true)},
+				CIMD:            engineconfig.CIMDConfig{Enabled: boolPtr(true)},
 				Revocation: engineconfig.RevocationConfig{TokenFamily: engineconfig.TokenFamilyRevocationConfig{
 					OnRefreshReplay:  boolPtr(true),
 					OnExplicitRevoke: boolPtr(true),
@@ -902,6 +903,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(false)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(false)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(false)},
+				CIMD:            engineconfig.CIMDConfig{Enabled: boolPtr(false)},
 				Revocation: engineconfig.RevocationConfig{TokenFamily: engineconfig.TokenFamilyRevocationConfig{
 					OnRefreshReplay:  boolPtr(false),
 					OnExplicitRevoke: boolPtr(false),
@@ -920,6 +922,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		assert.False(suite.T(), base.OAuth.RefreshToken.RevokePreviousOnRenewEnabled())
 		assert.False(suite.T(), base.OAuth.TokenRevocation.IsEnabled())
 		assert.False(suite.T(), base.OAuth.Logout.IsEnabled())
+		assert.False(suite.T(), base.OAuth.CIMD.IsEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnRefreshReplayEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnCodeReplayEnabled())
@@ -936,6 +939,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		assert.True(suite.T(), base.OAuth.RefreshToken.RevokePreviousOnRenewEnabled())
 		assert.True(suite.T(), base.OAuth.TokenRevocation.IsEnabled())
 		assert.True(suite.T(), base.OAuth.Logout.IsEnabled())
+		assert.True(suite.T(), base.OAuth.CIMD.IsEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnRefreshReplayEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnCodeReplayEnabled())

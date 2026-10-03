@@ -177,6 +177,7 @@ func toProviderOAuthClient(c *providers.OAuthClient) *providers.OAuthClient {
 		RequirePushedAuthorizationRequests: c.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              c.DPoPBoundAccessTokens,
 		IncludeActClaim:                    c.IncludeActClaim,
+		ClientIDMetadataDocument:           c.ClientIDMetadataDocument,
 		EntityCategory:                     c.EntityCategory,
 		Token:                              c.Token,
 		Scopes:                             c.Scopes,

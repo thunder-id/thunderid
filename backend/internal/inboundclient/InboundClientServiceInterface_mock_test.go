@@ -1034,16 +1034,16 @@ func (_c *InboundClientServiceInterfaceMock_UpdateInboundClient_Call) RunAndRetu
 }
 
 // Validate provides a mock function for the type InboundClientServiceInterfaceMock
-func (_mock *InboundClientServiceInterfaceMock) Validate(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool) error {
-	ret := _mock.Called(ctx, client, oauthProfile, hasClientSecret)
+func (_mock *InboundClientServiceInterfaceMock) Validate(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error {
+	ret := _mock.Called(ctx, client, oauthProfile, hasClientSecret, oauthClientID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Validate")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *model.InboundClient, *providers.OAuthProfile, bool) error); ok {
-		r0 = returnFunc(ctx, client, oauthProfile, hasClientSecret)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *model.InboundClient, *providers.OAuthProfile, bool, string) error); ok {
+		r0 = returnFunc(ctx, client, oauthProfile, hasClientSecret, oauthClientID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -1060,11 +1060,12 @@ type InboundClientServiceInterfaceMock_Validate_Call struct {
 //   - client *model.InboundClient
 //   - oauthProfile *providers.OAuthProfile
 //   - hasClientSecret bool
-func (_e *InboundClientServiceInterfaceMock_Expecter) Validate(ctx interface{}, client interface{}, oauthProfile interface{}, hasClientSecret interface{}) *InboundClientServiceInterfaceMock_Validate_Call {
-	return &InboundClientServiceInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", ctx, client, oauthProfile, hasClientSecret)}
+//   - oauthClientID string
+func (_e *InboundClientServiceInterfaceMock_Expecter) Validate(ctx interface{}, client interface{}, oauthProfile interface{}, hasClientSecret interface{}, oauthClientID interface{}) *InboundClientServiceInterfaceMock_Validate_Call {
+	return &InboundClientServiceInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", ctx, client, oauthProfile, hasClientSecret, oauthClientID)}
 }
 
-func (_c *InboundClientServiceInterfaceMock_Validate_Call) Run(run func(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool)) *InboundClientServiceInterfaceMock_Validate_Call {
+func (_c *InboundClientServiceInterfaceMock_Validate_Call) Run(run func(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string)) *InboundClientServiceInterfaceMock_Validate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1082,11 +1083,16 @@ func (_c *InboundClientServiceInterfaceMock_Validate_Call) Run(run func(ctx cont
 		if args[3] != nil {
 			arg3 = args[3].(bool)
 		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -1097,7 +1103,7 @@ func (_c *InboundClientServiceInterfaceMock_Validate_Call) Return(err error) *In
 	return _c
 }
 
-func (_c *InboundClientServiceInterfaceMock_Validate_Call) RunAndReturn(run func(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool) error) *InboundClientServiceInterfaceMock_Validate_Call {
+func (_c *InboundClientServiceInterfaceMock_Validate_Call) RunAndReturn(run func(ctx context.Context, client *model.InboundClient, oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error) *InboundClientServiceInterfaceMock_Validate_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -272,10 +272,13 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	inboundClient := toInboundClient(processedDTO)
 	oauthProfile := toOAuthProfile(processedDTO)
 	var hasClientSecret bool
+	var oauthClientID string
 	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
 		hasClientSecret = inboundAuthConfig.OAuthConfig.ClientSecret != ""
+		oauthClientID = inboundAuthConfig.OAuthConfig.ClientID
 	}
-	if err := as.inboundClientService.Validate(ctx, &inboundClient, oauthProfile, hasClientSecret); err != nil {
+	if err := as.inboundClientService.Validate(
+		ctx, &inboundClient, oauthProfile, hasClientSecret, oauthClientID); err != nil {
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, nil, svcErr
 		}
@@ -1248,6 +1251,7 @@ func buildOAuthProfileFromProcessed(inboundAuth inboundmodel.InboundAuthConfigPr
 		RequirePushedAuthorizationRequests: oa.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              oa.DPoPBoundAccessTokens,
 		IncludeActClaim:                    oa.IncludeActClaim,
+		ClientIDMetadataDocument:           oa.ClientIDMetadataDocument,
 		Scopes:                             oa.Scopes,
 		ScopeClaims:                        oa.ScopeClaims,
 		Token:                              oa.Token,
@@ -1571,7 +1575,20 @@ func (as *applicationService) translateInboundClientError(ctx context.Context, e
 	if errors.As(err, &opErr) {
 		return as.translateCertOperationError(ctx, opErr)
 	}
+	if svcErr := translateCIMDValidationError(err); svcErr != nil {
+		return svcErr
+	}
 	return nil
+}
+
+// translateCIMDValidationError maps a Client ID Metadata Document rule violation to an
+// application-service error that keeps the description of the broken rule.
+func translateCIMDValidationError(err error) *tidcommon.ServiceError {
+	var cimdErr *inboundclient.CIMDValidationError
+	if !errors.As(err, &cimdErr) {
+		return nil
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidCIMDClient, cimdErr.Underlying.ErrorDescription)
 }
 
 // translateOAuthValidationError maps OAuth redirect URI, grant/response type, token endpoint
@@ -2146,6 +2163,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 					RequirePushedAuthorizationRequests: oauthAppConfig.RequirePushedAuthorizationRequests,
 					DPoPBoundAccessTokens:              oauthAppConfig.DPoPBoundAccessTokens,
 					IncludeActClaim:                    oauthAppConfig.IncludeActClaim,
+					ClientIDMetadataDocument:           oauthAppConfig.ClientIDMetadataDocument,
 					Token:                              oauthAppConfig.Token,
 					Scopes:                             oauthAppConfig.Scopes,
 					UserInfo:                           oauthAppConfig.UserInfo,
@@ -2283,6 +2301,7 @@ func buildOAuthInboundAuthConfigProcessedDTO(
 			RequirePushedAuthorizationRequests: inboundAuthConfig.OAuthConfig.RequirePushedAuthorizationRequests,
 			DPoPBoundAccessTokens:              inboundAuthConfig.OAuthConfig.DPoPBoundAccessTokens,
 			IncludeActClaim:                    inboundAuthConfig.OAuthConfig.IncludeActClaim,
+			ClientIDMetadataDocument:           inboundAuthConfig.OAuthConfig.ClientIDMetadataDocument,
 			Token:                              oauthToken,
 			Scopes:                             inboundAuthConfig.OAuthConfig.Scopes,
 			UserInfo:                           userInfo,
@@ -2351,6 +2370,7 @@ func buildReturnApplicationDTO(
 				RequirePushedAuthorizationRequests: inboundAuthConfig.OAuthConfig.RequirePushedAuthorizationRequests,
 				DPoPBoundAccessTokens:              inboundAuthConfig.OAuthConfig.DPoPBoundAccessTokens,
 				IncludeActClaim:                    inboundAuthConfig.OAuthConfig.IncludeActClaim,
+				ClientIDMetadataDocument:           inboundAuthConfig.OAuthConfig.ClientIDMetadataDocument,
 				Token:                              oauthToken,
 				Scopes:                             inboundAuthConfig.OAuthConfig.Scopes,
 				UserInfo:                           userInfo,

@@ -17,6 +17,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -54,7 +55,7 @@ type InboundClientServiceInterface interface {
 	DeleteInboundClient(ctx context.Context, entityID string) error
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
-		oauthProfile *providers.OAuthProfile, hasClientSecret bool) error
+		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error
 	// RevalidateFKs re-runs FK validation for the inbound client identified by entityID. Used after
 	// a referenced resource (e.g. a flow) is updated to detect newly-inconsistent references.
 	RevalidateFKs(ctx context.Context, entityID string) error
@@ -95,6 +96,7 @@ type inboundClientService struct {
 	entityType     entitytype.EntityTypeServiceInterface
 	cryptoProvider providers.RuntimeCryptoProvider
 	jweService     jwe.JWEServiceInterface
+	cimdService    cimd.CIMDServiceInterface
 	logger         *log.Logger
 }
 
@@ -108,6 +110,7 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	entityType entitytype.EntityTypeServiceInterface,
 	cryptoProvider providers.RuntimeCryptoProvider,
 	jweService jwe.JWEServiceInterface,
+	cimdService cimd.CIMDServiceInterface,
 ) InboundClientServiceInterface {
 	return &inboundClientService{
 		store:          store,
@@ -120,6 +123,7 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 		entityType:     entityType,
 		cryptoProvider: cryptoProvider,
 		jweService:     jweService,
+		cimdService:    cimdService,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientService")),
 	}
 }
@@ -149,7 +153,11 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	if err := validateUserAttributes(validAttrs, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -164,7 +172,6 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	pruneScopeClaims(oauthProfile, scopeClaimPruneSet(seeded, client.AllowedUserTypes, validAttrs))
 	seedIDTokenUserAttributes(oauthProfile, validAttrs)
 	applyInboundDefaults(client, oauthProfile)
-	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -238,7 +245,17 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		ctx, client.AllowedUserTypes, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	// Capture existing OAuth client_id before the caller updates entity system attributes.
+	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
+		existing, err := s.store.GetOAuthProfileByEntityID(ctx, client.ID)
+		if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
+			return err
+		}
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, oldOAuthClientID,
+			existing); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -249,8 +266,6 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		return err
 	}
 	applyInboundDefaults(client, oauthProfile)
-	// Capture existing OAuth client_id before the caller updates entity system attributes.
-	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -285,7 +300,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 
 // Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 func (s *inboundClientService) Validate(ctx context.Context, client *inboundmodel.InboundClient,
-	oauthProfile *providers.OAuthProfile, hasClientSecret bool) error {
+	oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error {
 	if client == nil {
 		return nil
 	}
@@ -300,6 +315,9 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 		return err
 	}
 	if oauthProfile != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -308,6 +326,17 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 	if err := s.validateSubjectAttributeMapping(
 		ctx, client.SubjectAttribute, client.AllowedUserTypes); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateCIMD applies the Client ID Metadata Document rules to the OAuth profile. existing is the
+// stored profile on an update, and nil on a create.
+func (s *inboundClientService) validateCIMD(oauthClientID string, oauthProfile *providers.OAuthProfile,
+	hasClientSecret bool, existingClientID string, existing *providers.OAuthProfile) error {
+	if svcErr := s.cimdService.ValidateOAuthProfile(
+		oauthClientID, oauthProfile, hasClientSecret, existingClientID, existing); svcErr != nil {
+		return &CIMDValidationError{Underlying: svcErr}
 	}
 	return nil
 }
@@ -587,6 +616,7 @@ func BuildOAuthClient(
 		RequirePushedAuthorizationRequests: p.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              p.DPoPBoundAccessTokens,
 		IncludeActClaim:                    p.IncludeActClaim,
+		ClientIDMetadataDocument:           p.ClientIDMetadataDocument,
 		Scopes:                             p.Scopes,
 		ScopeClaims:                        p.ScopeClaims,
 		Token:                              p.Token,

@@ -268,6 +268,27 @@ func (suite *DiscoveryTestSuite) TestDCRRevocationLogoutEndpointsOmittedWhenDisa
 	assert.NotContains(suite.T(), string(body), "revocation_endpoint")
 }
 
+func (suite *DiscoveryTestSuite) TestClientIDMetadataDocumentSupported() {
+	oauth2Meta := suite.discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
+	body, err := json.Marshal(oauth2Meta)
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), string(body), "client_id_metadata_document_supported")
+
+	config.ResetServerRuntime()
+	testConfig := &config.Config{
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
+		OAuth:  config.OAuthConfig{CIMD: engineconfig.CIMDConfig{Enabled: boolPtr(true)}},
+	}
+	_ = config.InitializeServerRuntime("test", testConfig)
+	defer config.ResetServerRuntime()
+
+	svc := newDiscoveryService(
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+	assert.True(suite.T(), svc.GetOAuth2AuthorizationServerMetadata(context.Background()).
+		ClientIDMetadataDocumentSupported)
+}
+
 // TestGrantTypeIsValid tests the GrantType.IsValid() method
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGrantTypeIsValid(t *testing.T) {

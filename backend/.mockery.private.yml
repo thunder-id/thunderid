@@ -373,6 +373,14 @@ packages:
       pkgname: cert
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: internal/cimd
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimd
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/resource:
     config:
       all: true

@@ -61,6 +61,7 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		AuthorizationResponseIssParameterSupported: true,
 		DPoPSigningAlgValuesSupported:              ds.getSupportedDPoPSigningAlgs(),
 		AuthorizationGrantProfilesSupported:        ds.getSupportedAuthorizationGrantProfiles(),
+		ClientIDMetadataDocumentSupported:          ds.cfg.OAuth.CIMD.IsEnabled(),
 	}
 
 	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeCIBA)) {

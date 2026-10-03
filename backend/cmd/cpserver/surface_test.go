@@ -86,6 +86,7 @@ func TestControlPlaneLinksManagement(t *testing.T) {
 	for _, pkg := range []string{
 		"internal/application",
 		"internal/agent",
+		"internal/cimd",
 		"internal/flow/mgt",
 		"internal/flow/executormeta",
 		"internal/idp",

@@ -241,6 +241,17 @@ func (c DCRConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
 }
 
+// CIMDConfig holds the OAuth Client ID Metadata Document configuration.
+type CIMDConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled returns whether CIMD is enabled, defaulting to false if unset
+// (an explicit default lives in default.json).
+func (c CIMDConfig) IsEnabled() bool {
+	return c.Enabled != nil && *c.Enabled
+}
+
 // PARConfig holds the Pushed Authorization Request (RFC 9126) configuration.
 type PARConfig struct {
 	RequirePAR bool  `yaml:"require_par" json:"require_par"`
@@ -275,6 +286,7 @@ type OAuthConfig struct {
 	AuthorizationCode    AuthorizationCodeConfig    `yaml:"authorization_code"          json:"authorization_code"`
 	AuthorizationRequest AuthorizationRequestConfig `yaml:"authorization_request"       json:"authorization_request"`
 	DCR                  DCRConfig                  `yaml:"dcr"                         json:"dcr"`
+	CIMD                 CIMDConfig                 `yaml:"cimd"                        json:"cimd"`
 	PAR                  PARConfig                  `yaml:"par"                         json:"par"`
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`

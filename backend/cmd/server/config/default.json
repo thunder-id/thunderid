@@ -139,6 +139,9 @@
       "enabled" : true,
       "insecure": false
     },
+    "cimd": {
+      "enabled": true
+    },
     "par": {
       "require_par": false,
       "expires_in": 60

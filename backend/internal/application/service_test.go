@@ -21,6 +21,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -151,7 +152,8 @@ func (suite *ServiceTestSuite) setupTestService() (
 	mockEntityService.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(noEPErr)
-	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(nil)
 	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Maybe().Return(nil)
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockOUService.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Maybe().Return(true, nil)
@@ -2190,6 +2192,18 @@ func (suite *ServiceTestSuite) TestCreateApplication_NoFlowSecretForPublicClient
 	}
 }
 
+// TestTranslateInboundClientError_CIMDValidationError tests that a CIMD rule violation maps to the
+// application error and keeps the description of the broken rule.
+func (suite *ServiceTestSuite) TestTranslateInboundClientError_CIMDValidationError() {
+	svcErr := (&applicationService{}).translateInboundClientError(context.Background(),
+		&inboundclient.CIMDValidationError{Underlying: &cimd.ErrorInvalidRedirectURI})
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidCIMDClient.Code, svcErr.Code)
+	assert.Equal(suite.T(), ErrorInvalidCIMDClient.Error, svcErr.Error)
+	assert.Equal(suite.T(), cimd.ErrorInvalidRedirectURI.ErrorDescription, svcErr.ErrorDescription)
+}
+
 func (suite *ServiceTestSuite) TestCreateApplication_StoreErrorWithOAuthCertRollback() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
@@ -3857,7 +3871,8 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleResolved() 
 		OUHandle: "default",
 	}
 
-	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(nil)
 
 	svcErr := service.validateApplicationFields(context.Background(), app)
 
@@ -4157,7 +4172,7 @@ func (suite *ServiceTestSuite) TestValidateApplication_InboundClientValidateErro
 			break
 		}
 	}
-	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("validation failed"))
 
 	app := &model.ApplicationDTO{

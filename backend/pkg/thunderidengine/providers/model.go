@@ -547,6 +547,7 @@ type OAuthClient struct {
 	RequirePushedAuthorizationRequests bool                    `yaml:"requirePushedAuthorizationRequests,omitempty"`
 	DPoPBoundAccessTokens              bool                    `yaml:"dpopBoundAccessTokens,omitempty"`
 	IncludeActClaim                    bool                    `yaml:"includeActClaim,omitempty"`
+	ClientIDMetadataDocument           bool                    `yaml:"clientIdMetadataDocument,omitempty"`
 	EntityCategory                     EntityCategory          `yaml:"entityCategory,omitempty"`
 	Token                              *OAuthTokenConfig       `yaml:"token,omitempty"`
 	Scopes                             []string                `yaml:"scopes,omitempty"`
@@ -681,6 +682,7 @@ type OAuthProfile struct {
 	RequirePushedAuthorizationRequests bool                `json:"requirePushedAuthorizationRequests"`
 	DPoPBoundAccessTokens              bool                `json:"dpopBoundAccessTokens"`
 	IncludeActClaim                    bool                `json:"includeActClaim"`
+	ClientIDMetadataDocument           bool                `json:"clientIdMetadataDocument,omitempty"`
 	Token                              *OAuthTokenConfig   `json:"token,omitempty"`
 	Scopes                             []string            `json:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig     `json:"userInfo,omitempty"`
@@ -1262,6 +1264,7 @@ type OAuthConfigWithSecret struct {
 	RequirePushedAuthorizationRequests bool                    `json:"requirePushedAuthorizationRequests" yaml:"requirePushedAuthorizationRequests" jsonschema:"Require Pushed Authorization Requests (PAR) per RFC 9126."`
 	DPoPBoundAccessTokens              bool                    `json:"dpopBoundAccessTokens"              yaml:"dpopBoundAccessTokens"              jsonschema:"Require DPoP-bound access tokens (RFC 9449)."`
 	IncludeActClaim                    bool                    `json:"includeActClaim"                    yaml:"includeActClaim"                    jsonschema:"Include an implicit on-behalf-of 'act' claim (identifying the application entity) in access tokens issued through this client's authorization code flow. Agents always include it regardless of this setting."`
+	ClientIDMetadataDocument           bool                    `json:"clientIdMetadataDocument,omitempty" yaml:"clientIdMetadataDocument,omitempty" jsonschema:"Registered from a Client ID Metadata Document. The client ID is the document URL and the values must satisfy the document rules. Fixed at creation."`
 	Token                              *OAuthTokenConfig       `json:"token,omitempty"                    yaml:"token,omitempty"                    jsonschema:"Token configuration for access tokens and ID tokens"`
 	Scopes                             []string                `json:"scopes,omitempty"                   yaml:"scopes,omitempty"                   jsonschema:"Allowed OAuth scopes. Add custom scopes as needed for your application."`
 	UserInfo                           *UserInfoConfig         `json:"userInfo,omitempty"                 yaml:"userInfo,omitempty"                 jsonschema:"UserInfo endpoint configuration. Configure user attributes returned from the OIDC userinfo endpoint."`

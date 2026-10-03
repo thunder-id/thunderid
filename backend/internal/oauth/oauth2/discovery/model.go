@@ -25,6 +25,7 @@ type OAuth2AuthorizationServerMetadata struct {
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`
 	DPoPSigningAlgValuesSupported              []string `json:"dpop_signing_alg_values_supported,omitempty"`
 	AuthorizationGrantProfilesSupported        []string `json:"authorization_grant_profiles_supported,omitempty"`
+	ClientIDMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported,omitempty"`
 }
 
 // OIDCProviderMetadata represents OpenID Connect Provider Metadata (OIDC Discovery 1.0)

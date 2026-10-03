@@ -792,7 +792,7 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 	if needsInboundClient(agent) {
 		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
 		hasSecret := clientSecret != ""
-		if err := s.inboundClientService.Validate(ctx, &client, oauthProfile, hasSecret); err != nil {
+		if err := s.inboundClientService.Validate(ctx, &client, oauthProfile, hasSecret, clientID); err != nil {
 			if svcErr := s.translateInboundClientError(ctx, err); svcErr != nil {
 				return "", "", inboundmodel.InboundClient{}, svcErr
 			}
