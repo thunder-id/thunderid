@@ -4,19 +4,22 @@
 // Package http provides a centralized HTTP client service for making outbound HTTP requests.
 // This package offers an abstraction over the standard http.Client to centralize HTTP operations:
 //
-//   - NewHTTPClient() - creates a client with default 30s timeout
-//   - NewHTTPClientWithTimeout(duration) - creates a client with custom timeout
-//   - NewHTTPClientWithCheckRedirect(policy) - creates a client with a redirect policy and an SSRF dial guard
-//   - NewHTTPClientWithoutRedirects(duration, rejectPrivate) - creates a client with a custom timeout that never
-//     follows redirects, optionally with the SSRF dial guard
+//   - NewHTTPClient(HTTPClientConfig) - creates a client from a config struct
+//   - NewDefaultHTTPClient() - creates a client with the default 30s timeout that follows redirects
+//
+// Safety controls (timeout, redirect policy, SSRF dial guard) are selected per caller through
+// HTTPClientConfig instead of being bundled into fixed constructor combinations.
 //
 // Usage examples:
 //
 //	// Default client
-//	client := httpservice.NewHTTPClient()
+//	client := httpservice.NewDefaultHTTPClient()
 //
-//	// Custom timeout
-//	client := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
+//	// Custom timeout with the SSRF dial guard
+//	client := httpservice.NewHTTPClient(httpservice.HTTPClientConfig{
+//		Timeout:   10 * time.Second,
+//		GuardSSRF: true,
+//	})
 package http
 
 import (
@@ -48,75 +51,67 @@ type HTTPClientInterface interface {
 	PostForm(url string, data url.Values) (*http.Response, error)
 }
 
-// HTTPClient implements HTTPClientInterface and provides a centralized HTTP client.
-type HTTPClient struct {
+// httpClient implements HTTPClientInterface and provides a centralized HTTP client.
+type httpClient struct {
 	client *http.Client
 }
 
-// NewHTTPClient creates a new HTTPClient with default 30-second timeout.
-// This method provides complete abstraction over http.Client references.
-func NewHTTPClient() HTTPClientInterface {
-	return NewHTTPClientWithTimeout(30 * time.Second)
+// HTTPClientConfig carries the options for an outbound HTTP client. The zero
+// value is safe: default timeout, redirects followed, no SSRF dial guard.
+type HTTPClientConfig struct {
+	// Timeout bounds one request. Zero means the 30s default.
+	Timeout time.Duration
+	// DisableRedirects returns a 3xx response instead of following it.
+	DisableRedirects bool
+	// CheckRedirect is a redirect policy for what DisableRedirects can't
+	// express, such as refusing an https to http downgrade. Ignored when
+	// DisableRedirects is set.
+	CheckRedirect func(*http.Request, []*http.Request) error
+	// GuardSSRF dials through the SSRF-safe dialer, refusing any host that
+	// resolves to a loopback, link-local, private or unspecified address and
+	// pinning the connection to the first validated IP (prevents DNS
+	// rebinding). Leave it off only for targets an administrator registered
+	// on an internal network.
+	GuardSSRF bool
 }
 
-// NewHTTPClientWithTimeout creates a new HTTPClient with a custom timeout.
-// This is a convenience method for creating clients with specific timeouts.
-func NewHTTPClientWithTimeout(timeout time.Duration) HTTPClientInterface {
-	return &HTTPClient{
-		client: &http.Client{
-			Timeout: timeout,
-			Transport: &http.Transport{
-				// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
-				TLSClientConfig: &tls.Config{
-					MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
-				},
-			},
-		},
-	}
-}
+// defaultHTTPTimeout bounds one request unless HTTPClientConfig.Timeout overrides it.
+const defaultHTTPTimeout = 30 * time.Second
 
-// NewHTTPClientWithCheckRedirect creates an HTTPClient with a custom redirect policy.
-// Use this when redirect behavior must be controlled, e.g. to prevent HTTPS→HTTP downgrades.
+// NewHTTPClient creates a client from cfg. The zero config is the default
+// client: 30s timeout, redirects followed, no SSRF dial guard.
 // Requires server runtime to be initialized before calling (reads TLS config at construction time).
-// ssrfSafeDialContext is wired in to block hostnames that DNS-resolve to private/loopback addresses
-// and to pin the TCP connection to the first validated IP (prevents DNS rebinding).
-func NewHTTPClientWithCheckRedirect(checkRedirect func(*http.Request, []*http.Request) error) HTTPClientInterface {
-	return &HTTPClient{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				DialContext: ssrfSafeDialContext,
-				// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
-				TLSClientConfig: &tls.Config{
-					MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
-				},
-			},
-			CheckRedirect: checkRedirect,
-		},
+func NewHTTPClient(cfg HTTPClientConfig) HTTPClientInterface {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = defaultHTTPTimeout
 	}
-}
-
-// NewHTTPClientWithoutRedirects creates an HTTPClient with the given timeout that returns a 3xx response
-// instead of following it. With rejectPrivate it dials through the SSRF-safe dialer, refusing any host
-// that resolves to a loopback, link-local, private or unspecified address. Without it there is no
-// guard, so callers must make sure the target was set by an authorized principal.
-func NewHTTPClientWithoutRedirects(timeout time.Duration, rejectPrivate bool) HTTPClientInterface {
 	transport := &http.Transport{
 		// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
 		TLSClientConfig: &tls.Config{
 			MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
 		},
 	}
-	if rejectPrivate {
+	if cfg.GuardSSRF {
 		transport.DialContext = ssrfSafeDialContext
 	}
-	return &HTTPClient{
-		client: &http.Client{
-			Timeout:       timeout,
-			Transport:     transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
 	}
+	switch {
+	case cfg.DisableRedirects:
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	case cfg.CheckRedirect != nil:
+		client.CheckRedirect = cfg.CheckRedirect
+	}
+	return &httpClient{client: client}
+}
+
+// NewDefaultHTTPClient creates a client with the default 30s timeout that follows redirects.
+// This method provides complete abstraction over http.Client references.
+func NewDefaultHTTPClient() HTTPClientInterface {
+	return NewHTTPClient(HTTPClientConfig{})
 }
 
 // ssrfSafeDialContext resolves the target hostname and validates every returned IP against
@@ -229,26 +224,26 @@ func IsSSRFSafeURL(rawURL string) error {
 }
 
 // Do executes an HTTP request and returns an HTTP response.
-func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
+func (c *httpClient) Do(req *http.Request) (*http.Response, error) {
 	return c.client.Do(req)
 }
 
 // Get issues a GET to the specified URL.
-func (c *HTTPClient) Get(url string) (*http.Response, error) {
+func (c *httpClient) Get(url string) (*http.Response, error) {
 	return c.client.Get(url)
 }
 
 // Head issues a HEAD to the specified URL.
-func (c *HTTPClient) Head(url string) (*http.Response, error) {
+func (c *httpClient) Head(url string) (*http.Response, error) {
 	return c.client.Head(url)
 }
 
 // Post issues a POST to the specified URL.
-func (c *HTTPClient) Post(url, contentType string, body io.Reader) (*http.Response, error) {
+func (c *httpClient) Post(url, contentType string, body io.Reader) (*http.Response, error) {
 	return c.client.Post(url, contentType, body)
 }
 
 // PostForm issues a POST to the specified URL, with data's keys and values URL-encoded as the request body.
-func (c *HTTPClient) PostForm(url string, data url.Values) (*http.Response, error) {
+func (c *httpClient) PostForm(url string, data url.Values) (*http.Response, error) {
 	return c.client.PostForm(url, data)
 }

@@ -12,6 +12,10 @@ import (
 // Initialize initializes the OAuth authentication service.
 func Initialize(idpSvc idp.IDPServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface) OAuthAuthnServiceInterface {
-	httpClient := syshttp.NewHTTPClient()
+	// The token and userinfo endpoints come from the connection config like
+	// the JWKS resolver's targets, so they get the same SSRF dial guard.
+	httpClient := syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		GuardSSRF: true,
+	})
 	return newOAuthAuthnService(httpClient, idpSvc, entityProvider)
 }

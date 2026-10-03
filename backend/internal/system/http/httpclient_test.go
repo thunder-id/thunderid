@@ -39,31 +39,31 @@ func (suite *HTTPClientTestSuite) SetupSuite() {
 	assert.NoError(suite.T(), err)
 }
 
-func (suite *HTTPClientTestSuite) TestNewHTTPClient() {
-	client := NewHTTPClient()
+func (suite *HTTPClientTestSuite) TestNewDefaultHTTPClient() {
+	client := NewDefaultHTTPClient()
 	assert.NotNil(suite.T(), client)
 	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
 }
 
-func (suite *HTTPClientTestSuite) TestNewHTTPClientWithTimeout() {
+func (suite *HTTPClientTestSuite) TestNewHTTPClientWithCustomTimeout() {
 	timeout := 5 * time.Second
-	client := NewHTTPClientWithTimeout(timeout)
+	client := NewHTTPClient(HTTPClientConfig{Timeout: timeout})
 	assert.NotNil(suite.T(), client)
 	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
 
 	// Verify timeout is set correctly
-	httpClient := client.(*HTTPClient)
+	httpClient := client.(*httpClient)
 	assert.Equal(suite.T(), timeout, httpClient.client.Timeout)
 }
 
 func (suite *HTTPClientTestSuite) TestNewHTTPClientWithDefaultSettings() {
 	// Test default behavior when no client is provided
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 	assert.NotNil(suite.T(), client)
 	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
 
 	// Verify default timeout is set
-	httpClient := client.(*HTTPClient)
+	httpClient := client.(*httpClient)
 	assert.Equal(suite.T(), 30*time.Second, httpClient.client.Timeout)
 }
 
@@ -75,7 +75,7 @@ func (suite *HTTPClientTestSuite) TestDo() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Create a request
 	req, err := http.NewRequest("GET", testServer.URL, nil)
@@ -100,7 +100,7 @@ func (suite *HTTPClientTestSuite) TestDoWithPost() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Create a POST request
 	req, err := http.NewRequest("POST", testServer.URL, strings.NewReader(`{"test": "data"}`))
@@ -125,7 +125,7 @@ func (suite *HTTPClientTestSuite) TestDoWithTimeout() {
 	defer testServer.Close()
 
 	// Create client with short timeout
-	client := NewHTTPClientWithTimeout(100 * time.Millisecond)
+	client := NewHTTPClient(HTTPClientConfig{Timeout: 100 * time.Millisecond})
 
 	// Create a request
 	req, err := http.NewRequest("GET", testServer.URL, nil)
@@ -147,7 +147,7 @@ func (suite *HTTPClientTestSuite) TestGet() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Execute the GET request
 	resp, err := client.Get(testServer.URL)
@@ -165,7 +165,7 @@ func (suite *HTTPClientTestSuite) TestDoWithError() {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Create a request to the closed server
 	req, err := http.NewRequest("GET", testServer.URL, nil)
@@ -185,7 +185,7 @@ func (suite *HTTPClientTestSuite) TestHead() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Execute the HEAD request
 	resp, err := client.Head(testServer.URL)
@@ -211,7 +211,7 @@ func (suite *HTTPClientTestSuite) TestPost() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Execute the POST request
 	resp, err := client.Post(testServer.URL, "application/json", strings.NewReader(`{"test": "data"}`))
@@ -266,7 +266,7 @@ func (suite *HTTPClientTestSuite) TestPostForm() {
 	}))
 	defer testServer.Close()
 
-	client := NewHTTPClient()
+	client := NewDefaultHTTPClient()
 
 	// Prepare form data
 	formData := url.Values{}
@@ -284,13 +284,55 @@ func (suite *HTTPClientTestSuite) TestPostForm() {
 
 func (suite *HTTPClientTestSuite) TestNewHTTPClientWithoutRedirects() {
 	timeout := 3 * time.Second
-	client := NewHTTPClientWithoutRedirects(timeout, false)
+	client := NewHTTPClient(HTTPClientConfig{Timeout: timeout, DisableRedirects: true})
 	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
 
-	httpClient := client.(*HTTPClient)
+	httpClient := client.(*httpClient)
 	assert.Equal(suite.T(), timeout, httpClient.client.Timeout)
 	transport := httpClient.client.Transport.(*http.Transport)
 	assert.Nil(suite.T(), transport.DialContext, "no SSRF dial guard unless asked for")
+}
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientCombinedConfig() {
+	// The combination the fixed constructors could not express: a custom
+	// timeout, redirects disabled, and the SSRF dial guard together.
+	client := NewHTTPClient(HTTPClientConfig{
+		Timeout:          7 * time.Second,
+		DisableRedirects: true,
+		GuardSSRF:        true,
+	}).(*httpClient)
+
+	assert.Equal(suite.T(), 7*time.Second, client.client.Timeout)
+	transport := client.client.Transport.(*http.Transport)
+	assert.NotNil(suite.T(), transport.DialContext, "the SSRF-safe dialer is wired in")
+	assert.NotNil(suite.T(), client.client.CheckRedirect, "redirects are disabled")
+
+	// DisableRedirects wins over a redirect policy when both are set: the
+	// client returns the 3xx instead of consulting the policy.
+	called := false
+	policy := NewHTTPClient(HTTPClientConfig{
+		DisableRedirects: true,
+		CheckRedirect:    func(*http.Request, []*http.Request) error { called = true; return nil },
+	})
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.invalid/landing", http.StatusFound)
+	}))
+	defer redirecting.Close()
+	resp, err := policy.Post(redirecting.URL, "text/plain", strings.NewReader("x"))
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusFound, resp.StatusCode, "the redirect is returned, not followed")
+	assert.False(suite.T(), called, "the redirect policy must not run when DisableRedirects is set")
+}
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientGuardSSRFWiresDialer() {
+	unguarded := NewHTTPClient(HTTPClientConfig{}).(*httpClient)
+	assert.Nil(suite.T(), unguarded.client.Transport.(*http.Transport).DialContext,
+		"the zero config has no dial guard")
+
+	guarded := NewHTTPClient(HTTPClientConfig{GuardSSRF: true}).(*httpClient)
+	assert.NotNil(suite.T(), guarded.client.Transport.(*http.Transport).DialContext,
+		"GuardSSRF wires the SSRF-safe dialer")
 }
 
 func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_DoesNotFollowRedirects() {
@@ -305,7 +347,7 @@ func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_DoesNotFollowRedire
 	}))
 	defer redirecting.Close()
 
-	client := NewHTTPClientWithoutRedirects(5*time.Second, false)
+	client := NewHTTPClient(HTTPClientConfig{Timeout: 5 * time.Second, DisableRedirects: true})
 	resp, err := client.Post(redirecting.URL, "application/x-www-form-urlencoded",
 		strings.NewReader("logout_token=x"))
 
@@ -323,7 +365,7 @@ func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_ReachesLoopback() {
 	defer server.Close()
 
 	// httptest binds to 127.0.0.1, which the SSRF-guarded client would refuse to dial.
-	resp, err := NewHTTPClientWithoutRedirects(5*time.Second, false).Get(server.URL)
+	resp, err := NewHTTPClient(HTTPClientConfig{Timeout: 5 * time.Second, DisableRedirects: true}).Get(server.URL)
 
 	assert.NoError(suite.T(), err)
 	defer func() { _ = resp.Body.Close() }()
@@ -337,7 +379,7 @@ func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_HonoursTimeout() {
 	}))
 	defer server.Close()
 
-	resp, err := NewHTTPClientWithoutRedirects(50*time.Millisecond, false).Get(server.URL)
+	resp, err := NewHTTPClient(HTTPClientConfig{Timeout: 50 * time.Millisecond, DisableRedirects: true}).Get(server.URL)
 
 	assert.Error(suite.T(), err)
 	if resp != nil {
@@ -356,7 +398,7 @@ func (suite *HTTPClientTestSuite) TestIsPrivateHost() {
 }
 
 func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_RejectPrivateUsesTheSSRFGuard() {
-	client := NewHTTPClientWithoutRedirects(time.Second, true).(*HTTPClient)
+	client := NewHTTPClient(HTTPClientConfig{Timeout: time.Second, GuardSSRF: true}).(*httpClient)
 	transport := client.client.Transport.(*http.Transport)
 	assert.NotNil(suite.T(), transport.DialContext, "the SSRF-safe dialer is wired in")
 

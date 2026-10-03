@@ -23,7 +23,9 @@ func Initialize(
 	rbacEngine, authZENPDPEngine := engine.Initialize(
 		roleService,
 		authZENPDPService,
-		httpservice.NewHTTPClientWithTimeout(0),
+		// PDP endpoints are admin-configured and may be internal hosts, so no
+		// SSRF dial guard; the default timeout lets the per-request context govern.
+		httpservice.NewHTTPClient(httpservice.HTTPClientConfig{}),
 	)
 	return newAuthorizationService(
 		rbacEngine,

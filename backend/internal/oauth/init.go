@@ -61,8 +61,14 @@ func Initialize(
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
-	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
-		return syshttp.IsSSRFSafeURL(req.URL.String())
+	// The JWKS targets come from the connection config, so the client keeps
+	// the SSRF dial guard. The redirect policy re-checks each redirect target
+	// with IsSSRFSafeURL, since the dial guard only pins the first hop.
+	httpClient := syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		GuardSSRF: true,
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			return syshttp.IsSSRFSafeURL(req.URL.String())
+		},
 	})
 	resolver := jwksresolver.Initialize(httpClient)
 	scopeValidator := scope.Initialize()
