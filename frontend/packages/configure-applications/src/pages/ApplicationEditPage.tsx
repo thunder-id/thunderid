@@ -30,6 +30,7 @@ import SettingsLockNotice from '../components/common/SettingsLockNotice';
 import ShowClientSecret from '../components/create-application/ShowClientSecret';
 import EditAccessSettings from '../components/edit-application/access/EditAccessSettings';
 import EditAdvancedSettings from '../components/edit-application/advanced-settings/EditAdvancedSettings';
+import CimdDocumentSection from '../components/edit-application/cimd/CimdDocumentSection';
 import EditCredentialsSettings from '../components/edit-application/credentials/EditCredentialsSettings';
 import EditCustomizationSettings from '../components/edit-application/customization-settings/EditCustomizationSettings';
 import EditFlowsSettings from '../components/edit-application/flows-settings/EditFlowsSettings';
@@ -255,6 +256,8 @@ export default function ApplicationEditPage() {
   )?.config;
 
   const isMcpClient = application.template === TemplateConstants.MCP_CLIENT_TEMPLATE_ID;
+  // A metadata-document client's redirect URIs, authentication method, and keys come from its document.
+  const isCimdClient = oauth2Config?.clientIdMetadataDocument === true;
   const isMcpM2mOnly = deriveMcpClientType(oauth2Config?.grantTypes) === McpClientTypes.M2M;
 
   // User-facing tabs (Flows, Customization) and the general Access section only apply when the
@@ -407,6 +410,23 @@ export default function ApplicationEditPage() {
             />
           ),
         },
+        // An MCP client shows its document on the Connect tab instead.
+        ...(isCimdClient && !isMcpClient && oauth2Config
+          ? [
+              {
+                key: 'metadata-document',
+                label: t('applications:edit.page.tabs.metadataDocument', 'Metadata document'),
+                panel: (
+                  <CimdDocumentSection
+                    application={application}
+                    oauth2Config={oauth2Config}
+                    onFieldChange={handleFieldChange}
+                    isReadOnly={application.isReadOnly === true}
+                  />
+                ),
+              },
+            ]
+          : []),
         {
           key: 'access',
           label: t('applications:edit.page.tabs.access', 'Access'),
@@ -421,20 +441,24 @@ export default function ApplicationEditPage() {
             />
           ),
         },
-        {
-          key: 'credentials',
-          label: t('applications:edit.page.tabs.credentials', 'Credentials'),
-          panel: (
-            <EditCredentialsSettings
-              application={application}
-              editedApp={editedApp}
-              oauth2Config={oauth2Config}
-              onFieldChange={handleFieldChange}
-              showAttestation={supportsAttestation}
-              onValidationChange={setCredentialsSettingsInvalid}
-            />
-          ),
-        },
+        ...(isCimdClient
+          ? []
+          : [
+              {
+                key: 'credentials',
+                label: t('applications:edit.page.tabs.credentials', 'Credentials'),
+                panel: (
+                  <EditCredentialsSettings
+                    application={application}
+                    editedApp={editedApp}
+                    oauth2Config={oauth2Config}
+                    onFieldChange={handleFieldChange}
+                    showAttestation={supportsAttestation}
+                    onValidationChange={setCredentialsSettingsInvalid}
+                  />
+                ),
+              },
+            ]),
         {
           key: 'flows',
           label: t('applications:edit.page.tabs.flows'),
@@ -487,7 +511,7 @@ export default function ApplicationEditPage() {
               oauth2Config={oauth2Config}
               oauth2Constraints={oauth2Constraints}
               onFieldChange={handleFieldChange}
-              showRedirectUris={userAccessUnlocked}
+              showRedirectUris={userAccessUnlocked && !isCimdClient}
               sectionResetKey={sectionResetKey}
               onValidationChange={setAdvancedSettingsInvalid}
               onDeleteSuccess={() => {

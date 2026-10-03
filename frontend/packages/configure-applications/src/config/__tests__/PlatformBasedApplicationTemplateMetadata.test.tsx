@@ -12,8 +12,8 @@ describe('PlatformBasedApplicationTemplateMetadata', () => {
       expect(Array.isArray(PlatformBasedApplicationTemplateMetadata)).toBe(true);
     });
 
-    it('should have exactly 6 platform templates', () => {
-      expect(PlatformBasedApplicationTemplateMetadata).toHaveLength(6);
+    it('should have exactly 7 platform templates', () => {
+      expect(PlatformBasedApplicationTemplateMetadata).toHaveLength(7);
     });
 
     it('should have all required properties for each template', () => {

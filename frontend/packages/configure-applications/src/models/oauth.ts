@@ -482,6 +482,12 @@ export interface OAuth2Config {
   certificate?: {type: string; value?: string} | null;
 
   /**
+   * Whether the client was registered from a Client ID Metadata Document. When true, `clientId` is
+   * the document URL and the values come from a preview of the document. Fixed at creation.
+   */
+  clientIdMetadataDocument?: boolean;
+
+  /**
    * Default ACR values applied when the request does not specify acr_values
    * @example ['urn:thunder:silver', 'urn:thunder:gold']
    */

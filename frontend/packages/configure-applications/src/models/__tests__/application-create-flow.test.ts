@@ -36,10 +36,12 @@ describe('application-create-flow models', () => {
 
     it('should have CLIENT_TYPE step', () => {
       expect(ApplicationCreateFlowStep.CLIENT_TYPE).toBe('CLIENT_TYPE');
+      expect(ApplicationCreateFlowStep.METADATA_DOCUMENT).toBe('METADATA_DOCUMENT');
+      expect(ApplicationCreateFlowStep.CLIENT_IDENTITY).toBe('CLIENT_IDENTITY');
     });
 
-    it('should have exactly 7 steps', () => {
-      expect(Object.keys(ApplicationCreateFlowStep)).toHaveLength(7);
+    it('should have exactly 9 steps', () => {
+      expect(Object.keys(ApplicationCreateFlowStep)).toHaveLength(9);
     });
   });
 

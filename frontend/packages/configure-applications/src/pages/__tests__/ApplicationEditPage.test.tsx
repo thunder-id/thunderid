@@ -130,6 +130,10 @@ vi.mock('../../components/edit-application/advanced-settings/EditAdvancedSetting
   )),
 }));
 
+vi.mock('../../components/edit-application/cimd/CimdDocumentSection', () => ({
+  default: () => <div data-testid="cimd-document-section">Metadata document</div>,
+}));
+
 vi.mock('../../components/edit-application/integration-guides/IntegrationGuides', () => ({
   default: vi.fn(({onGoToFlows, onGoToCustomization}: {onGoToFlows?: () => void; onGoToCustomization?: () => void}) => (
     <div data-testid="integration-guides">
@@ -463,6 +467,40 @@ describe('ApplicationEditPage', () => {
   });
 
   describe('Tab Navigation', () => {
+    it('should show the metadata document instead of credentials for a Client ID Metadata Document client', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: {
+          ...mockApplication,
+          template: 'cimd',
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                clientId: 'https://vscode.dev/oauth/client-metadata.json',
+                clientIdMetadataDocument: true,
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['http://127.0.0.1/callback'],
+                pkceRequired: true,
+                publicClient: true,
+                tokenEndpointAuthMethod: 'none',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      expect(screen.queryByRole('tab', {name: /credentials/i})).not.toBeInTheDocument();
+      await user.click(screen.getByRole('tab', {name: /metadata document/i}));
+      expect(screen.getByTestId('cimd-document-section')).toBeInTheDocument();
+    });
+
     it('should render all tabs without integration guides', () => {
       renderComponent();
 

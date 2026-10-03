@@ -3,7 +3,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {Box, Button, Chip, FormControl, FormLabel, Stack, TextField} from '@wso2/oxygen-ui';
-import {Bot, UserRound} from '@wso2/oxygen-ui-icons-react';
+import {Bot, FileBadge, UserRound} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useCallback, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -15,6 +15,7 @@ import resolveApplicationType from '../../../utils/resolveApplicationType';
 import ClientSecretSuccessDialog from '../../ClientSecretSuccessDialog';
 import CopyableField from '../../common/CopyableField';
 import RegenerateSecretDialog from '../../RegenerateSecretDialog';
+import CimdDocumentSection from '../cimd/CimdDocumentSection';
 
 /**
  * Props for the {@link McpConnectTab} component.
@@ -107,6 +108,8 @@ export default function McpConnectTab({
   // client-type badge, rather than inferring M2M from grant shape.
   const resolvedType = resolveApplicationType(application.type, oauth2Config);
   const isM2m = resolvedType === 'm2m';
+  // A metadata-document client's redirect URIs come from its document rather than this tab.
+  const isCimd = oauth2Config?.clientIdMetadataDocument === true;
 
   const isConfidentialClient =
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.CLIENT_SECRET_BASIC ||
@@ -141,7 +144,15 @@ export default function McpConnectTab({
           )}
         >
           <Stack spacing={3}>
-            <Box>
+            <Box sx={{display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+              {isCimd && (
+                <Chip
+                  variant="outlined"
+                  color="primary"
+                  icon={<FileBadge size={14} />}
+                  label={t('applications:cimd.edit.badge', 'CIMD')}
+                />
+              )}
               <Chip
                 variant="outlined"
                 color="default"
@@ -202,7 +213,16 @@ export default function McpConnectTab({
           </Stack>
         </SettingsCard>
 
-        {!isM2m && (
+        {isCimd && oauth2Config && (
+          <CimdDocumentSection
+            application={application}
+            oauth2Config={oauth2Config}
+            onFieldChange={onFieldChange}
+            isReadOnly={isReadOnly}
+          />
+        )}
+
+        {!isM2m && !isCimd && (
           <McpAccessSection
             key={sectionResetKey}
             application={application}

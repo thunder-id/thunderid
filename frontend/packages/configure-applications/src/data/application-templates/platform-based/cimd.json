@@ -1,0 +1,28 @@
+{
+  "id": "cimd",
+  "type": "custom",
+  "displayName": "CIMD",
+  "description": "A client registered from the metadata document its vendor publishes",
+  "creationFlow": {
+    "steps": ["ORGANIZATION_UNIT", "METADATA_DOCUMENT", "DETAILS", "COMPLETE"],
+    "previewSteps": [],
+    "allowsUserLogins": true
+  },
+  "defaults": {
+    "name": "",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code", "refresh_token"],
+          "responseTypes": ["code"],
+          "redirectUris": [],
+          "pkceRequired": true,
+          "tokenEndpointAuthMethod": "none",
+          "publicClient": true
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  }
+}

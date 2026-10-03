@@ -11,6 +11,7 @@ import ApplicationCreateProvider from '../../contexts/ApplicationCreate/Applicat
 import useApplicationCreateContext from '../../hooks/useApplicationCreateContext';
 import type {Application} from '../../models/application';
 import {OrganizationUnitDefaultItem} from '../../models/application-create-flow';
+import type {CimdPreviewResponse} from '../../models/cimd';
 import ApplicationCreatePage from '../ApplicationCreatePage';
 
 // Mock functions
@@ -40,6 +41,57 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 vi.mock('../../api/useGetApplications', () => ({
   default: mockUseGetApplications,
 }));
+
+// Stands in for POST /cimd/preview with the values the server returns for two known clients.
+vi.mock('../../api/usePreviewCimdDocument', async () => {
+  const {useMutation} = await import('@tanstack/react-query');
+  const {default: toCimdPreview} = await import('../../utils/toCimdPreview');
+  const documents: Record<string, CimdPreviewResponse> = {
+    'https://vscode.dev/oauth/client-metadata.json': {
+      name: 'Visual Studio Code',
+      url: 'https://vscode.dev/product',
+      inboundAuthConfig: [
+        {
+          type: 'oauth2',
+          config: {
+            clientId: 'https://vscode.dev/oauth/client-metadata.json',
+            clientIdMetadataDocument: true,
+            redirectUris: ['http://127.0.0.1:33418/', 'https://vscode.dev/redirect'],
+            grantTypes: ['authorization_code', 'refresh_token'],
+            responseTypes: ['code'],
+            tokenEndpointAuthMethod: 'none',
+            publicClient: true,
+            pkceRequired: true,
+          },
+        },
+      ],
+    },
+    'https://chatgpt.com/oauth/client.json': {
+      name: 'ChatGPT',
+      inboundAuthConfig: [
+        {
+          type: 'oauth2',
+          config: {
+            clientId: 'https://chatgpt.com/oauth/client.json',
+            clientIdMetadataDocument: true,
+            redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+            grantTypes: ['authorization_code', 'refresh_token'],
+            responseTypes: ['code'],
+            tokenEndpointAuthMethod: 'private_key_jwt',
+            publicClient: false,
+            pkceRequired: true,
+            certificate: {type: 'JWKS_URI', value: 'https://chatgpt.com/oauth/jwks.json'},
+          },
+        },
+      ],
+    },
+  };
+  return {
+    default: function usePreviewCimdDocument() {
+      return useMutation({mutationFn: (clientId: string) => Promise.resolve(toCimdPreview(documents[clientId]))});
+    },
+  };
+});
 
 // Mock react-router
 vi.mock('react-router', async () => {
@@ -623,6 +675,76 @@ function TemplateSeeder(): JSX.Element {
         }
       >
         Select MCP Client
+      </button>
+      <button
+        type="button"
+        aria-label="seed cimd template"
+        data-testid="select-cimd-template"
+        onClick={() =>
+          seed(null, null, {
+            id: 'cimd',
+            type: 'custom',
+            creationFlow: {
+              steps: ['ORGANIZATION_UNIT', 'METADATA_DOCUMENT', 'DETAILS', 'COMPLETE'],
+              previewSteps: [],
+              allowsUserLogins: true,
+            },
+            defaults: {
+              inboundAuthConfig: [
+                {
+                  type: 'oauth2',
+                  config: {
+                    grantTypes: ['authorization_code', 'refresh_token'],
+                    responseTypes: ['code'],
+                    redirectUris: [],
+                    pkceRequired: true,
+                    tokenEndpointAuthMethod: 'none',
+                    publicClient: true,
+                  },
+                },
+              ],
+            },
+          })
+        }
+      >
+        Select Client ID Metadata Document
+      </button>
+      <button
+        type="button"
+        aria-label="seed mcp template with client identity"
+        data-testid="select-mcp-client-identity-template"
+        onClick={() =>
+          seed(null, null, {
+            id: 'mcp-client',
+            type: 'mcp',
+            metadataDocumentClients: [
+              {name: 'Claude', clientId: 'https://claude.ai/oauth/mcp-oauth-client-metadata'},
+              {name: 'ChatGPT', clientId: 'https://chatgpt.com/oauth/client.json'},
+              {name: 'Visual Studio Code', clientId: 'https://vscode.dev/oauth/client-metadata.json'},
+            ],
+            creationFlow: {
+              steps: ['ORGANIZATION_UNIT', 'CLIENT_IDENTITY', 'DETAILS', 'CLIENT_TYPE', 'COMPLETE'],
+              previewSteps: [],
+            },
+            defaults: {
+              inboundAuthConfig: [
+                {
+                  type: 'oauth2',
+                  config: {
+                    grantTypes: ['authorization_code', 'refresh_token'],
+                    responseTypes: ['code'],
+                    redirectUris: [],
+                    pkceRequired: true,
+                    tokenEndpointAuthMethod: 'none',
+                    publicClient: true,
+                  },
+                },
+              ],
+            },
+          })
+        }
+      >
+        Select MCP Client with client identity
       </button>
     </div>
   );
@@ -2719,6 +2841,146 @@ describe('ApplicationCreatePage', () => {
       });
 
       expect(screen.queryByTestId('application-configure-mcp-connection')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Client ID Metadata Document template', () => {
+    const fetchDocument = async (url: string) => {
+      await user.click(screen.getByTestId('select-cimd-template'));
+      expect(screen.getByTestId('application-configure-metadata-document')).toBeInTheDocument();
+      expect(screen.getByTestId('application-wizard-next-button')).toBeDisabled();
+      // The standalone template lists no known clients, so it offers no quick picks.
+      expect(screen.queryByText('Known clients:')).not.toBeInTheDocument();
+
+      await user.type(screen.getByTestId('cimd-document-url-input'), url);
+      await user.click(screen.getByTestId('cimd-fetch-document-button'));
+      expect(await screen.findByTestId('cimd-preview-card')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId('application-wizard-next-button')).toBeEnabled());
+
+      // METADATA_DOCUMENT -> DETAILS
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+    };
+
+    it('should pre-fill the name from the document and create a custom client from it', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'cimd-app-1', name: 'Visual Studio Code'} as Application);
+      });
+
+      renderWithProviders();
+      await fetchDocument('https://vscode.dev/oauth/client-metadata.json');
+
+      expect(screen.getByTestId('app-name-input')).toHaveValue('Visual Studio Code');
+
+      // DETAILS is the last step.
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const requestBody = mockCreateApplication.mock.calls[0][0] as Application;
+      expect(requestBody.template).toBe('cimd');
+      expect(requestBody.type).toBe('custom');
+      expect(requestBody.url).toBe('https://vscode.dev/product');
+      expect(requestBody.inboundAuthConfig?.[0]?.config).toMatchObject({
+        clientId: 'https://vscode.dev/oauth/client-metadata.json',
+        clientIdMetadataDocument: true,
+        redirectUris: ['http://127.0.0.1:33418/', 'https://vscode.dev/redirect'],
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        tokenEndpointAuthMethod: 'none',
+        publicClient: true,
+        pkceRequired: true,
+      });
+    });
+
+    it('should submit a private key JWT client with its JWKS URI as the certificate', async () => {
+      renderWithProviders();
+      await fetchDocument('https://chatgpt.com/oauth/client.json');
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const requestBody = mockCreateApplication.mock.calls[0][0] as Application;
+      expect(requestBody.inboundAuthConfig?.[0]?.config).toMatchObject({
+        clientId: 'https://chatgpt.com/oauth/client.json',
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        publicClient: false,
+        certificate: {type: 'JWKS_URI', value: 'https://chatgpt.com/oauth/jwks.json'},
+      });
+    });
+  });
+
+  describe('MCP Client - Client ID Metadata Document identity', () => {
+    it('should register a known client in one step from its tile', async () => {
+      renderWithProviders();
+      await user.click(screen.getByTestId('select-mcp-client-identity-template'));
+      expect(screen.getByTestId('application-configure-mcp-client-identity')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('cimd-known-client-ChatGPT'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      // No Details or Client type step for a known client.
+      expect(screen.queryByTestId('app-name-input')).not.toBeInTheDocument();
+
+      const requestBody = mockCreateApplication.mock.calls[0][0] as Application;
+      expect(requestBody.name).toBe('ChatGPT');
+      expect(requestBody.template).toBe('mcp-client');
+      expect(requestBody.type).toBe('mcp');
+      expect(requestBody.inboundAuthConfig?.[0]?.config).toMatchObject({
+        clientId: 'https://chatgpt.com/oauth/client.json',
+        clientIdMetadataDocument: true,
+        redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        publicClient: false,
+        certificate: {type: 'JWKS_URI', value: 'https://chatgpt.com/oauth/jwks.json'},
+      });
+    });
+
+    it('should register another client from its document URL through the Details step', async () => {
+      renderWithProviders();
+      await user.click(screen.getByTestId('select-mcp-client-identity-template'));
+      expect(screen.getByTestId('application-wizard-next-button')).toBeDisabled();
+
+      await user.click(screen.getByText('Another client with a CIMD'));
+      await user.type(screen.getByTestId('cimd-document-url-input'), 'https://chatgpt.com/oauth/client.json');
+      await user.click(screen.getByTestId('cimd-fetch-document-button'));
+      expect(await screen.findByTestId('cimd-preview-card')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId('application-wizard-next-button')).toBeEnabled());
+
+      // CLIENT_IDENTITY -> DETAILS, which is the last step for a metadata document client.
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+      expect(screen.getByTestId('app-name-input')).toHaveValue('ChatGPT');
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('application-configure-mcp-client-type')).not.toBeInTheDocument();
+
+      const requestBody = mockCreateApplication.mock.calls[0][0] as Application;
+      expect(requestBody.inboundAuthConfig?.[0]?.config).toMatchObject({
+        clientId: 'https://chatgpt.com/oauth/client.json',
+        tokenEndpointAuthMethod: 'private_key_jwt',
+        certificate: {type: 'JWKS_URI', value: 'https://chatgpt.com/oauth/jwks.json'},
+      });
+    });
+
+    it('should keep the Client type step when the MCP client is configured manually', async () => {
+      renderWithProviders();
+      await user.click(screen.getByTestId('select-mcp-client-identity-template'));
+      await user.click(screen.getByText("I'll configure it myself"));
+
+      // CLIENT_IDENTITY -> DETAILS -> CLIENT_TYPE
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+      await user.type(screen.getByTestId('app-name-input'), 'My MCP App');
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      expect(screen.getByTestId('application-configure-mcp-client-type')).toBeInTheDocument();
     });
   });
 
