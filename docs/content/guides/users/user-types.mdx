@@ -22,7 +22,7 @@ User types work alongside **Organization Units (OUs)** to model your real-world 
 - The **user type** defines what a user looks like; their attributes, constraints, and registration rules.
 - The **organization unit** defines where a user belongs; their place in your organizational hierarchy.
 
-Each user type belongs to a single OU. Users of that type can only exist under that OU or one of its descendants. Learn more in [Organization Units](../../organization-units/).
+Each user type belongs to a single OU. Users of that type can only exist under that OU or one of its descendants. Learn more in [Organization Units](../../organization-units/manage-organization-units).
 
 <ProductName /> ships with one default user type. Learn more about its schema in [User Type Reference](../user-type-reference).
 
@@ -35,7 +35,7 @@ Each user type belongs to a single OU. Users of that type can only exist under t
 
 1. Navigate to **User Types** in the <ProductName /> Console and click **Create User Type**.
 2. Enter a **Name** for the user type. The name is used as the type identifier and must be unique.
-3. Select the **Organization Unit** this user type should belong to. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/) for more information.
+3. Select the **Organization Unit** this user type should belong to. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/manage-organization-units) for more information.
 4. Configure **Allow Self Registration**. When enabled, users of this type can sign up through the registration flow assigned to your application.
 5. Set the attributes that the user type should have, including data types and constraint modifiers. See [User Type Reference](../user-type-reference) for details on available settings and attribute options.
 6. Click **Create User Type**.
@@ -70,5 +70,5 @@ Deletion fails if users of this type exist. Delete or reassign all users of this
 
 - [User Type Reference](../user-type-reference) - Schema settings, attribute types, and constraint modifiers
 - [Manage Users](../manage-users) - Create and manage users of each type
-- [Organization Units](../../organization-units) - Understand the OU structure that binds user types.
+- [Organization Units](../../organization-units/manage-organization-units) - Understand the OU structure that binds user types.
 - [Flows](../../flows/what-are-flows) - Configure registration flows for self-service sign-up

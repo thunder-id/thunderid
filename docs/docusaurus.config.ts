@@ -211,6 +211,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/custom',
             to: '/sdks-and-tools/react/guides/protecting-routes',
           },
+          {
+            from: '/docs/next/guides/organization-units',
+            to: '/docs/next/guides/organization-units/manage-organization-units',
+          },
         ],
 
         // v1.0.x moved from /docs/v1.0.x/ to the bare /docs/ root (it is the
