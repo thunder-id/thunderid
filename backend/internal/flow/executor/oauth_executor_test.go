@@ -125,7 +125,7 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeProvided_AuthenticatesUser(
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "test@example.com", resp.RuntimeData["email"])
+	assert.Equal(suite.T(), "test@example.com", publishedClaim(resp.RuntimeData, "email"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -219,7 +219,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_SubMismatch_Fai
 			"code": "auth_code_123",
 		},
 		RuntimeData: map[string]string{
-			"sub": "stored-sub-123",
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-123", "stored-sub-123", nil),
 		},
 		NodeProperties: map[string]interface{}{
 			"idpId": "idp-123",
@@ -357,7 +357,6 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
-	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
@@ -365,7 +364,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
+	assert.Equal(suite.T(), "new-user-sub", publishedClaim(execResp.RuntimeData, "sub"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -389,7 +388,6 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AuthFlow_UserNo
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
-	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
@@ -622,88 +620,6 @@ func (suite *OAuthExecutorTestSuite) TestHasRequiredInputs_CodeNotProvided() {
 	assert.NotEmpty(suite.T(), execResp.Inputs)
 }
 
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmail() {
-	userInfo := map[string]string{
-		"sub":      "user-sub-123",
-		"email":    "test@example.com",
-		"name":     "Test User",
-		"username": "testuser",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "username")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithoutEmail() {
-	userInfo := map[string]string{
-		"sub":  "user-sub-123",
-		"name": "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "email")
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmptyEmail() {
-	userInfo := map[string]string{
-		"sub":   "user-sub-123",
-		"email": "",
-		"name":  "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "", attributes["email"])
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_FilterSkipAttributes() {
-	userInfo := map[string]string{
-		"sub":      "user-sub-123",
-		"email":    "test@example.com",
-		"name":     "Test User",
-		"username": "testuser",
-		"id":       "some-id",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "username")
-	assert.NotContains(suite.T(), attributes, "id")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
-}
-
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlow_WithEmail() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -726,7 +642,6 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
-	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
@@ -734,29 +649,9 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
-	assert.Equal(suite.T(), "newuser@example.com", execResp.RuntimeData["email"])
+	assert.Equal(suite.T(), "new-user-sub", publishedClaim(execResp.RuntimeData, "sub"))
+	assert.Equal(suite.T(), "newuser@example.com", publishedClaim(execResp.RuntimeData, "email"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmail_NilRuntimeData() {
-	userInfo := map[string]string{
-		"sub":   "user-sub-123",
-		"email": "test@example.com",
-		"name":  "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: nil, // Explicitly nil
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotNil(suite.T(), execResp.RuntimeData, "RuntimeData should be initialized")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
 }
 
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithoutLocalUser() {
@@ -787,7 +682,6 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithou
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
-	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
@@ -796,7 +690,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithou
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
 	assert.Equal(suite.T(), dataValueTrue, execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
+	assert.Equal(suite.T(), "new-user-sub", publishedClaim(execResp.RuntimeData, "sub"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -821,7 +715,6 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthWith
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
-	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
@@ -899,4 +792,77 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegistra
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// An authorization code belongs to the node that requested it. UserInputs persist for the whole
+// execution, so a code left behind is still there when a second federated node runs, and
+// HasRequiredInputs reads it as that node's own: the node skips its redirect and exchanges the first
+// connection's code at the second connection's token endpoint. That second node is exactly what a
+// verified-mode linking node forwards to.
+func (suite *OAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsumed() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code":  "auth_code_123",
+			"state": "state-123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-123",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyOAuthState: "state-123",
+		},
+	}
+
+	authenticatedAuthUser := newOAuthAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{"sub": "sub-github"},
+			(*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
+
+	expectIdentityProviderResolved(suite.mockIDPService)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.NotContains(suite.T(), ctx.UserInputs, userInputCode,
+		"the consumed code must not survive into the next federated node")
+	assert.NotContains(suite.T(), ctx.UserInputs, userInputState,
+		"the consumed state must not survive into the next federated node")
+}
+
+// An AuthUser with no entity-reference side names nobody. Resolving an entity reference from it is
+// not something to ask for: the manager rejects the call as a fault and logs it as one.
+func (suite *OAuthExecutorTestSuite) TestExecute_NoEntityReference_DoesNotResolveIt() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code": "auth_code_123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-123",
+		},
+	}
+
+	var candidateAuthUser providers.AuthUser
+	suite.Require().NoError(candidateAuthUser.UnmarshalJSON([]byte(`{"default":{"attributeToken":"tok"}}`)))
+
+	// GetEntityReference is deliberately not stubbed: the mock fails the test if it is called.
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(candidateAuthUser, providers.AuthenticatedClaims{"sub": "sub-github"},
+			(*tidcommon.ServiceError)(nil))
+
+	expectIdentityProviderResolved(suite.mockIDPService)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), entityStateNotExists, resp.RuntimeData[common.RuntimeKeyEntityState])
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
 }

@@ -1157,6 +1157,44 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_Valid() {
 	s.Nil(err)
 }
 
+// A linking node that sits between the federated executor and provisioning with no onIncomplete has
+// nowhere to send a matched candidate for verification, so the flow fails to save.
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_LinkingWithoutOnIncomplete() {
+	s.mockExecutorRegistry.EXPECT().IsRegistered(mock.Anything).Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta(mock.Anything).Return(nil, nil)
+
+	fd := &FlowDefinition{
+		Handle:   "verified-linking-flow",
+		Name:     "Verified Linking Flow",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes: []providers.NodeDefinition{
+			{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "federated_login"},
+			federatedLinkingNode(),
+			{
+				ID: "linking", Type: string(common.NodeTypeTaskExecution),
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameLinking},
+				OnSuccess: "provisioning",
+			},
+			{
+				ID: "provisioning", Type: string(common.NodeTypeTaskExecution),
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameProvisioning},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID: "auth_assert", Type: string(common.NodeTypeTaskExecution),
+				Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameAuthAssert},
+				OnSuccess: "end",
+			},
+			{ID: "end", Type: string(common.NodeTypeEnd)},
+		},
+	}
+
+	err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
 func (s *ValidatorTestSuite) TestValidateFlowDefinition_InvalidMetadata() {
 	fd := minimalValidFlow()
 	fd.Handle = ""
@@ -1861,4 +1899,270 @@ func (s *ValidatorTestSuite) TestValidateSessionExecutor_MultiplePairsValid() {
 	s.Nil(err)
 	err = s.v.validateSessionExecutor(&nodes[3], nodes)
 	s.Nil(err)
+}
+
+// ---------------------------------------------------------------------------
+// Tests for the linking executor constraints
+// ---------------------------------------------------------------------------
+
+// linkingFlowNodes returns a linking node wired to a downstream LOGIN_OPTIONS node whose only
+// chooser option leads to a CredentialsAuthExecutor node, so the derivation can resolve a method
+// for it. onIncomplete is set only when incompleteTarget is non-empty, so the missing-edge case can
+// use the same helper.
+func linkingFlowNodes(incompleteTarget string) []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{
+			ID:           "linking",
+			Type:         string(common.NodeTypeTaskExecution),
+			Executor:     &providers.ExecutorDefinition{Name: executor.ExecutorNameLinking},
+			OnSuccess:    "provisioning",
+			OnIncomplete: incompleteTarget,
+		},
+		{
+			ID:      "login_options",
+			Type:    string(common.NodeTypePrompt),
+			Variant: providers.NodeVariantLoginOptions,
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "verify_password", NextNode: "credentials_auth"}},
+			},
+		},
+		{
+			ID:   "credentials_auth",
+			Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{
+				Name: executor.ExecutorNameCredentialsAuth,
+				Inputs: []providers.InputDefinition{
+					{Identifier: "password", Type: providers.InputTypePassword, Required: true},
+				},
+			},
+			OnSuccess: "linking",
+		},
+	}
+}
+
+func nodeIndexFor(nodes []providers.NodeDefinition) map[string]*providers.NodeDefinition {
+	nodeIndex := make(map[string]*providers.NodeDefinition, len(nodes))
+	for i := range nodes {
+		nodeIndex[nodes[i].ID] = &nodes[i]
+	}
+	return nodeIndex
+}
+
+// federatedLinkingNode returns a federated auth executor node whose success edge enters the linking
+// decision node.
+func federatedLinkingNode() providers.NodeDefinition {
+	return providers.NodeDefinition{
+		ID:        "federated_login",
+		Type:      string(common.NodeTypeTaskExecution),
+		Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameOAuth},
+		OnSuccess: "linking",
+	}
+}
+
+// A matched account comes back as a candidate the node forwards for verification, so a missing
+// onIncomplete is a broken flow. At
+// runtime the engine turns that node's incomplete response into an internal server error, which is
+// a bad way to learn about it.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingRequiresOnIncomplete() {
+	nodes := linkingFlowNodes("")
+
+	err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+	s.NotNil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingValid() {
+	nodes := linkingFlowNodes("login_options")
+
+	err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+	s.Nil(err)
+}
+
+// A LinkingExecutor's onIncomplete requirement is unconditional: it does not care whether
+// the target PROMPT node is a LOGIN_OPTIONS chooser or a plain confirmation prompt.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingOnIncompleteConfirmationPromptValid() {
+	nodes := linkingFlowNodes("login_options")
+	nodes[1].Variant = ""
+
+	err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+	s.Nil(err)
+}
+
+// linkingPromptNodes forwards the linking node to the linking prompt, with each of its two actions
+// pointing where the case asks, and a CALL node that runs the verification flow.
+func linkingPromptNodes(confirmTarget, rejectTarget string) []providers.NodeDefinition {
+	return append(linkingFlowNodes("linking_prompt"), providers.NodeDefinition{
+		ID:   "linking_prompt",
+		Type: string(common.NodeTypePrompt),
+		Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{
+				Ref: "link_account", Type: string(common.ActionTypeConfirm), NextNode: confirmTarget}},
+			{Action: &providers.ActionDefinition{
+				Ref: "use_new_account", Type: string(common.ActionTypeReject), NextNode: rejectTarget}},
+		},
+	}, providers.NodeDefinition{
+		ID:        "verify_call",
+		Type:      string(common.NodeTypeCall),
+		Flow:      &providers.FlowReferenceDefinition{Ref: "verify-flow"},
+		OnSuccess: "linking",
+	})
+}
+
+// A prompt forwards the action type it raised to the node that action points at and no further, so
+// a refusal routed anywhere but the linking node is inert: at runtime the node sees no refusal and
+// reports a verification that nobody completed. The confirmation may call a verification flow or run
+// verification steps in this frame that lead back to the linking node.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingDecisionActionRouting() {
+	cases := []struct {
+		name          string
+		confirmTarget string
+		rejectTarget  string
+		valid         bool
+	}{
+		{"confirmation calls the verification flow", "verify_call", "linking", true},
+		{"confirmation verifies in this frame", "login_options", "linking", true},
+		{"refusal must point back at the node", "verify_call", "credentials_auth", false},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			nodes := linkingPromptNodes(tc.confirmTarget, tc.rejectTarget)
+
+			err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+			if tc.valid {
+				s.Nil(err)
+				return
+			}
+			s.NotNil(err)
+		})
+	}
+}
+
+// In-frame verification runs before the linking node restores its checkpoint and checks the
+// verified account, so every way out of it has to pass through the linking node.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingVerificationSegment() {
+	cases := []struct {
+		name        string
+		wire        func(nodes []providers.NodeDefinition) []providers.NodeDefinition
+		key         string
+		segmentNode string
+	}{
+		{
+			name: "provisioning before returning",
+			wire: func(nodes []providers.NodeDefinition) []providers.NodeDefinition {
+				nodes[2].OnFailure = "provisioning"
+				return append(nodes, providers.NodeDefinition{
+					ID:       "provisioning",
+					Type:     string(common.NodeTypeTaskExecution),
+					Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameProvisioning},
+				})
+			},
+			key:         "error.flowmgtservice.linking_verification_segment_forbidden_node_description",
+			segmentNode: "provisioning",
+		},
+		{
+			name: "ending the flow before returning",
+			wire: func(nodes []providers.NodeDefinition) []providers.NodeDefinition {
+				nodes[2].OnFailure = "finish"
+				return append(nodes, providers.NodeDefinition{ID: "finish", Type: string(common.NodeTypeEnd)})
+			},
+			key:         "error.flowmgtservice.linking_verification_segment_forbidden_node_description",
+			segmentNode: "finish",
+		},
+		{
+			name: "never returning",
+			wire: func(nodes []providers.NodeDefinition) []providers.NodeDefinition {
+				nodes[2].OnSuccess = ""
+				return nodes
+			},
+			key: "error.flowmgtservice.linking_verification_segment_not_returning_description",
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			nodes := tc.wire(linkingPromptNodes("login_options", "linking"))
+
+			err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+			s.Require().NotNil(err)
+			s.Equal(tc.key, err.ErrorDescription.Key)
+			s.Equal(tc.segmentNode, err.ErrorDescription.Params["segmentNodeID"])
+		})
+	}
+}
+
+// The linking node settles only on the pass that follows the verification flow, so a CALL node that
+// returns anywhere else leaves the verified account unchecked and the link unrecorded.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingVerificationCallMustReturn() {
+	nodes := linkingPromptNodes("verify_call", "linking")
+	nodes[len(nodes)-1].OnSuccess = "provisioning"
+
+	err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.linking_verification_call_not_returning_description",
+		err.ErrorDescription.Key)
+	s.Equal("verify_call", err.ErrorDescription.Params["callNodeID"])
+}
+
+// linkingFailureNodes is linkingPromptNodes with the linking node failing to an error prompt whose
+// one action points at retryTarget, and a federated sign-in node that enters the linking node.
+func linkingFailureNodes(retryTarget string) []providers.NodeDefinition {
+	nodes := linkingPromptNodes("verify_call", "linking")
+	nodes[0].OnFailure = "linking_error"
+	return append(nodes, providers.NodeDefinition{
+		ID:   "linking_error",
+		Type: string(common.NodeTypePrompt),
+		Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{Ref: "try_again", NextNode: retryTarget}},
+		},
+	}, federatedLinkingNode(), providers.NodeDefinition{ID: "finish", Type: string(common.NodeTypeEnd)})
+}
+
+// A failure ends the linking node's cycle with whoever verified still authenticated, so a path from
+// its onFailure back to it must sign in at a connection first. Otherwise the node would complete as
+// that account with no link written.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingFailurePath() {
+	signInFails := func() []providers.NodeDefinition {
+		nodes := append(linkingFailureNodes("federated_login"), providers.NodeDefinition{
+			ID:   "sign_in_error",
+			Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "continue", NextNode: "linking"}},
+			},
+		})
+		nodeIndexFor(nodes)["federated_login"].OnFailure = "sign_in_error"
+		return nodes
+	}
+	cases := []struct {
+		name  string
+		nodes []providers.NodeDefinition
+		valid bool
+	}{
+		{"retry straight back to the node", linkingFailureNodes("linking"), false},
+		{"retry through the linking prompt", linkingFailureNodes("linking_prompt"), false},
+		{"back through a federated sign-in that fails", signInFails(), false},
+		{"back through a federated sign-in", linkingFailureNodes("federated_login"), true},
+		{"never back", linkingFailureNodes("finish"), true},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			nodes := tc.nodes
+
+			err := s.v.validateExecutorSpecificConstraints(&nodes[0], nodeIndexFor(nodes), nodes)
+
+			if tc.valid {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal("error.flowmgtservice.linking_failure_path_returns_description", err.ErrorDescription.Key)
+			s.Equal("linking_error", err.ErrorDescription.Params["failureNodeID"])
+		})
+	}
 }

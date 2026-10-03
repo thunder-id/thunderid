@@ -56,6 +56,13 @@ type EnrollRequest struct {
 	Metadata    *providers.AuthnMetadata `json:"metadata"`
 }
 
+// LinkFederatedIdentityRequest is the body posted to the provider's link endpoint.
+type LinkFederatedIdentityRequest struct {
+	EntityReferenceToken any    `json:"entityReferenceToken"`
+	IDPID                string `json:"idpId"`
+	Sub                  string `json:"sub"`
+}
+
 type apiErrorResponse struct {
 	Code        string `json:"code"`
 	Message     string `json:"message"`
@@ -146,6 +153,41 @@ func (p *restAuthnProvider) Enroll(ctx context.Context, identifiers, credentials
 		Metadata:    metadata,
 	}
 	return postAndDecode[providers.AuthnResult](p, ctx, p.baseURL+"/enroll", reqBody)
+}
+
+// LinkFederatedIdentity asks the external service to record the link against its own user. The
+// call is idempotent by contract, so recording a subject it already holds returns 200.
+func (p *restAuthnProvider) LinkFederatedIdentity(ctx context.Context, entityReferenceToken any,
+	idpID, sub string) *tidcommon.ServiceError {
+	reqBody := LinkFederatedIdentityRequest{
+		EntityReferenceToken: entityReferenceToken,
+		IDPID:                idpID,
+		Sub:                  sub,
+	}
+	return postAndCheck(p, ctx, p.baseURL+"/link-federated-identity", reqBody)
+}
+
+// postAndCheck posts a request whose success response carries no body. Every other call decodes a
+// typed payload through postAndDecode, which cannot express "200 and nothing to read".
+func postAndCheck(p *restAuthnProvider, ctx context.Context, url string,
+	reqBody interface{}) *tidcommon.ServiceError {
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return p.logAndReturnServerError(ctx, "Failed to marshal request", log.String("error", err.Error()))
+	}
+
+	resp, err := p.doRequest(ctx, url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return p.logAndReturnServerError(ctx, "Failed to send request", log.String("error", err.Error()))
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	return p.decodeError(ctx, resp.Body, resp.StatusCode)
 }
 
 // postAndDecode marshals reqBody as JSON, posts it to url, and decodes the response into T.

@@ -5,14 +5,18 @@ package entity
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	_ "modernc.org/sqlite"
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
@@ -281,9 +285,101 @@ func (s *DBStoreTestSuite) TestUpdateSystemAttributes_NotFound() {
 
 func (s *DBStoreTestSuite) TestUpdateSystemAttributes_Success() {
 	s.expectClient()
-	s.onExecAny(1, nil)
+	s.onExecAny(1, nil).Once()                                        // update system attributes
+	s.expectClient()                                                  // for reload (GetEntity)
+	s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil).Once() // reload succeeds
+	s.onExecAny(1, nil).Once()                                        // delete identifiers
 	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{}`))
 	s.NoError(err)
+}
+
+// identifierWrites returns the query IDs of all ExecuteContext calls and the string args of the last one.
+func (s *DBStoreTestSuite) identifierWrites() ([]string, []string) {
+	queryIDs := make([]string, 0, len(s.client.Calls))
+	var lastArgs []string
+	for _, call := range s.client.Calls {
+		if call.Method != "ExecuteContext" {
+			continue
+		}
+		queryIDs = append(queryIDs, call.Arguments.Get(1).(dbmodel.DBQuery).ID)
+		lastArgs = nil
+		for _, arg := range call.Arguments[2:] {
+			if str, ok := arg.(string); ok {
+				lastArgs = append(lastArgs, str)
+			}
+		}
+	}
+	return queryIDs, lastArgs
+}
+
+// expectIdentifierResync sets up an entity update whose reload returns the given stored attributes.
+func (s *DBStoreTestSuite) expectIdentifierResync(attributes, systemAttributes string) {
+	s.store.indexedAttributes = map[string]bool{"email": true}
+	row := dbEntityRow()
+	row["attributes"] = attributes
+	row["system_attributes"] = systemAttributes
+	s.provider.On("GetEntityDBClient").Return(s.client, nil)
+	s.onQueryAny([]map[string]interface{}{row}, nil).Once()
+	s.onExecAny(1, nil)
+}
+
+func (s *DBStoreTestSuite) TestUpdateAttributes_ResyncAppliesSystemPrecedence() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{"email":"sys@b.com"}`)
+
+	err := s.store.UpdateAttributes(s.ctx, "e1", json.RawMessage(`{"email":"schema@b.com"}`))
+	s.NoError(err)
+
+	queryIDs, inserted := s.identifierWrites()
+	s.Equal([]string{QueryUpdateAttributes.ID, QueryDeleteIdentifiersByEntity.ID,
+		QueryBatchInsertIdentifiers.ID}, queryIDs)
+	s.Contains(inserted, "sys@b.com")
+	s.NotContains(inserted, "schema@b.com")
+}
+
+func (s *DBStoreTestSuite) TestUpdateSystemAttributes_ResyncDropsOverriddenSchemaValue() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{"email":"sys@b.com"}`)
+
+	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{"email":"sys@b.com"}`))
+	s.NoError(err)
+
+	queryIDs, inserted := s.identifierWrites()
+	s.Equal([]string{QueryUpdateSystemAttributes.ID, QueryDeleteIdentifiersByEntity.ID,
+		QueryBatchInsertIdentifiers.ID}, queryIDs)
+	s.Contains(inserted, "sys@b.com")
+	s.NotContains(inserted, "schema@b.com")
+}
+
+func (s *DBStoreTestSuite) TestUpdateSystemAttributes_ResyncRestoresSchemaValue() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{}`)
+
+	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{}`))
+	s.NoError(err)
+
+	_, inserted := s.identifierWrites()
+	s.Contains(inserted, "schema@b.com")
+}
+
+func (s *DBStoreTestSuite) TestLockEntity_ProviderError() {
+	s.expectClientError()
+	s.Error(s.store.LockEntity(s.ctx, "e1"))
+}
+
+func (s *DBStoreTestSuite) TestLockEntity_ExecuteError() {
+	s.expectClient()
+	s.onExecAny(0, s.testErr)
+	s.Error(s.store.LockEntity(s.ctx, "e1"))
+}
+
+func (s *DBStoreTestSuite) TestLockEntity_NotFound() {
+	s.expectClient()
+	s.onExecAny(0, nil)
+	s.ErrorIs(s.store.LockEntity(s.ctx, "e1"), ErrEntityNotFound)
+}
+
+func (s *DBStoreTestSuite) TestLockEntity_Success() {
+	s.expectClient()
+	s.onExecAny(1, nil)
+	s.NoError(s.store.LockEntity(s.ctx, "e1"))
 }
 
 func (s *DBStoreTestSuite) TestUpdateCredentials_ProviderError() {
@@ -664,6 +760,62 @@ func (s *DBStoreTestSuite) TestExecuteCountQuery_Success() {
 	s.Equal(7, count)
 }
 
+// A schema attribute that happens to be named like a link indexes under the same identifier name as
+// a recorded link, but it is user-owned. Resolving it would sign the federated identity in as that
+// user without the linking verification step, so only server-owned rows may resolve. The rows are
+// written through the real identifier write path and read back with the real query on SQLite.
+func (s *DBStoreTestSuite) TestResolveFederatedIdentity_IgnoresAttributeSourcedRows() {
+	db, err := sql.Open("sqlite", ":memory:")
+	s.Require().NoError(err)
+	s.T().Cleanup(func() { s.Require().NoError(db.Close()) })
+	_, err = db.Exec(`CREATE TABLE "ENTITY_IDENTIFIER" (
+		DEPLOYMENT_ID TEXT NOT NULL, ENTITY_ID TEXT NOT NULL, NAME TEXT NOT NULL, VALUE TEXT NOT NULL,
+		SOURCE TEXT NOT NULL, CREATED_AT TEXT NOT NULL,
+		PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME, VALUE))`)
+	s.Require().NoError(err)
+
+	linkName := linkedIdentifierName("idp-a")
+	indexed := map[string]bool{linkName: true}
+	insert := func(entityID string, attrs, sysAttrs json.RawMessage) {
+		q, args, qErr := prepareIdentifierQuery(entityID, attrs, sysAttrs, indexed, deployment.Resolve(s.ctx))
+		s.Require().NoError(qErr)
+		_, qErr = db.Exec(q.GetQuery("sqlite"), args...)
+		s.Require().NoError(qErr)
+	}
+
+	s.provider.On("GetEntityDBClient").Return(s.client, nil)
+	s.client.EXPECT().QueryContext(mock.Anything, QueryResolveIdentifier,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, q dbmodel.DBQuery, args ...interface{}) (
+			[]map[string]interface{}, error) {
+			rows, qErr := db.Query(q.GetQuery("sqlite"), args...)
+			if qErr != nil {
+				return nil, qErr
+			}
+			defer func() { _ = rows.Close() }()
+			var out []map[string]interface{}
+			for rows.Next() {
+				var id string
+				if qErr := rows.Scan(&id); qErr != nil {
+					return nil, qErr
+				}
+				out = append(out, map[string]interface{}{"id": id})
+			}
+			return out, rows.Err()
+		})
+
+	insert("attacker", json.RawMessage(fmt.Sprintf(`{%q:"sub-1"}`, linkName)), nil)
+
+	_, err = s.store.ResolveFederatedIdentity(s.ctx, "idp-a", "sub-1")
+	s.ErrorIs(err, ErrEntityNotFound, "an attribute-sourced row must not resolve as a link")
+
+	insert("victim", nil, json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`))
+
+	got, err := s.store.ResolveFederatedIdentity(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err, "an attribute-sourced row must not make the recorded link ambiguous")
+	s.Equal("victim", *got)
+}
+
 type StoreHelpersTestSuite struct {
 	suite.Suite
 }
@@ -888,6 +1040,89 @@ func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_Deduplication() {
 	s.True(found, "system attribute email should win over schema attribute")
 }
 
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_LinkedIDsIndexedUnconditionally() {
+	// Federated links are server-owned. Gating them on user.indexed_attributes would let a missing
+	// config line silently break federated login, so no indexed attributes are configured here.
+	sysAttrs := json.RawMessage(
+		`{"linkedIds":{"idp-a":{"sub-1":{}},"idp-b":{"sub-2":{}}}}`)
+	query, args, err := prepareIdentifierQuery("e1", nil, sysAttrs, map[string]bool{}, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	rows := identifierArgPairs(args)
+	s.Len(rows, 2)
+	s.Contains(rows, identifierRow{linkedIdentifierName("idp-a"), "sub-1"})
+	s.Contains(rows, identifierRow{linkedIdentifierName("idp-b"), "sub-2"})
+}
+
+// One connection can hold several accounts for the same user. The subjects share the connection's
+// identifier name and differ by value, which the primary key on (ENTITY_ID, DEPLOYMENT_ID, NAME,
+// VALUE) keeps apart.
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_LinkedIDsMultipleSubjectsPerIDP() {
+	sysAttrs := json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{},"sub-2":{}}}}`)
+	query, args, err := prepareIdentifierQuery("e1", nil, sysAttrs, map[string]bool{}, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	rows := identifierArgPairs(args)
+	s.Len(rows, 2, "both accounts at the connection must be indexed")
+	s.Contains(rows, identifierRow{linkedIdentifierName("idp-a"), "sub-1"})
+	s.Contains(rows, identifierRow{linkedIdentifierName("idp-a"), "sub-2"})
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_LinkedIDsMalformedEntriesSkipped() {
+	// A malformed entry must not fail an otherwise valid system attribute write.
+	sysAttrs := json.RawMessage(`{"linkedIds":{` +
+		`"idp-a":{"sub-1":{}},` +
+		`"idp-b":["sub-2"],` +
+		`"idp-c":"sub-3",` +
+		`"idp-d":{"":{}},` +
+		`"":{"sub-4":{}}}}`)
+	query, args, err := prepareIdentifierQuery("e1", nil, sysAttrs, map[string]bool{}, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+	s.Len(args, 6, "only the well-formed link should be indexed")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_LinkedIDsNonMapIgnored() {
+	sysAttrs := json.RawMessage(`{"linkedIds":"nonsense"}`)
+	query, args, err := prepareIdentifierQuery("e1", nil, sysAttrs, map[string]bool{}, "dep1")
+	s.NoError(err)
+	s.Nil(query)
+	s.Nil(args)
+}
+
+func (s *StoreHelpersTestSuite) TestlinkedIdentifierName_BoundedAndDistinct() {
+	// NAME is VARCHAR(255). The subject is the row's value, not part of the name, so even the
+	// 255-character subject OIDC permits leaves the name well within the column.
+	idpID := "0195f0a1-2b3c-7d4e-8f90-a1b2c3d4e5f6"
+
+	name := linkedIdentifierName(idpID)
+	s.Less(len(name), 256)
+	s.Equal("linkedIds."+idpID, name,
+		"the connection id stays in the clear so links are enumerable by prefix")
+	s.NotEqual(name, linkedIdentifierName("other-idp"))
+}
+
+// identifierRow is one (name, value) pair read back out of a batch insert's args.
+type identifierRow struct {
+	name  string
+	value string
+}
+
+// identifierArgPairs lists the (name, value) pairs in a batch insert's args. A name can repeat with
+// different values, so this is a list rather than a map. Rows are six placeholders wide: entity id,
+// name, value, source, deployment id, created at.
+func identifierArgPairs(args []interface{}) []identifierRow {
+	var rows []identifierRow
+	for i := 0; i+2 < len(args); i += 6 {
+		name, _ := args[i+1].(string)
+		value, _ := args[i+2].(string)
+		rows = append(rows, identifierRow{name: name, value: value})
+	}
+	return rows
+}
+
 func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_InvalidAttributesJSON() {
 	_, _, err := prepareIdentifierQuery("e1", json.RawMessage(`invalid`), nil, map[string]bool{"email": true}, "dep1")
 	s.Error(err)
@@ -908,6 +1143,68 @@ func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_NumericAndBoolValues(
 	_ = args
 }
 
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_MultipleValuesForSameName() {
+	attrs := json.RawMessage(`{"email":["a@b.com","c@d.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && (str == "a@b.com" || str == "c@d.com") {
+			values = append(values, str)
+		}
+	}
+	s.ElementsMatch([]string{"a@b.com", "c@d.com"}, values)
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_DuplicateValuesDeduped() {
+	attrs := json.RawMessage(`{"email":["a@b.com","a@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	count := 0
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && str == "a@b.com" {
+			count++
+		}
+	}
+	s.Equal(1, count, "duplicate values for the same name should be inserted once")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_SystemArrayOverridesSchemaArray() {
+	attrs := json.RawMessage(`{"email":["schema@b.com"]}`)
+	sysAttrs := json.RawMessage(`{"email":["sys1@b.com","sys2@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, sysAttrs, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok {
+			values = append(values, str)
+		}
+	}
+	s.Contains(values, "sys1@b.com")
+	s.Contains(values, "sys2@b.com")
+	s.NotContains(values, "schema@b.com")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_EmptySystemValueKeepsSchemaValue() {
+	attrs := json.RawMessage(`{"email":"schema@b.com"}`)
+	indexed := map[string]bool{"email": true}
+	for _, sysAttrs := range []string{`{"email":""}`, `{"email":null}`, `{"email":[]}`, `{"email":{"k":"v"}}`} {
+		query, args, err := prepareIdentifierQuery("e1", attrs, json.RawMessage(sysAttrs), indexed, "dep1")
+		s.NoError(err)
+		s.NotNil(query, sysAttrs)
+		s.Contains(args, "schema@b.com", sysAttrs)
+	}
+}
+
 func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("hello", attrValueToString("hello"))
 	s.Equal("3.14", attrValueToString(float64(3.14)))
@@ -915,6 +1212,16 @@ func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("100", attrValueToString(int64(100)))
 	s.Equal("true", attrValueToString(true))
 	s.Equal("", attrValueToString([]string{"unsupported"}))
+}
+
+func (s *StoreHelpersTestSuite) TestAttrValueToStrings() {
+	s.Equal([]string{"hello"}, attrValueToStrings("hello"))
+	s.Equal([]string{"42"}, attrValueToStrings(int(42)))
+	s.Nil(attrValueToStrings(map[string]interface{}{"k": "v"}))
+	s.Equal([]string{"a@b.com", "c@d.com"},
+		attrValueToStrings([]interface{}{"a@b.com", "c@d.com"}))
+	s.Equal([]string{"a@b.com"},
+		attrValueToStrings([]interface{}{"a@b.com", map[string]interface{}{"k": "v"}}))
 }
 
 func (s *StoreHelpersTestSuite) TestValidateIndexedAttributesConfig_WithinLimit() {
@@ -927,4 +1234,37 @@ func (s *StoreHelpersTestSuite) TestValidateIndexedAttributesConfig_ExceedsLimit
 	attrs := make([]string, MaxIndexedAttributesCount+1)
 	err := validateIndexedAttributesConfig(attrs)
 	s.Error(err)
+}
+
+func emailArrayAttrs(count int) json.RawMessage {
+	emails := make([]string, count)
+	for i := range emails {
+		emails[i] = fmt.Sprintf("user%d@example.com", i)
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"email": emails})
+	return raw
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_ValuesAtLimitIndexed() {
+	indexed := map[string]bool{"email": true}
+	query, _, err := prepareIdentifierQuery("e1", emailArrayAttrs(MaxIndexedValuesPerAttribute), nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_ValuesOverLimitRejected() {
+	indexed := map[string]bool{"email": true}
+	over := emailArrayAttrs(MaxIndexedValuesPerAttribute + 1)
+
+	_, _, err := prepareIdentifierQuery("e1", over, nil, indexed, "dep1")
+	s.ErrorContains(err, "indexed attribute 'email' has more than")
+
+	_, _, err = prepareIdentifierQuery("e1", nil, over, indexed, "dep1")
+	s.ErrorContains(err, "indexed attribute 'email' has more than", "system attributes are bounded too")
+}
+
+func (s *StoreHelpersTestSuite) TestValidateIndexedValueCounts_IgnoresNonIndexedNames() {
+	var attrMap map[string]interface{}
+	s.Require().NoError(json.Unmarshal(emailArrayAttrs(MaxIndexedValuesPerAttribute+1), &attrMap))
+	s.NoError(validateIndexedValueCounts(attrMap, map[string]bool{"username": true}))
 }

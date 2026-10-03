@@ -19,6 +19,7 @@ package federated
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -61,6 +62,12 @@ var fedPersonType = testutils.UserType{
 		"city":       map[string]interface{}{"type": "string"},
 		"costCenter": map[string]interface{}{"type": "string"},
 		"sub":        map[string]interface{}{"type": "string"},
+		// Optional, and only the OTP linking scenario sets it, to prove an account with.
+		"mobile_number": map[string]interface{}{"type": "string"},
+		// Optional, and only the linking scenarios set it: proving a matched account needs something
+		// to prove it with. A credential is never a linking or provisioning match
+		// attribute, so carrying one changes nothing for the scenarios that ignore it.
+		"password": map[string]interface{}{"type": "string", "credential": true},
 	},
 }
 
@@ -602,6 +609,16 @@ func (s *FederatedMappingSuite) createAuthApp(
 	return appID
 }
 
+// createVerifyFlow creates a verification flow a scenario's linking flow calls, removed with the
+// scenario, and returns its id.
+func (s *FederatedMappingSuite) createVerifyFlow(flow testutils.Flow) string {
+	s.T().Helper()
+	flowID, err := testutils.CreateFlow(flow)
+	s.Require().NoError(err, "failed to create verification flow %s", flow.Handle)
+	s.perTestFlowIDs = append(s.perTestFlowIDs, flowID)
+	return flowID
+}
+
 // createScenarioApp creates a flow and an application that runs it, for scenarios whose whole point is a
 // graph the shared flows cannot express. Both are torn down after the test.
 func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID string) string {
@@ -632,6 +649,22 @@ func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID 
 	return appID
 }
 
+// authenticateFlow drives an authentication flow for whichever identity the mocks return for sub, and
+// returns the step the federated callback leads to.
+func (s *FederatedMappingSuite) authenticateFlow(appID, sub string) (*common.FlowStep, error) {
+	s.T().Helper()
+	s.activeSub = sub
+
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	s.Require().NoError(err, "failed to initiate the authentication flow")
+	s.Require().Equal("REDIRECTION", step.Type, "expected a redirection, got %+v", step)
+
+	code, state, err := testutils.SimulateFederatedOAuthFlow(step.Data.RedirectURL)
+	s.Require().NoError(err, "failed to simulate authorization at the identity provider")
+	return common.CompleteFlow(step.ExecutionID, map[string]string{"code": code, "state": state}, "",
+		step.ChallengeToken)
+}
+
 func (s *FederatedMappingSuite) TearDownTest() {
 	s.jwksSuffix = ""
 	for _, appID := range s.perTestAppIDs {
@@ -640,7 +673,8 @@ func (s *FederatedMappingSuite) TearDownTest() {
 		}
 	}
 	s.perTestAppIDs = nil
-	for _, flowID := range s.perTestFlowIDs {
+	// Newest first, so a flow is deleted before the verification flow it calls.
+	for _, flowID := range slices.Backward(s.perTestFlowIDs) {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			s.T().Logf("failed to delete scenario flow: %v", err)
 		}

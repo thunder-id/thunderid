@@ -393,9 +393,11 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
 
+	// This API has no flow to verify an account before linking it, so only a recorded link signs a
+	// federated identity in here. One without a link resolves to nobody and fails.
 	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
 	if svcErr != nil {
-		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
+		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
 
 	user := &providers.Entity{
@@ -605,7 +607,14 @@ func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svc
 		return &ErrorFederatedAuthenticationFailed
 	case authnprovidermgr.ErrorUserNotFound.Code:
 		return &ErrorFederatedAuthenticationFailed
+	case authnprovidermgr.ErrorAmbiguousUser.Code:
+		// Ambiguity is more than one user holding a recorded link to the same federated subject.
+		return &ErrorFederatedAuthenticationFailed
 	case authnprovidermgr.ErrorInvalidRequest.Code:
+		return &ErrorFederatedAuthenticationFailed
+	case authnprovidermgr.ErrorGetEntityReferenceClientError.Code:
+		// The entity-reference fetch is part of finishing the federated authentication, so a
+		// provider rejecting it is the same failure to the caller.
 		return &ErrorFederatedAuthenticationFailed
 	default:
 		logger.Error(ctx, "Error occurred while performing federated authentication",

@@ -84,7 +84,29 @@ func (p *array) validateUniqueness(ctx context.Context,
 	exists func(map[string]interface{}) (bool, error),
 	logger *log.Logger,
 ) (bool, error) {
-	// Arrays are not supported for uniqueness validation
+	if p.items == nil || !p.items.isUnique() {
+		return true, nil
+	}
+
+	arrayValue, ok := value.([]interface{})
+	if !ok {
+		logger.Debug(ctx, "Expected array but got different type",
+			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
+		return false, nil
+	}
+
+	// Each item is checked under the array's own path, since that is the attribute name an entity
+	// is identified by. An item that another entity already holds is a conflict.
+	for _, item := range arrayValue {
+		isValid, err := p.items.validateUniqueness(ctx, item, path, exists, logger)
+		if err != nil {
+			return false, err
+		}
+		if !isValid {
+			return false, nil
+		}
+	}
+
 	return true, nil
 }
 

@@ -190,6 +190,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthnProviderError'
 
+  /link-federated-identity:
+    post:
+      summary: Link a federated identity to a user
+      description: >
+        Record that the user named by the entity reference token authenticates as the given subject
+        at the given connection. The call is idempotent, so recording a subject the user already holds
+        returns 200. A provider that does not store federated links returns 400 with AUP-0006, and
+        the sign-in proceeds without a link. A provider that finds the subject linked to another user
+        returns 400 with AUP-0007.
+      operationId: linkFederatedIdentity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkFederatedIdentityRequest'
+      responses:
+        '200':
+          description: Link recorded, or already recorded
+        '400':
+          description: Invalid request, links not stored, or subject linked to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -257,6 +289,22 @@ components:
           $ref: '#/components/schemas/AuthnMetadata'
       required:
         - credentials
+
+    LinkFederatedIdentityRequest:
+      type: object
+      properties:
+        entityReferenceToken:
+          description: The provider's own entity reference token for the user being linked
+        idpId:
+          type: string
+          description: ID of the connection that asserted the subject
+        sub:
+          type: string
+          description: Subject identifier the connection asserted
+      required:
+        - entityReferenceToken
+        - idpId
+        - sub
 
     AuthnMetadata:
       type: object

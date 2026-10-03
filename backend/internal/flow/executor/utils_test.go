@@ -4,14 +4,17 @@
 package executor
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -480,6 +483,7 @@ func (s *UtilsTestSuite) TestIsCrossOUProvisioningAllowed() {
 func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 	tests := []struct {
 		name                 string
+		idpID                string
 		federatedIdentifiers map[string]interface{}
 		existingIdentifiers  map[string]interface{}
 		ctx                  *providers.NodeContext
@@ -580,32 +584,23 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			expectedValid: false,
 		},
 		{
-			name: "Sub matches RuntimeData returns true",
+			name: "Sub under its own name in RuntimeData, UserInputs or user attributes is not compared",
 			federatedIdentifiers: map[string]interface{}{
 				"email": "user@example.com",
 				"sub":   "sub123",
 			},
-			existingIdentifiers: map[string]interface{}{},
-			ctx: &providers.NodeContext{
-				RuntimeData: map[string]string{
-					"sub": "sub123",
-				},
+			existingIdentifiers: map[string]interface{}{
+				"sub": "sub789",
 			},
-			expectedValid: true,
-		},
-		{
-			name: "Sub mismatch with RuntimeData returns false",
-			federatedIdentifiers: map[string]interface{}{
-				"email": "user@example.com",
-				"sub":   "sub123",
-			},
-			existingIdentifiers: map[string]interface{}{},
 			ctx: &providers.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub456",
 				},
+				UserInputs: map[string]string{
+					"sub": "sub456",
+				},
 			},
-			expectedValid: false,
+			expectedValid: true,
 		},
 		{
 			name: "Empty UserInputs email is skipped",
@@ -646,19 +641,86 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			expectedValid:       true,
 		},
 		{
-			name: "Multiple attributes with one mismatch returns false",
+			name:  "Same connection and sub as an earlier external identity returns true",
+			idpID: "idp-first",
 			federatedIdentifiers: map[string]interface{}{
-				"email": "user1@example.com",
-				"sub":   "sub123",
+				"sub": "sub-first",
 			},
-			existingIdentifiers: map[string]interface{}{},
 			ctx: &providers.NodeContext{
-				UserInputs: map[string]string{
-					"email": "user1@example.com",
-					"sub":   "sub456",
-				},
 				RuntimeData: map[string]string{
-					"sub": "sub123",
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: true,
+		},
+		{
+			name:  "Same connection with a different sub than an earlier external identity returns false",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Different connection with the same sub as an earlier external identity returns false",
+			idpID: "idp-second",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Different connection and sub than an earlier external identity returns false",
+			idpID: "idp-second",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"sub": "sub-first"}),
+				},
+			},
+			expectedValid: false,
+		},
+		{
+			name:  "Earlier external identity without a subject, as OpenID4VP publishes, is not compared by sub",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("", "",
+						map[string]interface{}{"sub": "did:example:wallet"}),
+				},
+			},
+			expectedValid: true,
+		},
+		{
+			name:  "Email mismatch with an earlier external identity's claims returns false",
+			idpID: "idp-first",
+			federatedIdentifiers: map[string]interface{}{
+				"email": "second@example.com",
+				"sub":   "sub-first",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+						map[string]interface{}{"email": "first@example.com"}),
 				},
 			},
 			expectedValid: false,
@@ -667,8 +729,75 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.federatedIdentifiers, tt.existingIdentifiers)
+			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.idpID, tt.federatedIdentifiers,
+				tt.existingIdentifiers)
 			s.Equal(tt.expectedValid, valid)
 		})
 	}
+}
+
+// externalIdentityEntry encodes an external identity the way the federated executors publish it.
+func externalIdentityEntry(idpID, sub string, claims map[string]interface{}) string {
+	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+// publishedClaim reads one claim back from the external identity entry.
+func publishedClaim(runtimeData map[string]string, name string) string {
+	value, _ := core.GetExternalClaim(runtimeData, name)
+	return value
+}
+
+// publishedClaims returns every claim in the external identity entry.
+func publishedClaims(runtimeData map[string]string) map[string]interface{} {
+	identity := core.GetExternalIdentity(runtimeData)
+	if identity == nil {
+		return nil
+	}
+	return identity.Claims
+}
+
+// Claims are published only inside the external identity entry, so a claim sharing a name with flow
+// control state never lands under that name.
+func TestPublishExternalIdentity_KeepsClaimsOutOfFlowState(t *testing.T) {
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
+
+	err := publishExternalIdentity(execResp, "idp-1", "sub-123", map[string]interface{}{
+		"sub":                             "sub-123",
+		"email":                           "user@example.com",
+		"groups":                          []interface{}{"eng", "ops"},
+		userAttributeUserID:               "victim-id",
+		ouIDKey:                           "other-ou",
+		categoryTypeKey:                   "admin",
+		common.RuntimeKeyEntityState:      "exists",
+		common.RuntimeKeyExternalIdentity: "forged",
+	})
+
+	assert.NoError(t, err)
+	assert.Len(t, execResp.RuntimeData, 1)
+	identity := core.GetExternalIdentity(execResp.RuntimeData)
+	assert.NotNil(t, identity)
+	assert.Equal(t, "idp-1", identity.IdpID)
+	assert.Equal(t, "sub-123", identity.Sub)
+	assert.Equal(t, []interface{}{"eng", "ops"}, identity.Claims["groups"])
+	assert.Equal(t, "victim-id", identity.Claims[userAttributeUserID])
+}
+
+// A later sign-in replaces the earlier entry whole, so claims from two providers never mix.
+func TestPublishExternalIdentity_ReplacesEarlierEntry(t *testing.T) {
+	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{
+		common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first",
+			map[string]interface{}{"given_name": "First"}),
+	}}
+
+	err := publishExternalIdentity(execResp, "idp-second", "sub-second",
+		map[string]interface{}{"email": "second@example.com"})
+
+	assert.NoError(t, err)
+	identity := core.GetExternalIdentity(execResp.RuntimeData)
+	assert.Equal(t, "idp-second", identity.IdpID)
+	assert.Equal(t, map[string]interface{}{"email": "second@example.com"}, identity.Claims)
 }

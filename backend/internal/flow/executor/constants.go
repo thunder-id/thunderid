@@ -37,7 +37,7 @@ const (
 	ExecutorNameOUResolver                   = executormeta.ExecutorNameOUResolver
 	ExecutorNameAttributeUniquenessValidator = executormeta.ExecutorNameAttributeUniquenessValidator
 	ExecutorNameSMSExecutor                  = executormeta.ExecutorNameSMSExecutor
-	ExecutorNameFederatedAuthResolver        = executormeta.ExecutorNameFederatedAuthResolver
+	ExecutorNameLinking                      = executormeta.ExecutorNameLinking
 	ExecutorNameSSOCheck                     = executormeta.ExecutorNameSSOCheck
 	ExecutorNameSession                      = executormeta.ExecutorNameSession
 	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut

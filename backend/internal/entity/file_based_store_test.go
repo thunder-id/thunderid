@@ -113,6 +113,7 @@ func (s *FileBasedStoreTestSuite) TestUnsupportedMutations() {
 	s.Error(s.store.UpdateCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateSystemCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.DeleteEntity(s.ctx, "e4"))
+	s.Error(s.store.LockEntity(s.ctx, "e4"))
 }
 
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_NoMatch() {

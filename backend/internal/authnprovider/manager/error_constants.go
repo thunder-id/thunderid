@@ -128,4 +128,19 @@ var (
 			DefaultValue: "The authenticated subject is not allowed to sign in to this application",
 		},
 	}
+
+	// ErrorLinkFederatedIdentityFailed is returned when the provider rejects recording a federated
+	// identity link for a client-side reason other than not supporting the operation.
+	ErrorLinkFederatedIdentityFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.link_federated_identity_failed",
+			DefaultValue: "Failed to link federated identity",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.link_federated_identity_failed_description",
+			DefaultValue: "The federated identity could not be linked to the user",
+		},
+	}
 )

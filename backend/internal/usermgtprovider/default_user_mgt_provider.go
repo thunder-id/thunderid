@@ -33,3 +33,8 @@ func (p *defaultUserMgtProvider) CreateUser(
 	}
 	return p.userSvc.CreateUser(security.WithRuntimeContext(ctx), u)
 }
+
+// DeleteUser deletes a user through the user service.
+func (p *defaultUserMgtProvider) DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
+	return p.userSvc.DeleteUser(security.WithRuntimeContext(ctx), userID)
+}

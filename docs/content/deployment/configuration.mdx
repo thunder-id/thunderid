@@ -534,6 +534,14 @@ User management settings.
 |---------|---------|-------------|
 | `user.indexed_attributes` | `["username", "email", "mobile_number", "sub"]` | User attributes that are indexed for fast `lookups` |
 
+An indexed attribute's value can be a single scalar value or a list of scalar values. A list indexes each scalar element separately, so a user can be looked up by any one of them. Non-scalar elements in the list (for example, a nested object) are skipped and are not indexed. For example, a user with `email` set to `["primary@example.com", "secondary@example.com"]` can be identified by either address.
+
+A list can hold at most 100 scalar values for one indexed attribute. A request that exceeds this fails schema validation. To stop two users from sharing a list value, mark the list's items as unique in the user type schema, for example `"email": {"type": "array", "items": {"type": "string", "unique": true}}`. A value that another user already holds is then rejected as a conflict.
+
+:::note
+If the same attribute name is present in both schema attributes and system attributes, the system attribute's scalar value or values are indexed and the schema attribute's scalar value or values are not. If the system attribute has no scalar value to index (for example, it is empty), the schema attribute's values are indexed instead.
+:::
+
 ## Declarative Resources
 
 Controls declarative configuration support.

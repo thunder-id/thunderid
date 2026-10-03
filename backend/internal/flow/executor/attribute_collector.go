@@ -371,6 +371,8 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
+		} else if claimValue, exists := core.GetExternalClaim(ctx.RuntimeData, inputAttr.Identifier); exists {
+			attributesMap[inputAttr.Identifier] = convertToSchemaType(claimValue, schemaType)
 		}
 	}
 

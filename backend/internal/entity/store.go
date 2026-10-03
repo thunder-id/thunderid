@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -34,9 +35,11 @@ type entityStoreInterface interface {
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		creds json.RawMessage) error
 	DeleteEntity(ctx context.Context, id string) error
+	LockEntity(ctx context.Context, id string) error
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	ResolveFederatedIdentity(ctx context.Context, idpID, sub string) (*string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
 		filters map[string]interface{}) (int, error)
@@ -263,28 +266,32 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		return ErrEntityNotFound
 	}
 
-	// Reload the entity to get the authoritative post-update state for identifier sync.
-	// This ensures identifiers reflect what is actually stored in the DB, regardless of
-	// what the caller passed in SystemAttributes.
-	current, err := es.GetEntity(ctx, entity.ID)
+	return es.resyncIdentifiers(ctx, dbClient, entity.ID)
+}
+
+// resyncIdentifiers rebuilds all identifiers of an entity from its stored schema and system attributes.
+// Both sources are re-indexed together, since the system-over-schema precedence for a name depends on
+// both. The entity is reloaded so identifiers reflect what is actually stored in the DB.
+func (es *entityDBStore) resyncIdentifiers(ctx context.Context, dbClient provider.DBClientInterface,
+	entityID string) error {
+	current, err := es.GetEntity(ctx, entityID)
 	if err != nil {
 		return fmt.Errorf("failed to reload entity for identifier sync: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entity.ID, es.scope(ctx))
-	if err != nil {
+	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entityID, es.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete identifiers: %w", err)
 	}
 
-	if err := es.syncAttributeIdentifiers(
-		ctx, entity.ID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
+	if err = es.syncAttributeIdentifiers(
+		ctx, entityID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
 		return fmt.Errorf("failed to sync identifiers: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateAttributes updates only the schema attributes of an entity and re-syncs attribute-sourced identifiers.
+// UpdateAttributes updates only the schema attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -301,19 +308,10 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteAttributeIdentifiersByEntity,
-		entityID, es.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete attribute identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, attributes, nil, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync attribute identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
-// UpdateSystemAttributes updates the system attributes of an entity and re-syncs system-sourced identifiers.
+// UpdateSystemAttributes updates only the system attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
@@ -331,16 +329,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteSystemIdentifiersByEntity,
-		entityID, es.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete system identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, nil, attrs, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync system identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
 // UpdateCredentials updates the credentials of an entity.
@@ -515,6 +504,52 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 		return nil, fmt.Errorf("failed to parse id as string")
 	}
 
+	return &entityID, nil
+}
+
+// LockEntity holds the entity's write lock until the surrounding transaction ends.
+func (es *entityDBStore) LockEntity(ctx context.Context, id string) error {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryLockEntity, id, es.scope(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrEntityNotFound
+	}
+	return nil
+}
+
+// ResolveFederatedIdentity resolves the entity linked to a federated subject at a connection. It
+// reads the identifier index only, so a miss is a definitive "not linked yet" rather than a reason
+// to scan attributes.
+func (es *entityDBStore) ResolveFederatedIdentity(ctx context.Context, idpID, sub string) (*string, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryResolveIdentifier,
+		linkedIdentifierName(idpID), sub, identifierSourceSystem, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	if len(results) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	if len(results) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+
+	entityID, ok := results[0]["id"].(string)
+	if !ok || entityID == "" {
+		return nil, fmt.Errorf("unexpected type for id: %T", results[0]["id"])
+	}
 	return &entityID, nil
 }
 
@@ -934,66 +969,149 @@ func executeCountQuery(dbClient provider.DBClientInterface, ctx context.Context,
 	return totalCount, nil
 }
 
+const (
+	// identifierSourceSystem marks an ENTITY_IDENTIFIER row derived from system attributes.
+	identifierSourceSystem = "system"
+	// identifierSourceAttribute marks an ENTITY_IDENTIFIER row derived from schema attributes.
+	identifierSourceAttribute = "attribute"
+)
+
+// indexedAttr is one row destined for ENTITY_IDENTIFIER.
+type indexedAttr struct {
+	name   string
+	value  string
+	source string
+}
+
+// linkedIdentifierName derives the ENTITY_IDENTIFIER name a connection's links are indexed
+// under. The subject is not part of the name: it is the row's VALUE, and one name can carry
+// several values, so a connection's subjects share the name and each keeps its own row. That also
+// keeps the name within NAME's 255 characters whatever the connection emits, since OIDC permits a
+// 255-character subject on its own. Keeping the connection ID in the name leaves links enumerable
+// per connection, which is what a future unlink on connection deletion needs.
+//
+// This is the single derivation for both the write and the read path; a second copy anywhere is how
+// links come to be written successfully and never resolve.
+func linkedIdentifierName(idpID string) string {
+	return fmt.Sprintf("%s.%s", authnprovidercm.SystemAttrLinkedIDs, idpID)
+}
+
+// federatedIdentifierRows converts the linkedIds system attribute into one indexed identifier per
+// link. The value is shaped {"<idpId>": {"<sub>": {}}}, so a connection can hold several subjects
+// and each gets its own row under the connection's name. The per-link object is not indexed. Entries that do not match are skipped rather
+// than failing the write, since the blob is server-owned and a malformed entry should not block an
+// unrelated attribute update.
+func federatedIdentifierRows(value interface{}) []indexedAttr {
+	byIDP, ok := value.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var rows []indexedAttr
+	for idpID, subjects := range byIDP {
+		bySub, ok := subjects.(map[string]interface{})
+		if idpID == "" || !ok {
+			continue
+		}
+		for sub := range bySub {
+			if sub == "" {
+				continue
+			}
+			rows = append(rows, indexedAttr{
+				name:   linkedIdentifierName(idpID),
+				value:  sub,
+				source: identifierSourceSystem,
+			})
+		}
+	}
+	return rows
+}
+
 func prepareIdentifierQuery(
 	entityID string, attributes json.RawMessage, systemAttributes json.RawMessage,
 	indexedAttrs map[string]bool, deploymentID string,
 ) (*dbmodel.DBQuery, []interface{}, error) {
-	type indexedAttr struct {
-		name   string
-		value  string
-		source string
-	}
-	var toInsert []indexedAttr
+	var attrEntries, sysEntries []indexedAttr
 
 	// Extract indexed attributes from schema attributes (source = "attribute").
+	// A value may be a scalar (one identifier value) or an array of scalars (multiple values).
 	if len(attributes) > 0 {
 		var attrMap map[string]interface{}
 		if err := json.Unmarshal(attributes, &attrMap); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal attributes: %w", err)
 		}
+		if err := validateIndexedValueCounts(attrMap, indexedAttrs); err != nil {
+			return nil, nil, err
+		}
 		for attrName, attrValue := range attrMap {
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "attribute"})
+			for _, valueStr := range attrValueToStrings(attrValue) {
+				attrEntries = append(attrEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceAttribute})
 			}
 		}
 	}
 
 	// Extract indexed attributes from system attributes (source = "system").
+	sysNames := make(map[string]bool)
 	if len(systemAttributes) > 0 {
 		var sysAttrMap map[string]interface{}
 		if err := json.Unmarshal(systemAttributes, &sysAttrMap); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 		}
+		if err := validateIndexedValueCounts(sysAttrMap, indexedAttrs); err != nil {
+			return nil, nil, err
+		}
 		for attrName, attrValue := range sysAttrMap {
+			// Federated links are server-owned and indexed unconditionally. Gating them on
+			// user.indexed_attributes would let a missing config line silently break federated login.
+			if attrName == authnprovidercm.SystemAttrLinkedIDs {
+				for _, row := range federatedIdentifierRows(attrValue) {
+					sysNames[row.name] = true
+					sysEntries = append(sysEntries, row)
+				}
+				continue
+			}
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "system"})
+			values := attrValueToStrings(attrValue)
+			if len(values) > 0 {
+				sysNames[attrName] = true
+			}
+			for _, valueStr := range values {
+				sysEntries = append(sysEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceSystem})
 			}
 		}
 	}
+
+	// If the same name has indexable values in both schema and system attributes, the system
+	// attribute values win entirely (schema values for that name are dropped, not merged).
+	toInsert := make([]indexedAttr, 0, len(attrEntries)+len(sysEntries))
+	for _, attr := range attrEntries {
+		if !sysNames[attr.name] {
+			toInsert = append(toInsert, attr)
+		}
+	}
+	toInsert = append(toInsert, sysEntries...)
 
 	if len(toInsert) == 0 {
 		return nil, nil, nil
 	}
 
-	// Deduplicate by attribute name; if the same key appears in both schema and system attributes,
-	// the system attribute entry wins (it was appended last and overwrites the schema one).
-	dedupMap := make(map[string]indexedAttr, len(toInsert))
-	dedupOrder := make([]string, 0, len(toInsert))
+	// Deduplicate exact (name, value) repeats, preserving first-seen order.
+	seen := make(map[string]bool, len(toInsert))
+	deduped := make([]indexedAttr, 0, len(toInsert))
 	for _, attr := range toInsert {
-		if _, exists := dedupMap[attr.name]; !exists {
-			dedupOrder = append(dedupOrder, attr.name)
+		key := attr.name + "\x00" + attr.value
+		if seen[key] {
+			continue
 		}
-		dedupMap[attr.name] = attr
-	}
-	deduped := make([]indexedAttr, 0, len(dedupMap))
-	for _, name := range dedupOrder {
-		deduped = append(deduped, dedupMap[name])
+		seen[key] = true
+		deduped = append(deduped, attr)
 	}
 	toInsert = deduped
 
@@ -1030,6 +1148,39 @@ func attrValueToString(value interface{}) string {
 	default:
 		return ""
 	}
+}
+
+// attrValueToStrings converts an attribute value into the identifier values to index.
+// A scalar produces at most one value; an array produces one value per indexable element.
+// Non-indexable elements (e.g. nested objects) are skipped.
+func attrValueToStrings(value interface{}) []string {
+	elements, ok := value.([]interface{})
+	if !ok {
+		if s := attrValueToString(value); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+
+	values := make([]string, 0, len(elements))
+	for _, elem := range elements {
+		if s := attrValueToString(elem); s != "" {
+			values = append(values, s)
+		}
+	}
+	return values
+}
+
+// validateIndexedValueCounts rejects attributes in which an indexed name has more than
+// MaxIndexedValuesPerAttribute values to index.
+func validateIndexedValueCounts(attrMap map[string]interface{}, indexedAttrs map[string]bool) error {
+	for attrName, attrValue := range attrMap {
+		if indexedAttrs[attrName] && len(attrValueToStrings(attrValue)) > MaxIndexedValuesPerAttribute {
+			return fmt.Errorf("indexed attribute '%s' has more than %d values",
+				attrName, MaxIndexedValuesPerAttribute)
+		}
+	}
+	return nil
 }
 
 func validateIndexedAttributesConfig(configuredAttrs []string) error {

@@ -144,6 +144,18 @@ func (s *cacheBackedEntityStore) DeleteEntity(ctx context.Context, id string) er
 	return nil
 }
 
+func (s *cacheBackedEntityStore) LockEntity(ctx context.Context, id string) error {
+	return s.store.LockEntity(ctx, id)
+}
+
+// ResolveFederatedIdentity passes through to the wrapped store. Federated links are not cached:
+// the lookup is already a single indexed hit, and a stale entry would authenticate a subject as the
+// wrong entity once the link set changes.
+func (s *cacheBackedEntityStore) ResolveFederatedIdentity(ctx context.Context,
+	idpID, sub string) (*string, error) {
+	return s.store.ResolveFederatedIdentity(ctx, idpID, sub)
+}
+
 func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
 	if len(filters) == 1 {

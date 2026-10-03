@@ -21,6 +21,10 @@ const (
 
 	// MaxIndexedAttributesCount is the maximum number of indexed attributes allowed.
 	MaxIndexedAttributesCount = 20
+
+	// MaxIndexedValuesPerAttribute is the maximum number of values an entity may index under one
+	// attribute name. It keeps a full identifier insert within the database bind parameter limits.
+	MaxIndexedValuesPerAttribute = 100
 )
 
 var (
@@ -117,15 +121,22 @@ var (
 		ID:    "ASQ-ENTITY_MGT-17",
 		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
-	// QueryDeleteAttributeIdentifiersByEntity is the query to delete only attribute-sourced identifiers for an entity.
-	QueryDeleteAttributeIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-18",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'attribute'`,
+	// QueryResolveIdentifier resolves entities by an exact identifier name, value, and source. It reads
+	// only the index, so a miss is a definitive "no such identifier" and never falls back to a JSON
+	// scan. The source keeps a user-owned attribute that shares a server-owned identifier's name from
+	// resolving as that identifier. More than one row means two entities claim the same identifier,
+	// which the caller treats as ambiguous rather than picking one.
+	QueryResolveIdentifier = model.DBQuery{
+		ID: "ASQ-ENTITY_MGT-30",
+		Query: `SELECT ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ` +
+			`WHERE NAME = $1 AND VALUE = $2 AND SOURCE = $3 AND DEPLOYMENT_ID = $4`,
 	}
-	// QueryDeleteSystemIdentifiersByEntity is the query to delete only system-sourced identifiers for an entity.
-	QueryDeleteSystemIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-19",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'system'`,
+	// QueryLockEntity takes the entity's write lock for the rest of the transaction. The no-op write
+	// takes a row lock on PostgreSQL and the database write lock on SQLite, so a concurrent
+	// read-modify-write of the same entity waits instead of reading a stale value.
+	QueryLockEntity = model.DBQuery{
+		ID:    "ASQ-ENTITY_MGT-31",
+		Query: `UPDATE "ENTITY" SET UPDATED_AT = UPDATED_AT WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 )
 
