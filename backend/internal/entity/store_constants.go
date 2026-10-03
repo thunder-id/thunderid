@@ -32,13 +32,15 @@ var (
 	// QueryGetEntityList is the query to get a list of entities by category.
 	QueryGetEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-02",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" ` +
 			`WHERE CATEGORY = $4 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QuerySearchEntityList is the query to search entities across all categories.
 	QuerySearchEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-03",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+			`CREATED_AT, UPDATED_AT FROM "ENTITY" ` +
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QueryCreateEntity is the query to create a new entity.
@@ -52,7 +54,7 @@ var (
 	// QueryGetEntityByID is the query to get an entity by ID.
 	QueryGetEntityByID = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-05",
-		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT ` +
 			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// QueryUpdateEntity is the query to fully update an entity including system attributes.
@@ -90,7 +92,7 @@ var (
 	QueryGetEntityWithCredentials = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-12",
 		Query: `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, ` +
-			`SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS ` +
+			`SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS, CREATED_AT, UPDATED_AT ` +
 			`FROM "ENTITY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// QueryGetGroupCountForEntity is the query to get the count of groups for a given entity.
@@ -204,7 +206,7 @@ func buildEntityListQueryByOUIDs(
 	category string, ouIDs []string, filters map[string]interface{}, limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-21"
-	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT ` +
 		`FROM "ENTITY" WHERE CATEGORY = $1`
 	args := []interface{}{category}
 	var query model.DBQuery
@@ -383,7 +385,8 @@ func buildBulkEntityExistsQueryInOUs(
 func buildEntityListQuery(
 	category string, filters map[string]interface{}, limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
-	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
+	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, ` +
+		`CREATED_AT, UPDATED_AT FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-25"
 
 	if len(filters) > 0 {
@@ -594,7 +597,7 @@ func buildIdentifyQueryHybrid(
 func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.DBQuery, []interface{}, error) {
 	return buildEntityINClauseQuery(
 		"ASQ-ENTITY_MGT-29",
-		`SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES `+
+		`SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT `+
 			`FROM "ENTITY" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
 		entityIDs, deploymentID,
 	)
