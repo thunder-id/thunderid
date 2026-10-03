@@ -44,21 +44,6 @@ packages:
   # entry stops that expected 0% from failing the check.
   # TODO: remove this entry once the provisioning executor consumes the provider.
   backend/internal/agentmgtprovider: 0
-  # The static executor catalog is linked into the server binary but has no runtime consumer yet:
-  # flow validation in cmd/server is still handed the live executor registry, and the catalog is
-  # read only by the Control Plane build, which the integration suite does not boot. Its constants
-  # are used at runtime; its accessors are covered by unit tests, including a parity test that
-  # fails if the catalog drifts from the real executors.
-  # TODO: remove this entry once a build the integration suite exercises reads the catalog.
-  backend/internal/flow/executormeta: 0
-  # The reference-writing half of the export parameterizer, and the reference syntax it writes, run
-  # only when the exporter is built with export.ValueReferences. That is chosen by cmd/cpserver; the
-  # integration suite boots cmd/server, which chooses export.TemplatePlaceholders, so these lines
-  # cannot be reached by it. Both are covered by unit tests. The export figure is a partial bar
-  # rather than 0 because the template-writing half is exercised and must stay so.
-  # TODO: remove both once the integration suite exercises a Control Plane build. Tracked in #5558.
-  backend/internal/system/valueref: 0
-  backend/internal/system/export: 50
   # backend/internal/system/i18n: 0
 
 # Thresholds grouped by pull request label. A group applies only when the pull

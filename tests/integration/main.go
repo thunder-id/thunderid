@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -16,12 +17,22 @@ import (
 
 const (
 	serverPort = "8095"
+
+	// controlPlanePackages holds the suites that run against the Control Plane binary rather than
+	// the all-in-one server. Each run tests only its own plane's suites.
+	controlPlanePackages = "./controlplane/..."
+
+	// managementTokenLifetime outlasts any run, since a token from the trusted issuer is never
+	// refreshed.
+	managementTokenLifetime = 6 * time.Hour
 )
 
 var (
 	zipFilePattern string
 	testRun        string
 	testPackage    string
+	// controlPlane is set by INTEGRATION_PLANE=control (make test_integration_cp).
+	controlPlane bool
 )
 
 func main() {
@@ -35,6 +46,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if controlPlane {
+		err = testutils.InstallControlPlaneBinary()
+		if err != nil {
+			fmt.Printf("Failed to install the control plane binary: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	// Step 2: Replace the resource files in the unzipped directory.
 	err = testutils.ReplaceResources(zipFilePattern)
 	if err != nil {
@@ -42,11 +61,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Step 3: Copy declarative resource fixtures for composite mode testing
-	err = testutils.CopyDeclarativeResources(zipFilePattern)
-	if err != nil {
-		fmt.Printf("Failed to copy declarative resources: %v\n", err)
-		os.Exit(1)
+	// Step 3: Copy declarative resource fixtures for composite mode testing. The Control Plane
+	// suite configures no composite store, so it has no use for them.
+	if !controlPlane {
+		err = testutils.CopyDeclarativeResources(zipFilePattern)
+		if err != nil {
+			fmt.Printf("Failed to copy declarative resources: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Step 4: Run the init script to create the SQLite database
@@ -65,6 +87,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// A Control Plane issues no tokens, so the identity provider it trusts must be up before it
+	// serves a request.
+	var issuer *testutils.MockOIDCServer
+	if controlPlane {
+		issuer, err = testutils.StartTrustedIssuer()
+		if err != nil {
+			fmt.Printf("Failed to start the trusted issuer: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = issuer.Stop() }()
+	}
+
 	// Step 6: Start server
 	fmt.Println("Starting server with security enabled...")
 	err = testutils.StartServer(serverPort, zipFilePattern)
@@ -80,7 +114,11 @@ func main() {
 
 	// Step 7: Obtain admin access token once for all test packages
 	fmt.Println("Obtaining admin access token...")
-	err = testutils.ObtainAdminAccessToken()
+	if controlPlane {
+		err = useTrustedIssuerTokens(issuer)
+	} else {
+		err = testutils.ObtainAdminAccessToken()
+	}
 	if err != nil {
 		fmt.Printf("Failed to obtain admin access token: %v\n", err)
 		testutils.StopServer()
@@ -104,7 +142,31 @@ func parseFlags() {
 	flag.Parse()
 }
 
+// useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
+// one carrying the system scope for every test client, and one without it for the test that it is
+// refused.
+func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
+	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
+	if err != nil {
+		return err
+	}
+	if err := testutils.UseAdminAccessToken(admin, managementTokenLifetime); err != nil {
+		return err
+	}
+	unscoped, err := testutils.IssueManagementToken(issuer, "", managementTokenLifetime)
+	if err != nil {
+		return err
+	}
+	return os.Setenv(testutils.UnscopedTokenEnv, unscoped)
+}
+
 func initTests() {
+	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
+	if controlPlane {
+		fmt.Println("Plane: control")
+		testutils.UseControlPlane()
+	}
+
 	// Read database type from environment variable
 	dbType := os.Getenv("DB_TYPE")
 	if dbType == "" {
@@ -158,8 +220,12 @@ func runTests() error {
 		args = append(args, "-run", testRun)
 		fmt.Printf("Test filter: -run %s\n", testRun)
 	}
-	args = append(args, testPackage)
-	fmt.Printf("Test package: %s\n", testPackage)
+	packages, err := packagesToTest()
+	if err != nil {
+		return err
+	}
+	args = append(args, packages...)
+	fmt.Printf("Test package: %s\n", strings.Join(packages, " "))
 
 	cmd = exec.Command(cmdName, args...)
 	cmd.Stdout = os.Stdout
@@ -175,4 +241,28 @@ func runTests() error {
 	)
 
 	return cmd.Run()
+}
+
+// packagesToTest resolves the default of every package to the suites of the plane under test. A
+// package named explicitly is tested as given.
+func packagesToTest() ([]string, error) {
+	if testPackage != "./..." {
+		return []string{testPackage}, nil
+	}
+	if controlPlane {
+		return []string{controlPlanePackages}, nil
+	}
+	out, err := exec.Command("go", "list", "./...").Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list test packages: %w", err)
+	}
+	controlPlaneRoot := strings.TrimSuffix(strings.TrimPrefix(controlPlanePackages, "."), "/...")
+	var packages []string
+	for _, pkg := range strings.Fields(string(out)) {
+		if strings.HasSuffix(pkg, controlPlaneRoot) || strings.Contains(pkg, controlPlaneRoot+"/") {
+			continue
+		}
+		packages = append(packages, pkg)
+	}
+	return packages, nil
 }
