@@ -498,11 +498,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService)
 
 	// Initialize export service with collected exporters
-	_ = export.Initialize(mux, exporters, export.TemplatePlaceholders)
+	exportService := export.Initialize(mux, exporters, export.TemplatePlaceholders)
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux)
+	gatewayService, err := gateway.Initialize(mux, exportService)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

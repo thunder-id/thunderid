@@ -330,6 +330,9 @@ type GatewayConfig struct {
 	// user-supplied primitive when it is non-zero, so a plain int could not tell `max_gateways: 0`,
 	// meaning administer none, from an omitted field, and the default of one would win either way.
 	MaxGateways *int `yaml:"max_gateways" json:"max_gateways"`
+	// MaxVersions bounds how many captured configuration versions a deployment keeps. Capturing one
+	// beyond it removes the oldest, except a version some gateway holds or could be reverted to.
+	MaxVersions *int `yaml:"max_versions" json:"max_versions"`
 	// Store defines the storage mode for gateways.
 	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
 	// If not specified, falls back to global DeclarativeResources.Enabled setting:
@@ -343,6 +346,12 @@ type GatewayConfig struct {
 // deployment administers none.
 func (c GatewayConfig) MaxGatewayCount() int {
 	return derefInt(c.MaxGateways, 0)
+}
+
+// MaxVersionCount reports how many captured configuration versions a deployment keeps. It is never
+// below one, because a capture that kept nothing could not be applied.
+func (c GatewayConfig) MaxVersionCount() int {
+	return max(derefInt(c.MaxVersions, 1), 1)
 }
 
 // DeclarativeResources holds the configuration details for the declarative resources.

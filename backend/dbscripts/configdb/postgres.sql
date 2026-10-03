@@ -451,6 +451,30 @@ CREATE UNIQUE INDEX idx_gateway_default_deployment
     ON "GATEWAY" (DEPLOYMENT_ID)
     WHERE IS_DEFAULT = TRUE;
 
+-- A captured state of this deployment's configuration, numbered per deployment. It is what is applied
+-- to a gateway. Its values, when the export carried any, are held encrypted as one secret.
+CREATE TABLE "CONFIGURATION_VERSION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    SEQ INTEGER NOT NULL,
+    RESOURCES TEXT NOT NULL,
+    VARIABLES TEXT,
+    NOTE TEXT,
+    CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (DEPLOYMENT_ID, SEQ)
+);
+
+-- The configuration version each gateway holds, and the one it held before, which is what a revert
+-- returns it to. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_APPLIED_VERSION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    APPLIED_SEQ INTEGER NOT NULL,
+    PREVIOUS_SEQ INTEGER,
+    APPLIED_AT TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (GATEWAY_ID, DEPLOYMENT_ID)
+);
+
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
 -- organization unit's standing decision about one resource, and there is exactly one per
 -- (resource, initiating OU) so that an edit has a single well-defined subject.

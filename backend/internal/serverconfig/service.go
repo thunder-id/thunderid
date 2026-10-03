@@ -44,10 +44,18 @@ func newServerConfigService(store serverConfigStoreInterface,
 	}
 }
 
-// ListConfigNames returns the supported configuration section names.
+// ListConfigNames returns the configuration section names this server serves.
+//
+// A name is listed only when a handler is registered for it. A server built without the service a
+// section configures, such as a control plane, which runs no sessions, registers no handler for it,
+// and listing the name would offer a section that every read of then fails.
 func (s *serverConfigService) ListConfigNames(_ context.Context) ([]ConfigName, *common.ServiceError) {
-	names := make([]ConfigName, len(supportedConfigNames))
-	copy(names, supportedConfigNames)
+	names := make([]ConfigName, 0, len(supportedConfigNames))
+	for _, name := range supportedConfigNames {
+		if handler, ok := s.handlers[name]; ok && handler != nil {
+			names = append(names, name)
+		}
+	}
 	return names, nil
 }
 

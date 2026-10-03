@@ -61,6 +61,14 @@ type PerResourceRuler interface {
 	GetResourceRulesForResource(resource interface{}) *ResourceRules
 }
 
+// ReferenceWriter is implemented by an exporter that writes some placeholders itself rather than
+// leaving them to the parameterizer, so it can write them in the style the export uses: a value
+// reference such as "sec:NAME" where the export writes references, a template placeholder such as
+// "{{.NAME}}" where it writes templates.
+type ReferenceWriter interface {
+	WriteValueReferences(references bool)
+}
+
 // ExportError represents errors that occurred during export.
 type ExportError struct {
 	ResourceType string `json:"resourceType"`

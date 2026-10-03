@@ -19,6 +19,11 @@ import (
 func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExporter,
 	style PlaceholderStyle) ExportServiceInterface {
 	parameterizerInstance := newParameterizer(templatingRules{}, style)
+	for _, exporter := range exporters {
+		if writer, ok := exporter.(declarativeresource.ReferenceWriter); ok {
+			writer.WriteValueReferences(style == ValueReferences)
+		}
+	}
 
 	// Create the export service with exporters
 	exportService := newExportService(exporters, parameterizerInstance)
