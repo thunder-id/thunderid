@@ -296,6 +296,10 @@ func (tv *tokenValidator) validateExchangeToken(
 	if typ == jwt.TokenTypeIDJAG {
 		return nil, nil, fmt.Errorf("an ID-JAG cannot be presented as a subject_token")
 	}
+	// A logout token captured at a relying party must not be exchangeable for a token about its subject.
+	if typ == jwt.TokenTypeLogout {
+		return nil, nil, fmt.Errorf("a logout token cannot be presented as a subject_token")
+	}
 
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {

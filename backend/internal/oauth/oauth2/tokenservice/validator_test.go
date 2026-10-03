@@ -315,6 +315,31 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_IDJAGTypRej
 	assert.Contains(suite.T(), err.Error(), "ID-JAG cannot be presented as a subject_token")
 }
 
+// A self-issued back-channel logout token is rejected on its typ header before its signature is checked.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_LogoutTokenTypRejected() {
+	header := map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeLogout}
+	claims := map[string]interface{}{
+		"iss": suite.validator.cfg.JWT.Issuer,
+		"sub": "user123",
+		"aud": testAppID,
+		"sid": "session-1",
+		"exp": float64(time.Now().Unix() + 120),
+	}
+	headerJSON, _ := json.Marshal(header)
+	claimsJSON, _ := json.Marshal(claims)
+	token := fmt.Sprintf("%s.%s.signature",
+		base64.RawURLEncoding.EncodeToString(headerJSON),
+		base64.RawURLEncoding.EncodeToString(claimsJSON))
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "logout token cannot be presented as a subject_token")
+	suite.mockJWTService.AssertNotCalled(suite.T(), "VerifyJWT", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
 // ============================================================================
 // ValidateSubjectToken Tests - Issuer Validation Errors
 // ============================================================================

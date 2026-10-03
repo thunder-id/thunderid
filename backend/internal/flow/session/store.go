@@ -205,15 +205,18 @@ func (st *store) Delete(ctx context.Context, sessionID string) error {
 	})
 }
 
-// DeleteSession removes the session row itself.
-func (st *store) DeleteSession(ctx context.Context, sessionID string) error {
-	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryDeleteSession, sessionID, st.deploymentID)
+// DeleteSession removes the session row itself and reports whether a row was removed.
+func (st *store) DeleteSession(ctx context.Context, sessionID string) (bool, error) {
+	var removed bool
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		affected, err := dbClient.ExecuteContext(ctx, queryDeleteSession, sessionID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to delete session: %w", err)
 		}
+		removed = affected > 0
 		return nil
 	})
+	return removed, err
 }
 
 // buildSessionContextFromRow parses a result row into an SessionContext.
