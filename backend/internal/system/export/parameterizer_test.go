@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -627,6 +628,42 @@ func TestFieldOrder_WithOmittedFields(t *testing.T) {
 	assert.NotContains(t, result, "fieldE:")
 }
 
+// TestFieldOrder_MapKeysSorted verifies map keys are emitted in sorted order, so a re-export of
+// unchanged data yields the same document. Go randomizes map iteration, so with this many keys
+// and repeated exports an unsorted emitter would fail almost every run.
+func TestFieldOrder_MapKeysSorted(t *testing.T) {
+	keys := []string{"kilo", "alpha", "juliet", "charlie", "india", "bravo", "hotel", "delta", "golf", "echo"}
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		values[key] = "value-" + key
+	}
+	obj := &MapTestStruct{StringMap: values}
+
+	sortedKeys := slices.Clone(keys)
+	slices.Sort(sortedKeys)
+
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	var firstResult string
+	for attempt := 0; attempt < 20; attempt++ {
+		result, _, _, err := parameterizer.ToParameterizedYAML(
+			context.Background(), obj, "Application", "TestApp", nil)
+		require.NoError(t, err)
+
+		for index := 1; index < len(sortedKeys); index++ {
+			previous := indexOf(result, sortedKeys[index-1]+":")
+			current := indexOf(result, sortedKeys[index]+":")
+			require.GreaterOrEqual(t, previous, 0, "key %s missing from export", sortedKeys[index-1])
+			require.Less(t, previous, current, "%s should come before %s", sortedKeys[index-1], sortedKeys[index])
+		}
+
+		if attempt == 0 {
+			firstResult = result
+			continue
+		}
+		require.Equal(t, firstResult, result, "re-export of unchanged data changed the document")
+	}
+}
+
 type NestedOrderStruct struct {
 	Name   string           `yaml:"name"`
 	Config *NestedConfigObj `yaml:"config"`
@@ -980,6 +1017,29 @@ func TestConvertFieldToInterface_EmptyMap(t *testing.T) {
 	stringMap, ok := result["stringMap"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Empty(t, stringMap)
+}
+
+// TestHandleMapNode_EmitsKeysInSortedOrder tests that map keys are emitted in a stable order
+func TestHandleMapNode_EmitsKeysInSortedOrder(t *testing.T) {
+	data := map[string]string{
+		"delta":   "4",
+		"alpha":   "1",
+		"echo":    "5",
+		"charlie": "3",
+		"bravo":   "2",
+	}
+
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	for i := 0; i < 10; i++ {
+		node, err := parameterizer.handleMapNode(reflect.ValueOf(data), &resourceRules{}, "", "test")
+		require.NoError(t, err)
+
+		keys := make([]string, 0, len(node.Content)/2)
+		for j := 0; j < len(node.Content); j += 2 {
+			keys = append(keys, node.Content[j].Value)
+		}
+		assert.Equal(t, []string{"alpha", "bravo", "charlie", "delta", "echo"}, keys)
+	}
 }
 
 type PrimitiveArrayStruct struct {

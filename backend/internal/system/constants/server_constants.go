@@ -45,6 +45,10 @@ const APIKeyHeaderName = "API-Key"
 // (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
 const AttestationTokenHeaderName = "Attestation-Token"
 
+// CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
+// such as SMTP and HTTP.
+const CRLF = "\r\n"
+
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
 

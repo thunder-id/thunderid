@@ -59,6 +59,17 @@ packages:
   # TODO: remove both once the integration suite exercises a Control Plane build. Tracked in #5558.
   backend/internal/system/valueref: 0
   backend/internal/system/export: 50
+  # The SMTP binding's basic method runs only for a provider with credentials, which validation
+  # accepts only over TLS, and the server verifies the SMTP certificate against the system roots.
+  # The integration suite's mock SMTP server cannot present a trusted certificate, so these lines
+  # cannot be reached by it. Both methods are covered by unit tests. The figure is a partial bar
+  # rather than 0 because the method that sends no credentials is exercised and must stay so.
+  backend/internal/system/outboundauth/smtpauth: 50
+  # Most of the SMTP client's uncovered lines are failure paths of a live SMTP session: a refused
+  # connection, a failed TLS handshake, or a server rejecting a command. Producing those needs a
+  # misbehaving server rather than the integration suite's mock, and the unit tests drive each one
+  # through an in-process SMTP server. The figure keeps the successful send path held to coverage.
+  backend/internal/notification/client: 60
   # backend/internal/system/i18n: 0
 
 # Thresholds grouped by pull request label. A group applies only when the pull

@@ -15,12 +15,17 @@ import (
 
 // buildEmailOTPFlow assembles an OTP authentication flow delivered over email. It mirrors the SMS
 // OTP flow, with the send half swapped for the EmailExecutor, which exercises the email side of the
-// channel agnostic OTPExecutor.
-func buildEmailOTPFlow() testutils.Flow {
+// channel agnostic OTPExecutor. An empty senderID leaves the email step without a provider.
+func buildEmailOTPFlow(handle, senderID string) testutils.Flow {
+	emailProperties := map[string]interface{}{"emailTemplate": "OTP"}
+	if senderID != "" {
+		emailProperties["senderId"] = senderID
+	}
+
 	return testutils.Flow{
 		Name:     "Email OTP Auth Flow Test",
 		FlowType: "AUTHENTICATION",
-		Handle:   "auth_flow_email_otp_test",
+		Handle:   handle,
 		Nodes: []map[string]interface{}{
 			{"id": "start", "type": "START", "onSuccess": "prompt_email"},
 			{
@@ -50,7 +55,7 @@ func buildEmailOTPFlow() testutils.Flow {
 			{
 				"id":         "email_send",
 				"type":       "TASK_EXECUTION",
-				"properties": map[string]interface{}{"emailTemplate": "OTP"},
+				"properties": emailProperties,
 				"executor": map[string]interface{}{
 					"name": "EmailExecutor",
 					"mode": "send",
@@ -109,11 +114,12 @@ type EmailOTPAuthFlowTestSuite struct {
 	suite.Suite
 	config *common.TestSuiteConfig
 
-	mockSMTP      *testutils.MockSMTPServer
-	appID         string
-	entityTypeID  string
-	testEmail     string
-	originalEmail interface{}
+	mockSMTP        *testutils.MockSMTPServer
+	appID           string
+	noProviderAppID string
+	entityTypeID    string
+	senderID        string
+	testEmail       string
 }
 
 func TestEmailOTPAuthFlowTestSuite(t *testing.T) {
@@ -149,27 +155,14 @@ func (ts *EmailOTPAuthFlowTestSuite) SetupSuite() {
 	ts.mockSMTP = testutils.NewMockSMTPServer(0)
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 
-	// The distribution ships a populated email section and a patch replaces the whole key rather than
-	// merging into it, so keep the original to restore in teardown.
-	originalEmail, err := testutils.ReadDeploymentConfigKey("email")
-	ts.Require().NoError(err, "Failed to read the existing email config")
-	ts.originalEmail = originalEmail
+	// Email providers are created through the connections API, so the flow node can name this one
+	// by ID and no server restart is needed to pick the mock server's port up.
+	senderID, err := testutils.CreateSMTPEmailProvider("Email OTP Auth Test Provider",
+		"localhost", ts.mockSMTP.GetPort(), "noreply@thunderid.test")
+	ts.Require().NoError(err, "Failed to create the SMTP email provider")
+	ts.senderID = senderID
 
-	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"from_address":          "noreply@thunderid.test",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
-		},
-	}), "Failed to patch email config")
-	ts.Require().NoError(testutils.RestartServer(), "Failed to restart server with email config")
-	ts.Require().NoError(testutils.ObtainAdminAccessToken(), "Failed to re-obtain admin token after restart")
-
-	flowID, err := testutils.CreateFlow(buildEmailOTPFlow())
+	flowID, err := testutils.CreateFlow(buildEmailOTPFlow("auth_flow_email_otp_test", senderID))
 	ts.Require().NoError(err, "Failed to create email OTP flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 
@@ -189,6 +182,26 @@ func (ts *EmailOTPAuthFlowTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "Failed to create test application")
 	ts.appID = appID
+
+	// A second flow whose email step names no provider, to show the flow reports the missing
+	// provider instead of failing the request.
+	noProviderFlowID, err := testutils.CreateFlow(buildEmailOTPFlow("auth_flow_email_otp_no_provider_test", ""))
+	ts.Require().NoError(err, "Failed to create email OTP flow without a provider")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, noProviderFlowID)
+
+	noProviderAppID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      ouID,
+		Name:                      "Email OTP No Provider Test Application",
+		Description:               "Application for testing an email step without an email provider",
+		IsRegistrationFlowEnabled: false,
+		ClientID:                  "email_otp_no_provider_test_client",
+		ClientSecret:              "email_otp_no_provider_test_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{emailOTPEntityType.Name},
+		AuthFlowID:                noProviderFlowID,
+	})
+	ts.Require().NoError(err, "Failed to create the no-provider test application")
+	ts.noProviderAppID = noProviderAppID
 }
 
 func (ts *EmailOTPAuthFlowTestSuite) TearDownSuite() {
@@ -196,9 +209,12 @@ func (ts *EmailOTPAuthFlowTestSuite) TearDownSuite() {
 		ts.T().Logf("Failed to cleanup users during teardown: %v", err)
 	}
 
-	if ts.appID != "" {
-		if err := testutils.DeleteApplication(ts.appID); err != nil {
-			ts.T().Logf("Failed to delete application during teardown: %v", err)
+	for _, appID := range []string{ts.appID, ts.noProviderAppID} {
+		if appID == "" {
+			continue
+		}
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete application %s during teardown: %v", appID, err)
 		}
 	}
 
@@ -220,22 +236,16 @@ func (ts *EmailOTPAuthFlowTestSuite) TearDownSuite() {
 		}
 	}
 
+	if ts.senderID != "" {
+		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
+			ts.T().Logf("Failed to delete email provider during teardown: %v", err)
+		}
+	}
+
 	if ts.mockSMTP != nil {
 		if err := ts.mockSMTP.Stop(); err != nil {
 			ts.T().Logf("Failed to stop mock SMTP server during teardown: %v", err)
 		}
-	}
-
-	if err := testutils.PatchDeploymentConfig(map[string]interface{}{
-		"email": ts.originalEmail,
-	}); err != nil {
-		ts.T().Logf("Failed to restore email config during teardown: %v", err)
-	}
-	if err := testutils.RestartServer(); err != nil {
-		ts.T().Logf("Server did not restart cleanly after config restore: %v", err)
-	}
-	if err := testutils.ObtainAdminAccessToken(); err != nil {
-		ts.T().Logf("Failed to re-obtain admin token after restore: %v", err)
 	}
 }
 
@@ -354,4 +364,23 @@ func (ts *EmailOTPAuthFlowTestSuite) TestEmailOTPAuthFlow_NonExistentEmail() {
 	// Absence cannot be signalled, so allow the window in which a send would have happened.
 	time.Sleep(500 * time.Millisecond)
 	ts.Require().Nil(ts.mockSMTP.GetLastEmail(), "No email should be sent for an unknown address")
+}
+
+// TestEmailOTPAuthFlow_NoEmailProvider confirms an email step that names no provider stops the flow
+// with the provider-not-configured error and sends nothing.
+func (ts *EmailOTPAuthFlowTestSuite) TestEmailOTPAuthFlow_NoEmailProvider() {
+	ts.mockSMTP.ClearEmails()
+
+	step, err := common.InitiateAuthenticationFlow(ts.noProviderAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "email"), "Email input should be required")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID, map[string]string{"email": ts.testEmail},
+		"action_email", step.ChallengeToken)
+	ts.Require().NoError(err, "A missing provider should be reported in band, not as a failed request")
+	ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus, "The flow must not complete without a provider")
+	ts.Require().NotNil(finalStep.Error, "The flow should report why it stopped")
+	ts.Require().Equal("FET-1038", finalStep.Error.Code, "Expected the email provider not configured error")
+	ts.Require().Empty(finalStep.Assertion, "No assertion should be issued without a provider")
+	ts.Require().Nil(ts.mockSMTP.GetLastEmail(), "No email should be sent without a provider")
 }

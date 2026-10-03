@@ -16,7 +16,7 @@ Templates support placeholders. At send time, <ProductName /> substitutes values
 
 - <ProductName /> is running. See [Get <ProductName />](../../../getting-started/get-thunderid).
 - Filesystem access to the deployment's config directory, since templates are files rather than Console resources.
-- For delivery, a configured [SMTP server](../../smtp-server/smtp-server-configuration) or [SMS provider](../sms-providers).
+- For delivery, an [email provider](../../smtp-server/smtp-server-configuration) or [SMS provider](../sms-providers) connection, selected on the flow's notification step with `senderId`.
 
 ## Scenarios and Channels
 
@@ -169,5 +169,5 @@ Write SMS bodies against the rendered length, not the template length. A body th
 ## Next Steps
 
 - [Configure an SMS Provider](../sms-providers): Connect the gateway that delivers your SMS templates
-- [Configure SMTP Server](../../smtp-server/smtp-server-configuration): Connect the mail server that delivers your email templates
+- [Configure an Email Provider](../../smtp-server/smtp-server-configuration): Connect the mail server that delivers your email templates
 - [Build a Flow](../../flows/build-a-flow): Add the notification step that renders a template

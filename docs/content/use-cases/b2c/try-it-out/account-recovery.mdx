@@ -21,24 +21,9 @@ Complete [Set Up Your Environment](../../build-environment) before starting this
 
 ## Set Up Account Recovery
 
-1. Recovery emails are delivered through a SMTP server. Configure a SMTP provider and apply the configuration in
-   `deployment.yaml`.
+Recovery emails go through the `Wayfinder Mock SMTP` email provider connection, which the Wayfinder bundle imports. It points at the sample's local SMTP server on `127.0.0.1:2525`, and the bundled recovery flow selects it on its email step, so no email configuration is needed. The local server shows every captured email at `http://localhost:8788`.
 
-   **Sample SMTP Configuration:**
-
-   ```yaml
-   email:
-     smtp:
-       host: '<smtp-host>'
-       port: <smtp-port>
-       username: '<smtp-username>'
-       password: '<smtp-password>'
-       from_address: '<from-address>'
-       enable_start_tls: true
-       enable_authentication: true
-   ```
-
-2. Restart <ProductName /> for the changes to take effect.
+To send through a real mail server instead, update that connection through the `/connections/email-smtp` API. See [Configure an Email Provider](../../../../guides/smtp-server/smtp-server-configuration).
 
 ## Pick Your Pattern
 

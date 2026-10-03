@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -41,8 +42,8 @@ func (s *HandlerTestSuite) SetupTest() {
 	s.handler, s.mockIDP, s.mockNotif = newConnectionTestHandler(s.T())
 }
 
-// mockListFixtures registers the shared list fixtures: 2 google + 1 oidc IdPs, and a twilio and
-// a custom message sender.
+// mockListFixtures registers the shared list fixtures: 2 google + 1 oidc IdPs, a twilio and a
+// custom message sender, and an SMTP email sender.
 func (s *HandlerTestSuite) mockListFixtures() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).Return([]idp.BasicIDPDTO{
 		{ID: "1", Name: "Google One", Type: providers.IDPTypeGoogle},
@@ -55,6 +56,11 @@ func (s *HandlerTestSuite) mockListFixtures() {
 				Provider: ncommon.NotificationProviderTypeTwilio},
 			{ID: "s2", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
 				Provider: ncommon.NotificationProviderTypeCustom},
+		}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "e1", Name: "Corp SMTP", Type: ncommon.NotificationSenderTypeEmail,
+				Provider: ncommon.NotificationProviderTypeSMTP},
 		}, (*tidcommon.ServiceError)(nil))
 }
 
@@ -75,25 +81,27 @@ func (s *HandlerTestSuite) TestListConnections() {
 	rr, resp := s.listConnections("/connections")
 
 	s.Equal(http.StatusOK, rr.Code)
-	s.Require().Len(resp.Connections, 5)
-	s.Equal(5, resp.TotalResults)
+	s.Require().Len(resp.Connections, 6)
+	s.Equal(6, resp.TotalResults)
 	s.Equal(1, resp.StartIndex)
-	s.Equal(5, resp.Count)
+	s.Equal(6, resp.Count)
 	// Sorted by type, then name, then ID.
 	ids := make([]string, 0, len(resp.Connections))
 	for _, c := range resp.Connections {
 		ids = append(ids, c.ID)
 	}
-	s.Equal([]string{"1", "2", "3", "s2", "s1"}, ids)
-	s.Equal("google", resp.Connections[0].Type)
-	s.Equal([]connectionCategory{categoryIdentityProvider}, resp.Connections[0].Categories)
+	s.Equal([]string{"e1", "1", "2", "3", "s2", "s1"}, ids)
+	s.Equal(emailSMTPVendorName, resp.Connections[0].Type)
+	s.Equal([]connectionCategory{categoryEmailProvider}, resp.Connections[0].Categories)
 	s.Equal("google", resp.Connections[1].Type)
 	s.Equal([]connectionCategory{categoryIdentityProvider}, resp.Connections[1].Categories)
-	s.Equal("oidc", resp.Connections[2].Type)
-	s.Equal("corp", resp.Connections[2].Description)
-	s.Equal("sms-gateway", resp.Connections[3].Type)
-	s.Equal([]connectionCategory{categorySMSProvider}, resp.Connections[3].Categories)
-	s.Equal("twilio", resp.Connections[4].Type)
+	s.Equal("google", resp.Connections[2].Type)
+	s.Equal([]connectionCategory{categoryIdentityProvider}, resp.Connections[2].Categories)
+	s.Equal("oidc", resp.Connections[3].Type)
+	s.Equal("corp", resp.Connections[3].Description)
+	s.Equal("sms-gateway", resp.Connections[4].Type)
+	s.Equal([]connectionCategory{categorySMSProvider}, resp.Connections[4].Categories)
+	s.Equal("twilio", resp.Connections[5].Type)
 	s.Empty(resp.Links)
 }
 
@@ -103,12 +111,12 @@ func (s *HandlerTestSuite) TestListConnectionsPagination() {
 	rr, resp := s.listConnections("/connections?limit=2&offset=1")
 
 	s.Equal(http.StatusOK, rr.Code)
-	s.Equal(5, resp.TotalResults)
+	s.Equal(6, resp.TotalResults)
 	s.Equal(2, resp.StartIndex)
 	s.Equal(2, resp.Count)
 	s.Require().Len(resp.Connections, 2)
-	s.Equal("2", resp.Connections[0].ID)
-	s.Equal("3", resp.Connections[1].ID)
+	s.Equal("1", resp.Connections[0].ID)
+	s.Equal("2", resp.Connections[1].ID)
 
 	rels := make([]string, 0, len(resp.Links))
 	for _, link := range resp.Links {
@@ -124,7 +132,7 @@ func (s *HandlerTestSuite) TestListConnectionsOffsetPastEnd() {
 	rr, resp := s.listConnections("/connections?offset=100")
 
 	s.Equal(http.StatusOK, rr.Code)
-	s.Equal(5, resp.TotalResults)
+	s.Equal(6, resp.TotalResults)
 	s.Equal(101, resp.StartIndex)
 	s.Equal(0, resp.Count)
 	s.NotNil(resp.Connections)
@@ -224,11 +232,30 @@ func (s *HandlerTestSuite) TestListConnectionsEmptyCategory() {
 	rr, resp := s.listConnections("/connections?category=")
 
 	s.Equal(http.StatusOK, rr.Code)
-	s.Len(resp.Connections, 5)
+	s.Len(resp.Connections, 6)
+}
+
+func (s *HandlerTestSuite) TestListConnectionsEmailCategorySkipsIdPsAndSMS() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "e1", Name: "Corp SMTP", Type: ncommon.NotificationSenderTypeEmail,
+				Provider: ncommon.NotificationProviderTypeSMTP},
+		}, (*tidcommon.ServiceError)(nil))
+
+	rr, resp := s.listConnections("/connections?category=email-provider")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.Require().Len(resp.Connections, 1)
+	s.Equal("e1", resp.Connections[0].ID)
+	s.Equal(emailSMTPVendorName, resp.Connections[0].Type)
+	s.Equal([]connectionCategory{categoryEmailProvider}, resp.Connections[0].Categories)
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+	s.mockNotif.AssertNotCalled(s.T(), "ListSendersByType", mock.Anything,
+		ncommon.NotificationSenderTypeMessage)
 }
 
 func (s *HandlerTestSuite) TestListConnectionsInvalidCategory() {
-	for _, target := range []string{"/connections?category=bogus", "/connections?category=email-provider"} {
+	for _, target := range []string{"/connections?category=bogus", "/connections?category=idp"} {
 		rr, _ := s.listConnections(target)
 		s.Equal(http.StatusBadRequest, rr.Code, target)
 		s.Contains(rr.Body.String(), "CON-1001", target)
@@ -277,6 +304,45 @@ func (s *HandlerTestSuite) TestCreateServiceErrorConflict() {
 	rr := httptest.NewRecorder()
 	createHandler(s.handler, googleToIDPDTO, googleFromIDPDTO)(rr, req)
 	s.Equal(http.StatusConflict, rr.Code)
+}
+
+// Mapping a request onto a sender DTO fails for two unrelated reasons, and only one of them is
+// the server's fault. Naming an authentication method that does not exist is the caller's, so it
+// must not be reported as a 500 the caller cannot act on.
+func (s *HandlerTestSuite) TestCreateSenderUnsupportedAuthenticationTypeIsBadRequest() {
+	body, err := json.Marshal(emailSMTPConnectionRequest{
+		Name: "Corp SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "noreply@example.com",
+		TLS:            string(ncommon.TLSModeSTARTTLS),
+		Authentication: &outboundauth.Authentication{Type: "bearer"},
+	})
+	s.Require().NoError(err)
+
+	req := httptest.NewRequest(http.MethodPost, "/connections/"+emailSMTPVendorName, bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	createSenderHandler(s.handler, emailSMTPToSenderDTO, emailSMTPFromSenderDTO)(rr, req)
+
+	s.Equal(http.StatusBadRequest, rr.Code)
+	s.Contains(rr.Body.String(), ErrorInvalidAuthenticationType.Code)
+	// The request never reached the service: it was rejected while being mapped.
+	s.mockNotif.AssertNotCalled(s.T(), "CreateSender", mock.Anything, mock.Anything)
+}
+
+func (s *HandlerTestSuite) TestUpdateSenderUnsupportedAuthenticationTypeIsBadRequest() {
+	body, err := json.Marshal(emailSMTPConnectionRequest{
+		Name: "Corp SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "noreply@example.com",
+		TLS:            string(ncommon.TLSModeSTARTTLS),
+		Authentication: &outboundauth.Authentication{Type: "bearer"},
+	})
+	s.Require().NoError(err)
+
+	req := httptest.NewRequest(http.MethodPut, "/connections/"+emailSMTPVendorName+"/sm-1", bytes.NewReader(body))
+	req.SetPathValue("id", "sm-1")
+	rr := httptest.NewRecorder()
+	updateSenderHandler(s.handler, ncommon.NotificationSenderTypeEmail, ncommon.NotificationProviderTypeSMTP,
+		emailSMTPToSenderDTO, emailSMTPFromSenderDTO)(rr, req)
+
+	s.Equal(http.StatusBadRequest, rr.Code)
+	s.Contains(rr.Body.String(), ErrorInvalidAuthenticationType.Code)
 }
 
 func (s *HandlerTestSuite) TestGetEmptyID() {
@@ -433,14 +499,14 @@ func (s *SMSHandlerTestSuite) stubBody() []byte {
 func (s *SMSHandlerTestSuite) TestCreateInvalidBody() {
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader([]byte("{bad")))
 	rr := httptest.NewRecorder()
-	createSMSConnection(s.handler, rr, req, stubToDTO, stubFromDTO)
+	createSenderConnection(s.handler, rr, req, stubToDTO, stubFromDTO)
 	s.Equal(http.StatusBadRequest, rr.Code)
 }
 
 func (s *SMSHandlerTestSuite) TestCreateToDTOError() {
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader(s.stubBody()))
 	rr := httptest.NewRecorder()
-	createSMSConnection(s.handler, rr, req, stubToDTOErr, stubFromDTO)
+	createSenderConnection(s.handler, rr, req, stubToDTOErr, stubFromDTO)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -450,7 +516,7 @@ func (s *SMSHandlerTestSuite) TestCreateServiceError() {
 
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader(s.stubBody()))
 	rr := httptest.NewRecorder()
-	createSMSConnection(s.handler, rr, req, stubToDTO, stubFromDTO)
+	createSenderConnection(s.handler, rr, req, stubToDTO, stubFromDTO)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -460,14 +526,14 @@ func (s *SMSHandlerTestSuite) TestCreateFromDTOError() {
 
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader(s.stubBody()))
 	rr := httptest.NewRecorder()
-	createSMSConnection(s.handler, rr, req, stubToDTO, stubFromDTOErr)
+	createSenderConnection(s.handler, rr, req, stubToDTO, stubFromDTOErr)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
 func (s *SMSHandlerTestSuite) TestGetEmptyID() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/", nil)
 	rr := httptest.NewRecorder()
-	getSMSConnection(s.handler, rr, req, stubProvider, stubFromDTO)
+	getSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider, stubFromDTO)
 	s.Equal(http.StatusBadRequest, rr.Code)
 }
 
@@ -478,7 +544,7 @@ func (s *SMSHandlerTestSuite) TestGetServiceError() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/missing", nil)
 	req.SetPathValue("id", "missing")
 	rr := httptest.NewRecorder()
-	getSMSConnection(s.handler, rr, req, stubProvider, stubFromDTO)
+	getSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider, stubFromDTO)
 	s.Equal(http.StatusNotFound, rr.Code)
 }
 
@@ -490,14 +556,15 @@ func (s *SMSHandlerTestSuite) TestGetFromDTOError() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	getSMSConnection(s.handler, rr, req, stubProvider, stubFromDTOErr)
+	getSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider, stubFromDTOErr)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
 func (s *SMSHandlerTestSuite) TestUpdateEmptyID() {
 	req := httptest.NewRequest(http.MethodPut, "/connections/twilio/", bytes.NewReader(s.stubBody()))
 	rr := httptest.NewRecorder()
-	updateSMSConnection(s.handler, rr, req, stubProvider, stubToDTO, stubFromDTO)
+	updateSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider,
+		stubToDTO, stubFromDTO)
 	s.Equal(http.StatusBadRequest, rr.Code)
 }
 
@@ -505,7 +572,8 @@ func (s *SMSHandlerTestSuite) TestUpdateInvalidBody() {
 	req := httptest.NewRequest(http.MethodPut, "/connections/twilio/tw-1", bytes.NewReader([]byte("{bad")))
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	updateSMSConnection(s.handler, rr, req, stubProvider, stubToDTO, stubFromDTO)
+	updateSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider,
+		stubToDTO, stubFromDTO)
 	s.Equal(http.StatusBadRequest, rr.Code)
 }
 
@@ -513,7 +581,8 @@ func (s *SMSHandlerTestSuite) TestUpdateToDTOError() {
 	req := httptest.NewRequest(http.MethodPut, "/connections/twilio/tw-1", bytes.NewReader(s.stubBody()))
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	updateSMSConnection(s.handler, rr, req, stubProvider, stubToDTOErr, stubFromDTO)
+	updateSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage,
+		stubProvider, stubToDTOErr, stubFromDTO)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -527,7 +596,8 @@ func (s *SMSHandlerTestSuite) TestUpdateServiceError() {
 	req := httptest.NewRequest(http.MethodPut, "/connections/twilio/tw-1", bytes.NewReader(s.stubBody()))
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	updateSMSConnection(s.handler, rr, req, stubProvider, stubToDTO, stubFromDTO)
+	updateSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage, stubProvider,
+		stubToDTO, stubFromDTO)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -541,7 +611,8 @@ func (s *SMSHandlerTestSuite) TestUpdateFromDTOError() {
 	req := httptest.NewRequest(http.MethodPut, "/connections/twilio/tw-1", bytes.NewReader(s.stubBody()))
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	updateSMSConnection(s.handler, rr, req, stubProvider, stubToDTO, stubFromDTOErr)
+	updateSenderConnection(s.handler, rr, req, ncommon.NotificationSenderTypeMessage,
+		stubProvider, stubToDTO, stubFromDTOErr)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -551,7 +622,7 @@ func (s *SMSHandlerTestSuite) TestListInstancesServiceError() {
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio", nil)
 	rr := httptest.NewRecorder()
-	s.handler.listSMSInstances(stubProvider)(rr, req)
+	s.handler.listSenderInstances(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
@@ -567,7 +638,7 @@ func (s *SMSHandlerTestSuite) TestListInstancesSuccess() {
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio", nil)
 	rr := httptest.NewRecorder()
-	s.handler.listSMSInstances(stubProvider)(rr, req)
+	s.handler.listSenderInstances(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var summaries []connectionInstanceSummary
@@ -580,19 +651,31 @@ func (s *SMSHandlerTestSuite) TestListInstancesSuccess() {
 func (s *SMSHandlerTestSuite) TestDeleteEmptyID() {
 	req := httptest.NewRequest(http.MethodDelete, "/connections/twilio/", nil)
 	rr := httptest.NewRecorder()
-	s.handler.deleteSMSInstance(stubProvider)(rr, req)
+	s.handler.deleteSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 	s.Equal(http.StatusBadRequest, rr.Code)
 }
 
-func (s *SMSHandlerTestSuite) TestDeleteServiceError() {
+func (s *SMSHandlerTestSuite) TestDeleteMissingReturnsNoContent() {
 	s.mockNotif.On("GetSender", mock.Anything, "missing").
 		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
 
 	req := httptest.NewRequest(http.MethodDelete, "/connections/twilio/missing", nil)
 	req.SetPathValue("id", "missing")
 	rr := httptest.NewRecorder()
-	s.handler.deleteSMSInstance(stubProvider)(rr, req)
-	s.Equal(http.StatusNotFound, rr.Code)
+	s.handler.deleteSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
+	s.Equal(http.StatusNoContent, rr.Code)
+	s.mockNotif.AssertNotCalled(s.T(), "DeleteSender", mock.Anything, mock.Anything)
+}
+
+func (s *SMSHandlerTestSuite) TestDeleteServiceError() {
+	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
+		Return((*ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
+
+	req := httptest.NewRequest(http.MethodDelete, "/connections/twilio/tw-1", nil)
+	req.SetPathValue("id", "tw-1")
+	rr := httptest.NewRecorder()
+	s.handler.deleteSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
+	s.Equal(http.StatusInternalServerError, rr.Code)
 }
 
 func (s *SMSHandlerTestSuite) TestDeleteSuccess() {
@@ -604,14 +687,14 @@ func (s *SMSHandlerTestSuite) TestDeleteSuccess() {
 	req := httptest.NewRequest(http.MethodDelete, "/connections/twilio/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	s.handler.deleteSMSInstance(stubProvider)(rr, req)
+	s.handler.deleteSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 	s.Equal(http.StatusNoContent, rr.Code)
 }
 
 func (s *SMSHandlerTestSuite) TestUsagesEmptyID() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio//usages", nil)
 	rr := httptest.NewRecorder()
-	s.handler.usagesSMSInstance(stubProvider)(rr, req)
+	s.handler.usagesSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 	s.Equal(http.StatusBadRequest, rr.Code)
 	s.mockNotif.AssertNotCalled(s.T(), "GetSenderUsages", mock.Anything, mock.Anything)
 }
@@ -623,7 +706,7 @@ func (s *SMSHandlerTestSuite) TestUsagesServiceError() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/missing/usages", nil)
 	req.SetPathValue("id", "missing")
 	rr := httptest.NewRecorder()
-	s.handler.usagesSMSInstance(stubProvider)(rr, req)
+	s.handler.usagesSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 	s.Equal(http.StatusNotFound, rr.Code)
 }
 
@@ -645,7 +728,7 @@ func (s *SMSHandlerTestSuite) TestUsagesSuccess() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/tw-1/usages", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	s.handler.usagesSMSInstance(stubProvider)(rr, req)
+	s.handler.usagesSenderInstance(ncommon.NotificationSenderTypeMessage, stubProvider)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp resourcedependency.DependenciesResponse

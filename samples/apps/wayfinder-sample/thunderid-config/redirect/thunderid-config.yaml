@@ -138,6 +138,19 @@ resources:
         description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
 
 ---
+resource_type: connection
+id: 0193b0a1-1002-7000-8000-000000000001
+name: Wayfinder Mock SMTP
+description: Mock SMTP server that the Wayfinder sample's email steps send through
+type: email-smtp
+host: 127.0.0.1
+port: 2525
+fromAddress: noreply@thunderid.dev
+tls: none
+authentication:
+  type: none
+
+---
 resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
 name: Wayfinder Registration Flow
@@ -371,6 +384,7 @@ nodes:
   - id: send_recovery_email
     type: TASK_EXECUTION
     properties:
+      senderId: 0193b0a1-1002-7000-8000-000000000001
       emailTemplate: PASSWORD_RECOVERY
     executor:
       name: EmailExecutor
@@ -666,6 +680,7 @@ nodes:
   - id: send_invite_email_support
     type: TASK_EXECUTION
     properties:
+      senderId: 0193b0a1-1002-7000-8000-000000000001
       emailTemplate: USER_INVITE
     executor:
       name: EmailExecutor
@@ -786,6 +801,7 @@ nodes:
   - id: send_invite_email_destinations
     type: TASK_EXECUTION
     properties:
+      senderId: 0193b0a1-1002-7000-8000-000000000001
       emailTemplate: USER_INVITE
     executor:
       name: EmailExecutor
@@ -1094,6 +1110,7 @@ nodes:
   - id: send_notification_email
     type: TASK_EXECUTION
     properties:
+      senderId: 0193b0a1-1002-7000-8000-000000000001
       emailTemplate: CIBA_NOTIFICATION
     executor:
       name: EmailExecutor

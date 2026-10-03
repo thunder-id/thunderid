@@ -13,11 +13,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// emailPatchRemove removes the email config to restore the original state.
-var emailPatchRemove = map[string]interface{}{
-	"email": map[string]interface{}{},
-}
-
 var (
 	basicRecoveryOU = testutils.OrganizationUnit{
 		Handle:      "basic-recovery-test-ou",
@@ -58,6 +53,7 @@ type EmailLinkPasswordRecoveryTestSuite struct {
 	testUserID     string
 	testUsername   string
 	testPassword   string
+	senderID       string
 }
 
 func TestEmailLinkPasswordRecoveryTestSuite(t *testing.T) {
@@ -98,25 +94,15 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 	time.Sleep(100 * time.Millisecond)
 
-	emailPatch := map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"from_address":          "noreply@thunder.test",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
-		},
-	}
-
-	// Patch deployment.yaml to point email at the mock SMTP server and restart
-	ts.Require().NoError(testutils.PatchDeploymentConfig(emailPatch), "Failed to patch email config")
-	ts.Require().NoError(testutils.RestartServer(), "Failed to restart server with email config")
-	ts.Require().NoError(testutils.ObtainAdminAccessToken(), "Failed to re-obtain admin token after restart")
+	// Create an email provider pointed at the mock SMTP server. Providers live behind the
+	// connections API, so the recovery flow's send node names this one by ID.
+	senderID, err := testutils.CreateSMTPEmailProvider("Basic Recovery Test Provider",
+		"localhost", ts.mockSMTP.GetPort(), "noreply@thunderid.test")
+	ts.Require().NoError(err, "Failed to create the SMTP email provider")
+	ts.senderID = senderID
 
 	// Create the email-link recovery flow
-	recoveryFlowID, err := testutils.CreateFlow(buildEmailLinkPasswordRecoveryFlow())
+	recoveryFlowID, err := testutils.CreateFlow(buildEmailLinkPasswordRecoveryFlow(senderID))
 	ts.Require().NoError(err, "Failed to create email-link password recovery flow")
 	ts.recoveryFlowID = recoveryFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, recoveryFlowID)
@@ -180,22 +166,18 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TearDownSuite() {
 		}
 	}
 
+	// Delete the email provider
+	if ts.senderID != "" {
+		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
+			ts.T().Logf("teardown: failed to delete email provider: %v", err)
+		}
+	}
+
 	// Stop mock SMTP server
 	if ts.mockSMTP != nil {
 		if err := ts.mockSMTP.Stop(); err != nil {
 			ts.T().Logf("teardown: failed to stop mock SMTP server: %v", err)
 		}
-	}
-
-	// Restore email config and restart server
-	if err := testutils.PatchDeploymentConfig(emailPatchRemove); err != nil {
-		ts.T().Logf("teardown: failed to restore email config: %v", err)
-	}
-	if err := testutils.RestartServer(); err != nil {
-		ts.T().Logf("teardown: server did not restart cleanly after config restore: %v", err)
-	}
-	if err := testutils.ObtainAdminAccessToken(); err != nil {
-		ts.T().Logf("teardown: failed to re-obtain admin token after restore: %v", err)
 	}
 }
 
@@ -538,7 +520,7 @@ func buildCredentialSetterWithoutUserFlow() testutils.Flow {
 	}
 }
 
-func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
+func buildEmailLinkPasswordRecoveryFlow(senderID string) testutils.Flow {
 	return testutils.Flow{
 		Name:     "Email Link Password Recovery Flow Test",
 		Handle:   "email-link-based-password-recovery-test",
@@ -601,6 +583,7 @@ func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"emailTemplate": "PASSWORD_RECOVERY",
+					"senderId":      senderID,
 				},
 				"executor": map[string]interface{}{
 					"name": "EmailExecutor",

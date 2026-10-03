@@ -54,6 +54,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedModes: []string{"send"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "emailTemplate", IsRequired: true},
+			{Property: "senderId"},
 		},
 	},
 	ExecutorNameFederatedAuthResolver: {},

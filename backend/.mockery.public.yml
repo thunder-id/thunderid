@@ -324,6 +324,15 @@ packages:
       pkgname: httpmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth:
+    interfaces:
+      Session:
+        config:
+          dir: tests/mocks/outboundauth/smtpauthmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: smtpauthmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/agent:
     config:
       dir: tests/mocks/agentmock
@@ -689,14 +698,6 @@ packages:
       dir: tests/mocks/attributecachemock
       structname: '{{.InterfaceName}}Mock'
       pkgname: attributecachemock
-      filename: "{{.InterfaceName}}_mock.go"
-
-  github.com/thunder-id/thunderid/internal/system/email:
-    config:
-      all: true
-      dir: tests/mocks/emailmock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: emailmock
       filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/template:
