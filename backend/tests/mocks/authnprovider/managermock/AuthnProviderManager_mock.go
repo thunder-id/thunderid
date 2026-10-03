@@ -636,3 +636,144 @@ func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) RunAndReturn(run fun
 	_c.Call.Return(run)
 	return _c
 }
+
+// LinkFederatedIdentity provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) LinkFederatedIdentity(ctx context.Context, authUser providers.AuthUser, idpID string, sub string) *common.ServiceError {
+	ret := _mock.Called(ctx, authUser, idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LinkFederatedIdentity")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AuthUser, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, authUser, idpID, sub)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AuthnProviderManagerMock_LinkFederatedIdentity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LinkFederatedIdentity'
+type AuthnProviderManagerMock_LinkFederatedIdentity_Call struct {
+	*mock.Call
+}
+
+// LinkFederatedIdentity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - authUser providers.AuthUser
+//   - idpID string
+//   - sub string
+func (_e *AuthnProviderManagerMock_Expecter) LinkFederatedIdentity(ctx interface{}, authUser interface{}, idpID interface{}, sub interface{}) *AuthnProviderManagerMock_LinkFederatedIdentity_Call {
+	return &AuthnProviderManagerMock_LinkFederatedIdentity_Call{Call: _e.mock.On("LinkFederatedIdentity", ctx, authUser, idpID, sub)}
+}
+
+func (_c *AuthnProviderManagerMock_LinkFederatedIdentity_Call) Run(run func(ctx context.Context, authUser providers.AuthUser, idpID string, sub string)) *AuthnProviderManagerMock_LinkFederatedIdentity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.AuthUser
+		if args[1] != nil {
+			arg1 = args[1].(providers.AuthUser)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_LinkFederatedIdentity_Call) Return(serviceError *common.ServiceError) *AuthnProviderManagerMock_LinkFederatedIdentity_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_LinkFederatedIdentity_Call) RunAndReturn(run func(ctx context.Context, authUser providers.AuthUser, idpID string, sub string) *common.ServiceError) *AuthnProviderManagerMock_LinkFederatedIdentity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveFederatedCandidates provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) ResolveFederatedCandidates(ctx context.Context, authUser providers.AuthUser) (*providers.FederatedCandidates, *common.ServiceError) {
+	ret := _mock.Called(ctx, authUser)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveFederatedCandidates")
+	}
+
+	var r0 *providers.FederatedCandidates
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AuthUser) (*providers.FederatedCandidates, *common.ServiceError)); ok {
+		return returnFunc(ctx, authUser)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.AuthUser) *providers.FederatedCandidates); ok {
+		r0 = returnFunc(ctx, authUser)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.FederatedCandidates)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.AuthUser) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, authUser)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderManagerMock_ResolveFederatedCandidates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveFederatedCandidates'
+type AuthnProviderManagerMock_ResolveFederatedCandidates_Call struct {
+	*mock.Call
+}
+
+// ResolveFederatedCandidates is a helper method to define mock.On call
+//   - ctx context.Context
+//   - authUser providers.AuthUser
+func (_e *AuthnProviderManagerMock_Expecter) ResolveFederatedCandidates(ctx interface{}, authUser interface{}) *AuthnProviderManagerMock_ResolveFederatedCandidates_Call {
+	return &AuthnProviderManagerMock_ResolveFederatedCandidates_Call{Call: _e.mock.On("ResolveFederatedCandidates", ctx, authUser)}
+}
+
+func (_c *AuthnProviderManagerMock_ResolveFederatedCandidates_Call) Run(run func(ctx context.Context, authUser providers.AuthUser)) *AuthnProviderManagerMock_ResolveFederatedCandidates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.AuthUser
+		if args[1] != nil {
+			arg1 = args[1].(providers.AuthUser)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_ResolveFederatedCandidates_Call) Return(federatedCandidates *providers.FederatedCandidates, serviceError *common.ServiceError) *AuthnProviderManagerMock_ResolveFederatedCandidates_Call {
+	_c.Call.Return(federatedCandidates, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_ResolveFederatedCandidates_Call) RunAndReturn(run func(ctx context.Context, authUser providers.AuthUser) (*providers.FederatedCandidates, *common.ServiceError)) *AuthnProviderManagerMock_ResolveFederatedCandidates_Call {
+	_c.Call.Return(run)
+	return _c
+}

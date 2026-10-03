@@ -298,6 +298,176 @@ func (m *authnProviderManager) checkSubjectAllowed(
 	return &ErrorSubjectNotAllowed
 }
 
+// maxLinkingCandidates bounds how many accounts one federated identity can be offered to verify.
+// More than this means a linking attribute that barely tells accounts apart, which is a
+// misconfiguration to fail on rather than a choice to carry through the flow.
+const maxLinkingCandidates = 10
+
+// entityReferenceSearcher is what a provider implements when it can list every entity an attribute
+// lookup matches. Only the default provider does, so a lookup matching several entities at any
+// other provider still fails closed.
+type entityReferenceSearcher interface {
+	SearchEntityReferences(ctx context.Context, filters map[string]interface{}) (
+		[]providers.EntityReference, *tidcommon.ServiceError)
+}
+
+// ResolveFederatedCandidates returns the entities the pending federated identity's
+// account-linking attributes name, with the values they matched on, or nil when the AuthUser
+// carries no pending federated identity or nothing matches it.
+//
+// A match is a name, not a proof, which is why nothing here touches the AuthUser: the flow has the
+// End-User verify one of the accounts, and that verification is what authenticates them. Every
+// lookup is tried, and every entity they name counts, whether different lookups name different
+// entities or one lookup names several: verification is what tells them apart.
+func (m *authnProviderManager) ResolveFederatedCandidates(ctx context.Context,
+	authUser providers.AuthUser) (*providers.FederatedCandidates, *tidcommon.ServiceError) {
+	for _, name := range authUser.ProviderNames() {
+		state, _ := authUser.StateFor(name)
+		filters := accountLinkingFilters(state.EntityReferenceToken)
+		if len(filters) == 0 {
+			continue
+		}
+		p, ok := m.authnProviders[name]
+		if !ok || p == nil {
+			m.logger.Error(ctx, "no provider registered for authUser state entry",
+				log.String("providerName", name))
+			return nil, &tidcommon.InternalServerError
+		}
+		return m.matchAccountLinkingFilters(ctx, p, filters)
+	}
+	return nil, nil
+}
+
+// matchAccountLinkingFilters resolves each account-linking filter through the provider and returns
+// the entities they name, with the attribute values that matched.
+func (m *authnProviderManager) matchAccountLinkingFilters(ctx context.Context,
+	p providers.AuthnProviderInterface, filters []map[string]interface{},
+) (*providers.FederatedCandidates, *tidcommon.ServiceError) {
+	var candidates *providers.FederatedCandidates
+	for _, filter := range filters {
+		// A filter carries no federated keys, so the provider resolves it the way it resolves any
+		// other attribute token: as a lookup on indexed attributes.
+		ids, svcErr := m.matchAccountLinkingFilter(ctx, p, filter)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if len(ids) == 0 {
+			continue
+		}
+
+		if candidates == nil {
+			candidates = &providers.FederatedCandidates{MatchedAttributes: map[string]string{}}
+		}
+		for _, id := range ids {
+			if !slices.Contains(candidates.EntityIDs, id) {
+				candidates.EntityIDs = append(candidates.EntityIDs, id)
+			}
+		}
+		for attr, value := range filter {
+			candidates.MatchedAttributes[attr] = systemutils.ConvertInterfaceValueToString(value)
+		}
+	}
+	if candidates == nil {
+		m.logger.Debug(ctx, "no user matches the account linking attributes")
+		return nil, nil
+	}
+	if len(candidates.EntityIDs) > maxLinkingCandidates {
+		m.logger.Debug(ctx, "account linking attributes match too many users",
+			log.Int("candidateCount", len(candidates.EntityIDs)))
+		return nil, &ErrorAmbiguousUser
+	}
+	slices.Sort(candidates.EntityIDs)
+	return candidates, nil
+}
+
+// matchAccountLinkingFilter returns the entities one account-linking filter names. The provider
+// resolves the filter as it resolves any lookup, and only an ambiguous answer is listed through
+// the provider's search, which leaves a lookup that names one entity or none exactly as it was.
+func (m *authnProviderManager) matchAccountLinkingFilter(ctx context.Context,
+	p providers.AuthnProviderInterface, filter map[string]interface{}) ([]string, *tidcommon.ServiceError) {
+	ref, svcErr := p.GetEntityReference(ctx, filter)
+	if svcErr == nil {
+		if ref == nil || ref.EntityID == "" {
+			return nil, nil
+		}
+		return []string{ref.EntityID}, nil
+	}
+	if svcErr.Type == tidcommon.ServerErrorType {
+		m.logger.Error(ctx, "provider returned server error while matching account linking attributes",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case authnprovidercm.ErrorCodeUserNotFound:
+		return nil, nil
+	case authnprovidercm.ErrorCodeAmbiguousUser:
+		return m.listAmbiguousMatch(ctx, p, filter)
+	default:
+		m.logger.Error(ctx, "provider rejected the account linking attribute lookup",
+			log.String("errorCode", svcErr.Code),
+			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+		return nil, &tidcommon.InternalServerError
+	}
+}
+
+// listAmbiguousMatch lists the entities a lookup the provider found ambiguous matches. A provider
+// that cannot list them, or a search that does not find several, leaves nothing to verify against,
+// and the lookup fails closed.
+func (m *authnProviderManager) listAmbiguousMatch(ctx context.Context,
+	p providers.AuthnProviderInterface, filter map[string]interface{}) ([]string, *tidcommon.ServiceError) {
+	searcher, ok := p.(entityReferenceSearcher)
+	if !ok {
+		m.logger.Debug(ctx, "an account linking attribute matches more than one user")
+		return nil, &ErrorAmbiguousUser
+	}
+	refs, svcErr := searcher.SearchEntityReferences(ctx, filter)
+	if svcErr != nil {
+		m.logger.Error(ctx, "provider failed to list the users an account linking attribute matches",
+			log.String("errorCode", svcErr.Code))
+		return nil, &tidcommon.InternalServerError
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref.EntityID != "" {
+			ids = append(ids, ref.EntityID)
+		}
+	}
+	if len(ids) < 2 {
+		m.logger.Debug(ctx, "an ambiguous account linking attribute did not list several users",
+			log.Int("candidateCount", len(ids)))
+		return nil, &ErrorAmbiguousUser
+	}
+	return ids, nil
+}
+
+// accountLinkingFilters returns the account-linking filters carried by an unresolved federated
+// token. It returns nil for any other token, and for a federated token that carries none, which
+// means the identity has nothing to match an existing user on.
+//
+// The token is persisted with the flow, so the list comes back from JSON as []interface{} as well
+// as in the shape it was built in.
+func accountLinkingFilters(entityReferenceToken any) []map[string]interface{} {
+	if !authnprovidercm.IsFederatedToken(entityReferenceToken) {
+		return nil
+	}
+	token, _ := entityReferenceToken.(map[string]interface{})
+
+	switch raw := token[authnprovidercm.AccountLinkingFiltersKey].(type) {
+	case []map[string]interface{}:
+		return raw
+	case []interface{}:
+		filters := make([]map[string]interface{}, 0, len(raw))
+		for _, entry := range raw {
+			if filter, ok := entry.(map[string]interface{}); ok && len(filter) > 0 {
+				filters = append(filters, filter)
+			}
+		}
+		return filters
+	default:
+		return nil
+	}
+}
+
 // GetUserAvailableAttributes returns the merged attributes available across
 // every provider's state in the AuthUser.
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
@@ -413,6 +583,84 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 	}
 
 	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// LinkFederatedIdentity records a federated identity against the user this AuthUser names, on the
+// provider that authenticated them. The provider holding the user is the provider that stores the
+// link, so a user held by an external provider is never linked into ThunderID's own store.
+func (m *authnProviderManager) LinkFederatedIdentity(ctx context.Context, authUser providers.AuthUser,
+	idpID, sub string) *tidcommon.ServiceError {
+	if idpID == "" || sub == "" {
+		m.logger.Debug(ctx, "link requested without a connection id or subject")
+		return &ErrorInvalidRequest
+	}
+
+	providerName, ok := m.linkTargetProvider(authUser)
+	if !ok {
+		m.logger.Debug(ctx, "link requested but the authUser carries no provider state")
+		return &ErrorAuthenticationFailed
+	}
+
+	selectedProvider, ok := m.authnProviders[providerName]
+	if !ok || selectedProvider == nil {
+		m.logger.Error(ctx, "authUser state names a provider that is not registered",
+			log.String("providerName", providerName))
+		return &tidcommon.InternalServerError
+	}
+
+	state, _ := authUser.StateFor(providerName)
+	token := state.EntityReferenceToken
+	if token == nil {
+		// GetEntityReference replaces a resolved token with the reference itself, so by the time a
+		// flow reaches the link write the handle is usually the entity id.
+		if state.EntityReference == nil || state.EntityReference.EntityID == "" {
+			m.logger.Debug(ctx, "link requested but the provider state names no entity")
+			return &ErrorInvalidRequest
+		}
+		token = map[string]interface{}{authnprovidercm.UserAttributeUserID: state.EntityReference.EntityID}
+	}
+
+	svcErr := selectedProvider.LinkFederatedIdentity(ctx, token, idpID, sub)
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Type == tidcommon.ServerErrorType {
+		m.logger.Error(ctx, "provider returned server error while linking a federated identity",
+			log.String("error", svcErr.ErrorDescription.DefaultValue))
+		return &tidcommon.InternalServerError
+	}
+	if svcErr.Code == authnprovidercm.ErrorCodeInvalidRequest {
+		// The provider does not store federated links. There is nothing to record, and failing the
+		// sign-in over it would break every federated authentication through that provider.
+		m.logger.Debug(ctx, "provider does not store federated identity links",
+			log.String("providerName", providerName))
+		return nil
+	}
+	m.logger.Debug(ctx, "provider rejected the federated identity link",
+		log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+	return &ErrorLinkFederatedIdentityFailed
+}
+
+// linkTargetProvider picks the provider that should store a federated link. With one provider in
+// the AuthUser it is that one. With several, which happens once a password authentication follows
+// the federated one, it is whichever provider claimed the federated credential.
+func (m *authnProviderManager) linkTargetProvider(authUser providers.AuthUser) (string, bool) {
+	names := authUser.ProviderNames()
+	switch len(names) {
+	case 0:
+		return "", false
+	case 1:
+		return names[0], true
+	}
+
+	federatedOwner, ok := m.credToProviderMapping[authnprovidercm.CredentialTypeFederated]
+	if !ok {
+		federatedOwner = defaultProviderName
+	}
+	if _, present := authUser.StateFor(federatedOwner); present {
+		return federatedOwner, true
+	}
+	return names[0], true
 }
 
 // updateAuthUser records a provider's authentication or enrollment result in the AuthUser

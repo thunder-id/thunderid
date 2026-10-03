@@ -1563,3 +1563,66 @@ func (suite *DefaultAuthnProviderTestSuite) parseFile(filename string) *ast.File
 	suite.Require().NoError(err, "failed to parse %s", filename)
 	return file
 }
+
+// --- LinkFederatedIdentity ---
+
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_ResolvesTokenAndDelegates() {
+	suite.mockService.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkFederatedIdentity", mock.Anything, "user123", "idp-a", "sub-1").Return(nil)
+
+	token := map[string]interface{}{"userID": "user123"}
+	suite.Nil(suite.provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "sub-1"))
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_UnresolvableTokenIsClientError() {
+	suite.mockService.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, entity.ErrEntityNotFound)
+
+	token := map[string]interface{}{"email": "nobody@example.com"}
+	svcErr := suite.provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeUserNotFound, svcErr.Code)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_RejectsNonMapToken() {
+	svcErr := suite.provider.LinkFederatedIdentity(context.Background(), "not-a-map", "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidToken, svcErr.Code)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_RejectsEmptyIdentity() {
+	token := map[string]interface{}{"userID": "user123"}
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest,
+		suite.provider.LinkFederatedIdentity(context.Background(), token, "", "sub-1").Code)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest,
+		suite.provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "").Code)
+}
+
+// A pair another user holds is the caller's to handle, so it is a client error.
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_PairHeldByAnotherUserIsClientError() {
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkFederatedIdentity", mock.Anything, "user123", "idp-a", "sub-1").
+		Return(entity.ErrFederatedIdentityConflict)
+
+	token := map[string]interface{}{"userID": "user123"}
+	svcErr := suite.provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeAmbiguousUser, svcErr.Code)
+}
+
+// A storage failure is the provider's own problem, not the caller's.
+func (suite *DefaultAuthnProviderTestSuite) TestLinkFederatedIdentity_StoreFailureIsServerError() {
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkFederatedIdentity", mock.Anything, "user123", "idp-a", "sub-1").
+		Return(errors.New("boom"))
+
+	token := map[string]interface{}{"userID": "user123"}
+	svcErr := suite.provider.LinkFederatedIdentity(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
+}

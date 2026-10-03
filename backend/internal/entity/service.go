@@ -41,6 +41,8 @@ type EntityServiceInterface interface {
 
 	// Identification
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	ResolveFederatedIdentity(ctx context.Context, idpID, sub string) (*string, error)
+	LinkFederatedIdentity(ctx context.Context, entityID, idpID, sub string) error
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 
 	// Lists (category-scoped)
@@ -374,6 +376,87 @@ func (s *entityService) IdentifyEntity(ctx context.Context,
 		return nil, err
 	}
 	return id, nil
+}
+
+// ResolveFederatedIdentity resolves the entity linked to a federated identity provider subject.
+// A subject is unique only within its issuing connection, so both parts of the pair are required.
+func (s *entityService) ResolveFederatedIdentity(ctx context.Context, idpID, sub string) (*string, error) {
+	if idpID == "" || sub == "" {
+		return nil, ErrEntityNotFound
+	}
+	return s.store.ResolveFederatedIdentity(ctx, idpID, sub)
+}
+
+// LinkFederatedIdentity records that an entity authenticates as the given subject at the given
+// connection. An entity may hold several subjects per connection, so a new subject is added
+// alongside any already recorded rather than replacing them. Writing a subject that is already
+// recorded is a no-op. The entity stays locked for the whole read, append and write, so two
+// concurrent links to one entity cannot drop each other's subject, and a pair another entity holds
+// is refused with ErrFederatedIdentityConflict.
+func (s *entityService) LinkFederatedIdentity(ctx context.Context, entityID, idpID, sub string) error {
+	if entityID == "" || idpID == "" || sub == "" {
+		return ErrBadAttributesInRequest
+	}
+	s.logger.Debug(ctx, "Linking federated identity", log.MaskedString("id", entityID),
+		log.String("idpId", idpID))
+
+	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.store.LockEntity(txCtx, entityID); err != nil {
+			return err
+		}
+
+		holder, err := s.store.ResolveFederatedIdentity(txCtx, idpID, sub)
+		switch {
+		case errors.Is(err, ErrAmbiguousEntity):
+			return ErrFederatedIdentityConflict
+		case err != nil && !errors.Is(err, ErrEntityNotFound):
+			return err
+		case holder != nil && *holder != entityID:
+			return ErrFederatedIdentityConflict
+		}
+
+		current, err := s.store.GetEntity(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		attrs := map[string]interface{}{}
+		if len(current.SystemAttributes) > 0 {
+			if err := json.Unmarshal(current.SystemAttributes, &attrs); err != nil {
+				return fmt.Errorf("failed to unmarshal system attributes: %w", err)
+			}
+		}
+
+		links, _ := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+		if links == nil {
+			links = map[string]interface{}{}
+		}
+		if hasFederatedSubject(links, idpID, sub) {
+			return nil
+		}
+
+		subjects, _ := links[idpID].(map[string]interface{})
+		if subjects == nil {
+			subjects = map[string]interface{}{}
+		}
+		subjects[sub] = map[string]interface{}{}
+		links[idpID] = subjects
+		attrs[authnprovidercm.SystemAttrLinkedIDs] = links
+
+		merged, err := json.Marshal(attrs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal system attributes: %w", err)
+		}
+		return s.store.UpdateSystemAttributes(txCtx, entityID, merged)
+	})
+}
+
+// hasFederatedSubject reports whether a subject is already recorded for a connection, which is
+// what keeps a repeat link from rewriting the entity.
+func hasFederatedSubject(links map[string]interface{}, idpID, sub string) bool {
+	subjects, _ := links[idpID].(map[string]interface{})
+	_, ok := subjects[sub]
+	return ok
 }
 
 // SearchEntities searches for all entities matching the provided filters. The returned
@@ -899,6 +982,17 @@ func (s *entityService) validateEntityType(
 		return ErrSchemaValidationFailed
 	}
 
+	// Bound the indexed values before uniqueness, which looks up each value separately.
+	if len(attributes) > 0 {
+		var attrMap map[string]interface{}
+		if err := json.Unmarshal(attributes, &attrMap); err != nil {
+			return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, err.Error())
+		}
+		if err := validateIndexedValueCounts(attrMap, s.store.GetIndexedAttributes()); err != nil {
+			return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, err.Error())
+		}
+	}
+
 	// Validate attribute uniqueness
 	isValid, svcErr = s.entityTypeService.ValidateEntityUniqueness(ctx, schemaCategory, entityType, attributes,
 		func(filters map[string]interface{}) (bool, error) {
@@ -938,8 +1032,8 @@ func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID st
 	if err != nil {
 		return nil, err
 	}
-	marker := credentialUpdatedAtOf(current.SystemAttributes)
-	if marker == "" {
+	preserved := reservedAttributesOf(current.SystemAttributes)
+	if len(preserved) == 0 {
 		return incoming, nil
 	}
 
@@ -949,7 +1043,9 @@ func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID st
 			return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 		}
 	}
-	attrs[authnprovidercm.SystemAttrCredentialUpdatedAt] = marker
+	for key, value := range preserved {
+		attrs[key] = value
+	}
 
 	merged, err := json.Marshal(attrs)
 	if err != nil {
@@ -958,18 +1054,31 @@ func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID st
 	return merged, nil
 }
 
-// credentialUpdatedAtOf returns the credential-change marker in the given system attributes, or empty
-// when none is recorded.
-func credentialUpdatedAtOf(systemAttributes json.RawMessage) string {
+// reservedSystemAttributes are the server-owned system attribute keys that survive a wholesale
+// replacement of the blob. Both write paths replace it, and the services that own an entity rebuild
+// it from their own model, so a key that is not listed here is dropped by an unrelated update.
+var reservedSystemAttributes = []string{
+	authnprovidercm.SystemAttrCredentialUpdatedAt,
+	authnprovidercm.SystemAttrLinkedIDs,
+}
+
+// reservedAttributesOf returns the reserved keys present in the given system attributes.
+func reservedAttributesOf(systemAttributes json.RawMessage) map[string]interface{} {
 	if len(systemAttributes) == 0 {
-		return ""
+		return nil
 	}
 	var attrs map[string]interface{}
 	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
-		return ""
+		return nil
 	}
-	marker, _ := attrs[authnprovidercm.SystemAttrCredentialUpdatedAt].(string)
-	return marker
+
+	preserved := map[string]interface{}{}
+	for _, key := range reservedSystemAttributes {
+		if value, ok := attrs[key]; ok {
+			preserved[key] = value
+		}
+	}
+	return preserved
 }
 
 // setCredentialUpdatedAt returns systemAttributes with the credential-change marker set to at. The

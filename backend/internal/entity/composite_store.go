@@ -103,6 +103,21 @@ func (c *entityCompositeStore) DeleteEntity(ctx context.Context, id string) erro
 	return c.dbStore.DeleteEntity(ctx, id)
 }
 
+// LockEntity locks an entity in the database store only.
+func (c *entityCompositeStore) LockEntity(ctx context.Context, id string) error {
+	return c.dbStore.LockEntity(ctx, id)
+}
+
+// ResolveFederatedIdentity resolves a federated link from either store (DB first, then file fallback).
+func (c *entityCompositeStore) ResolveFederatedIdentity(ctx context.Context,
+	idpID, sub string) (*string, error) {
+	return declarativeresource.CompositeGetHelper(
+		func() (*string, error) { return c.dbStore.ResolveFederatedIdentity(ctx, idpID, sub) },
+		func() (*string, error) { return c.fileStore.ResolveFederatedIdentity(ctx, idpID, sub) },
+		ErrEntityNotFound,
+	)
+}
+
 // IdentifyEntity identifies an entity from either store (DB first, then file fallback).
 func (c *entityCompositeStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {

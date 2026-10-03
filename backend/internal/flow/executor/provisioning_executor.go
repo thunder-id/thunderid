@@ -724,6 +724,9 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 	if val, ok := ctx.RuntimeData[attr]; ok && val != "" {
 		return true
 	}
+	if val, ok := core.GetExternalClaim(ctx.RuntimeData, attr); ok && val != "" {
+		return true
+	}
 	return false
 }
 
@@ -760,6 +763,9 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
+			} else if claimValue, exists := core.GetExternalClaim(ctx.RuntimeData, a.Attribute); exists &&
+				claimValue != "" {
+				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
 			}
 		}
 	}

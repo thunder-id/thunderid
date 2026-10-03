@@ -445,6 +445,15 @@ type EntityReference struct {
 	OUID           string `json:"ouId"`
 }
 
+// FederatedCandidates are the entities a pending federated identity's account-linking attributes
+// matched, sorted by id, along with the attribute values that matched, keyed by local attribute
+// name. Different attributes can match different entities and one attribute several, and
+// verification decides which one is the End-User's.
+type FederatedCandidates struct {
+	EntityIDs         []string
+	MatchedAttributes map[string]string
+}
+
 // GetAttributesMetadata holds metadata used when retrieving entity attributes.
 type GetAttributesMetadata struct {
 	Locale          string              `json:"locale"`

@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -19,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -34,9 +34,6 @@ type OAuthTokenResponse struct {
 	IDToken      string `json:"id_token"`
 	ExpiresIn    int    `json:"expires_in"`
 }
-
-// userInfoSkipAttributes contains the list of user info attributes to skip when mapping to context user.
-var userInfoSkipAttributes = []string{"username", "sub", "id"}
 
 // oAuthExecutorInterface defines the interface for OAuth authentication executors.
 type oAuthExecutorInterface interface {
@@ -254,13 +251,18 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 	execResp.AuthUser = authUser
 
-	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
+	if !validateFederatedIdentifierConsistency(ctx, idpID, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
 
-	copyFederatedAttributesToRuntimeData(execResp, federatedAttributes)
+	// The connection id lives in this node's properties, which later nodes cannot read. Publish it
+	// with the subject so linking and provisioning can record the federated link.
+	sub := systemutils.ConvertInterfaceValueToString(federatedAttributes[userAttributeSub])
+	if err := publishExternalIdentity(execResp, idpID, sub, federatedAttributes); err != nil {
+		return err
+	}
 
 	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
 
@@ -320,28 +322,4 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 	}
 
 	return idp.Name, nil
-}
-
-// getContextUserAttributes extracts and returns user attributes from the user info map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oAuthExecutor) getContextUserAttributes(execResp *providers.ExecutorResponse,
-	userInfo map[string]string) map[string]interface{} {
-	attributes := make(map[string]interface{})
-	for key, value := range userInfo {
-		if !slices.Contains(userInfoSkipAttributes, key) {
-			attributes[key] = value
-		}
-	}
-
-	// Append email to runtime data if available.
-	if email, ok := attributes[userAttributeEmail]; ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-			execResp.RuntimeData[userAttributeEmail] = emailStr
-		}
-	}
-
-	return attributes
 }

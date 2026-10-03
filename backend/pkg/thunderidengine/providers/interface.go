@@ -26,12 +26,23 @@ type AuthnProviderManager interface {
 		authUser AuthUser) (AuthUser, AuthenticatedClaims, *common.ServiceError)
 	GetEntityReference(ctx context.Context, authUser AuthUser) (
 		AuthUser, *EntityReference, *common.ServiceError)
+	// ResolveFederatedCandidates returns the entities the AuthUser's pending federated identity
+	// matches on its connection's account-linking attributes, with the values they matched on, or
+	// nil when there is no pending federated identity or nothing matches. A match names an account
+	// without proving it, so nothing here authenticates and nothing is written.
+	ResolveFederatedCandidates(ctx context.Context, authUser AuthUser) (
+		*FederatedCandidates, *common.ServiceError)
 	GetUserAvailableAttributes(ctx context.Context,
 		authUser AuthUser) (*AttributesResponse, *common.ServiceError)
 	GetUserAttributes(ctx context.Context,
 		requestedAttributes *RequestedAttributes,
 		metadata *GetAttributesMetadata,
 		authUser AuthUser) (AuthUser, *AttributesResponse, *common.ServiceError)
+	// LinkFederatedIdentity records a federated identity against the user the AuthUser names. The
+	// provider that authenticated that user is the provider that stores the link, using the entity
+	// reference token it issued, so a user held by an external provider is linked there.
+	LinkFederatedIdentity(ctx context.Context, authUser AuthUser,
+		idpID, sub string) *common.ServiceError
 }
 
 // AuthnProviderInterface defines the interface for authentication providers.
@@ -49,6 +60,12 @@ type AuthnProviderInterface interface {
 		metadata *AuthnMetadata) (any, *common.ServiceError)
 	Enroll(ctx context.Context, identifiers, credentials map[string]interface{},
 		metadata *AuthnMetadata) (*AuthnResult, *common.ServiceError)
+	// LinkFederatedIdentity records that the referenced entity authenticates as the given subject
+	// at the given connection. The token is this provider's own entity reference token. A provider
+	// that does not store federated links returns ErrorCodeInvalidRequest, which the manager reads
+	// as "nothing to do" rather than a failure.
+	LinkFederatedIdentity(ctx context.Context, entityReferenceToken any,
+		idpID, sub string) *common.ServiceError
 }
 
 // ActorProvider resolves inbound actors and exposes their OAuth and membership data.

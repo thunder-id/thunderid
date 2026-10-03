@@ -37,6 +37,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newEntityStoreInterfaceMock(s.T())
+	s.store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	s.hashService = hashmock.NewHashServiceInterfaceMock(s.T())
 	// Default: hashService.Generate returns a deterministic hash for any input.
 	s.hashService.On("Generate", mock.Anything).Return(cryptolib.Credential{
@@ -745,6 +746,169 @@ func (s *ServiceTestSuite) TestUpdateEntity_PreservesCredentialMarker() {
 	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
 }
 
+// Federated identity links are what resolves a returning federated user. Dropping them on an
+// unrelated profile update would re-provision that user into a unique-attribute conflict on their
+// next login, so they survive a wholesale replacement of the blob alongside the credential marker.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesFederatedIdentities() {
+	e := testEntity("e-preserve-fed")
+	e.SystemAttributes = json.RawMessage(
+		`{"name":"Old","credentialUpdatedAt":"2026-08-12T10:00:00Z",` +
+			`"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Equal("New", attrs["name"], "the caller's own keys are replaced")
+	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+	s.Equal(map[string]interface{}{"idp-a": map[string]interface{}{"sub-1": map[string]interface{}{}}},
+		attrs[authnprovidercm.SystemAttrLinkedIDs])
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_RecordsLink() {
+	e := testEntity("e-link")
+	s.expectLinkLock(e.ID, nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkFederatedIdentity(s.ctx, e.ID, "idp-a", "sub-1"))
+	s.JSONEq(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`, string(written))
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_AddsSecondConnection() {
+	e := testEntity("e-link-2")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(e.ID, nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkFederatedIdentity(s.ctx, e.ID, "idp-b", "sub-2"))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	links, _ := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+	s.Len(links, 2, "linking a second connection must not drop the first")
+}
+
+// Re-authenticating through an already-linked connection must not churn the entity.
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_SameSubjectIsNoOp() {
+	e := testEntity("e-link-3")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(e.ID, nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	s.NoError(s.svc.LinkFederatedIdentity(s.ctx, e.ID, "idp-a", "sub-1"))
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A user may hold several accounts at one connection, so a second subject is added alongside the
+// first. The subjects share the identifier NAME and differ by VALUE, which the primary key keeps
+// apart.
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_AddsSecondSubjectAtSameConnection() {
+	e := testEntity("e-link-4")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(e.ID, nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkFederatedIdentity(s.ctx, e.ID, "idp-a", "sub-other"))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	links, _ := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+	s.Equal(map[string]interface{}{"sub-1": map[string]interface{}{}, "sub-other": map[string]interface{}{}},
+		links["idp-a"],
+		"a second account at the same connection must not replace the first")
+}
+
+// expectLinkLock expects the link write to lock the entity and look the pair up, answering with
+// holder as the entity that already holds it (nil for none).
+func (s *ServiceTestSuite) expectLinkLock(entityID string, holder *string) {
+	s.store.On("LockEntity", mock.Anything, entityID).Return(nil).Once()
+	if holder == nil {
+		s.store.On("ResolveFederatedIdentity", mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, ErrEntityNotFound).Once()
+		return
+	}
+	s.store.On("ResolveFederatedIdentity", mock.Anything, mock.Anything, mock.Anything).
+		Return(holder, nil).Once()
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_RefusesPairHeldByAnotherEntity() {
+	other := "e-other"
+	s.expectLinkLock("e-link-5", &other)
+
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "e-link-5", "idp-a", "sub-1"), ErrFederatedIdentityConflict)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_RefusesAmbiguousPair() {
+	s.store.On("LockEntity", mock.Anything, "e-link-6").Return(nil).Once()
+	s.store.On("ResolveFederatedIdentity", mock.Anything, "idp-a", "sub-1").
+		Return(nil, ErrAmbiguousEntity).Once()
+
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "e-link-6", "idp-a", "sub-1"), ErrFederatedIdentityConflict)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The entity's own pair resolving to itself is a repeat link, not a conflict.
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_OwnPairIsNotAConflict() {
+	e := testEntity("e-link-7")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(e.ID, &e.ID)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	s.NoError(s.svc.LinkFederatedIdentity(s.ctx, e.ID, "idp-a", "sub-1"))
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_LockFailureWritesNothing() {
+	lockErr := errors.New("lock failed")
+	s.store.On("LockEntity", mock.Anything, "e-link-8").Return(lockErr).Once()
+
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "e-link-8", "idp-a", "sub-1"), lockErr)
+	s.store.AssertNotCalled(s.T(), "ResolveFederatedIdentity", mock.Anything, mock.Anything, mock.Anything)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLinkFederatedIdentity_RejectsEmptyArguments() {
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "", "idp-a", "sub-1"), ErrBadAttributesInRequest)
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "e1", "", "sub-1"), ErrBadAttributesInRequest)
+	s.ErrorIs(s.svc.LinkFederatedIdentity(s.ctx, "e1", "idp-a", ""), ErrBadAttributesInRequest)
+}
+
+func (s *ServiceTestSuite) TestResolveFederatedIdentity_Delegates() {
+	expected := "e-resolved"
+	s.store.On("ResolveFederatedIdentity", mock.Anything, "idp-a", "sub-1").Return(&expected, nil)
+
+	got, err := s.svc.ResolveFederatedIdentity(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.Equal(expected, *got)
+}
+
+// A subject is unique only within its issuing connection, so both parts are required and a missing
+// one is a miss rather than a broad lookup.
+func (s *ServiceTestSuite) TestResolveFederatedIdentity_RejectsEmptyArguments() {
+	_, err := s.svc.ResolveFederatedIdentity(s.ctx, "", "sub-1")
+	s.ErrorIs(err, ErrEntityNotFound)
+	_, err = s.svc.ResolveFederatedIdentity(s.ctx, "idp-a", "")
+	s.ErrorIs(err, ErrEntityNotFound)
+	s.store.AssertNotCalled(s.T(), "ResolveFederatedIdentity", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // An entity with no marker recorded is written through untouched.
 func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 	e := testEntity("e-nomarker")
@@ -757,4 +921,18 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_TooManyIndexedValuesRejectedBeforeUniqueness() {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("GetIndexedAttributes").Return(map[string]bool{"email": true})
+	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	svc := newEntityService(store, s.hashService, ets, nil, transaction.NewNoOpTransactioner()).(*entityService)
+
+	attrs := emailArrayAttrs(MaxIndexedValuesPerAttribute + 1)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, "employee", attrs, false).Return(true, nil)
+
+	// ValidateEntityUniqueness is not mocked: reaching it would fail the test.
+	err := svc.validateEntityType(s.ctx, providers.EntityCategoryUser, "employee", attrs, "", false)
+	s.ErrorIs(err, ErrSchemaValidationFailed)
 }

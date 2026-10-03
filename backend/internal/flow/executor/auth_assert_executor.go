@@ -551,6 +551,10 @@ func (a *authAssertExecutor) resolveUserAttributes(
 			attributes[attr] = val
 			continue
 		}
+		if val, exists := core.GetExternalClaim(ctx.RuntimeData, attr); exists && val != "" {
+			attributes[attr] = val
+			continue
+		}
 
 		// Check for the attribute in attributes fetched from user/authentication provider
 		if fetchedAttributes != nil {
