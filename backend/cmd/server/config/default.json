@@ -165,7 +165,7 @@
     "logout" : {
       "enabled" : true,
       "backchannel" : {
-        "enabled" : false,
+        "enabled" : true,
         "token_validity_period" : 120,
         "request_timeout" : 5,
         "max_attempts" : 3,

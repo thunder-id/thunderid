@@ -103,6 +103,10 @@ func main() {
 	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
 	revocationSyncer.Start(ctx)
 
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Start(ctx)
+	}
+
 	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
 	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
 	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(jwtService, revocationEnforcer)

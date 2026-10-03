@@ -241,6 +241,44 @@ func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured
 	assert.NotContains(suite.T(), string(body), "dpop_signing_alg_values_supported")
 }
 
+func (suite *DiscoveryTestSuite) TestOIDCDiscovery_BackchannelLogoutFlags() {
+	tests := []struct {
+		name        string
+		logout      *bool
+		backchannel *bool
+		want        bool
+	}{
+		{"logout and back-channel enabled", boolPtr(true), boolPtr(true), true},
+		{"back-channel disabled", boolPtr(true), boolPtr(false), false},
+		{"back-channel unset", boolPtr(true), nil, false},
+		{"logout disabled", boolPtr(false), boolPtr(true), false},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			cfg := suite.oauthCfg
+			cfg.OAuth.Logout = engineconfig.LogoutConfig{
+				Enabled:     tc.logout,
+				Backchannel: engineconfig.BackchannelLogoutConfig{Enabled: tc.backchannel},
+			}
+			suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+				Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil).
+				Once()
+			svc := newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock), cfg)
+
+			meta, err := svc.GetOIDCMetadata(context.Background())
+
+			suite.Require().NoError(err)
+			assert.Equal(suite.T(), tc.want, meta.BackchannelLogoutSupported)
+			assert.Equal(suite.T(), tc.want, meta.BackchannelLogoutSessionSupported)
+			// Both flags are present in the document even when false.
+			body, err := json.Marshal(meta)
+			suite.Require().NoError(err)
+			assert.Contains(suite.T(), string(body), `"backchannel_logout_supported":`)
+			assert.Contains(suite.T(), string(body), `"backchannel_logout_session_supported":`)
+		})
+	}
+}
+
 func (suite *DiscoveryTestSuite) TestDCRRevocationLogoutEndpointsOmittedWhenDisabled() {
 	config.ResetServerRuntime()
 	testConfig := &config.Config{

@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	oauth2logout "github.com/thunder-id/thunderid/internal/oauth/oauth2/logout"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
@@ -57,9 +58,10 @@ func Initialize(
 	enforcementService revocation.EnforcementServiceInterface,
 	revocationSvc revocation.RevocationServiceInterface,
 	ssoSession session.Service,
+	terminationHook session.TerminationHook,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
-) (tokenservice.TokenValidatorInterface, error) {
+) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
 	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
 		return syshttp.IsSSRFSafeURL(req.URL.String())
@@ -87,7 +89,7 @@ func Initialize(
 		jwtService, flowExecService, parService, revocationSvc, ssoSession, flowProvider, cfg,
 		runtimeStore, transactioner, jtiStore)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var cibaService ciba.CIBAServiceInterface
@@ -111,8 +113,13 @@ func Initialize(
 		discoveryService, dpopVerifier, cfg)
 	callback.Initialize(mux, oauth2AuthzService, cibaService, cfg)
 
+	var dispatcher backchannel.DispatcherInterface
 	if cfg.OAuth.Logout.IsEnabled() {
 		oauth2logout.Initialize(mux, jwtService, actorProvider, flowExecService, runtimeStore, cfg)
+		dispatcher, err = backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, terminationHook, cfg)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
-	return tokenValidator, nil
+	return tokenValidator, dispatcher, nil
 }

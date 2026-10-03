@@ -229,14 +229,14 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
 	// scopeless requests do not need resource-server binding.
-	_, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
+	_, _, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
 		engineCtx.transactioner, revocationEnforcer, revocationService,
 		// The embedded engine has no SSO session store, so prompt=none keeps answering
-		// login_required rather than consulting a session.
-		nil, engineCtx.flowProvider, oauthConfig)
+		// login_required rather than consulting a session, and no session termination is observed.
+		nil, nil, engineCtx.flowProvider, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

@@ -65,6 +65,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/openid4vci"
@@ -112,6 +113,10 @@ import (
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
 var observabilitySvc observability.ObservabilityServiceInterface
+
+// backchannelDispatcher delivers back-channel logout notifications. It is nil when the feature is
+// disabled; main starts it and graceful shutdown stops it.
+var backchannelDispatcher backchannel.DispatcherInterface
 
 // registerServices registers all the services with the provided HTTP multiplexer.
 // It also returns the import service so the bootstrap subcommand can create default
@@ -379,7 +384,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
 	// The termination hook is kept for the back-channel logout dispatcher, which is built after the
 	// actor provider and installed through it.
-	sessionService, _, sessionCfg := initSessionService(ctx, serverConfigService,
+	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
 		runtime.Config.Server.Identifier, sessionRevoker, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
@@ -539,12 +544,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 
 	// Initialize OAuth services.
-	tokenValidator, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
+	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouProvider, attributeCacheService, authZService,
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
 		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
-		sessionService, flowMgtService, oauthCfg)
+		sessionService, terminationHook, flowMgtService, oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
+	backchannelDispatcher = dispatcher
 
 	// Initialized after the OAuth services because credential issuance validates the presented
 	// access token with the OAuth token validator and resolves the wallet application behind it.
@@ -611,6 +617,10 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 
 // unregisterServices unregisters all services that require cleanup during shutdown.
 func unregisterServices() {
+	// Stopped before observability so the final delivery outcomes still reach a subscriber.
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Stop()
+	}
 	observabilitySvc.Shutdown()
 }
 

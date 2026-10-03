@@ -244,6 +244,12 @@ components:
             end_session_endpoint:
               type: string
               description: URL of the end-session (logout) endpoint.
+            backchannel_logout_supported:
+              type: boolean
+              description: Whether ThunderID sends OIDC Back-Channel Logout notifications to clients that registered a backchannel_logout_uri.
+            backchannel_logout_session_supported:
+              type: boolean
+              description: Whether back-channel logout tokens carry the sid claim. Always equal to backchannel_logout_supported, since every logout token carries sid.
             acr_values_supported:
               type: array
               items:
