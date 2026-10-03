@@ -899,6 +899,17 @@ func (s *entityService) validateEntityType(
 		return ErrSchemaValidationFailed
 	}
 
+	// Bound the indexed values before uniqueness, which looks up each value separately.
+	if len(attributes) > 0 {
+		var attrMap map[string]interface{}
+		if err := json.Unmarshal(attributes, &attrMap); err != nil {
+			return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, err.Error())
+		}
+		if err := validateIndexedValueCounts(attrMap, s.store.GetIndexedAttributes()); err != nil {
+			return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, err.Error())
+		}
+	}
+
 	// Validate attribute uniqueness
 	isValid, svcErr = s.entityTypeService.ValidateEntityUniqueness(ctx, schemaCategory, entityType, attributes,
 		func(filters map[string]interface{}) (bool, error) {

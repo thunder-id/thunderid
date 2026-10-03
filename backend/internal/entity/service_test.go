@@ -37,6 +37,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newEntityStoreInterfaceMock(s.T())
+	s.store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	s.hashService = hashmock.NewHashServiceInterfaceMock(s.T())
 	// Default: hashService.Generate returns a deterministic hash for any input.
 	s.hashService.On("Generate", mock.Anything).Return(cryptolib.Credential{
@@ -757,4 +758,18 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+func (s *ServiceTestSuite) TestValidateEntityType_TooManyIndexedValuesRejectedBeforeUniqueness() {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("GetIndexedAttributes").Return(map[string]bool{"email": true})
+	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	svc := newEntityService(store, s.hashService, ets, nil, transaction.NewNoOpTransactioner()).(*entityService)
+
+	attrs := emailArrayAttrs(MaxIndexedValuesPerAttribute + 1)
+	ets.On("ValidateEntity", mock.Anything, mock.Anything, "employee", attrs, false).Return(true, nil)
+
+	// ValidateEntityUniqueness is not mocked: reaching it would fail the test.
+	err := svc.validateEntityType(s.ctx, providers.EntityCategoryUser, "employee", attrs, "", false)
+	s.ErrorIs(err, ErrSchemaValidationFailed)
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -281,9 +282,78 @@ func (s *DBStoreTestSuite) TestUpdateSystemAttributes_NotFound() {
 
 func (s *DBStoreTestSuite) TestUpdateSystemAttributes_Success() {
 	s.expectClient()
-	s.onExecAny(1, nil)
+	s.onExecAny(1, nil).Once()                                        // update system attributes
+	s.expectClient()                                                  // for reload (GetEntity)
+	s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil).Once() // reload succeeds
+	s.onExecAny(1, nil).Once()                                        // delete identifiers
 	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{}`))
 	s.NoError(err)
+}
+
+// identifierWrites returns the query IDs of all ExecuteContext calls and the string args of the last one.
+func (s *DBStoreTestSuite) identifierWrites() ([]string, []string) {
+	queryIDs := make([]string, 0, len(s.client.Calls))
+	var lastArgs []string
+	for _, call := range s.client.Calls {
+		if call.Method != "ExecuteContext" {
+			continue
+		}
+		queryIDs = append(queryIDs, call.Arguments.Get(1).(dbmodel.DBQuery).ID)
+		lastArgs = nil
+		for _, arg := range call.Arguments[2:] {
+			if str, ok := arg.(string); ok {
+				lastArgs = append(lastArgs, str)
+			}
+		}
+	}
+	return queryIDs, lastArgs
+}
+
+// expectIdentifierResync sets up an entity update whose reload returns the given stored attributes.
+func (s *DBStoreTestSuite) expectIdentifierResync(attributes, systemAttributes string) {
+	s.store.indexedAttributes = map[string]bool{"email": true}
+	row := dbEntityRow()
+	row["attributes"] = attributes
+	row["system_attributes"] = systemAttributes
+	s.provider.On("GetEntityDBClient").Return(s.client, nil)
+	s.onQueryAny([]map[string]interface{}{row}, nil).Once()
+	s.onExecAny(1, nil)
+}
+
+func (s *DBStoreTestSuite) TestUpdateAttributes_ResyncAppliesSystemPrecedence() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{"email":"sys@b.com"}`)
+
+	err := s.store.UpdateAttributes(s.ctx, "e1", json.RawMessage(`{"email":"schema@b.com"}`))
+	s.NoError(err)
+
+	queryIDs, inserted := s.identifierWrites()
+	s.Equal([]string{QueryUpdateAttributes.ID, QueryDeleteIdentifiersByEntity.ID,
+		QueryBatchInsertIdentifiers.ID}, queryIDs)
+	s.Contains(inserted, "sys@b.com")
+	s.NotContains(inserted, "schema@b.com")
+}
+
+func (s *DBStoreTestSuite) TestUpdateSystemAttributes_ResyncDropsOverriddenSchemaValue() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{"email":"sys@b.com"}`)
+
+	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{"email":"sys@b.com"}`))
+	s.NoError(err)
+
+	queryIDs, inserted := s.identifierWrites()
+	s.Equal([]string{QueryUpdateSystemAttributes.ID, QueryDeleteIdentifiersByEntity.ID,
+		QueryBatchInsertIdentifiers.ID}, queryIDs)
+	s.Contains(inserted, "sys@b.com")
+	s.NotContains(inserted, "schema@b.com")
+}
+
+func (s *DBStoreTestSuite) TestUpdateSystemAttributes_ResyncRestoresSchemaValue() {
+	s.expectIdentifierResync(`{"email":"schema@b.com"}`, `{}`)
+
+	err := s.store.UpdateSystemAttributes(s.ctx, "e1", json.RawMessage(`{}`))
+	s.NoError(err)
+
+	_, inserted := s.identifierWrites()
+	s.Contains(inserted, "schema@b.com")
 }
 
 func (s *DBStoreTestSuite) TestUpdateCredentials_ProviderError() {
@@ -908,6 +978,68 @@ func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_NumericAndBoolValues(
 	_ = args
 }
 
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_MultipleValuesForSameName() {
+	attrs := json.RawMessage(`{"email":["a@b.com","c@d.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && (str == "a@b.com" || str == "c@d.com") {
+			values = append(values, str)
+		}
+	}
+	s.ElementsMatch([]string{"a@b.com", "c@d.com"}, values)
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_DuplicateValuesDeduped() {
+	attrs := json.RawMessage(`{"email":["a@b.com","a@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	count := 0
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && str == "a@b.com" {
+			count++
+		}
+	}
+	s.Equal(1, count, "duplicate values for the same name should be inserted once")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_SystemArrayOverridesSchemaArray() {
+	attrs := json.RawMessage(`{"email":["schema@b.com"]}`)
+	sysAttrs := json.RawMessage(`{"email":["sys1@b.com","sys2@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, sysAttrs, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok {
+			values = append(values, str)
+		}
+	}
+	s.Contains(values, "sys1@b.com")
+	s.Contains(values, "sys2@b.com")
+	s.NotContains(values, "schema@b.com")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_EmptySystemValueKeepsSchemaValue() {
+	attrs := json.RawMessage(`{"email":"schema@b.com"}`)
+	indexed := map[string]bool{"email": true}
+	for _, sysAttrs := range []string{`{"email":""}`, `{"email":null}`, `{"email":[]}`, `{"email":{"k":"v"}}`} {
+		query, args, err := prepareIdentifierQuery("e1", attrs, json.RawMessage(sysAttrs), indexed, "dep1")
+		s.NoError(err)
+		s.NotNil(query, sysAttrs)
+		s.Contains(args, "schema@b.com", sysAttrs)
+	}
+}
+
 func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("hello", attrValueToString("hello"))
 	s.Equal("3.14", attrValueToString(float64(3.14)))
@@ -915,6 +1047,16 @@ func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("100", attrValueToString(int64(100)))
 	s.Equal("true", attrValueToString(true))
 	s.Equal("", attrValueToString([]string{"unsupported"}))
+}
+
+func (s *StoreHelpersTestSuite) TestAttrValueToStrings() {
+	s.Equal([]string{"hello"}, attrValueToStrings("hello"))
+	s.Equal([]string{"42"}, attrValueToStrings(int(42)))
+	s.Nil(attrValueToStrings(map[string]interface{}{"k": "v"}))
+	s.Equal([]string{"a@b.com", "c@d.com"},
+		attrValueToStrings([]interface{}{"a@b.com", "c@d.com"}))
+	s.Equal([]string{"a@b.com"},
+		attrValueToStrings([]interface{}{"a@b.com", map[string]interface{}{"k": "v"}}))
 }
 
 func (s *StoreHelpersTestSuite) TestValidateIndexedAttributesConfig_WithinLimit() {
@@ -927,4 +1069,37 @@ func (s *StoreHelpersTestSuite) TestValidateIndexedAttributesConfig_ExceedsLimit
 	attrs := make([]string, MaxIndexedAttributesCount+1)
 	err := validateIndexedAttributesConfig(attrs)
 	s.Error(err)
+}
+
+func emailArrayAttrs(count int) json.RawMessage {
+	emails := make([]string, count)
+	for i := range emails {
+		emails[i] = fmt.Sprintf("user%d@example.com", i)
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"email": emails})
+	return raw
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_ValuesAtLimitIndexed() {
+	indexed := map[string]bool{"email": true}
+	query, _, err := prepareIdentifierQuery("e1", emailArrayAttrs(MaxIndexedValuesPerAttribute), nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_ValuesOverLimitRejected() {
+	indexed := map[string]bool{"email": true}
+	over := emailArrayAttrs(MaxIndexedValuesPerAttribute + 1)
+
+	_, _, err := prepareIdentifierQuery("e1", over, nil, indexed, "dep1")
+	s.ErrorContains(err, "indexed attribute 'email' has more than")
+
+	_, _, err = prepareIdentifierQuery("e1", nil, over, indexed, "dep1")
+	s.ErrorContains(err, "indexed attribute 'email' has more than", "system attributes are bounded too")
+}
+
+func (s *StoreHelpersTestSuite) TestValidateIndexedValueCounts_IgnoresNonIndexedNames() {
+	var attrMap map[string]interface{}
+	s.Require().NoError(json.Unmarshal(emailArrayAttrs(MaxIndexedValuesPerAttribute+1), &attrMap))
+	s.NoError(validateIndexedValueCounts(attrMap, map[string]bool{"username": true}))
 }
