@@ -78,6 +78,12 @@ func (m *mockThemeService) GetThemeUsages(
 	return nil, nil
 }
 
+func (m *mockThemeService) ResolveDesignTokens(
+	_ context.Context, _, _ string,
+) (map[string]string, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
 // Test HandleThemeListRequest - Success
 func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_Success() {
 	themeList := &ThemeList{

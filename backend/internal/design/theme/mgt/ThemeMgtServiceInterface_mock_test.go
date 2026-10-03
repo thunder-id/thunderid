@@ -464,6 +464,82 @@ func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(
 	return _c
 }
 
+// ResolveDesignTokens provides a mock function for the type ThemeMgtServiceInterfaceMock
+func (_mock *ThemeMgtServiceInterfaceMock) ResolveDesignTokens(ctx context.Context, themeID string, colorScheme string) (map[string]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, themeID, colorScheme)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveDesignTokens")
+	}
+
+	var r0 map[string]string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (map[string]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, themeID, colorScheme)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) map[string]string); ok {
+		r0 = returnFunc(ctx, themeID, colorScheme)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, themeID, colorScheme)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveDesignTokens'
+type ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call struct {
+	*mock.Call
+}
+
+// ResolveDesignTokens is a helper method to define mock.On call
+//   - ctx context.Context
+//   - themeID string
+//   - colorScheme string
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) ResolveDesignTokens(ctx interface{}, themeID interface{}, colorScheme interface{}) *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call {
+	return &ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call{Call: _e.mock.On("ResolveDesignTokens", ctx, themeID, colorScheme)}
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call) Run(run func(ctx context.Context, themeID string, colorScheme string)) *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call) Return(stringToString map[string]string, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call {
+	_c.Call.Return(stringToString, serviceError)
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call) RunAndReturn(run func(ctx context.Context, themeID string, colorScheme string) (map[string]string, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_ResolveDesignTokens_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type ThemeMgtServiceInterfaceMock
 func (_mock *ThemeMgtServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

@@ -32,6 +32,13 @@ type ThemeMgtServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetThemeUsages(ctx context.Context, id string, limit, offset int) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
+	// ResolveDesignTokens returns the selected color scheme's tokens as a flat dot-path -> value map
+	// (e.g. "palette.primary.main" -> "#fa7b3f"), falling back to the theme's defaultColorScheme when
+	// colorScheme is empty. The values are raw, theme-authored strings: a consumer that substitutes
+	// them into a markup context (for example an HTML email body) must encode them for that context
+	// (e.g. HTML-escape) to avoid injection.
+	ResolveDesignTokens(ctx context.Context, themeID, colorScheme string) (
+		map[string]string, *tidcommon.ServiceError)
 }
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
