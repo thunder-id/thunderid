@@ -258,6 +258,10 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 			attrs[input.Identifier] = v
 			continue
 		}
+		if v, ok := core.GetExternalClaim(ctx.RuntimeData, input.Identifier); ok && v != "" {
+			attrs[input.Identifier] = v
+			continue
+		}
 		if v, ok := ctx.ForwardedData[input.Identifier]; ok {
 			if strVal, isStr := v.(string); isStr && strVal != "" {
 				attrs[input.Identifier] = strVal
@@ -330,6 +334,9 @@ func (e *otpExecutor) resolveOTPDestination(ctx *providers.NodeContext) (attrNam
 			return input.Identifier, val
 		}
 		if val, ok := ctx.RuntimeData[input.Identifier]; ok && val != "" {
+			return input.Identifier, val
+		}
+		if val, ok := core.GetExternalClaim(ctx.RuntimeData, input.Identifier); ok && val != "" {
 			return input.Identifier, val
 		}
 		if val, ok := ctx.ForwardedData[input.Identifier]; ok {

@@ -21,6 +21,10 @@ const (
 
 	// MaxIndexedAttributesCount is the maximum number of indexed attributes allowed.
 	MaxIndexedAttributesCount = 20
+
+	// MaxIndexedValuesPerAttribute is the maximum number of values an entity may index under one
+	// attribute name. It keeps a full identifier insert within the database bind parameter limits.
+	MaxIndexedValuesPerAttribute = 100
 )
 
 var (
@@ -116,16 +120,6 @@ var (
 	QueryDeleteIdentifiersByEntity = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-17",
 		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
-	}
-	// QueryDeleteAttributeIdentifiersByEntity is the query to delete only attribute-sourced identifiers for an entity.
-	QueryDeleteAttributeIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-18",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'attribute'`,
-	}
-	// QueryDeleteSystemIdentifiersByEntity is the query to delete only system-sourced identifiers for an entity.
-	QueryDeleteSystemIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-19",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'system'`,
 	}
 )
 

@@ -632,6 +632,22 @@ func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID 
 	return appID
 }
 
+// authenticateFlow drives an authentication flow for whichever identity the mocks return for sub, and
+// returns the step the federated callback leads to.
+func (s *FederatedMappingSuite) authenticateFlow(appID, sub string) (*common.FlowStep, error) {
+	s.T().Helper()
+	s.activeSub = sub
+
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	s.Require().NoError(err, "failed to initiate the authentication flow")
+	s.Require().Equal("REDIRECTION", step.Type, "expected a redirection, got %+v", step)
+
+	code, state, err := testutils.SimulateFederatedOAuthFlow(step.Data.RedirectURL)
+	s.Require().NoError(err, "failed to simulate authorization at the identity provider")
+	return common.CompleteFlow(step.ExecutionID, map[string]string{"code": code, "state": state}, "",
+		step.ChallengeToken)
+}
+
 func (s *FederatedMappingSuite) TearDownTest() {
 	s.jwksSuffix = ""
 	for _, appID := range s.perTestAppIDs {

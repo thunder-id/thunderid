@@ -199,6 +199,9 @@ func (n *promptNode) applyValidationFailureRePrompt(ctx *providers.NodeContext, 
 				continue
 			}
 		}
+		if _, isClaim := GetExternalClaim(ctx.RuntimeData, input.Identifier); isClaim {
+			continue
+		}
 		rePromptInputs = append(rePromptInputs, input)
 	}
 	nodeResp.Inputs = rePromptInputs
@@ -527,6 +530,9 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *providers.NodeContext, n
 			if val, isString := value.(string); isString && val != "" {
 				continue
 			}
+		}
+		if val, ok := GetExternalClaim(ctx.RuntimeData, fwdInput.Identifier); ok && val != "" {
+			continue
 		}
 		nodeResp.Inputs = append(nodeResp.Inputs, fwdInput)
 		existingIndexMap[fwdInput.Identifier] = len(nodeResp.Inputs) - 1
