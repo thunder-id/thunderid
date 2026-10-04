@@ -483,6 +483,12 @@ func (f *fakeExecutorBackedNode) GetInputs() []providers.Input {
 
 func (f *fakeExecutorBackedNode) SetInputs(inputs []providers.Input) {}
 
+func (f *fakeExecutorBackedNode) GetIdentifierInputs() []providers.Input {
+	return nil
+}
+
+func (f *fakeExecutorBackedNode) SetIdentifierInputs(inputs []providers.Input) {}
+
 func (f *fakeExecutorBackedNode) GetCondition() *NodeCondition {
 	return nil
 }
