@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -23,6 +24,7 @@ type clientCredentialsGrantHandler struct {
 	authzService    providers.AuthorizationProvider
 	actorProvider   providers.ActorProvider
 	resourceService providers.ResourceServerProvider
+	cfg             oauthconfig.Config
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
@@ -32,6 +34,7 @@ func newClientCredentialsGrantHandler(
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
 		tokenBuilder:    tokenBuilder,
@@ -39,6 +42,7 @@ func newClientCredentialsGrantHandler(
 		authzService:    authzService,
 		actorProvider:   actorProvider,
 		resourceService: resourceService,
+		cfg:             cfg,
 	}
 }
 
@@ -70,15 +74,15 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	// A client_credentials token carries no OIDC scopes, so every requested scope is a permission
 	// scope. Bind the token to a single resource server (RFC 8707 resource or the configured
 	// default). A request with neither scopes nor a resource is not bound to a resource server: its
-	// audience is the app's configured default audiences (falling back to the client_id) and it
-	// carries no scopes.
+	// audience is the app's configured default audiences (falling back to the server issuer ID) and
+	// it carries no scopes.
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
 		ctx, h.resourceService, tokenRequest.Resources, scopes)
 	if errResp != nil {
 		return nil, errResp
 	}
 
-	audiences := []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
+	audiences := []string{oauthApp.ResolveDefaultAudience(h.cfg.JWT.Issuer)}
 	if targetRS != nil {
 		audiences = []string{targetRS.Identifier}
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -27,6 +28,7 @@ type cibaGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	attributeCache  attributecache.AttributeCacheServiceInterface
 	resourceService providers.ResourceServerProvider
+	cfg             oauthconfig.Config
 	logger          *log.Logger
 }
 
@@ -36,12 +38,14 @@ func newCIBAGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &cibaGrantHandler{
 		cibaService:     cibaService,
 		tokenBuilder:    tokenBuilder,
 		attributeCache:  attributeCache,
 		resourceService: resourceService,
+		cfg:             cfg,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAGrantHandler")),
 	}
 }
@@ -290,8 +294,8 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 // resolveIssuedAudiencesAndScopes derives the access-token audiences and scopes for a CIBA record.
 // A resource-bound record yields the RS identifier as the sole audience, with permission scopes
 // refiltered against that RS. An unbound OIDC-only record uses the app's configured default
-// audience, falling back to the client_id; an unbound record that unexpectedly carries permission
-// scopes is rejected with invalid_grant.
+// audience, falling back to the server issuer ID; an unbound record that unexpectedly carries
+// permission scopes is rejected with invalid_grant.
 func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient, scopeStr string,
 ) ([]string, []string, *model.ErrorResponse) {
@@ -304,7 +308,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 				ErrorDescription: "The authentication request is not bound to a resource server",
 			}
 		}
-		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil
+		return []string{oauthApp.ResolveDefaultAudience(h.cfg.JWT.Issuer)}, oidcScopes, nil
 	}
 
 	resourceIdentifier := record.Resources[0]

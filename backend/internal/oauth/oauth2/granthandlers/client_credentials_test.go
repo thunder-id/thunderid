@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -40,6 +41,10 @@ const testEntityID = "agent-entity-123"
 const defaultRSID = "rs-1"
 const defaultRSIdentifier = "https://api.example.com"
 
+// testServerIssuer is the configured server issuer ID, used as the fallback aud when a request is
+// not bound to a resource server and the app has no configured default audience.
+const testServerIssuer = "https://auth.example.com"
+
 type ClientCredentialsGrantHandlerTestSuite struct {
 	suite.Suite
 	mockJWTService      *jwtmock.JWTServiceInterfaceMock
@@ -60,7 +65,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 	// Initialize Runtime for tests
 	testConfig := &config.Config{
 		JWT: engineconfig.JWTConfig{
-			Issuer:         "https://auth.example.com",
+			Issuer:         testServerIssuer,
 			ValidityPeriod: 3600,
 		},
 	}
@@ -94,6 +99,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		authzService:    suite.mockAuthzService,
 		actorProvider:   suite.mockEntityProvider,
 		resourceService: suite.mockResourceService,
+		cfg:             oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testServerIssuer}},
 	}
 	suite.mockEntityProvider.On("GetActorGroups", mock.Anything).
 		Return([]providers.EntityGroup{}, nil).Maybe()
@@ -151,7 +157,7 @@ func mockEvaluateAccessBatch(
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {
 	handler := newClientCredentialsGrantHandler(
 		suite.mockTokenBuilder, suite.mockOUService, suite.mockAuthzService,
-		suite.mockEntityProvider, suite.mockResourceService)
+		suite.mockEntityProvider, suite.mockResourceService, oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -197,19 +203,19 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 			expectedAudience:  defaultRSIdentifier,
 		},
 		{
-			// No scopes and no resource: not bound to a resource server, so aud is the client_id.
+			// No scopes and no resource: not bound to a resource server, so aud is the server issuer ID.
 			name:              "WithoutScope",
 			scope:             "",
 			expectedJWTClaims: map[string]interface{}{},
 			expectedScopes:    []string{},
-			expectedAudience:  testClientID,
+			expectedAudience:  testServerIssuer,
 		},
 		{
 			name:              "WithWhitespaceScope",
 			scope:             "   ",
 			expectedJWTClaims: map[string]interface{}{},
 			expectedScopes:    []string{},
-			expectedAudience:  testClientID,
+			expectedAudience:  testServerIssuer,
 		},
 	}
 
@@ -264,8 +270,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 			// The sub claim must be the resource entity ID, not the OAuth client_id.
 			assert.Equal(t, testEntityID, result.AccessToken.Subject)
 			assert.NotEqual(t, result.AccessToken.ClientID, result.AccessToken.Subject)
-			// The token is bound to a single audience: the target resource server, or the client_id
-			// when there are no scopes to bind to a resource server.
+			// The token is bound to a single audience: the target resource server, or the server
+			// issuer ID when there are no scopes to bind to a resource server.
 			assert.Equal(t, []string{tc.expectedAudience}, result.AccessToken.Audiences)
 
 			suite.mockTokenBuilder.AssertExpectations(t)
@@ -274,7 +280,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 }
 
 // A scopeless request (not bound to a resource server) uses the app's configured default audience
-// for the aud claim instead of the client_id.
+// for the aud claim instead of the server issuer ID.
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ScopelessUsesConfiguredDefaultAudience() {
 	suite.mockJWTService.Mock = mock.Mock{}
 	suite.oauthApp.Token = &providers.OAuthTokenConfig{

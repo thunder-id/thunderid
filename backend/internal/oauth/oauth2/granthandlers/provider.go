@@ -52,11 +52,11 @@ func newGrantHandlerProvider(
 	grantProvider := &GrantHandlerProvider{}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeClientCredentials) {
 		grantProvider.clientCredentialsGrantHandler = newClientCredentialsGrantHandler(
-			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService)
+			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		grantProvider.authorizationCodeGrantHandler = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService)
+			authzService, tokenBuilder, attrCacheService, resourceService, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
@@ -69,11 +69,11 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,
-			resourceService)
+			resourceService, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) {
 		grantProvider.jwtBearerGrantHandler = newJWTBearerGrantHandler(
-			tokenBuilder, tokenValidator, resourceService)
+			tokenBuilder, tokenValidator, resourceService, cfg)
 	}
 	return grantProvider
 }

@@ -16,11 +16,13 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -48,7 +50,8 @@ func (suite *CIBAGrantHandlerTestSuite) SetupTest() {
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResource = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.handler = newCIBAGrantHandler(suite.mockCIBAService, suite.mockTokenBuilder,
-		suite.mockAttrCacheService, suite.mockResource)
+		suite.mockAttrCacheService, suite.mockResource,
+		oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: testCIBAIssuer}})
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: "client-1",
 		ScopeClaims: map[string][]string{
@@ -76,6 +79,7 @@ func (suite *CIBAGrantHandlerTestSuite) pendingRecord() *ciba.CIBAAuthRequest {
 }
 
 const testCIBAResourceURL = "https://api.example.com"
+const testCIBAIssuer = "https://issuer.example.com"
 
 // boundAuthenticatedRecord returns an authenticated record bound to testCIBAResourceURL.
 func (suite *CIBAGrantHandlerTestSuite) boundAuthenticatedRecord(scopes string) *ciba.CIBAAuthRequest {
@@ -449,7 +453,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_BoundTokenHasResourceAud
 	suite.Equal([]string{testCIBAResourceURL}, resp.AccessToken.OriginalAudiences)
 }
 
-func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundOIDCOnlyKeepsClientAudience() {
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundOIDCOnlyUsesIssuerAudience() {
 	record := suite.pendingRecord()
 	record.State = ciba.CIBAStateAuthenticated
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
@@ -466,8 +470,8 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundOIDCOnlyKeepsClie
 	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
 	suite.Nil(errResp)
 	suite.NotNil(resp)
-	suite.Equal([]string{"client-1"}, capturedCtx.Audiences)
-	suite.Equal([]string{"client-1"}, resp.AccessToken.OriginalAudiences)
+	suite.Equal([]string{testCIBAIssuer}, capturedCtx.Audiences)
+	suite.Equal([]string{testCIBAIssuer}, resp.AccessToken.OriginalAudiences)
 }
 
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnboundWithPermissionScopesRejected() {
