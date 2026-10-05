@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -110,4 +111,29 @@ func (suite *DBProviderTestSuite) TestGetRuntimePersistentDBTransactioner_Succes
 	txer, err := provider.GetRuntimePersistentDBTransactioner()
 	suite.NoError(err)
 	suite.NotNil(txer)
+}
+
+func (suite *DBProviderTestSuite) TestGetDBConfig_SQLiteEnablesForeignKeysOnEveryConnection() {
+	tests := []struct {
+		name    string
+		options string
+		want    string
+	}{
+		{"no options", "", "?_pragma=foreign_keys(1)"},
+		{"custom options without the pragma", "cache=shared", "?cache=shared&_pragma=foreign_keys(1)"},
+		{"leading question mark", "?cache=shared", "?cache=shared&_pragma=foreign_keys(1)"},
+		{"pragma already set", "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
+			"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			got := (&dbProvider{}).getDBConfig(config.DataSource{
+				Type:   "sqlite",
+				SQLite: config.SQLiteDataSource{Path: "database/configdb.db", Options: tc.options},
+			})
+
+			suite.Equal("sqlite", got.driverName)
+			suite.True(strings.HasSuffix(got.dsn, "database/configdb.db"+tc.want), got.dsn)
+		})
+	}
 }
