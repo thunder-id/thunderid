@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -63,6 +65,7 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockActorProvider    *actorprovidermock.ActorProviderMock
 	mockRefreshRevoker   *revocationmock.RefreshTokenRevokerInterfaceMock
 	mockCriteriaRevoker  *revocationmock.CriteriaRevokerInterfaceMock
+	graceReader          *stubGraceConfigReader
 	oauthApp             *providers.OAuthClient
 	validRefreshToken    string
 	validClaims          map[string]interface{}
@@ -115,6 +118,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 
 	suite.rebuildHandlerWithConfig()
 
+	suite.graceReader = &stubGraceConfigReader{}
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID:                testRefreshTokenClientID,
 		GrantTypes:              []providers.GrantType{providers.GrantTypeRefreshToken},
@@ -190,6 +194,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
 		suite.mockCriteriaRevoker,
+		suite.graceReader,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -205,7 +210,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockAttrCacheService,
 		suite.mockResourceService, suite.mockAuthzService,
 		suite.mockActorProvider, suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, testhelpers.OAuthConfig())
+		suite.mockCriteriaRevoker, suite.graceReader, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
@@ -701,6 +706,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockActorProvider,
 		nil,
 		nil,
+		suite.graceReader,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 
@@ -2582,7 +2588,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorProviderS
 	suite.handler = newRefreshTokenGrantHandler(
 		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
 		suite.mockAttrCacheService, suite.mockResourceService, nil, nil,
-		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, suite.testCfg,
+		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, suite.graceReader, suite.testCfg,
 	).(*refreshTokenGrantHandler)
 	suite.refreshClaimsValid()
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
@@ -2852,4 +2858,467 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_NilRespons
 
 	assert.Nil(suite.T(), err)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// ---------------------------------------------------------------------------
+// Graceful refresh token rotation
+// ---------------------------------------------------------------------------
+
+// enableGrace turns the feature on with the given deployment ceiling and application window, then
+// rebuilds the handler. Both are in seconds; the effective window is the smaller of the two.
+func (suite *RefreshTokenGrantHandlerTestSuite) enableGrace(ceilingSeconds, appSeconds int64) {
+	suite.graceReader.cfg = gracePolicy(ceilingSeconds > 0, ceilingSeconds)
+	if suite.oauthApp.Token.RefreshToken == nil {
+		suite.oauthApp.Token.RefreshToken = &providers.RefreshTokenConfig{}
+	}
+	suite.oauthApp.Token.RefreshToken.RotationGracePeriod = appSeconds
+	suite.rebuildHandlerWithConfig()
+}
+
+// rotatedNow reports a rotation that just happened, so any positive window still contains it.
+func (suite *RefreshTokenGrantHandlerTestSuite) rotatedNow() error {
+	return &revocation.RotatedTokenError{RotatedAt: time.Now().UTC()}
+}
+
+// gracedJTI identifies the refresh token the grace-period tests present inside its window.
+const gracedJTI = "graced-jti"
+
+// gracedClaims returns claims for a refresh token presented inside its rotation grace window.
+func (suite *RefreshTokenGrantHandlerTestSuite) gracedClaims() *tokenservice.RefreshTokenClaims {
+	return &tokenservice.RefreshTokenClaims{
+		ClientID:      testRefreshTokenClientID,
+		Sub:           testRefreshTokenUserID,
+		Audiences:     []string{testRefreshTokenAudience},
+		Scopes:        []string{"read", "write"},
+		GrantType:     "authorization_code",
+		Iat:           int64(suite.validClaims["iat"].(float64)),
+		Exp:           int64(suite.validClaims["exp"].(float64)),
+		JTI:           gracedJTI,
+		TokenFamilyID: "tfid-graced",
+	}
+}
+
+// expectRotationTokens sets up the token builder for a successful rotation.
+func (suite *RefreshTokenGrantHandlerTestSuite) expectRotationTokens() {
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, Scopes: []string{"read"},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400,
+		Scopes: []string{"read", "write"},
+	}, nil)
+}
+
+// AC1.1/AC1.2: a refresh token presented inside its grace window is served, and the request returns
+// a new access token and a new refresh token, just like a refresh against a current token.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WithinGracePeriodSucceeds() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.enableGrace(30, 30)
+
+	// The validator returns the claims alongside the rotation report so the grant can serve the
+	// concurrent refresh.
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.expectRotationTokens()
+	suite.mockRefreshRevoker.On("RevokeRefreshToken", mock.Anything, gracedJTI, mock.Anything).
+		Return(nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
+	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
+}
+
+// AC4.1 inverse: a graced redemption is not a replay, so the token family must survive. Revoking it
+// here would sign the user out, which is the very failure the grace period exists to prevent.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WithinGraceDoesNotRevokeFamily() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	// Family revocation on replay is ON: the assertion below is meaningful only because the graced
+	// path deliberately does not take it, not because the feature happens to be disabled.
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.enableGrace(30, 30)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.expectRotationTokens()
+	suite.mockRefreshRevoker.On("RevokeRefreshToken", mock.Anything, gracedJTI, mock.Anything).
+		Return(nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockCriteriaRevoker.AssertNotCalled(suite.T(), "RevokeTokenFamily",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// AC3.2: the refresh token minted from a graced redemption stays in the same token family, so the
+// siblings a race produces remain revocable together.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WithinGracePreservesTokenFamily() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.enableGrace(30, 30)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, Scopes: []string{"read"},
+	}, nil)
+	var refreshCtx *tokenservice.RefreshTokenBuildContext
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			refreshCtx = args.Get(1).(*tokenservice.RefreshTokenBuildContext)
+		}).
+		Return(&model.TokenDTO{Token: "new.refresh.token", IssuedAt: time.Now().Unix()}, nil)
+	suite.mockRefreshRevoker.On("RevokeRefreshToken", mock.Anything, gracedJTI, mock.Anything).
+		Return(nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(refreshCtx)
+	assert.Equal(suite.T(), "tfid-graced", refreshCtx.TokenFamilyID)
+}
+
+// AC2.1: a graced redemption re-records the presented jti, which the deny-list insert treats as an
+// idempotent no-op. That no-op is what anchors the window: REVOKED_AT is never moved forward.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WithinGraceReRecordsSameJTI() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.enableGrace(30, 30)
+
+	exp := int64(suite.validClaims["exp"].(float64))
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.expectRotationTokens()
+	suite.mockRefreshRevoker.
+		On("RevokeRefreshToken", mock.Anything, gracedJTI, time.Unix(exp, 0).UTC()).
+		Return(nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockRefreshRevoker.AssertCalled(suite.T(), "RevokeRefreshToken",
+		mock.Anything, gracedJTI, time.Unix(exp, 0).UTC())
+}
+
+// AC4.8: grace forgives the token's generation and nothing else. A graced token presented by a
+// client other than the one it was issued to is still rejected.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WithinGraceStillChecksClientOwnership() {
+	suite.enableGrace(30, 30)
+
+	claims := suite.gracedClaims()
+	claims.ClientID = "a-different-client"
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(claims, suite.rotatedNow())
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// AC4.1: once the window closes the token takes the pre-existing replay path unchanged, family
+// revocation included. The behavior after the window is the behavior before this feature. The
+// validator returns no claims on this path, whether the token aged out of its window or failed an
+// earlier check, so the family id comes from the token payload rather than from parsed claims.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AfterGraceRevokesFamily() {
+	tests := []struct {
+		name string
+		jti  string
+		tfid string
+	}{
+		{"TokenAgedOutOfItsWindow", "jti-late", "tfid-late"},
+		{"TokenRejectedBeforeClaimsWereRead", "jti-nil", "tfid-nil"},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+			suite.enableGrace(30, 30)
+
+			claimsJSON := fmt.Sprintf(`{"jti":%q,"tfid":%q}`, tt.jti, tt.tfid)
+			payload := base64.RawURLEncoding.EncodeToString([]byte(claimsJSON))
+			token := "eyJhbGciOiJub25lIn0." + payload + ".sig"
+			req := &model.TokenRequest{
+				GrantType:    string(providers.GrantTypeRefreshToken),
+				ClientID:     testClientID,
+				RefreshToken: token,
+			}
+
+			// Past its window, the enforcement service reports a plain denial and no claims.
+			suite.mockTokenValidator.On("ValidateRefreshToken", mock.Anything, token).
+				Return(nil, revocation.ErrTokenRevoked)
+			suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, tt.tfid,
+				revocation.RevocationReasonRefreshReplay).Return(nil)
+
+			response, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+			assert.Nil(suite.T(), response)
+			suite.Require().NotNil(err)
+			assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+			suite.mockCriteriaRevoker.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// The graced audit helper is defensive against nil claims: it records nothing rather than panic.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestRecordGracedRefresh_NilClaimsIsNoOp() {
+	assert.NotPanics(suite.T(), func() {
+		suite.handler.recordGracedRefresh(context.Background(), testClientID, nil, log.GetLogger())
+	})
+}
+
+// AC4.5: grace never softens an unavailable deny list. The request still fails closed.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_GraceDoesNotSoftenFailClosed() {
+	suite.enableGrace(30, 30)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(nil, revocation.ErrEnforcementUnavailable)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// ---------------------------------------------------------------------------
+// Per-application windows and the deployment ceiling
+// ---------------------------------------------------------------------------
+
+// The deployment ceiling caps an application configured with more, so a mistake on one application
+// cannot widen the replay window past what the deployment allows.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AppWindowCappedByCeiling() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	// The application asks for 300s; the deployment allows 10s.
+	suite.enableGrace(10, 300)
+
+	// Rotated 30s ago: inside the application's request, well outside the ceiling.
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), &revocation.RotatedTokenError{
+			RotatedAt: time.Now().UTC().Add(-30 * time.Second),
+		})
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error,
+		"the ceiling, not the application's request, must bound the window")
+}
+
+// An application inside both its own window and the ceiling is served.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AppWindowNarrowerThanCeiling() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.enableGrace(300, 30)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), &revocation.RotatedTokenError{
+			RotatedAt: time.Now().UTC().Add(-5 * time.Second),
+		})
+	suite.expectRotationTokens()
+	suite.mockRefreshRevoker.On("RevokeRefreshToken", mock.Anything, gracedJTI, mock.Anything).
+		Return(nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+}
+
+// A token outside the application's own narrower window is denied even though the deployment
+// ceiling would still have allowed it.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_OutsideAppWindowInsideCeiling() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.enableGrace(300, 10)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), &revocation.RotatedTokenError{
+			RotatedAt: time.Now().UTC().Add(-30 * time.Second),
+		})
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// The deployment kill switch overrides every application. Turning the feature off closes open
+// windows at once, without having to correct each application's own configuration first.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DeploymentDisabledIgnoresAppWindow() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.rebuildHandlerWithConfig()
+	// The application still carries a generous window, but the deployment has the feature off.
+	suite.graceReader.cfg = gracePolicy(false, 300)
+	suite.oauthApp.Token.RefreshToken = &providers.RefreshTokenConfig{RotationGracePeriod: 300}
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// An application that configures nothing gets no window: the feature is opted into per application
+// rather than inherited from the deployment ceiling.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AppWithoutWindowIsNotGraced() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.rebuildHandlerWithConfig()
+	suite.graceReader.cfg = gracePolicy(true, 300)
+	// No RefreshToken config at all on the application.
+	suite.oauthApp.Token.RefreshToken = nil
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// An unreadable server-config section closes the window rather than opening it, so a config outage
+// falls back to the pre-existing behavior of immediate invalidation.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_UnreadableGraceConfigDenies() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.rebuildHandlerWithConfig()
+	suite.graceReader.err = &common.ServiceError{Code: "SVC-1"}
+	suite.oauthApp.Token.RefreshToken = &providers.RefreshTokenConfig{RotationGracePeriod: 300}
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// A handler with no reader at all, as in the embedded engine, never grants a window.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NilGraceReaderDenies() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	// A true nil interface, as the embedded engine passes; a typed nil pointer would not exercise
+	// the nil-reader branch.
+	suite.handler = newRefreshTokenGrantHandler(
+		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
+		suite.mockAttrCacheService, suite.mockResourceService, suite.mockAuthzService,
+		suite.mockActorProvider, suite.mockRefreshRevoker, suite.mockCriteriaRevoker,
+		nil, suite.testCfg,
+	).(*refreshTokenGrantHandler)
+	suite.oauthApp.Token.RefreshToken = &providers.RefreshTokenConfig{RotationGracePeriod: 300}
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// A section value decoded by some other handler is not a rotation policy, so no window is granted.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_WrongTypeGraceConfigDenies() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.rebuildHandlerWithConfig()
+	suite.graceReader.wrongType = true
+	suite.oauthApp.Token.RefreshToken = &providers.RefreshTokenConfig{RotationGracePeriod: 300}
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// A rotation with no readable timestamp cannot anchor a window, so it is denied even with a
+// generous policy configured.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ZeroRotationTimeDenies() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.enableGrace(300, 300)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), &revocation.RotatedTokenError{})
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// An application with no token configuration at all cannot carry a window.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AppWithoutTokenConfigIsNotGraced() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = boolPtr(true)
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReplay = boolPtr(true)
+	suite.rebuildHandlerWithConfig()
+	suite.graceReader.cfg = gracePolicy(true, 300)
+	suite.oauthApp.Token = nil
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(suite.gracedClaims(), suite.rotatedNow())
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 }

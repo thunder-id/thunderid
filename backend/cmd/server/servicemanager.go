@@ -65,6 +65,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -361,6 +362,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameSession:               flowsession.ConfigHandler{},
 		serverconfig.ConfigNameFlow:                  flowConfigHandler,
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
+		serverconfig.ConfigNameOAuth:                 granthandlers.OAuthServerConfigHandler{},
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers)
 	fatalOnError(ctx, logger, err, "Failed to initialize server config service")
@@ -550,7 +552,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouProvider, attributeCacheService, authZService,
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
 		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
-		sessionService, flowMgtService, oauthCfg)
+		sessionService, flowMgtService, serverConfigService, oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 	if dispatcher != nil {
 		err = terminationHook.Add(dispatcher)

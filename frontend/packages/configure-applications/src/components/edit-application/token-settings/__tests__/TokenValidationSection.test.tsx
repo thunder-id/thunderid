@@ -12,6 +12,7 @@ interface FormValues {
   accessTokenValidity: number;
   idTokenValidity: number;
   refreshTokenValidity: number;
+  refreshTokenRotationGrace: number;
 }
 
 // Mock the Components
@@ -40,6 +41,7 @@ function TestWrapper({
       accessTokenValidity: 3600,
       idTokenValidity: 3600,
       refreshTokenValidity: 86400,
+      refreshTokenRotationGrace: 0,
       ...defaultValues,
     },
   });
@@ -307,6 +309,107 @@ describe('TokenValidationSection', () => {
       await user.type(input, '172800');
 
       expect(input).toHaveValue(172800);
+    });
+  });
+
+  // The grace field is offered only while the deployment has the feature enabled. A field whose
+  // value the server would ignore is worse than no field at all.
+  describe('Rotation grace period', () => {
+    const refreshTab = () => screen.getByRole('tab', {name: /refresh token/i});
+
+    it('should not render the grace field when the deployment has the feature disabled', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          {({control, errors}) => <TokenValidationSection control={control} errors={errors} tokenType="oauth" />}
+        </TestWrapper>,
+      );
+      await user.click(refreshTab());
+
+      expect(screen.queryByLabelText(/rotation grace period/i)).not.toBeInTheDocument();
+    });
+
+    it('should render the grace field when the deployment has the feature enabled', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          {({control, errors}) => (
+            <TokenValidationSection
+              control={control}
+              errors={errors}
+              tokenType="oauth"
+              rotationGracePolicy={{enabled: true, ceilingSeconds: 30}}
+            />
+          )}
+        </TestWrapper>,
+      );
+      await user.click(refreshTab());
+
+      expect(screen.getByLabelText(/rotation grace period/i)).toBeInTheDocument();
+    });
+
+    // The ceiling is the operator's decision, so the input advertises it rather than letting a
+    // user enter a value the server will silently cap.
+    it('should bound the grace input by the deployment ceiling', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          {({control, errors}) => (
+            <TokenValidationSection
+              control={control}
+              errors={errors}
+              tokenType="oauth"
+              rotationGracePolicy={{enabled: true, ceilingSeconds: 45}}
+            />
+          )}
+        </TestWrapper>,
+      );
+      await user.click(refreshTab());
+
+      const input = screen.getByLabelText(/rotation grace period/i);
+      expect(input).toHaveAttribute('max', '45');
+      expect(input).toHaveAttribute('min', '0');
+    });
+
+    // The refresh validity field must keep working alongside the new one.
+    it('should render the refresh validity field alongside the grace field', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper defaultValues={{refreshTokenRotationGrace: 10}}>
+          {({control, errors}) => (
+            <TokenValidationSection
+              control={control}
+              errors={errors}
+              tokenType="oauth"
+              rotationGracePolicy={{enabled: true, ceilingSeconds: 30}}
+            />
+          )}
+        </TestWrapper>,
+      );
+      await user.click(refreshTab());
+
+      expect(screen.getByDisplayValue('86400')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('10')).toBeInTheDocument();
+    });
+
+    it('should disable the grace field for a read-only application', async () => {
+      const user = userEvent.setup();
+      render(
+        <TestWrapper>
+          {({control, errors}) => (
+            <TokenValidationSection
+              control={control}
+              errors={errors}
+              tokenType="oauth"
+              disabled
+              rotationGracePolicy={{enabled: true, ceilingSeconds: 30}}
+            />
+          )}
+        </TestWrapper>,
+      );
+      await user.click(refreshTab());
+
+      expect(screen.getByLabelText(/rotation grace period/i)).toBeDisabled();
     });
   });
 });

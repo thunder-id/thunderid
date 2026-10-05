@@ -3132,6 +3132,7 @@ const translations = {
     // Token section
     'edit.token.seconds': 'seconds',
     'edit.token.labels.token_validity': 'Token Validity',
+    'edit.token.labels.rotation_grace': 'Rotation Grace Period',
     'edit.token.loading_attributes': 'Loading user attributes...',
     'edit.token.no_user_attributes': 'No user attributes available. Configure allowed user types for this {{entity}}.',
     'edit.token.click_to_add': 'Click to add',
@@ -3141,6 +3142,9 @@ const translations = {
     'edit.token.token_preview.title': 'Decoded Payload',
     'edit.token.validity.hint': 'Token validity period in seconds (e.g., 3600 for 1 hour)',
     'edit.token.validity.error': 'Validity period must be at least 1 second',
+    'edit.token.rotation_grace.hint':
+      'Seconds a rotated refresh token stays usable, so concurrent refreshes do not sign the user out. 0 disables it. Capped at {{ceiling}} seconds by the server.',
+    'edit.token.rotation_grace.error': 'Rotation grace period cannot be negative',
     'edit.token.token_profile_card.title': 'Token Attributes & Response',
     'edit.token.token_profile_card.title.native': 'Token Attributes',
     'edit.token.token_profile_card.description':

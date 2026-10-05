@@ -18,6 +18,9 @@ const (
 	ConfigNameFlow ConfigName = "flow"
 	// ConfigNameCSP is the configuration key for the deny-first Content-Security-Policy baseline.
 	ConfigNameCSP ConfigName = "csp"
+	// ConfigNameOAuth is the configuration key for the runtime-mutable OAuth policy, one block per
+	// sub-domain. It currently carries the graceful refresh token rotation policy.
+	ConfigNameOAuth ConfigName = "oauth"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -27,6 +30,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameSession,
 	ConfigNameFlow,
 	ConfigNameCSP,
+	ConfigNameOAuth,
 }
 
 // IsValid reports whether the config name is one of the supported values.

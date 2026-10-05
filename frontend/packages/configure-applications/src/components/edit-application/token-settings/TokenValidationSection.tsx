@@ -7,6 +7,8 @@ import {useState} from 'react';
 import {Controller} from 'react-hook-form';
 import type {Control, FieldErrors} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
+import {ROTATION_GRACE_UNAVAILABLE} from '../../../utils/rotationGracePolicy';
+import type {RotationGracePolicy} from '../../../utils/rotationGracePolicy';
 
 /**
  * Props for the {@link TokenValidationSection} component.
@@ -20,6 +22,7 @@ interface TokenValidationSectionProps {
     accessTokenValidity: number;
     idTokenValidity: number;
     refreshTokenValidity: number;
+    refreshTokenRotationGrace: number;
   }>;
   /**
    * Form validation errors
@@ -29,6 +32,7 @@ interface TokenValidationSectionProps {
     accessTokenValidity: number;
     idTokenValidity: number;
     refreshTokenValidity: number;
+    refreshTokenRotationGrace: number;
   }>;
   /**
    * Token mode:
@@ -40,6 +44,11 @@ interface TokenValidationSectionProps {
    * Whether inputs should be disabled (e.g. read-only resource).
    */
   disabled?: boolean;
+  /**
+   * The deployment's graceful refresh token rotation policy. The grace field is offered only while
+   * the deployment has the feature enabled, since a value it would ignore is worse than no field.
+   */
+  rotationGracePolicy?: RotationGracePolicy;
 }
 
 /**
@@ -58,6 +67,7 @@ export default function TokenValidationSection({
   errors,
   tokenType,
   disabled = false,
+  rotationGracePolicy = ROTATION_GRACE_UNAVAILABLE,
 }: TokenValidationSectionProps) {
   const {t} = useTranslation();
   const [activeValidationTab, setActiveValidationTab] = useState<'access' | 'id' | 'refresh'>('access');
@@ -69,6 +79,7 @@ export default function TokenValidationSection({
   );
   const label = t('applications:edit.token.labels.token_validity', 'Token Validity');
   const hint = t('applications:edit.token.validity.hint', 'Token validity period in seconds (e.g., 3600 for 1 hour)');
+  const graceLabel = t('applications:edit.token.labels.rotation_grace', 'Rotation Grace Period');
 
   const renderField = (
     fieldName: 'validityPeriod' | 'accessTokenValidity' | 'idTokenValidity' | 'refreshTokenValidity',
@@ -95,6 +106,37 @@ export default function TokenValidationSection({
     </FormControl>
   );
 
+  const renderRotationGraceField = (ceilingSeconds: number) => (
+    <FormControl fullWidth>
+      <FormLabel htmlFor="refreshTokenRotationGrace-input">{graceLabel}</FormLabel>
+      <Controller
+        name="refreshTokenRotationGrace"
+        control={control}
+        render={({field}) => (
+          <TextField
+            id="refreshTokenRotationGrace-input"
+            {...field}
+            fullWidth
+            type="number"
+            onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
+            error={!!errors.refreshTokenRotationGrace}
+            helperText={
+              errors.refreshTokenRotationGrace?.message ??
+              t('applications:edit.token.rotation_grace.hint', {
+                defaultValue:
+                  'Seconds a rotated refresh token stays usable, so concurrent refreshes do not ' +
+                  'sign the user out. 0 disables it. Capped at {{ceiling}} seconds by the server.',
+                ceiling: ceilingSeconds,
+              })
+            }
+            inputProps={{min: 0, max: ceilingSeconds}}
+            disabled={disabled}
+          />
+        )}
+      />
+    </FormControl>
+  );
+
   if (tokenType === 'oauth') {
     return (
       <SettingsCard slotProps={{content: {sx: {p: 0}}}} title={title} description={description}>
@@ -114,7 +156,12 @@ export default function TokenValidationSection({
           <Box sx={{p: 3}}>
             {activeValidationTab === 'access' && renderField('accessTokenValidity')}
             {activeValidationTab === 'id' && renderField('idTokenValidity')}
-            {activeValidationTab === 'refresh' && renderField('refreshTokenValidity')}
+            {activeValidationTab === 'refresh' && (
+              <Stack spacing={3}>
+                {renderField('refreshTokenValidity')}
+                {rotationGracePolicy.enabled && renderRotationGraceField(rotationGracePolicy.ceilingSeconds)}
+              </Stack>
+            )}
           </Box>
         </Stack>
       </SettingsCard>

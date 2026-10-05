@@ -69,6 +69,7 @@ Access tokens issued earlier are unaffected and remain valid until they expire. 
 | Client authentication | Same methods as the original grant, see [Client Authentication Methods](../client-authentication-methods) |
 | Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`, enabled by default. Every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
 | Old token after rotation | When `oauth.refresh_token.revoke_previous_on_renew` is enabled, the consumed refresh token is revoked after renewal. A revocation failure stops the rotation |
+| Concurrent refresh | A per application rotation grace period keeps a rotated token acceptable for a short window, so parallel refresh requests from one client do not fail. Disabled by default |
 | Grant lifetime | A rotated refresh token inherits the expiry of the token it replaces, so refreshing extends access but never the grant. Once `oauth.refresh_token.validity_period` has elapsed since the original grant, the user must authenticate again |
 | Audience preservation | The new access token keeps the refresh token's single audience when `resource` is omitted |
 | Resource validation | When supplied, `resource` must match the refresh token's audience. A mismatch returns `invalid_target` |
@@ -122,7 +123,59 @@ Content-Type: application/json
 
 Refresh token rotation is a deployment-wide setting, not per client. It is enabled by default; disable it by setting `oauth.refresh_token.renew_on_grant: false` in `deployment.yaml`. By default, `oauth.refresh_token.revoke_previous_on_renew` is `true`, so a successful rotation revokes the consumed refresh token.
 
-Because rotation makes each refresh token single-use, a client must persist the new `refresh_token` from every response and discard the old one. Replaying a consumed token revokes the entire token family, ending the session. Clients that issue concurrent refresh requests should serialise them, since only the first will succeed.
+Because rotation makes each refresh token single-use, a client must persist the new `refresh_token` from every response and discard the old one. Replaying a consumed token revokes the entire token family, ending the session.
+
+## Rotation Grace Period
+
+By default, a rotated refresh token is rejected the moment it is presented again, and that reuse revokes the token family. This is correct for a single-threaded client, but a browser application with two tabs, a mobile application resuming on several code paths, or a service behind a load balancer can issue two legitimate refresh requests with the same token milliseconds apart. The first succeeds, the second is read as a replay, and the user is signed out by a race rather than an attack.
+
+The grace period is configured in two places. The deployment decides whether the feature is available at all and the longest window any application may use; each application then opts in to a window of its own.
+
+Enable it for the deployment through the `refreshToken` block of the `oauth` server configuration:
+
+```bash
+curl -X PUT https://localhost:8090/server-config/oauth \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken": {"graceEnabled": true, "graceCeilingSeconds": 30}}'
+```
+
+Then give an application its own window, in seconds, through its OAuth token configuration:
+
+```json
+{
+  "token": {
+    "refreshToken": {
+      "rotationGracePeriod": 10
+    }
+  }
+}
+```
+
+The effective window is the smaller of the two, so an application's own value can only narrow the window, never widen it past the deployment ceiling. Both are administrative settings, so the ceiling exists to contain a mistake on one application rather than to restrict a less privileged caller. An application that configures nothing gets no grace window, so enabling the feature for the deployment changes no application until that application opts in.
+
+Setting `graceEnabled` to `false` withdraws the feature from every application at once, whatever each one has configured. Because the server configuration is runtime mutable, this takes effect immediately and needs no restart, which makes it the switch to reach for when responding to a suspected leak.
+
+A write replaces the whole `oauth` server configuration, so send the full `refreshToken` block every time. A write that leaves out `graceEnabled` turns the feature off rather than keeping the earlier value.
+
+The grace period also has no effect unless both `renew_on_grant` and `revoke_previous_on_renew` are enabled, since without rotation there is nothing to grace.
+
+Inside the window:
+
+- The rotated token is accepted on the `refresh_token` grant, and each request that presents it receives its own new access token and refresh token. Every token from the same login stays in one token family, so a single revocation still ends all of them.
+- The request is not treated as a replay, so the token family survives.
+- Every other check still applies. A token inside its window is rejected as usual if it was issued to a different client, if its DPoP proof does not match, if the user's password or the client secret changed after it was issued, or if its token family has been revoked.
+
+Outside the window, behavior is unchanged: the token is rejected with `invalid_grant`, and the token family is revoked when `oauth.revocation.token_family.on_refresh_replay` is enabled.
+
+The window is anchored to the rotation that opened it and is never extended by use. Presenting a rotated token repeatedly does not push its deadline out, so a stolen previous-generation token cannot be kept alive by polling. A token from an older generation is never graced; only the immediately previous one is.
+
+A refresh token inside its grace window is redeemable at the token endpoint and nowhere else. Introspection reports it inactive, and it is not accepted on any other grant.
+
+:::note
+The grace period is a deliberate, bounded relaxation of replay protection. Choose a ceiling that covers the spread of your clients' concurrent requests, typically well under a minute, and let each application narrow it further. Every additional second is additional time in which a stolen previous-generation refresh token remains usable.
+:::
+
+Because the window is evaluated against the values currently configured, changing either one also affects windows that are already open. Lowering the ceiling, or disabling the feature, closes them immediately. Raising the ceiling can reopen windows for recently rotated tokens whose original interval had already lapsed.
 
 ## Related Guides
 

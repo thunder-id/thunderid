@@ -19,6 +19,8 @@ import type {Application} from '../../../models/application';
 import type {OAuth2Config, ScopeClaims} from '../../../models/oauth';
 import type {AssertionConfig} from '../../../models/token';
 import {isOAuthTokenMode} from '../../../utils/oauth2Rules';
+import {fetchRotationGracePolicy, ROTATION_GRACE_UNAVAILABLE} from '../../../utils/rotationGracePolicy';
+import type {RotationGracePolicy} from '../../../utils/rotationGracePolicy';
 
 /**
  * Props for the {@link EditTokenSettings} component.
@@ -82,11 +84,18 @@ const createTokenConfigSchema = (t: (key: string) => string) => {
     .number({error: t('applications:edit.token.validity.error')})
     .min(1, t('applications:edit.token.validity.error'));
 
+  // The grace period is its own field rather than a reuse of validityField: 0 is the valid
+  // "no window" value, so a minimum of 1 would reject opting out.
+  const gracePeriodField = z
+    .number({error: t('applications:edit.token.rotation_grace.error')})
+    .min(0, t('applications:edit.token.rotation_grace.error'));
+
   return z.object({
     validityPeriod: validityField,
     accessTokenValidity: validityField,
     idTokenValidity: validityField,
     refreshTokenValidity: validityField,
+    refreshTokenRotationGrace: gracePeriodField,
   });
 };
 
@@ -100,6 +109,7 @@ const computeValidityDefaults = (
   accessTokenValidity: config?.token?.accessToken?.userConfig?.validityPeriod ?? 3600,
   idTokenValidity: config?.token?.idToken?.validityPeriod ?? 3600,
   refreshTokenValidity: config?.token?.refreshToken?.validityPeriod ?? 86400,
+  refreshTokenRotationGrace: config?.token?.refreshToken?.rotationGracePeriod ?? 0,
 });
 
 // Stable identity for the default, so an untouched application doesn't invalidate the memos below
@@ -180,6 +190,9 @@ export default function EditTokenSettings({
   const runtimeUrl = useRuntimeUrl();
 
   const [userTypes, setUserTypes] = useState<ApiUserType[]>([]);
+  // The deployment's rotation grace policy governs whether the grace field is offered at all and
+  // what ceiling it advertises. Until it is read, the feature is assumed unavailable.
+  const [rotationGracePolicy, setRotationGracePolicy] = useState<RotationGracePolicy>(ROTATION_GRACE_UNAVAILABLE);
   // The algorithm tokens are signed with is determined by the deployment's signing key, not a
   // per-application choice. It is surfaced read-only from the OIDC discovery document.
   const [signingAlg, setSigningAlg] = useState<string | undefined>(undefined);
@@ -233,10 +246,17 @@ export default function EditTokenSettings({
     defaultValues: computeValidityDefaults(oauth2Config, currentAssertion),
   });
 
-  const [validityPeriod, accessTokenValidity, idTokenValidity, refreshTokenValidity] = useWatch({
-    control,
-    name: ['validityPeriod', 'accessTokenValidity', 'idTokenValidity', 'refreshTokenValidity'],
-  });
+  const [validityPeriod, accessTokenValidity, idTokenValidity, refreshTokenValidity, refreshTokenRotationGrace] =
+    useWatch({
+      control,
+      name: [
+        'validityPeriod',
+        'accessTokenValidity',
+        'idTokenValidity',
+        'refreshTokenValidity',
+        'refreshTokenRotationGrace',
+      ],
+    });
 
   useEffect(() => {
     onValidationChange?.(!isValid);
@@ -302,7 +322,8 @@ export default function EditTokenSettings({
         if (
           baseline.accessTokenValidity === accessTokenValidity &&
           baseline.idTokenValidity === idTokenValidity &&
-          baseline.refreshTokenValidity === refreshTokenValidity
+          baseline.refreshTokenValidity === refreshTokenValidity &&
+          baseline.refreshTokenRotationGrace === refreshTokenRotationGrace
         ) {
           return; // No changes, skip update
         }
@@ -325,6 +346,7 @@ export default function EditTokenSettings({
             refreshToken: {
               ...config?.token?.refreshToken,
               validityPeriod: refreshTokenValidity,
+              rotationGracePeriod: refreshTokenRotationGrace,
             },
           },
         };
@@ -347,7 +369,39 @@ export default function EditTokenSettings({
     return () => {
       cancelled = true;
     };
-  }, [validityPeriod, accessTokenValidity, idTokenValidity, refreshTokenValidity, trigger, isOAuthMode, onFieldChange]);
+  }, [
+    validityPeriod,
+    accessTokenValidity,
+    idTokenValidity,
+    refreshTokenValidity,
+    refreshTokenRotationGrace,
+    trigger,
+    isOAuthMode,
+    onFieldChange,
+  ]);
+
+  /**
+   * Read the deployment's graceful refresh token rotation policy.
+   *
+   * Only OAuth applications have a refresh token to rotate, so the read is skipped elsewhere.
+   */
+  useEffect(() => {
+    if (!isOAuthMode) return undefined;
+
+    let cancelled = false;
+
+    fetchRotationGracePolicy(http as never, getServerUrl())
+      .then((policy) => {
+        if (!cancelled) {
+          setRotationGracePolicy(policy);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOAuthMode, http, getServerUrl]);
 
   /**
    * Fetch user types for all allowed user types
@@ -929,6 +983,7 @@ export default function EditTokenSettings({
             errors={errors}
             tokenType="oauth"
             disabled={application.isReadOnly}
+            rotationGracePolicy={rotationGracePolicy}
           />
         </>
       ) : (

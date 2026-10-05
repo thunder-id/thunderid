@@ -240,7 +240,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.transactioner, revocationEnforcer, revocationService,
 		// The embedded engine has no SSO session store, so prompt=none keeps answering
 		// login_required rather than consulting a session.
-		nil, engineCtx.flowProvider, oauthConfig)
+		// The embedded engine has no server-config store, so no rotation grace policy can be read
+		// and graceful refresh token rotation stays off: a rotated token is denied immediately.
+		nil, engineCtx.flowProvider, nil, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

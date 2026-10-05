@@ -1849,6 +1849,10 @@ func resolveOAuthTokens(in *providers.OAuthTokenConfig,
 	if in != nil && in.RefreshToken != nil {
 		refreshToken = &providers.RefreshTokenConfig{
 			ValidityPeriod: in.RefreshToken.ValidityPeriod,
+			// Carried through as configured. The deployment ceiling is applied when the window is
+			// resolved on the refresh grant, so lowering the ceiling narrows every application at
+			// once without rewriting what each one asked for.
+			RotationGracePeriod: in.RefreshToken.RotationGracePeriod,
 		}
 	}
 

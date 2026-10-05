@@ -153,13 +153,60 @@ func (suite *RevocationStoreTestSuite) TestInsertRevokedToken_ExecError() {
 func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_True() {
 	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
 
+	revokedAt := time.Now().UTC().Truncate(time.Second)
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryIsTokenRevoked,
 		"test-jti", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{{"1": 1}}, nil)
+		Return([]map[string]interface{}{{
+			"revoked_at":        revokedAt,
+			"revocation_reason": string(RevocationReasonRefreshRotation),
+		}}, nil)
 
-	revoked, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
 	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), revoked)
+	assert.NotNil(suite.T(), entry)
+	assert.Equal(suite.T(), revokedAt, entry.RevokedAt)
+	assert.Equal(suite.T(), RevocationReasonRefreshRotation, entry.Reason)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+// A row whose revocation time and reason cannot be read is still a denial. The zero RevokedAt and
+// empty reason fail every grace condition, so a data fault closes the window rather than opening it.
+func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_UnreadableRowStillDenies() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryIsTokenRevoked,
+		"test-jti", mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{{
+			"revoked_at":        12345,
+			"revocation_reason": nil,
+		}}, nil)
+
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), entry)
+	assert.True(suite.T(), entry.RevokedAt.IsZero())
+	assert.Equal(suite.T(), RevocationReason(""), entry.Reason)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+// A SQLite driver hands timestamps back as strings; ParseDBTimeField normalizes them to UTC.
+func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_ParsesStringTimestamp() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryIsTokenRevoked,
+		"test-jti", mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{{
+			"revoked_at":        "2026-09-08 10:15:00",
+			"revocation_reason": string(RevocationReasonExplicit),
+		}}, nil)
+
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), entry)
+	assert.Equal(suite.T(), 2026, entry.RevokedAt.Year())
+	assert.Equal(suite.T(), RevocationReasonExplicit, entry.Reason)
 
 	suite.mockDBClient.AssertExpectations(suite.T())
 }
@@ -171,9 +218,9 @@ func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_False() {
 		"test-jti", mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
 
-	revoked, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
 	assert.NoError(suite.T(), err)
-	assert.False(suite.T(), revoked)
+	assert.Nil(suite.T(), entry)
 
 	suite.mockDBClient.AssertExpectations(suite.T())
 }
@@ -181,9 +228,9 @@ func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_False() {
 func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_DBClientError() {
 	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(nil, errors.New("db client error"))
 
-	revoked, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
 	assert.Error(suite.T(), err)
-	assert.False(suite.T(), revoked)
+	assert.Nil(suite.T(), entry)
 
 	suite.mockdbProvider.AssertExpectations(suite.T())
 }
@@ -195,9 +242,9 @@ func (suite *RevocationStoreTestSuite) TestIsTokenRevoked_QueryError() {
 		"test-jti", mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}(nil), errors.New("query error"))
 
-	revoked, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
+	entry, err := suite.store.IsTokenRevoked(context.Background(), "test-jti")
 	assert.Error(suite.T(), err)
-	assert.False(suite.T(), revoked)
+	assert.Nil(suite.T(), entry)
 	assert.Contains(suite.T(), err.Error(), "error checking token revocation")
 
 	suite.mockDBClient.AssertExpectations(suite.T())

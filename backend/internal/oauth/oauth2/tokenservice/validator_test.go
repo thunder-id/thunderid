@@ -2350,6 +2350,43 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_RevocationEnforce
 	}
 }
 
+// A refresh token inside its rotation grace period is the one case where the validator returns
+// claims alongside a non-nil error. The refresh grant needs the claims to serve the concurrent
+// refresh; every other caller checks err != nil first and rejects the token, unchanged.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_WithinGraceReturnsClaimsAndError() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "test-client",
+		"exp":              float64(now + 3600),
+		"iat":              float64(now),
+		"scope":            "read write",
+		"access_token_sub": "user123",
+		"access_token_aud": testAppID,
+		"grant_type":       "authorization_code",
+		"jti":              "rt-jti-graced",
+	}
+	token := suite.createTestJWT(claims)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	rotatedAt := time.Now().UTC().Add(-5 * time.Second)
+	validator := suite.validatorWithEnforcement("rt-jti-graced",
+		&revocation.RotatedTokenError{RotatedAt: rotatedAt})
+	result, err := validator.ValidateRefreshToken(context.Background(), token)
+
+	// Both are non-nil: this is the documented (claims, *RotatedTokenError) contract.
+	var rotated *revocation.RotatedTokenError
+	suite.Require().ErrorAs(err, &rotated)
+	assert.Equal(suite.T(), rotatedAt, rotated.RotatedAt)
+	suite.Require().NotNil(result)
+	assert.Equal(suite.T(), "rt-jti-graced", result.JTI)
+	assert.Equal(suite.T(), "user123", result.Sub)
+	// The typed error wraps ErrTokenRevoked, so a caller that only knows the general sentinel
+	// still rejects the token.
+	assert.ErrorIs(suite.T(), err, revocation.ErrTokenRevoked)
+}
+
 // Self-issued subject token validation enforces the deny list after the signature and claim checks,
 // surfacing revocation.ErrTokenRevoked for a revoked token and failing closed with
 // revocation.ErrEnforcementUnavailable when the deny list is unavailable.

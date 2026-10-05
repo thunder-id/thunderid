@@ -610,6 +610,23 @@ type IDTokenConfig struct {
 // RefreshTokenConfig is the refresh token configuration.
 type RefreshTokenConfig struct {
 	ValidityPeriod int64 `json:"validityPeriod,omitempty" yaml:"validityPeriod,omitempty" jsonschema:"Refresh token validity period in seconds."`
+	// RotationGracePeriod is how long a refresh token rotated out of use stays redeemable for this
+	// application, so concurrent refresh requests do not fail. It is capped by the deployment
+	// ceiling when stored, and ignored entirely while the deployment has the feature disabled.
+	RotationGracePeriod int64 `json:"rotationGracePeriod,omitempty" yaml:"rotationGracePeriod,omitempty" jsonschema:"Refresh token rotation grace period in seconds, capped by the deployment ceiling."`
+}
+
+// RotationGracePeriodOrZero returns the configured rotation grace period, or 0 when the config is
+// unset. An application that configures nothing gets no grace window: the feature is opted into per
+// application rather than inherited from the deployment ceiling.
+func (c *RefreshTokenConfig) RotationGracePeriodOrZero() int64 {
+	if c == nil {
+		return 0
+	}
+	if c.RotationGracePeriod < 0 {
+		return 0
+	}
+	return c.RotationGracePeriod
 }
 
 // UserInfoConfig is the user info endpoint configuration.

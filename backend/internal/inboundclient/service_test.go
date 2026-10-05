@@ -1771,6 +1771,33 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_InputOverride
 	assert.Equal(suite.T(), int64(1800), rt.ValidityPeriod)
 }
 
+// TestResolveOAuthTokens_PreservesRotationGracePeriod guards the field-by-field copy: an omitted
+// field here is silently dropped between the API and the refresh grant, so an application's
+// configured grace window would never take effect.
+func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_PreservesRotationGracePeriod() {
+	in := &providers.OAuthTokenConfig{
+		RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 1800, RotationGracePeriod: 30},
+	}
+
+	_, _, rt := resolveOAuthTokens(in, &inboundmodel.AssertionConfig{})
+
+	suite.Require().NotNil(rt)
+	assert.Equal(suite.T(), int64(30), rt.RotationGracePeriod)
+}
+
+// An application that configures no grace window keeps zero: the window is opted into per
+// application rather than inherited from the deployment.
+func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_RotationGraceDefaultsToZero() {
+	in := &providers.OAuthTokenConfig{
+		RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 1800},
+	}
+
+	_, _, rt := resolveOAuthTokens(in, &inboundmodel.AssertionConfig{})
+
+	suite.Require().NotNil(rt)
+	assert.Equal(suite.T(), int64(0), rt.RotationGracePeriod)
+}
+
 // TestResolveOAuthTokens_PreservesIDTokenAlgFields guards the field-by-field copy: an omitted
 // field here is silently dropped between the API and the token builder, so the client's
 // configured algorithm would never reach signing.

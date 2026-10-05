@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -150,6 +151,28 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_RevokedToken_Is
 
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), response)
+	assert.False(s.T(), response.Active)
+}
+
+// AC4.3: a refresh token inside its rotation grace period is redeemable at the token endpoint and
+// nowhere else. Introspection treats the graced outcome as a plain denial and reports it inactive,
+// so the grace window never widens what the token appears to authorize.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_GracedRefreshToken_IsInactive() {
+	token := genericTokenFor("graced-refresh-token")
+	claims := map[string]interface{}{
+		"sub":              "client123",
+		"access_token_sub": "user123",
+		"jti":              "graced-jti",
+	}
+	// The validator returns claims alongside the rotation report; introspection must not use them.
+	s.tokenValidatorMock.On("ValidateRefreshToken", mock.Anything, token).
+		Return(&tokenservice.RefreshTokenClaims{Claims: claims},
+			&revocation.RotatedTokenError{RotatedAt: time.Now().UTC()})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	s.Require().NotNil(response)
 	assert.False(s.T(), response.Active)
 }
 

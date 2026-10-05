@@ -33,10 +33,15 @@ var queryInsertRevokedToken = dbmodel.DBQuery{
 		`DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (DEPLOYMENT_ID, JTI) DO NOTHING`,
 }
 
-// queryIsTokenRevoked checks whether a non-expired deny-list entry exists for the given JTI.
+// queryIsTokenRevoked fetches the non-expired deny-list entry for the given JTI, if one exists.
+// REVOKED_AT and REVOCATION_REASON are selected because the refresh grant derives the rotation
+// grace window from them: a row written by rotation whose REVOKED_AT falls inside the configured
+// period is still redeemable for a concurrent refresh. Both columns are already on the row, so
+// grace costs no extra lookup and no schema change.
 var queryIsTokenRevoked = dbmodel.DBQuery{
-	ID:    "RVQ-RTS-02",
-	Query: `SELECT 1 FROM "REVOKED_TOKEN" WHERE JTI = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3`,
+	ID: "RVQ-RTS-02",
+	Query: `SELECT REVOKED_AT, REVOCATION_REASON FROM "REVOKED_TOKEN" ` +
+		`WHERE JTI = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3`,
 }
 
 // queryInsertRevocationCriterion records a criteria-based (many-token) revocation. The write is
