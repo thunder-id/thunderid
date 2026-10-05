@@ -6,6 +6,9 @@ package session
 import (
 	"context"
 	"time"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // sessionStore is the package-private persistence contract covering SSO sessions, their
@@ -23,6 +26,22 @@ type sessionStore interface {
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)
 	// ListBySubject returns every SSO session belonging to the subject.
 	ListBySubject(ctx context.Context, subjectID string) ([]Session, error)
+	// ListLiveBySubject returns one page of the subject's live SSO sessions at now, most recently active
+	// first. A non-nil ouID keeps only the sessions with an application signed in under it.
+	ListLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time, limit, offset int) (
+		[]Session, error)
+	// CountLiveBySubject counts the subject's live SSO sessions at now, under ouID when it is not nil.
+	CountLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time) (int, error)
+	// ListLiveByApp returns one page of the live SSO sessions at now that the application has joined, most
+	// recently active first. A non-nil ouID keeps only the sessions it joined under that unit.
+	ListLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time, limit, offset int) (
+		[]Session, error)
+	// CountLiveByApp counts the live SSO sessions at now that the application has joined, under ouID when it
+	// is not nil.
+	CountLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time) (int, error)
+	// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that
+	// holds the token family, or nil when none does.
+	GetSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (*Participant, error)
 	// Update writes the mutable fields of an existing session under an optimistic-lock guard. It
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory
 	// Version on success.
@@ -61,4 +80,10 @@ type sessionStore interface {
 	ListByAppID(ctx context.Context, appID string) ([]Participant, error)
 	// DeleteParticipant removes one application's participation in one session under one organization unit.
 	DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error
+}
+
+// applicationProvider reads the applications shown with each session. The application service satisfies it.
+// It is declared here because the application package depends on this one, so this package can't import it.
+type applicationProvider interface {
+	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
 }

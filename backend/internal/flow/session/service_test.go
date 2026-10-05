@@ -14,11 +14,17 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -37,6 +43,10 @@ func TestServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(ServiceTestSuite))
 }
 
+func (suite *ServiceTestSuite) SetupSuite() {
+	security.InitDataPlanePermissions("")
+}
+
 func (suite *ServiceTestSuite) SetupTest() {
 	suite.Require().NoError(config.InitializeServerRuntime(suite.T().TempDir(), &config.Config{}))
 }
@@ -45,18 +55,24 @@ func (suite *ServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-// serviceMocks bundles the generated store/transaction mocks a service test wires together. The one
+// serviceMocks bundles the generated mocks a service test wires together. The one
 // store mock backs every persistence operation (sessions, contexts, participants) since the service
 // depends on the single sessionStore interface.
 type serviceMocks struct {
-	store *sessionStoreMock
-	tx    *transactionmock.TransactionerMock
+	store       *sessionStoreMock
+	tx          *transactionmock.TransactionerMock
+	entities    *entitymock.EntityServiceInterfaceMock
+	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
+	apps        *applicationProviderMock
 }
 
 func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 	m := &serviceMocks{
-		store: newSessionStoreMock(suite.T()),
-		tx:    transactionmock.NewTransactionerMock(suite.T()),
+		store:       newSessionStoreMock(suite.T()),
+		tx:          transactionmock.NewTransactionerMock(suite.T()),
+		entities:    entitymock.NewEntityServiceInterfaceMock(suite.T()),
+		entityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()),
+		apps:        newApplicationProviderMock(suite.T()),
 	}
 	svc := &service{
 		store:            m.store,
@@ -64,6 +80,9 @@ func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 		transactioner:    m.tx,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("test"),
 		timeouts:         DefaultTimeouts(),
+		entities:         m.entities,
+		entityTypes:      m.entityTypes,
+		apps:             m.apps,
 		logger:           log.GetLogger(),
 	}
 	return svc, m
@@ -1749,4 +1768,421 @@ func (suite *ServiceTestSuite) TestCreateDirect_FailsWhenTheParticipantCannotBeW
 	err := svc.CreateDirect(context.Background(), directInput())
 
 	suite.Error(err)
+}
+
+// noOU is the organization unit scope of a listing that reaches every unit.
+var noOU *string
+
+// listNow is the time the listing tests read live sessions at.
+var listNow = time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+
+func liveListedSession(id string) Session {
+	return Session{
+		SessionID:         id,
+		SubjectID:         "user-1",
+		State:             StateActive,
+		IdleExpiresAt:     listNow.Add(time.Minute),
+		AbsoluteExpiresAt: listNow.Add(time.Hour),
+	}
+}
+
+func (suite *ServiceTestSuite) TestListLiveBySubject_GroupsParticipantsBySession() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(5, nil)
+	m.store.EXPECT().ListLiveBySubject(ctx, "user-1", noOU, listNow, 2, 2).
+		Return([]Session{liveListedSession("sess-2"), liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-2", "sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-a"},
+		{SessionID: "sess-2", AppID: "app-b"},
+		{SessionID: "sess-1", AppID: "app-c"},
+	}, nil)
+
+	page, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 2, 2)
+
+	suite.NoError(err)
+	suite.Equal(5, page.TotalResults)
+	suite.Require().Len(page.Sessions, 2)
+	suite.Equal("sess-2", page.Sessions[0].SessionID, "the store's order is kept")
+	suite.Equal([]Participant{{SessionID: "sess-2", AppID: "app-b"}}, page.Sessions[0].Participants)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-a"}, {SessionID: "sess-1", AppID: "app-c"}},
+		page.Sessions[1].Participants)
+}
+
+// Under an organization unit, only the sessions and participants of that unit are listed.
+func (suite *ServiceTestSuite) TestListLiveByApp_KeepsOnlyTheOUsParticipants() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveByApp(ctx, "app-2", new("ou-1"), listNow).Return(6, nil)
+	m.store.EXPECT().ListLiveByApp(ctx, "app-2", new("ou-1"), listNow, 10, 5).
+		Return([]Session{liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-1"},
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-2"},
+		{SessionID: "sess-1", AppID: "app-1"},
+	}, nil)
+
+	page, err := svc.listLiveByApp(ctx, "app-2", new("ou-1"), listNow, 10, 5)
+
+	suite.NoError(err)
+	suite.Equal(6, page.TotalResults)
+	suite.Require().Len(page.Sessions, 1)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-2", OUID: "ou-1"}},
+		page.Sessions[0].Participants)
+}
+
+// A scope of no organization unit keeps only the participants recorded under none.
+func (suite *ServiceTestSuite) TestListLiveBySubject_NoOUScopeKeepsOnlyNoOUParticipants() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-2", new(""), listNow).Return(1, nil)
+	m.store.EXPECT().ListLiveBySubject(ctx, "user-2", new(""), listNow, 30, 0).
+		Return([]Session{liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1"},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1"},
+	}, nil)
+
+	page, err := svc.listLiveBySubject(ctx, "user-2", new(""), listNow, 30, 0)
+
+	suite.NoError(err)
+	suite.Require().Len(page.Sessions, 1)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-1"}}, page.Sessions[0].Participants)
+}
+
+// An offset at or past the total reads no page, so a deep offset costs only the count.
+func (suite *ServiceTestSuite) TestListLive_OffsetPastTotalSkipsTheListing() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(0, nil)
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(3, nil)
+
+	empty, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+	suite.NoError(err)
+	suite.Zero(empty.TotalResults)
+	suite.NotNil(empty.Sessions)
+	suite.Empty(empty.Sessions)
+
+	past, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 1000000)
+	suite.NoError(err)
+	suite.Equal(3, past.TotalResults, "the total is still reported")
+	suite.NotNil(past.Sessions)
+	suite.Empty(past.Sessions)
+}
+
+func (suite *ServiceTestSuite) TestListLive_StoreErrors() {
+	ctx := context.Background()
+	storeErr := errors.New("db down")
+
+	suite.Run("count by subject", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(0, storeErr)
+		_, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("list by subject", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0).Return(nil, storeErr)
+		_, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("count by app", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(0, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("list by app", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveByApp(ctx, "app-1", noOU, listNow, 30, 0).Return(nil, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("participants", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveByApp(ctx, "app-1", noOU, listNow, 30, 0).
+			Return([]Session{liveListedSession("sess-1")}, nil)
+		m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return(nil, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+}
+
+func (suite *ServiceTestSuite) TestGetSubjectParticipantByTokenFamily() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	want := &Participant{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-1"}
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-1").Return(want, nil)
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-2").Return(nil, errors.New("db down"))
+
+	got, err := svc.getSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-1")
+	suite.NoError(err)
+	suite.Equal(want, got)
+
+	_, err = svc.getSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-2")
+	suite.ErrorContains(err, "failed to get participant by token family")
+}
+
+// listedSession is a live session of user-1, with every recorded property, that the store returns.
+func listedSession(id string) Session {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	return Session{
+		SessionID:         id,
+		SubjectID:         "user-1",
+		FlowID:            "flow-1",
+		HandleID:          "handle-secret",
+		AuthenticatedAt:   base,
+		CreatedAt:         base,
+		LastActiveAt:      base.Add(time.Minute),
+		IdleExpiresAt:     base.Add(31 * time.Minute),
+		AbsoluteExpiresAt: base.Add(8 * time.Hour),
+		Properties: SessionProperties{
+			UserAgent:    "Mozilla/5.0",
+			CreationIP:   "198.51.100.7",
+			LastActiveIP: "203.0.113.10",
+		},
+		State: StateActive,
+	}
+}
+
+// expectLivePage makes the store answer one page of live sessions, listed by subject or, when byApp is set,
+// by application: the total, the sessions, and the participants read for them.
+func expectLivePage(m *serviceMocks, byApp bool, key string, ouID *string, limit, offset, total int,
+	sessions []Session, participants ...Participant) {
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	if byApp {
+		m.store.EXPECT().CountLiveByApp(mock.Anything, key, ouID, mock.Anything).Return(total, nil)
+		m.store.EXPECT().ListLiveByApp(mock.Anything, key, ouID, mock.Anything, limit, offset).Return(sessions, nil)
+	} else {
+		m.store.EXPECT().CountLiveBySubject(mock.Anything, key, ouID, mock.Anything).Return(total, nil)
+		m.store.EXPECT().ListLiveBySubject(mock.Anything, key, ouID, mock.Anything, limit, offset).
+			Return(sessions, nil)
+	}
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, sessionIDs).Return(participants, nil)
+}
+
+// adminContext is an administrator holding the given permissions, under ouID when not empty.
+func adminContext(ouID string, permissions ...string) context.Context {
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", ouID, "", permissions, nil))
+}
+
+// selfContext is the user user-1 whose token holds the token family tfid, when not empty.
+func selfContext(tfid string) context.Context {
+	attributes := map[string]interface{}{}
+	if tfid != "" {
+		attributes["tfid"] = tfid
+	}
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("user-1", "", "", nil, attributes))
+}
+
+func expectUserDisplay(m *serviceMocks, display string) {
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return([]providers.Entity{{
+		ID: "user-1", Category: providers.EntityCategoryUser, Type: "employee",
+		Attributes: json.RawMessage(`{"name":"` + display + `"}`),
+	}}, nil).Once()
+	m.entityTypes.EXPECT().GetDisplayAttributesByHandles(mock.Anything, entitytype.TypeCategoryUser,
+		[]string{"employee"}).Return(map[string]string{"employee": "name"}, nil).Once()
+}
+
+// expectApp makes the application read as the runtime return the application with the name.
+func expectApp(m *serviceMocks, appID, name string) {
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), appID).
+		Return(&providers.Application{Name: name}, nil).Once()
+}
+
+func (suite *ServiceTestSuite) TestListSessions_ByUser() {
+	svc, m := suite.newService()
+	expectLivePage(m, false, "user-1", noOU, 30, 0, 1, []Session{listedSession("sess-1")},
+		Participant{SessionID: "sess-1", AppID: "app-a", TokenFamilyID: "tfid-secret"},
+		Participant{SessionID: "sess-1", AppID: "app-b"})
+	expectUserDisplay(m, "Alice")
+	// The caller may hold only the session permission, so applications are read as the runtime.
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), "app-a").
+		Return(&providers.Application{Name: "App A", LogoURL: "https://example.com/app-a.png"}, nil).Once()
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), "app-b").
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), " user-1 ", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(1, resp.TotalResults)
+	suite.Equal(1, resp.StartIndex)
+	suite.Equal(1, resp.Count)
+	suite.Require().Len(resp.Sessions, 1)
+	got := resp.Sessions[0]
+	suite.Equal("sess-1", got.ID)
+	suite.Equal("user-1", got.UserID)
+	suite.Equal("Alice", got.UserDisplayName)
+	suite.Equal("Mozilla/5.0", got.UserAgent)
+	suite.Equal("198.51.100.7", got.CreationIP)
+	suite.Equal("203.0.113.10", got.LastActiveIP)
+	suite.Equal("2026-06-16T10:01:00Z", got.LastActiveAt)
+	suite.Equal("2026-06-16T18:00:00Z", got.AbsoluteExpiresAt)
+	suite.Nil(got.IsCurrent, "admin listings don't mark a current session")
+	suite.Equal([]participantResponse{
+		{AppID: "app-a", AppName: "App A", AppLogoURL: "https://example.com/app-a.png"},
+		{AppID: "app-b"},
+	}, got.Participants)
+}
+
+func (suite *ServiceTestSuite) TestListSessions_ByAppResolvesEachNameOnce() {
+	svc, m := suite.newService()
+	expectLivePage(m, true, "app-a", noOU, 20, 20, 45,
+		[]Session{listedSession("sess-1"), listedSession("sess-2")},
+		Participant{SessionID: "sess-1", AppID: "app-a"}, Participant{SessionID: "sess-2", AppID: "app-a"})
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return(nil, errors.New("db down")).Once()
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), "", "app-a", 20, 20)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(45, resp.TotalResults)
+	suite.Equal(21, resp.StartIndex)
+	suite.Equal(2, resp.Count)
+	suite.Contains(resp.Links, sysutils.Link{Href: "/sessions?offset=40&limit=20&appId=app-a", Rel: "next"})
+	suite.Empty(resp.Sessions[0].UserDisplayName, "a failed read leaves the name out")
+}
+
+// An administrator holding only the org permission sees the sessions and applications of the organization
+// unit its token names, each application with the unit it signed in under.
+func (suite *ServiceTestSuite) TestListSessions_OrgAdminSeesItsOwnOU() {
+	svc, m := suite.newService()
+	expectLivePage(m, false, "user-1", new("ou-1"), 30, 0, 1, []Session{listedSession("sess-1")},
+		Participant{SessionID: "sess-1", AppID: "app-a", OUID: "ou-1"},
+		Participant{SessionID: "sess-1", AppID: "app-b", OUID: "ou-2"})
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return([]providers.Entity{}, nil).Once()
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListSessions(adminContext("ou-1", "org:session:view"), "user-1", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Sessions, 1)
+	suite.Empty(resp.Sessions[0].UserDisplayName, "a subject that can't be found gets no name")
+	suite.Equal([]participantResponse{{AppID: "app-a", OUID: "ou-1", AppName: "App A"}},
+		resp.Sessions[0].Participants)
+}
+
+// The system permission reaches every organization unit, whichever unit the token names.
+func (suite *ServiceTestSuite) TestListSessions_SystemPermissionSeesEveryOU() {
+	svc, m := suite.newService()
+	m.store.EXPECT().CountLiveByApp(mock.Anything, "app-a", noOU, mock.Anything).Return(0, nil)
+
+	resp, svcErr := svc.ListSessions(adminContext("ou-1", "system"), "", "app-a", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Empty(resp.Sessions)
+}
+
+// The middleware refuses an org permission without a unit; the service refuses it too rather than reading
+// the sessions of every unit.
+func (suite *ServiceTestSuite) TestListSessions_OrgAdminWithoutAUnitIsRefused() {
+	svc, _ := suite.newService()
+
+	_, svcErr := svc.ListSessions(adminContext("", "org:session:view"), "user-1", "", 30, 0)
+
+	suite.Equal(&tidcommon.ErrorUnauthorized, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestListSessions_NeedsExactlyOneFilter() {
+	svc, _ := suite.newService()
+	for name, filter := range map[string][2]string{
+		"no filter": {"", ""}, "blank filter": {" ", ""}, "both filters": {"u", "a"},
+	} {
+		suite.Run(name, func() {
+			_, svcErr := svc.ListSessions(adminContext("", "system"), filter[0], filter[1], 30, 0)
+			suite.Equal(&ErrorInvalidListFilter, svcErr)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestListSessions_StoreError() {
+	svc, m := suite.newService()
+	m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", noOU, mock.Anything).
+		Return(0, errors.New("db down"))
+
+	_, svcErr := svc.ListSessions(adminContext("", "system"), "user-1", "", 30, 0)
+
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+// The caller sees the sessions of the organization unit its own participant was recorded under, whatever its
+// token's claims say, and the session that holds its token family is marked as current.
+func (suite *ServiceTestSuite) TestListOwnSessions_ScopedByTheTokensParticipant() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+		Return(&Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1"}, nil)
+	expectLivePage(m, false, "user-1", new("ou-1"), 30, 0, 2,
+		[]Session{listedSession("sess-1"), listedSession("sess-2")},
+		Participant{SessionID: "sess-1", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-other"},
+		Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-mine"})
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Sessions, 2)
+	suite.Require().NotNil(resp.Sessions[0].IsCurrent)
+	suite.False(*resp.Sessions[0].IsCurrent)
+	suite.Require().NotNil(resp.Sessions[1].IsCurrent)
+	suite.True(*resp.Sessions[1].IsCurrent)
+	suite.Empty(resp.Sessions[1].UserDisplayName, "own sessions don't resolve the user's name")
+	suite.Equal("App A", resp.Sessions[1].Participants[0].AppName)
+	suite.Empty(resp.Links)
+}
+
+// A participant recorded under no organization unit sees only the sessions with a participant under none.
+func (suite *ServiceTestSuite) TestListOwnSessions_NoOUParticipant() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+		Return(&Participant{SessionID: "sess-1", AppID: "app-a"}, nil)
+	m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", new(""), mock.Anything).Return(0, nil)
+
+	resp, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Empty(resp.Sessions)
+}
+
+// A token without a family, or one no participant of an SSO session holds, sees no session.
+func (suite *ServiceTestSuite) TestListOwnSessions_TokenWithoutAParticipantSeesNothing() {
+	svc, m := suite.newService()
+
+	resp, svcErr := svc.ListOwnSessions(selfContext(""), 30, 0)
+	suite.Require().Nil(svcErr)
+	suite.Zero(resp.TotalResults)
+	suite.NotNil(resp.Sessions)
+	suite.Empty(resp.Sessions)
+
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-gone").Return(nil, nil)
+	resp, svcErr = svc.ListOwnSessions(selfContext("tfid-gone"), 30, 0)
+	suite.Require().Nil(svcErr)
+	suite.Zero(resp.TotalResults)
+	suite.Empty(resp.Sessions)
+}
+
+func (suite *ServiceTestSuite) TestListOwnSessions_Errors() {
+	suite.Run("participant", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+			Return(nil, errors.New("db down"))
+		_, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+	suite.Run("listing", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+			Return(&Participant{OUID: "ou-1"}, nil)
+		m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", new("ou-1"), mock.Anything).
+			Return(0, errors.New("db down"))
+		_, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+	})
 }

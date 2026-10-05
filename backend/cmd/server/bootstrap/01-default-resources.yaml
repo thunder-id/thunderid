@@ -211,6 +211,13 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: Sessions
+    handle: session
+    parent: org
+    description: SSO sessions with an application signed in under the organization unit the token names
+    actions:
+      - name: View
+        handle: view
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061

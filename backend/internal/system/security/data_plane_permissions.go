@@ -14,7 +14,11 @@ var dataPlaneOrgCatalog = []catalogResource{
 	{ResourceTypeAgent, crudActions},
 	{ResourceTypeUserType, crudActions},
 	{ResourceTypeAgentType, crudActions},
+	{ResourceTypeSession, sessionActions},
 }
+
+// sessionActions are the actions declared on SSO sessions, which can only be read.
+var sessionActions = []string{catalogActionView}
 
 // InitDataPlanePermissions activates the data plane's permissions. When handle is non-empty (e.g.
 // "mgmt"), every permission is prefixed with it.
@@ -71,6 +75,7 @@ func InitDataPlanePermissions(handle string) {
 		AgentTypeCreate: orgChild(ResourceTypeAgentType, catalogActionCreate),
 		AgentTypeUpdate: orgChild(ResourceTypeAgentType, catalogActionUpdate),
 		AgentTypeDelete: orgChild(ResourceTypeAgentType, catalogActionDelete),
+		SessionView:     orgChild(ResourceTypeSession, catalogActionView),
 
 		NotificationTemplate:       org,
 		NotificationTemplateView:   org,

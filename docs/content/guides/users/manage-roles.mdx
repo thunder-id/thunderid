@@ -105,6 +105,8 @@ The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. 
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
 
+`org:session:view` lists the SSO sessions that have an application signed in under the organization unit the caller holds it in, and shows only those applications. A session's own details, such as its last active time and IP address, come from activity in every organization unit. Only the `system` permission lists the SSO sessions of every user and application in the deployment. Only a data plane serves sessions. Users list their own sessions without any system permission, and see only the sessions and applications of the organization unit they signed in under.
+
 The MCP tools require the same permissions as the matching APIs. The MCP server itself requires a token that carries at least one system permission.
 
 If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.

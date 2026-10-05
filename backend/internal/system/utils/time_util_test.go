@@ -85,3 +85,10 @@ func (suite *TimeUtilTestSuite) TestParseDBTimeField_ResultIsUTC() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), time.UTC, result.Location())
 }
+
+func (suite *TimeUtilTestSuite) TestFormatRFC3339() {
+	suite.Empty(FormatRFC3339(time.Time{}), "the zero time renders as empty")
+	suite.Equal("2026-06-16T10:00:00Z",
+		FormatRFC3339(time.Date(2026, 6, 16, 15, 30, 0, 0, time.FixedZone("IST", 5*3600+1800))),
+		"the time is rendered in UTC")
+}
