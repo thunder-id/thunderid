@@ -162,7 +162,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 		return "", &ErrorApplicationNotFound
 	}
 
-	entity, epErr := fms.actorProvider.GetActor(id)
+	entity, epErr := fms.actorProvider.GetActor(ctx, id)
 	if epErr != nil && epErr.Code != string(entityprovider.ErrorCodeEntityNotFound) {
 		fms.logger.Error(ctx, "Failed to get actor", log.String("appID", id),
 			log.String("error", epErr.Error.DefaultValue))

@@ -4,7 +4,6 @@
 package executor
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -85,7 +84,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		return execResp, nil
 	}
 
-	svcCtx := security.WithRuntimeContext(context.Background())
+	svcCtx := security.WithRuntimeContext(ctx.Context)
 	uniqueAttrs, svcErr := e.entityTypeService.GetUniqueAttributes(svcCtx, category, entityType)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to retrieve unique attributes from schema for %s type %s: %s",
@@ -98,7 +97,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntity(ctx.Context, map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue

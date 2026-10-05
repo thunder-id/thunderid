@@ -94,7 +94,7 @@ func (e *ownerResolver) Execute(ctx *providers.NodeContext) (*providers.Executor
 func (e *ownerResolver) resolveSelectedOwner(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, selected string, logger *log.Logger,
 ) (*providers.ExecutorResponse, error) {
-	entity, epErr := e.entityProvider.GetEntityProfile(selected)
+	entity, epErr := e.entityProvider.GetEntityProfile(ctx.Context, selected)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return e.rejectOwner(ctx, execResp, "Selected owner does not exist", logger), nil

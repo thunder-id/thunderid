@@ -22,6 +22,7 @@ const (
 	eventTypeNodeExecCompleted  = "FLOW_NODE_EXECUTION_COMPLETED"
 	eventTypeNodeExecFailed     = "FLOW_NODE_EXECUTION_FAILED"
 	eventTypeFlowCompletedEvent = "FLOW_COMPLETED"
+	eventTypeFlowFailed         = "FLOW_FAILED"
 
 	// The observability file adapter flushes on a fixed five second ticker, so a test that reads the
 	// sink has to wait past one tick rather than expecting an immediate write.
@@ -448,7 +449,9 @@ func (ts *FlowEventsTestSuite) TestFlowEvents_FailedNodePublishesFailure() {
 	ts.Require().NoError(err, "The flow should return a step rather than a transport error")
 	ts.Require().NotEmpty(step.ExecutionID, "A failed run must still report its execution id")
 
-	events := ts.eventsForExecution(step.ExecutionID, hasNodeEvent(eventTypeNodeExecFailed, "auth_assert"))
+	events := ts.eventsForExecution(step.ExecutionID, func(events []observabilityEvent) bool {
+		return hasNodeEvent(eventTypeNodeExecFailed, "auth_assert")(events) && hasType(eventTypeFlowFailed)(events)
+	})
 	ts.Require().NotEmpty(events, "The run should have published events to the sink")
 
 	authEvent := eventFor(events, eventTypeNodeExecFailed, "auth_assert")
@@ -457,4 +460,9 @@ func (ts *FlowEventsTestSuite) TestFlowEvents_FailedNodePublishesFailure() {
 	ts.Equal("ERROR", authEvent.dataString("node_status"),
 		"a failed node must be published with the error status")
 	ts.NotNil(authEvent.Data["error"], "a failure event must carry what went wrong")
+
+	flowFailed := eventFor(events, eventTypeFlowFailed, "")
+	ts.Require().NotNil(flowFailed, "a run that failed at a node must be published as failed")
+	ts.Equal("failure", flowFailed.Status, "a failed run must be published as a failure")
+	ts.NotNil(flowFailed.Data["error"], "a failed run must carry what went wrong")
 }

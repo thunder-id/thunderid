@@ -240,7 +240,7 @@ func (p *authZENPDPEngine) evaluateSingle(
 	if err := p.post(ctx, settings, evaluationEndpoint, payload, &responseDecision); err != nil {
 		p.logger.Error(ctx, "AuthZEN evaluation failed",
 			log.String("pdp_endpoint", evaluationEndpoint),
-			log.String("resource_server_id", evaluation.ResourceServer.ID),
+			log.String("resourceServerID", evaluation.ResourceServer.ID),
 			log.String("action", evaluation.Permission.Name),
 			log.Error(err),
 		)

@@ -196,19 +196,19 @@ func (c *ValueCapture) push(ctx context.Context, key string) {
 	case svcErr != nil && p.failures+1 < c.attempts:
 		p.failures++
 		c.logger.Warn(ctx, "Failed to capture a value in the default gateway's store; it will be tried again",
-			log.String("gatewayId", p.gatewayID), log.String("collection", p.collection),
+			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
 			log.String("name", p.name), log.Int("failures", p.failures),
 			log.String("error", svcErr.Error.DefaultValue))
 		p.timer = time.AfterFunc(c.pushDelay(p.failures), func() { c.push(ctx, key) })
 	case svcErr != nil:
 		c.logger.Error(ctx, "Gave up capturing a value in the default gateway's store",
-			log.String("gatewayId", p.gatewayID), log.String("collection", p.collection),
+			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
 			log.String("name", p.name), log.Int("failures", p.failures+1),
 			log.String("error", svcErr.Error.DefaultValue))
 		delete(c.pending, key)
 	case refusal != nil:
 		c.logger.Warn(ctx, "The default gateway's store refused a captured value",
-			log.String("gatewayId", p.gatewayID), log.String("collection", p.collection),
+			log.String("gatewayID", p.gatewayID), log.String("collection", p.collection),
 			log.String("name", p.name), log.Int("status", refusal.Status))
 		delete(c.pending, key)
 	default:

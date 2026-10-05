@@ -183,7 +183,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if grantType.IssuesRefreshToken() &&
 		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
-			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
+			log.String("clientID", clientID), log.String("grant_type", grantTypeStr))
 
 		refreshGrantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(providers.GrantTypeRefreshToken)
 		if handlerErr != nil {
@@ -198,7 +198,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		refreshGrantHandlerTyped, ok := refreshGrantHandler.(granthandlers.RefreshTokenGrantHandlerInterface)
 		if !ok {
 			logger.Error(ctx, "Failed to cast refresh grant handler",
-				log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
+				log.String("clientID", clientID), log.String("grant_type", grantTypeStr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				500, "Internal Server Error", startTime)
 			return nil, &model.ErrorResponse{
@@ -255,7 +255,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	logger.Debug(ctx, "Token generated successfully",
-		log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
+		log.String("clientID", clientID), log.String("grant_type", grantTypeStr))
 
 	ts.publishTokenIssuedEvent(ctx, oauthApp, tokenRespDTO, clientID, grantTypeStr, scopes, startTime)
 

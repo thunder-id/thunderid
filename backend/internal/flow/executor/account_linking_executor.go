@@ -255,7 +255,7 @@ func (e *accountLinkingExecutor) writeLink(ctx *providers.NodeContext, execResp 
 		return fmt.Errorf("failed to link the federated identity: %s", svcErr.Code)
 	}
 	logger.Debug(ctx.Context, "The link write was rejected",
-		log.MaskedString(log.LoggerKeyEntityID, entityID), log.String("idpId", federated.IdpID),
+		log.MaskedString(log.LoggerKeyEntityID, entityID), log.String(log.LoggerKeyIDPID, federated.IdpID),
 		log.String("errorCode", svcErr.Code))
 	execResp.Status = providers.ExecFailure
 	execResp.Error = &ErrLinkingWriteFailed

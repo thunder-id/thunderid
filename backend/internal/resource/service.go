@@ -810,7 +810,7 @@ func (rs *resourceService) UpdateResource(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot modify resource in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return nil, ErrorImmutableResource.WithParams(map[string]string{"id": id})
 	}
@@ -874,7 +874,7 @@ func (rs *resourceService) DeleteResource(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot delete resource in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return ErrorImmutableResource.WithParams(map[string]string{"id": id})
 	}
@@ -1304,7 +1304,7 @@ func (rs *resourceService) ValidatePermissions(
 	permissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Validating permissions",
-		log.String("resourceServerId", resourceServerID),
+		log.String("resourceServerID", resourceServerID),
 		log.Int("permissionCount", len(permissions)))
 
 	if len(permissions) == 0 {
@@ -1316,12 +1316,12 @@ func (rs *resourceService) ValidatePermissions(
 	if err != nil {
 		if !errors.Is(err, errResourceServerNotFound) {
 			rs.logger.Error(ctx, "Failed to validate resource server existence",
-				log.String("resourceServerId", resourceServerID),
+				log.String("resourceServerID", resourceServerID),
 				log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
 		rs.logger.Debug(ctx, "Resource server not found",
-			log.String("resourceServerId", resourceServerID))
+			log.String("resourceServerID", resourceServerID))
 		// Return all permissions as invalid if resource server doesn't exist
 		return permissions, nil
 	}
@@ -1330,7 +1330,7 @@ func (rs *resourceService) ValidatePermissions(
 	invalidPermissions, storeErr := rs.resourceStore.ValidatePermissions(ctx, resourceServerID, permissions)
 	if storeErr != nil {
 		rs.logger.Error(ctx, "Failed to validate permissions in store",
-			log.String("resourceServerId", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 			log.Error(storeErr))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -1544,7 +1544,7 @@ func (rs *resourceService) validateActionDelete(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot delete action in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}

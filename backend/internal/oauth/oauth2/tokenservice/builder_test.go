@@ -2600,7 +2600,7 @@ const (
 func TestResolveSubjectIdentity_CarriedFromTheAssertion(t *testing.T) {
 	tb := &tokenBuilder{}
 
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		Subject:         "alice@example.com",
 		SubjectEntityID: subjectIdentityUserID,
 		SubjectCategory: string(providers.EntityCategoryUser),
@@ -2615,12 +2615,12 @@ func TestResolveSubjectIdentity_CarriedFromTheAssertion(t *testing.T) {
 // resolved.
 func TestResolveSubjectIdentity_AssertionIDWithoutCategory(t *testing.T) {
 	actors := actorprovidermock.NewActorProviderMock(t)
-	actors.On("GetActor", subjectIdentityUserID).
+	actors.On("GetActor", mock.Anything, subjectIdentityUserID).
 		Return(&providers.Entity{ID: subjectIdentityUserID, Category: providers.EntityCategoryUser},
 			(*tidcommon.ServiceError)(nil))
 	tb := &tokenBuilder{actorProvider: actors}
 
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		SubjectEntityID: subjectIdentityUserID,
 	})
 
@@ -2633,7 +2633,7 @@ func TestResolveSubjectIdentity_AssertionIDWithoutCategory(t *testing.T) {
 func TestResolveSubjectIdentity_SubjectIsTheClient(t *testing.T) {
 	tb := &tokenBuilder{}
 
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		Subject: subjectIdentityClientID,
 		OAuthApp: &providers.OAuthClient{
 			ID:             subjectIdentityClientID,
@@ -2649,12 +2649,12 @@ func TestResolveSubjectIdentity_SubjectIsTheClient(t *testing.T) {
 // minted for agent B must report an agent subject, not a user.
 func TestResolveSubjectIdentity_AgentSubjectOfAnExchange(t *testing.T) {
 	actors := actorprovidermock.NewActorProviderMock(t)
-	actors.On("GetActor", "agent-b").
+	actors.On("GetActor", mock.Anything, "agent-b").
 		Return(&providers.Entity{ID: "agent-b", Category: providers.EntityCategoryAgent},
 			(*tidcommon.ServiceError)(nil))
 	tb := &tokenBuilder{actorProvider: actors}
 
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		Subject:  "agent-b",
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID, EntityCategory: providers.EntityCategoryAgent},
 	})
@@ -2668,11 +2668,11 @@ func TestResolveSubjectIdentity_AgentSubjectOfAnExchange(t *testing.T) {
 // so the attribute — an email address here — is never published.
 func TestResolveSubjectIdentity_MappedAttributeIsNotReported(t *testing.T) {
 	actors := actorprovidermock.NewActorProviderMock(t)
-	actors.On("GetActor", "alice@example.com").
+	actors.On("GetActor", mock.Anything, "alice@example.com").
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Code: "ENTITY-404"})
 	tb := &tokenBuilder{actorProvider: actors}
 
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		Subject:  "alice@example.com",
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	})
@@ -2685,7 +2685,7 @@ func TestResolveSubjectIdentity_NoProviderOrNoSubject(t *testing.T) {
 	tb := &tokenBuilder{}
 
 	// A subject that is not the client cannot be resolved without a provider, so it is not reported.
-	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+	id, category := tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{
 		Subject:  subjectIdentityUserID,
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	})
@@ -2693,7 +2693,7 @@ func TestResolveSubjectIdentity_NoProviderOrNoSubject(t *testing.T) {
 	assert.Empty(t, category)
 
 	// No subject at all.
-	id, category = tb.resolveSubjectIdentity(&AccessTokenBuildContext{})
+	id, category = tb.resolveSubjectIdentity(context.Background(), &AccessTokenBuildContext{})
 	assert.Empty(t, id)
 	assert.Empty(t, category)
 }
@@ -2704,7 +2704,7 @@ func TestResolveSubjectIdentity_NoProviderOrNoSubject(t *testing.T) {
 func TestResolveActorIdentity_ActorIsTheClient(t *testing.T) {
 	tb := &tokenBuilder{}
 
-	id := tb.resolveActorIdentity(&AccessTokenBuildContext{
+	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
 		OAuthApp: &providers.OAuthClient{
 			ID:             subjectIdentityClientID,
 			EntityCategory: providers.EntityCategoryAgent,
@@ -2718,12 +2718,12 @@ func TestResolveActorIdentity_ActorIsTheClient(t *testing.T) {
 // entity is reported.
 func TestResolveActorIdentity_ActorTokenNamesAnEntity(t *testing.T) {
 	actors := actorprovidermock.NewActorProviderMock(t)
-	actors.On("GetActor", "agent-b").
+	actors.On("GetActor", mock.Anything, "agent-b").
 		Return(&providers.Entity{ID: "agent-b", Category: providers.EntityCategoryAgent},
 			(*tidcommon.ServiceError)(nil))
 	tb := &tokenBuilder{actorProvider: actors}
 
-	id := tb.resolveActorIdentity(&AccessTokenBuildContext{
+	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	}, "agent-b")
 
@@ -2735,11 +2735,11 @@ func TestResolveActorIdentity_ActorTokenNamesAnEntity(t *testing.T) {
 // address here, is never published.
 func TestResolveActorIdentity_MappedAttributeIsNotReported(t *testing.T) {
 	actors := actorprovidermock.NewActorProviderMock(t)
-	actors.On("GetActor", "svc@example.com").
+	actors.On("GetActor", mock.Anything, "svc@example.com").
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Code: "ENTITY-404"})
 	tb := &tokenBuilder{actorProvider: actors}
 
-	id := tb.resolveActorIdentity(&AccessTokenBuildContext{
+	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	}, "svc@example.com")
 
@@ -2750,13 +2750,13 @@ func TestResolveActorIdentity_NoProviderOrNoActor(t *testing.T) {
 	tb := &tokenBuilder{}
 
 	// An actor that is not the client cannot be resolved without a provider, so it is not reported.
-	id := tb.resolveActorIdentity(&AccessTokenBuildContext{
+	id := tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{
 		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
 	}, "agent-b")
 	assert.Empty(t, id)
 
 	// No actor at all.
-	id = tb.resolveActorIdentity(&AccessTokenBuildContext{}, "")
+	id = tb.resolveActorIdentity(context.Background(), &AccessTokenBuildContext{}, "")
 	assert.Empty(t, id)
 }
 

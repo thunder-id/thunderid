@@ -98,7 +98,7 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdOU)
 
-	logger.Debug(ctx, "Successfully created organization unit", log.String("ouId", createdOU.ID))
+	logger.Debug(ctx, "Successfully created organization unit", log.String("ouID", createdOU.ID))
 }
 
 // HandleOUGetRequest handles the get organization unit by id request.
@@ -119,7 +119,7 @@ func (ouh *organizationUnitHandler) HandleOUGetRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouID", id))
 }
 
 // HandleOUPutRequest handles the update organization unit request.
@@ -155,7 +155,7 @@ func (ouh *organizationUnitHandler) HandleOUPutRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouID", id))
 }
 
 // HandleOUDeleteRequest handles the delete organization unit request.
@@ -175,7 +175,7 @@ func (ouh *organizationUnitHandler) HandleOUDeleteRequest(w http.ResponseWriter,
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouID", id))
 }
 
 // HandleOUChildrenListRequest handles the list child organization units request.

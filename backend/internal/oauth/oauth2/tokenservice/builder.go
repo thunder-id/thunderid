@@ -93,9 +93,9 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 	if tokenCtx.ActorClaims != nil {
 		tokenDTO.Delegated = true
-		tokenDTO.ActorSub = tb.resolveActorIdentity(tokenCtx, tokenCtx.ActorClaims.Sub)
+		tokenDTO.ActorSub = tb.resolveActorIdentity(ctx, tokenCtx, tokenCtx.ActorClaims.Sub)
 	}
-	tokenDTO.SubjectID, tokenDTO.SubjectCategory = tb.resolveSubjectIdentity(tokenCtx)
+	tokenDTO.SubjectID, tokenDTO.SubjectCategory = tb.resolveSubjectIdentity(ctx, tokenCtx)
 
 	token, iat, err := tb.jwtService.GenerateJWT(
 		ctx,
@@ -125,13 +125,15 @@ func (tb *tokenBuilder) BuildAccessToken(
 //
 // Every grant reaches this function, so none can omit the fields by forgetting to set them, but a
 // grant whose upstream layer already knows the answer supplies it and skips the lookup entirely.
-func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext) (id, category string) {
+func (tb *tokenBuilder) resolveSubjectIdentity(
+	ctx context.Context, tokenCtx *AccessTokenBuildContext,
+) (id, category string) {
 	// authorization_code: carried on the flow assertion, which resolved the entity during login.
 	if tokenCtx.SubjectEntityID != "" {
 		if tokenCtx.SubjectCategory != "" {
 			return tokenCtx.SubjectEntityID, tokenCtx.SubjectCategory
 		}
-		return tokenCtx.SubjectEntityID, tb.lookupCategory(tokenCtx.SubjectEntityID)
+		return tokenCtx.SubjectEntityID, tb.lookupCategory(ctx, tokenCtx.SubjectEntityID)
 	}
 
 	if tokenCtx.Subject == "" {
@@ -148,7 +150,7 @@ func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext
 	// Resolving it decides which: a mapped attribute matches no entity, so an unresolvable subject is
 	// reported as no subject rather than published as-is. This is what keeps a mapped attribute, which
 	// may be an email address, off the events.
-	category = tb.lookupCategory(tokenCtx.Subject)
+	category = tb.lookupCategory(ctx, tokenCtx.Subject)
 	if category == "" {
 		return "", ""
 	}
@@ -162,7 +164,9 @@ func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext
 // issuing application may have mapped to an attribute such as an email address, and reporting no
 // actor is preferable to publishing one that identifies a person. Delegation itself stays visible
 // regardless, because the token DTO records it separately from the actor's identifier.
-func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, actorSub string) string {
+func (tb *tokenBuilder) resolveActorIdentity(
+	ctx context.Context, tokenCtx *AccessTokenBuildContext, actorSub string,
+) string {
 	if actorSub == "" {
 		return ""
 	}
@@ -173,7 +177,7 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 		return actorSub
 	}
 
-	if tb.lookupCategory(actorSub) == "" {
+	if tb.lookupCategory(ctx, actorSub) == "" {
 		return ""
 	}
 	return actorSub
@@ -182,11 +186,11 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 // lookupCategory returns the entity category of the given resource ID, or an empty string when the
 // provider is absent or the ID resolves to no entity. Reads are served by the cache-backed entity
 // store, so this is normally an in-memory hit.
-func (tb *tokenBuilder) lookupCategory(entityID string) string {
+func (tb *tokenBuilder) lookupCategory(ctx context.Context, entityID string) string {
 	if tb.actorProvider == nil {
 		return ""
 	}
-	entity, svcErr := tb.actorProvider.GetActor(entityID)
+	entity, svcErr := tb.actorProvider.GetActor(ctx, entityID)
 	if svcErr != nil || entity == nil {
 		return ""
 	}

@@ -2153,7 +2153,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NoCondition() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return((*core.NodeCondition)(nil))
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2168,7 +2167,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_EmptyOnSkip() {
 	cond := &core.NodeCondition{OnSkip: ""}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2183,7 +2181,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NodeNotFound() {
 	cond := &core.NodeCondition{OnSkip: "skip-target"}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
 	mockGraph.On("GetNode", "skip-target").Return(nil, false)
@@ -2396,7 +2393,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_NotExecutorBacked() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2421,7 +2417,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_ExecutorNameEmpty() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2437,7 +2432,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_RegistryError() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("myExec")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -4613,6 +4607,8 @@ func setupCapturingObservability(t *testing.T) (
 	return mockObs, captured
 }
 
+const testRequestTraceID = "request-trace-1"
+
 // agentFlowContext returns an engine context for an authentication flow driven by an agent that has
 // authenticated a user. The subject is recorded on AuthUser, which is where the authentication
 // executors put it — EngineContext.AuthenticatedUser is never written during execution, so a test
@@ -4620,7 +4616,7 @@ func setupCapturingObservability(t *testing.T) (
 func agentFlowContext() *EngineContext {
 	ctx := &EngineContext{
 		ExecutionID: "flow-exec-1",
-		TraceID:     "request-trace-1",
+		TraceID:     testRequestTraceID,
 		FlowType:    providers.FlowTypeAuthentication,
 		AppID:       "agent-entity-1",
 		Application: providers.Application{
@@ -4656,10 +4652,8 @@ func TestFlowStartedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	}
 	evt := (*captured)[0]
 
-	// The whole flow must share one trace, keyed on the execution id, so FLOW_STARTED stitches to
-	// its own child events.
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
 	}
 
 	assertEventData(t, evt, map[string]interface{}{
@@ -4786,6 +4780,9 @@ func TestNodeExecutionStartedEvent_ReportsSubjectAndPrincipal(t *testing.T) {
 
 	publishNodeExecutionStartedEvent(agentFlowContext(), node, mockObs)
 
+	if evt := (*captured)[0]; evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
+	}
 	assertEventData(t, (*captured)[0], map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),
 		event.DataKey.ClientID:      "agent-client-id",
@@ -4846,15 +4843,15 @@ func TestFlowCompletedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	})
 }
 
-func TestFlowFailedEvent_SharesTheFlowTrace(t *testing.T) {
+func TestFlowFailedEvent_CarriesTheRequestTrace(t *testing.T) {
 	mockObs, captured := setupCapturingObservability(t)
 	defer config.ResetServerRuntime()
 
 	publishFlowFailedEvent(agentFlowContext(), nil, 0, 5, mockObs)
 
 	evt := (*captured)[0]
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
 	}
 	assertEventData(t, evt, map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),

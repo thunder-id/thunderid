@@ -295,7 +295,7 @@ func (s *cacheBackedEntityStore) parseEntityAttributes(
 		var attrs map[string]interface{}
 		if err := json.Unmarshal(raw, &attrs); err != nil {
 			s.logger.Warn(ctx, "Failed to unmarshal entity attributes for cache key resolution",
-				log.String("entityID", entity.ID), log.Error(err))
+				log.MaskedString(log.LoggerKeyEntityID, entity.ID), log.Error(err))
 			continue
 		}
 		for k, v := range attrs {
@@ -334,7 +334,7 @@ func (s *cacheBackedEntityStore) invalidateIdentifierCache(ctx context.Context, 
 		fetched, err := s.store.GetEntity(ctx, entityID)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to fetch entity for identifier cache invalidation",
-				log.String("entityID", entityID), log.Error(err))
+				log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 			return
 		}
 		entity = &fetched
@@ -359,7 +359,7 @@ func (s *cacheBackedEntityStore) cacheEntityByID(ctx context.Context, entity *pr
 	}
 	if err := s.entityByIDCache.Set(ctx, cache.CacheKey{Key: entity.ID}, entity); err != nil {
 		s.logger.Error(ctx, "Failed to cache entity by ID",
-			log.String("entityID", entity.ID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, entity.ID), log.Error(err))
 	}
 }
 
@@ -371,7 +371,7 @@ func (s *cacheBackedEntityStore) cacheEntityWithCredentialsByID(ctx context.Cont
 	if err := s.entityWithCredentialsByIDCache.Set(ctx,
 		cache.CacheKey{Key: ewc.Entity.ID}, ewc); err != nil {
 		s.logger.Error(ctx, "Failed to cache entity with credentials by ID",
-			log.String("entityID", ewc.Entity.ID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, ewc.Entity.ID), log.Error(err))
 	}
 }
 
@@ -381,10 +381,10 @@ func (s *cacheBackedEntityStore) invalidateEntityByID(ctx context.Context, entit
 	}
 	if err := s.entityByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		s.logger.Error(ctx, "Failed to invalidate entity cache by ID",
-			log.String("entityID", entityID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 	}
 	if err := s.entityWithCredentialsByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		s.logger.Error(ctx, "Failed to invalidate entity with credentials cache by ID",
-			log.String("entityID", entityID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 	}
 }
