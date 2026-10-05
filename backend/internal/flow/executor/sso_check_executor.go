@@ -102,7 +102,7 @@ func (e *ssoCheckExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 			common.ForwardedDataKeySSOSessionContext: snapshot,
 		}
 		logger.Debug(ctx.Context, "Live SSO checkpoint present; routing to the Skip outcome",
-			log.String("flowId", in.FlowID),
+			log.String("flowID", in.FlowID),
 			log.String("checkpoint", checkpoint))
 	} else {
 		execResp.Status = providers.ExecFailure

@@ -174,12 +174,12 @@ func (r *executorRegistry) RegisterExecutor(name string, exec providers.Executor
 		return
 	}
 
-	logger.Debug(ctx, "Registering executor", log.String("executorName", name))
+	logger.Debug(ctx, "Registering executor", log.String(log.LoggerKeyExecutorName, name))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.executors[name]; ok {
-		logger.Warn(ctx, "Executor already registered", log.String("executorName", name))
+		logger.Warn(ctx, "Executor already registered", log.String(log.LoggerKeyExecutorName, name))
 		return
 	}
 	r.executors[name] = exec

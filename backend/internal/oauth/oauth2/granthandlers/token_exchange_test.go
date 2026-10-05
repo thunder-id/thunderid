@@ -4232,7 +4232,7 @@ func exchangedToken() *model.TokenDTO {
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedSubjectResolvedThroughAci() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
 		Return(&attributecache.AttributeCache{
@@ -4255,7 +4255,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedSubjectRe
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectWithoutAProfileKeepsSub() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).Return((*providers.Entity)(nil), (*tidcommon.ServiceError)(nil))
+	actors.On("GetActor", mock.Anything, testMappedSub).Return((*providers.Entity)(nil), (*tidcommon.ServiceError)(nil))
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.SubjectEntityID == testMappedSub && ctx.SubjectCategory == ""
@@ -4272,7 +4272,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectWithoutA
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectNamingAnEntitySkipsAci() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return(&providers.Entity{ID: testMappedSub, Category: providers.EntityCategoryUser},
 			(*tidcommon.ServiceError)(nil))
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -4303,7 +4303,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_UnresolvableAci
 			suite.SetupTest()
 			actors, attrCache := suite.withLifespanMocks()
 			req := suite.exchangeRequest(false)
-			actors.On("GetActor", testMappedSub).
+			actors.On("GetActor", mock.Anything, testMappedSub).
 				Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 			attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).Return(tc.entry, tc.cacheErr)
 			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -4370,7 +4370,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestIsDeviceSecretSubjectToken(
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AciUnavailableIsServerError() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
 		Return((*attributecache.AttributeCache)(nil), &tidcommon.InternalServerError)
@@ -4387,7 +4387,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AciUnavailableI
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectLookupNotSupportedFallsBackToAci() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return((*providers.Entity)(nil), &actorprovider.ErrorActorLookupNotSupported)
 	attrCache.On("GetAttributeCache", mock.Anything, testAttrCacheID).
 		Return(&attributecache.AttributeCache{ID: testAttrCacheID, SubjectID: testAgentEntityID},
@@ -4408,7 +4408,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectLookupNo
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectLookupFailureIsServerError() {
 	actors, attrCache := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
+	actors.On("GetActor", mock.Anything, testMappedSub).Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
 
@@ -4425,9 +4425,10 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorLookupFail
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
 		}, nil)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
-	actors.On("GetActor", "actor@example.com").Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
+	actors.On("GetActor", mock.Anything, "actor@example.com").
+		Return((*providers.Entity)(nil), &tidcommon.InternalServerError)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
 
@@ -4446,9 +4447,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedActorReso
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
 		}, nil)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
-	actors.On("GetActor", "actor@example.com").
+	actors.On("GetActor", mock.Anything, "actor@example.com").
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 	attrCache.On("GetAttributeCache", mock.Anything, "aci-actor").
 		Return(&attributecache.AttributeCache{ID: "aci-actor", SubjectID: testAgentEntityID},
@@ -4471,9 +4472,9 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorAciUnavail
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: "actor@example.com", Iss: testCustomIssuer, AttributeCacheID: "aci-actor",
 		}, nil)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
-	actors.On("GetActor", "actor@example.com").
+	actors.On("GetActor", mock.Anything, "actor@example.com").
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 	attrCache.On("GetAttributeCache", mock.Anything, "aci-actor").
 		Return((*attributecache.AttributeCache)(nil), &tidcommon.InternalServerError)
@@ -4504,7 +4505,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectWithoutA
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: testMappedSub, Iss: testCustomIssuer, Scopes: []string{testScopeRead},
 		}, nil)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
@@ -4551,7 +4552,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubject
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_LifespanEndedIsInvalidGrant() {
 	actors, _ := suite.withLifespanMocks()
 	req := suite.exchangeRequest(false)
-	actors.On("GetActor", testMappedSub).
+	actors.On("GetActor", mock.Anything, testMappedSub).
 		Return(&providers.Entity{ID: testMappedSub}, (*tidcommon.ServiceError)(nil))
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
 		Return((*model.TokenDTO)(nil), tokenservice.ErrIssuanceRefused)

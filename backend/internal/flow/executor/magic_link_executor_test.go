@@ -168,7 +168,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -210,7 +210,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -256,7 +256,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"mobile_number": "+1234567890",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -299,7 +299,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -329,7 +329,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -372,7 +372,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -406,7 +406,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Genera
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -439,7 +439,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Client
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -481,7 +481,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -499,7 +499,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 func (suite *MagicLinkExecutorTestSuite) generateForHeld(
 	governance providers.IdentityGovernanceProvider) (*providers.ExecutorResponse, error) {
 	suite.executor.accessGuard = newAccessGuard(governance)
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil).Once()
 	return suite.executor.Execute(&providers.NodeContext{
@@ -556,7 +556,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RecoveryFlowCh
 	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), magicLinkTestUserID,
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodMagicLink,
 		providers.AccessDecision{Admitted: true}, nil))
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil).Once()
 	suite.mockMagicLinkService.On("GenerateMagicLink", mock.Anything, magicLinkTestUserID, mock.Anything,
@@ -587,7 +587,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_ClearsAnEarlie
 		UserInputs:   map[string]string{userAttributeEmail: magicLinkTestEmail},
 		RuntimeData:  map[string]string{common.RuntimeKeySkipDelivery: dataValueTrue},
 	}
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil).Once()
 	suite.mockMagicLinkService.On("GenerateMagicLink", mock.Anything, magicLinkTestUserID, mock.Anything,
@@ -643,7 +643,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), magicLinkTestUserID, resp.RuntimeData[userAttributeUserID])
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
 }
 
@@ -1211,7 +1211,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFl
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 

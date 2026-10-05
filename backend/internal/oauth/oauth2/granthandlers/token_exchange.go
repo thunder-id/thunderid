@@ -737,7 +737,7 @@ func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
 		return "", "", nil
 	}
 
-	entity, svcErr := h.actorProvider.GetActor(claims.Sub)
+	entity, svcErr := h.actorProvider.GetActor(ctx, claims.Sub)
 	if svcErr == nil {
 		if entity == nil {
 			return claims.Sub, "", nil
