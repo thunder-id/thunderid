@@ -75,6 +75,7 @@ The **System** resource server declares the permissions for managing <ProductNam
 | `authzdetail` | Authorization Detail Types | `view`, `create`, `update`, `delete` |
 | `serverconfig` | Server Configuration | `view`, `update` |
 | `configversion` | Configuration Versions | `view`, `create` |
+| `session` | Sessions | `view` |
 
 Design, translations, gateways, authorization detail types, server configuration, and configuration versions have no owning organization unit, so a change to one affects every organization unit. A configuration version holds a snapshot of the whole deployment, so once a management API accepts `system:configversion:view`, it will expose the configuration of every organization unit. No management API accepts that permission yet.
 
@@ -104,6 +105,8 @@ The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. 
 :::
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
+
+`system:session:view` lists the SSO sessions of every user and application in the deployment. Only a data plane serves sessions. Users list their own sessions without any system permission.
 
 The MCP tools require the same permissions as the matching APIs. The MCP server itself requires a token that carries at least one system permission.
 

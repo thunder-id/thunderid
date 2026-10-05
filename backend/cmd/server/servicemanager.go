@@ -62,6 +62,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
+	sessionmgt "github.com/thunder-id/thunderid/internal/flow/session/mgt"
 	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
@@ -547,6 +548,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, executor.SetApplicationProvider(execRegistry, applicationService),
 		"Failed to inject the application provider into the flow executors")
 	exporters = append(exporters, applicationExporter)
+
+	sessionmgt.Initialize(mux, sessionService, userService, applicationService)
 
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
