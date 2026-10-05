@@ -24,7 +24,7 @@ var (
 	queryGetLayoutList = dbmodel.DBQuery{
 		ID: "LAQ-LAYOUT_MGT-03",
 		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, CREATED_AT, UPDATED_AT FROM "LAYOUT" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetLayoutListCount retrieves the total count of layout configurations.
