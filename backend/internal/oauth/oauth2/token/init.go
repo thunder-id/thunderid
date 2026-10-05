@@ -73,7 +73,8 @@ func registerRoutes(
 		jtiStore, issuer, assertionCfg, jwtLeeway)
 	endpoint := http.HandlerFunc(tokenHandler.HandleTokenRequest)
 	register := func(route string, handler http.Handler) {
-		pattern, wrapped := middleware.WithCORS(route, handler.ServeHTTP, corsOpts)
+		pattern, wrapped := middleware.WithCORS(route,
+			middleware.CorrelationIDMiddleware(handler).ServeHTTP, corsOpts)
 		mux.HandleFunc(pattern, wrapped)
 	}
 

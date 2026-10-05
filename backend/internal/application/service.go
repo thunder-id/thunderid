@@ -403,7 +403,7 @@ func (as *applicationService) GetOAuthApplication(
 	appEntity, entErr := as.entityService.GetEntity(ctx, client.ID)
 	if entErr != nil && !errors.Is(entErr, entity.ErrEntityNotFound) {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
-			log.String("entityID", client.ID), log.Error(entErr))
+			log.MaskedString("entityID", client.ID), log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	if appEntity == nil || appEntity.Category != providers.EntityCategoryApp {

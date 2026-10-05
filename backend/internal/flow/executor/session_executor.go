@@ -299,7 +299,7 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 	}
 
 	logger.Debug(ctx.Context, "Loaded SSO checkpoint",
-		log.String("flowId", session.SSOInputsFrom(ctx.Context).FlowID),
+		log.String("flowID", session.SSOInputsFrom(ctx.Context).FlowID),
 		log.String("checkpoint", checkpoint))
 	return nil
 }

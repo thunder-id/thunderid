@@ -1091,7 +1091,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ResolvesEmailFromEntit
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"workEmail":"database-resolved@example.com"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	suite.mockTemplateRenderer.On("Resolve",
 		ctx.Context,
@@ -1169,7 +1169,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderMissingE
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"other":"data"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-db-user-id").Return(mockEntity, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1211,7 +1211,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderError() 
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "provider error", "system failure"))
 
@@ -1235,7 +1235,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderUserNotF
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "non-existent-user-id").Return(
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, "non-existent-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeEntityNotFound, "user not found", "entity not found"))
 

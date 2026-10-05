@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
@@ -76,4 +77,20 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(suite.T(), http.StatusNoContent, w.Code)
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return([]providers.PublicKeyInfo{}, nil)
+
+	mux := http.NewServeMux()
+	registerRoutes(mux, newJWKSHandler(newJWKSService(cryptoMock)))
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

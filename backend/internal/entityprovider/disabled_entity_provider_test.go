@@ -4,6 +4,7 @@
 package entityprovider
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -38,7 +39,7 @@ func (suite *DisabledEntityProviderTestSuite) TestGetLinkedEntities() {
 }
 
 func (suite *DisabledEntityProviderTestSuite) TestGetEntity() {
-	e, err := suite.provider.GetEntity("entity-id")
+	e, err := suite.provider.GetEntity(context.Background(), "entity-id")
 	suite.Nil(e)
 	suite.Equal(errNotImplemented, err)
 }
@@ -70,7 +71,7 @@ func (suite *DisabledEntityProviderTestSuite) TestUpdateSystemCredentials() {
 }
 
 func (suite *DisabledEntityProviderTestSuite) TestGetTransitiveEntityGroups() {
-	groups, err := suite.provider.GetTransitiveEntityGroups("entity-id")
+	groups, err := suite.provider.GetTransitiveEntityGroups(context.Background(), "entity-id")
 	suite.Nil(groups)
 	suite.Equal(errNotImplemented, err)
 }

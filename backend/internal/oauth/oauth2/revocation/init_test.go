@@ -5,6 +5,7 @@ package revocation
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
@@ -121,4 +123,21 @@ func revocationConfig(maxEntriesPerChange int) oauthconfig.Config {
 	cfg.OAuth.RefreshToken.ValidityPeriod = 3600
 	cfg.OAuth.Revocation.Criteria.MaxEntriesPerChange = maxEntriesPerChange
 	return cfg
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	suite.mockDiscoveryService.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
+		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://example.com"})
+	mux := http.NewServeMux()
+	_, revocationService, err := Initialize(revocationConfig(10), suite.mockJWTService, nil)
+	suite.Require().NoError(err)
+	RegisterRoutes(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, revocationService, nil,
+		engineconfig.ClientAssertionConfig{}, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/revoke", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

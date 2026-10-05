@@ -75,9 +75,9 @@ func (p *defaultEntityProvider) GetLinkedEntities(
 
 // GetEntity retrieves an entity by ID.
 func (p *defaultEntityProvider) GetEntity(
-	entityID string,
+	ctx context.Context, entityID string,
 ) (*providers.Entity, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	result, err := p.entitySvc.GetEntity(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -168,9 +168,9 @@ func (p *defaultEntityProvider) UpdateSystemCredentials(
 
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
 func (p *defaultEntityProvider) GetTransitiveEntityGroups(
-	entityID string,
+	ctx context.Context, entityID string,
 ) ([]providers.EntityGroup, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	groups, err := p.entitySvc.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		return nil, mapEntityError(err)
@@ -183,9 +183,9 @@ func (p *defaultEntityProvider) GetTransitiveEntityGroups(
 
 // GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
 func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
-	groupID string,
+	ctx context.Context, groupID string,
 ) ([]string, *EntityProviderError) {
-	ctx := security.WithRuntimeContext(context.Background())
+	ctx = security.WithRuntimeContext(ctx)
 	ancestors, err := p.entitySvc.GetTransitiveGroupAncestors(ctx, groupID)
 	if err != nil {
 		return nil, mapEntityError(err)

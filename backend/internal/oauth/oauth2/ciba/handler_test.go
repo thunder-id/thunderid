@@ -17,7 +17,11 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 )
 
 type CIBAHandlerTestSuite struct {
@@ -255,4 +259,19 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_RepeatedResourcePreserved
 	suite.handler.HandleBackchannelAuthRequest(w, req)
 
 	suite.Equal(http.StatusOK, w.Code)
+}
+
+func (suite *CIBAHandlerTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mockDiscovery := discoverymock.NewDiscoveryServiceInterfaceMock(suite.T())
+	mockDiscovery.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
+		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://example.com"})
+	mux := http.NewServeMux()
+	registerRoutes(mux, suite.handler, nil, nil, nil, mockDiscovery, nil, engineconfig.ClientAssertionConfig{}, 0)
+
+	req := httptest.NewRequest(http.MethodPost, oauth2const.OAuth2BackchannelAuthEndpoint, nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

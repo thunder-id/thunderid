@@ -41,9 +41,12 @@ func registerRoutes(mux *http.ServeMux, handler *logoutHandler) {
 
 	callbackEndpoint := constants.OAuth2LogoutEndpoint + "/callback"
 
-	mux.HandleFunc(middleware.WithCORS("GET "+constants.OAuth2LogoutEndpoint, handler.HandleLogout, opts))
-	mux.HandleFunc(middleware.WithCORS("POST "+constants.OAuth2LogoutEndpoint, handler.HandleLogout, opts))
-	mux.HandleFunc(middleware.WithCORS("POST "+callbackEndpoint, handler.HandleLogoutCallback, opts))
+	logout := middleware.CorrelationIDMiddleware(http.HandlerFunc(handler.HandleLogout)).ServeHTTP
+	logoutCallback := middleware.CorrelationIDMiddleware(http.HandlerFunc(handler.HandleLogoutCallback)).ServeHTTP
+
+	mux.HandleFunc(middleware.WithCORS("GET "+constants.OAuth2LogoutEndpoint, logout, opts))
+	mux.HandleFunc(middleware.WithCORS("POST "+constants.OAuth2LogoutEndpoint, logout, opts))
+	mux.HandleFunc(middleware.WithCORS("POST "+callbackEndpoint, logoutCallback, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+constants.OAuth2LogoutEndpoint,
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

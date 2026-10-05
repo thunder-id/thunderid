@@ -5,6 +5,7 @@ package userinfo
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -90,4 +92,16 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/userinfo"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/userinfo")
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mux := http.NewServeMux()
+	registerRoutes(mux, newUserInfoHandler(nil, "https://example.com/oauth2/userinfo", nil))
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

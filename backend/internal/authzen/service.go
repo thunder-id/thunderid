@@ -439,7 +439,7 @@ func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (S
 	if s.entityProvider == nil {
 		return subject, nil
 	}
-	entity, err := s.entityProvider.GetEntity(subject.ID)
+	entity, err := s.entityProvider.GetEntity(ctx, subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return subject, nil
@@ -539,7 +539,7 @@ func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) (
 		return []string{}, nil
 	}
 
-	groups, err := s.entityProvider.GetTransitiveEntityGroups(entityID)
+	groups, err := s.entityProvider.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return []string{}, nil

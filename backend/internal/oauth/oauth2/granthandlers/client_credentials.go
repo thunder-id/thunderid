@@ -91,7 +91,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		if len(scopes) > 0 {
 			var groupIDs []string
 			if h.actorProvider != nil {
-				groups, groupErr := h.actorProvider.GetActorGroups(oauthApp.ID)
+				groups, groupErr := h.actorProvider.GetActorGroups(ctx, oauthApp.ID)
 				if groupErr != nil {
 					logger.Error(ctx, "Failed to resolve app group memberships",
 						log.String("appID", oauthApp.ID), log.String("error", groupErr.Error.DefaultValue))
@@ -124,7 +124,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
-	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(oauthApp, h.actorProvider)
+	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.actorProvider)
 	if clientAttrErr != nil {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,

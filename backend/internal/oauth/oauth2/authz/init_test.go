@@ -5,12 +5,14 @@ package authz
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
@@ -18,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
@@ -156,4 +159,18 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 			}
 		})
 	}
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mockHandler := NewAuthorizeHandlerInterfaceMock(suite.T())
+	mockHandler.On("HandleAuthorizeGetRequest", mock.Anything, mock.Anything).Return()
+	mux := http.NewServeMux()
+	registerRoutes(mux, mockHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorize", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

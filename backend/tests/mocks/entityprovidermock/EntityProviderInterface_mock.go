@@ -5,6 +5,7 @@
 package entityprovidermock
 
 import (
+	"context"
 	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
@@ -166,8 +167,8 @@ func (_c *EntityProviderInterfaceMock_GetEntitiesByIDs_Call) RunAndReturn(run fu
 }
 
 // GetEntity provides a mock function for the type EntityProviderInterfaceMock
-func (_mock *EntityProviderInterfaceMock) GetEntity(entityID string) (*providers.Entity, *entityprovider.EntityProviderError) {
-	ret := _mock.Called(entityID)
+func (_mock *EntityProviderInterfaceMock) GetEntity(ctx context.Context, entityID string) (*providers.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEntity")
@@ -175,18 +176,18 @@ func (_mock *EntityProviderInterfaceMock) GetEntity(entityID string) (*providers
 
 	var r0 *providers.Entity
 	var r1 *entityprovider.EntityProviderError
-	if returnFunc, ok := ret.Get(0).(func(string) (*providers.Entity, *entityprovider.EntityProviderError)); ok {
-		return returnFunc(entityID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *providers.Entity); ok {
-		r0 = returnFunc(entityID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.Entity); ok {
+		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
-		r1 = returnFunc(entityID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
@@ -201,19 +202,25 @@ type EntityProviderInterfaceMock_GetEntity_Call struct {
 }
 
 // GetEntity is a helper method to define mock.On call
+//   - ctx context.Context
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(entityID any) *EntityProviderInterfaceMock_GetEntity_Call {
-	return &EntityProviderInterfaceMock_GetEntity_Call{Call: _e.mock.On("GetEntity", entityID)}
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(ctx any, entityID any) *EntityProviderInterfaceMock_GetEntity_Call {
+	return &EntityProviderInterfaceMock_GetEntity_Call{Call: _e.mock.On("GetEntity", ctx, entityID)}
 }
 
-func (_c *EntityProviderInterfaceMock_GetEntity_Call) Run(run func(entityID string)) *EntityProviderInterfaceMock_GetEntity_Call {
+func (_c *EntityProviderInterfaceMock_GetEntity_Call) Run(run func(ctx context.Context, entityID string)) *EntityProviderInterfaceMock_GetEntity_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -224,7 +231,7 @@ func (_c *EntityProviderInterfaceMock_GetEntity_Call) Return(entity *providers.E
 	return _c
 }
 
-func (_c *EntityProviderInterfaceMock_GetEntity_Call) RunAndReturn(run func(entityID string) (*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetEntity_Call {
+func (_c *EntityProviderInterfaceMock_GetEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -450,8 +457,8 @@ func (_c *EntityProviderInterfaceMock_GetLinkedEntities_Call) RunAndReturn(run f
 }
 
 // GetTransitiveEntityGroups provides a mock function for the type EntityProviderInterfaceMock
-func (_mock *EntityProviderInterfaceMock) GetTransitiveEntityGroups(entityID string) ([]providers.EntityGroup, *entityprovider.EntityProviderError) {
-	ret := _mock.Called(entityID)
+func (_mock *EntityProviderInterfaceMock) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]providers.EntityGroup, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(ctx, entityID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTransitiveEntityGroups")
@@ -459,18 +466,18 @@ func (_mock *EntityProviderInterfaceMock) GetTransitiveEntityGroups(entityID str
 
 	var r0 []providers.EntityGroup
 	var r1 *entityprovider.EntityProviderError
-	if returnFunc, ok := ret.Get(0).(func(string) ([]providers.EntityGroup, *entityprovider.EntityProviderError)); ok {
-		return returnFunc(entityID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]providers.EntityGroup, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(ctx, entityID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) []providers.EntityGroup); ok {
-		r0 = returnFunc(entityID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []providers.EntityGroup); ok {
+		r0 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]providers.EntityGroup)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
-		r1 = returnFunc(entityID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(ctx, entityID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
@@ -485,19 +492,25 @@ type EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call struct {
 }
 
 // GetTransitiveEntityGroups is a helper method to define mock.On call
+//   - ctx context.Context
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID any) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
-	return &EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call{Call: _e.mock.On("GetTransitiveEntityGroups", entityID)}
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(ctx any, entityID any) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	return &EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call{Call: _e.mock.On("GetTransitiveEntityGroups", ctx, entityID)}
 }
 
-func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) Run(run func(entityID string)) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) Run(run func(ctx context.Context, entityID string)) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -508,14 +521,14 @@ func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) Return(ent
 	return _c
 }
 
-func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(entityID string) ([]providers.EntityGroup, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(ctx context.Context, entityID string) ([]providers.EntityGroup, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetTransitiveGroupAncestors provides a mock function for the type EntityProviderInterfaceMock
-func (_mock *EntityProviderInterfaceMock) GetTransitiveGroupAncestors(groupID string) ([]string, *entityprovider.EntityProviderError) {
-	ret := _mock.Called(groupID)
+func (_mock *EntityProviderInterfaceMock) GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(ctx, groupID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTransitiveGroupAncestors")
@@ -523,18 +536,18 @@ func (_mock *EntityProviderInterfaceMock) GetTransitiveGroupAncestors(groupID st
 
 	var r0 []string
 	var r1 *entityprovider.EntityProviderError
-	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *entityprovider.EntityProviderError)); ok {
-		return returnFunc(groupID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]string, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(ctx, groupID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
-		r0 = returnFunc(groupID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []string); ok {
+		r0 = returnFunc(ctx, groupID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
-		r1 = returnFunc(groupID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(ctx, groupID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
@@ -549,19 +562,25 @@ type EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call struct {
 }
 
 // GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - ctx context.Context
 //   - groupID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(groupID any) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
-	return &EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(ctx any, groupID any) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	return &EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", ctx, groupID)}
 }
 
-func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Run(run func(ctx context.Context, groupID string)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -572,7 +591,7 @@ func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Return(s
 	return _c
 }
 
-func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(ctx context.Context, groupID string) ([]string, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
 	_c.Call.Return(run)
 	return _c
 }

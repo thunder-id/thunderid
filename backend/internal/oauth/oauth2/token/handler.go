@@ -139,7 +139,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	logger.Debug(ctx, "Token response sending", log.String("client_id", clientInfo.ClientID))
+	logger.Debug(ctx, "Token response sending", log.String("clientID", clientInfo.ClientID))
 
 	// Must include the following headers when sensitive data is returned.
 	w.Header().Set(sysconst.CacheControlHeaderName, sysconst.CacheControlNoStore)

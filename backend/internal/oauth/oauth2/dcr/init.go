@@ -55,16 +55,16 @@ func registerRoutes(mux *http.ServeMux, dcrHandler *dcrHandler) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	mux.HandleFunc(middleware.WithCORS("POST /oauth2/dcr/register",
-		dcrHandler.HandleDCRRegistration, opts))
+	register := func(route string, handler http.HandlerFunc) {
+		mux.HandleFunc(middleware.WithCORS(route, middleware.CorrelationIDMiddleware(handler).ServeHTTP, opts))
+	}
+
+	register("POST /oauth2/dcr/register", dcrHandler.HandleDCRRegistration)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/dcr/register", noContent, opts))
 
 	// RFC 7592 client configuration endpoint.
-	mux.HandleFunc(middleware.WithCORS("GET /oauth2/dcr/register/{client_id}",
-		dcrHandler.HandleGetClientConfiguration, opts))
-	mux.HandleFunc(middleware.WithCORS("PUT /oauth2/dcr/register/{client_id}",
-		dcrHandler.HandleUpdateClientConfiguration, opts))
-	mux.HandleFunc(middleware.WithCORS("DELETE /oauth2/dcr/register/{client_id}",
-		dcrHandler.HandleDeleteClientConfiguration, opts))
+	register("GET /oauth2/dcr/register/{client_id}", dcrHandler.HandleGetClientConfiguration)
+	register("PUT /oauth2/dcr/register/{client_id}", dcrHandler.HandleUpdateClientConfiguration)
+	register("DELETE /oauth2/dcr/register/{client_id}", dcrHandler.HandleDeleteClientConfiguration)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/dcr/register/{client_id}", noContent, opts))
 }

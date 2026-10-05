@@ -64,7 +64,8 @@ func registerRoutes(
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
-	wrappedHandler := clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest))
+	wrappedHandler := middleware.CorrelationIDMiddleware(
+		clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest)))
 
 	pattern, corsHandler := middleware.WithCORS(
 		"POST /oauth2/par",
