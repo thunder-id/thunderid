@@ -118,6 +118,13 @@ resources:
   - name: System
     handle: system
     description: System resource
+  - name: Sessions
+    handle: session
+    parent: system
+    description: SSO sessions of every user and application
+    actions:
+      - name: View
+        handle: view
   - name: Organization
     handle: org
     description: Resources of the organization unit the token names

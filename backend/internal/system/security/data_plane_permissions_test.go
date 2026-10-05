@@ -98,6 +98,17 @@ func (s *DataPlanePermissionsTestSuite) TestDeclaresNoProjectPermission() {
 	}
 }
 
+// Only the Data Plane serves sessions, so it declares the session permissions under the system root, and
+// the self-service session routes stay open to any authenticated caller.
+func (s *DataPlanePermissionsTestSuite) TestSessionPermissionsAreUnderSystem() {
+	s.Equal("system:session:view", GetSystemPermissions().SessionView)
+
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	s.Require().NoError(err)
+	s.Equal("system:session:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/sessions"))
+	s.Equal("", svc.getRequiredPermissionForAPI(http.MethodGet, "/users/me/sessions"))
+}
+
 func (s *DataPlanePermissionsTestSuite) TestDeploymentWideReadsRequireOrgAndWritesRequireSystem() {
 	p := GetSystemPermissions()
 	for _, perm := range []string{p.DesignView, p.I18nView, p.AuthzDetailView} {
@@ -131,10 +142,11 @@ func (s *DataPlanePermissionsTestSuite) TestPrefixIsHonored() {
 	s.Equal("mgmt:org:user:view", p.UserView)
 	s.Equal("mgmt:org", p.AppView)
 	s.Equal("mgmt:system", p.DesignCreate)
+	s.Equal("mgmt:system:session:view", p.SessionView)
 	s.Equal("mgmt:org:ou:create", ResolveActionPermission(ActionCreateOU))
 }
 
-func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTree() {
+func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTreeAndTheSystemChildren() {
 	p := GetSystemPermissions()
 	s.Equal("org", p.Catalog[0])
 	s.Equal([]string{
@@ -147,6 +159,7 @@ func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTree() {
 		"org:usertype:delete",
 		"org:agenttype", "org:agenttype:view", "org:agenttype:create", "org:agenttype:update",
 		"org:agenttype:delete",
+		"system:session", "system:session:view",
 	}, p.Catalog)
 }
 
@@ -180,7 +193,8 @@ func (s *DataPlanePermissionsTestSuite) TestRouteTable() {
 }
 
 // TestNoControlPlanePermissionIsEnforced verifies that every route, action and MCP tool on the data
-// plane requires the system root, the org root or an org catalog permission, never a system child.
+// plane requires the system root, the org root or a data plane catalog permission, never one only the
+// control plane declares.
 func (s *DataPlanePermissionsTestSuite) TestNoControlPlanePermissionIsEnforced() {
 	p := GetSystemPermissions()
 	allowed := func(perm string) bool {
@@ -301,6 +315,9 @@ func (s *DataPlanePermissionsTestSuite) TestATokenNamingNoUnitNeedsTheSystemPerm
 		{name: "org with a unit", ouID: "ou-1", permissions: []string{"org"}, path: "/users"},
 		{name: "org child with a unit", ouID: "ou-1", permissions: []string{"org:user:view"}, path: "/users"},
 		{name: "system without a unit", permissions: []string{"system"}, path: "/users"},
+		{name: "system child without a unit", permissions: []string{"system:session:view"}, path: "/sessions"},
+		{name: "system child on an org route", permissions: []string{"system:session:view"}, path: "/users",
+			wantErr: errInsufficientPermissions},
 		{name: "self service without a unit", permissions: []string{"org"}, path: "/users/me"},
 	}
 	for _, tc := range tests {
