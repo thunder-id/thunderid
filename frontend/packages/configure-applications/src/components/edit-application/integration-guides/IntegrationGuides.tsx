@@ -386,11 +386,11 @@ export default function IntegrationGuides({
         'For driving sign-in and registration with a fully custom UI.',
       )}
     >
-      <Box>
+      <Stack spacing={2}>
         {endpoints.map((endpoint) => (
           <CopyableField key={endpoint.key} label={endpoint.label} value={endpoint.url} />
         ))}
-      </Box>
+      </Stack>
     </OverviewCard>
   );
   // Sign-in-facing apps already fill the main column with a quickstart and a sizeable preview
@@ -407,7 +407,7 @@ export default function IntegrationGuides({
       description={t('applications:edit.overview.appDetails.description', 'Identifiers used in your integration code.')}
       sx={hasMainContent ? undefined : {flex: '1 1 320px', maxWidth: {xs: '100%', md: 320}}}
     >
-      <Box>
+      <Stack spacing={2}>
         <CopyableField label={t('applications:edit.general.labels.applicationId')} value={application.id} />
         {oauth2Config?.clientId && (
           <CopyableField label={t('applications:edit.general.labels.clientId')} value={oauth2Config.clientId} />
@@ -424,7 +424,7 @@ export default function IntegrationGuides({
             value={organizationUnit.handle}
           />
         )}
-      </Box>
+      </Stack>
     </OverviewCard>
   );
 
