@@ -283,3 +283,18 @@ var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 		DefaultValue: "Administrative flows require the system permission",
 	},
 }
+
+// ErrorFlowApplicationNotUsable is returned when the application driving a flow is suspended. It
+// does not say why.
+var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
+	Code: "FES-1020",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.application_not_usable",
+		DefaultValue: "Flow execution not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.application_not_usable_description",
+		DefaultValue: "The flow cannot be executed for the requested application",
+	},
+}

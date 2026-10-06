@@ -107,6 +107,31 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntity() {
 	suite.Equal(ErrorCodeEntityNotFound, err.Code)
 }
 
+// A profile read goes to the entity service's profile read, so it never loads the runtime row.
+func (suite *DefaultEntityProviderTestSuite) TestGetEntityProfile() {
+	expected := &providers.Entity{
+		ID:       testEntityID,
+		Category: providers.EntityCategoryUser,
+		Type:     "customer",
+	}
+
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).Return(expected, nil).Once()
+
+	e, err := suite.provider.GetEntityProfile(testEntityID)
+	suite.Nil(err)
+	suite.Equal(testEntityID, e.ID)
+	suite.Equal(providers.EntityCategory("user"), e.Category)
+	suite.mockService.AssertNotCalled(suite.T(), "GetEntity", mock.Anything, mock.Anything)
+
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+		Return(nil, entity.ErrEntityNotFound).Once()
+
+	e, err = suite.provider.GetEntityProfile(testEntityID)
+	suite.Nil(e)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeEntityNotFound, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
 	providerEntity := &providers.Entity{
 		ID:   testEntityID,

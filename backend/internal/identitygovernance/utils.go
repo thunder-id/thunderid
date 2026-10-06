@@ -6,6 +6,8 @@ package identitygovernance
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -384,29 +386,6 @@ func expiryOf(unlockAt string) string {
 	return unlockAt
 }
 
-// effectiveAccountAccess lays a layer over the base and defaults the lock email recipient attribute.
-// This is the only place the default is applied.
-func effectiveAccountAccess(base, layer accountAccessValue) accountAccessValue {
-	merged := mergeAccountAccessValue(base, layer)
-	if merged.User == nil {
-		return merged
-	}
-	email := merged.User.Notifications.lockEmail()
-	if email == nil || strings.TrimSpace(sysutils.DerefOr(email.RecipientAttribute, "")) != "" {
-		return merged
-	}
-	// Copy before defaulting so stored layers remain unchanged.
-	user := *merged.User
-	effectiveEmail := *email
-	attribute := defaultLockEmailRecipientAttribute
-	effectiveEmail.RecipientAttribute = &attribute
-	user.Notifications = &accountAccessNotifications{
-		OnLock: &accountAccessLockNotification{Email: &effectiveEmail},
-	}
-	merged.User = &user
-	return merged
-}
-
 // categoriesOf lists a section's categories in a fixed order.
 func categoriesOf(cfg accountAccessValue) []namedCategory {
 	return []namedCategory{{"user", cfg.User}, {"agent", cfg.Agent}}
@@ -427,6 +406,66 @@ func validateStructure(cfg accountAccessValue) error {
 		}
 		if err := validatePolicyStructure(category.name+".default", category.value.Default); err != nil {
 			return err
+		}
+		if err := validateLockEmail(category.name+".notifications.onLock.email",
+			category.value.Notifications.lockEmail()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateLockEmail checks the lock email's template handles, and that each method override names a
+// lockable method.
+func validateLockEmail(path string, email *accountAccessLockEmail) error {
+	if email == nil || email.Templates == nil {
+		return nil
+	}
+	path += ".templates"
+	templates := email.Templates
+	if err := validateTemplatePair(path, templates.accountAccessTemplatePair); err != nil {
+		return err
+	}
+	if templates.Entity != nil {
+		if err := validateTemplatePair(path+".entity", *templates.Entity); err != nil {
+			return err
+		}
+	}
+	allowed := lockTemplateMethods()
+	for _, method := range slices.Sorted(maps.Keys(templates.Methods)) {
+		methodPath := path + ".methods." + method
+		if !slices.Contains(allowed, method) {
+			return fmt.Errorf("%s: %s is not a lockable authentication method; use %s",
+				serverconfig.ConfigNameAccountAccess, methodPath, strings.Join(allowed, " or "))
+		}
+		if err := validateTemplatePair(methodPath, templates.Methods[method]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// lockTemplateMethods lists, in a fixed order, the methods a lock email template can be set for: every
+// lockable method except the entity-wide key, which has its own field.
+func lockTemplateMethods() []string {
+	var methods []string
+	for method, lockable := range lockableMethods {
+		if lockable && method != AuthenticationMethodEntity {
+			methods = append(methods, string(method))
+		}
+	}
+	slices.Sort(methods)
+	return methods
+}
+
+// validateTemplatePair rejects a template handle that is set and not a valid handle.
+func validateTemplatePair(path string, pair accountAccessTemplatePair) error {
+	for _, field := range []struct{ name, handle string }{
+		{"temporary", pair.Temporary}, {"permanent", pair.Permanent},
+	} {
+		if field.handle != "" && !sysutils.IsValidHandle(field.handle) {
+			return fmt.Errorf("%s: %s.%s is not a valid handle", serverconfig.ConfigNameAccountAccess, path,
+				field.name)
 		}
 	}
 	return nil
@@ -594,18 +633,56 @@ func mergeAccountAccessNotifications(readOnly, writable *accountAccessNotificati
 	}
 
 	merged := &accountAccessLockEmail{
-		Enabled:            base.Enabled,
-		RecipientAttribute: base.RecipientAttribute,
+		Enabled:   base.Enabled,
+		Templates: mergeLockTemplates(base.Templates, override.Templates),
 	}
 	if override.Enabled != nil {
 		merged.Enabled = override.Enabled
 	}
-	if override.RecipientAttribute != nil {
-		merged.RecipientAttribute = override.RecipientAttribute
-	}
 	return &accountAccessNotifications{
 		OnLock: &accountAccessLockNotification{Email: merged},
 	}
+}
+
+// mergeLockTemplates overlays one templates block on another, handle by handle and method by method.
+// If either side is nil, the other is returned.
+func mergeLockTemplates(readOnly, writable *accountAccessLockTemplates) *accountAccessLockTemplates {
+	if writable == nil {
+		return readOnly
+	}
+	if readOnly == nil {
+		return writable
+	}
+	merged := &accountAccessLockTemplates{
+		accountAccessTemplatePair: overlayTemplatePair(readOnly.accountAccessTemplatePair,
+			writable.accountAccessTemplatePair),
+		Entity:  readOnly.Entity,
+		Methods: maps.Clone(readOnly.Methods),
+	}
+	if writable.Entity != nil {
+		entity := overlayTemplatePair(sysutils.DerefOr(readOnly.Entity, accountAccessTemplatePair{}),
+			*writable.Entity)
+		merged.Entity = &entity
+	}
+	for method, pair := range writable.Methods {
+		if merged.Methods == nil {
+			merged.Methods = make(map[string]accountAccessTemplatePair)
+		}
+		merged.Methods[method] = overlayTemplatePair(merged.Methods[method], pair)
+	}
+	return merged
+}
+
+// overlayTemplatePair overlays the handles override sets on base. Used both for layer merges and for
+// an override over the default pair.
+func overlayTemplatePair(base, override accountAccessTemplatePair) accountAccessTemplatePair {
+	if override.Temporary != "" {
+		base.Temporary = override.Temporary
+	}
+	if override.Permanent != "" {
+		base.Permanent = override.Permanent
+	}
+	return base
 }
 
 // overlayAccountAccessPolicy overlays one policy on another, field by field. Used both for layer
@@ -639,35 +716,49 @@ func overlayAccountAccessPolicy(base, override *accountAccessPolicy) *accountAcc
 	return &merged
 }
 
-// lockEmailRecipient returns the profile attribute a lock email for this category is sent to, and
-// false when the category is not notified. Only users are notified.
-func lockEmailRecipient(cfg accountAccessValue, category providers.EntityCategory) (string, bool) {
+// lockEmailFor returns the category's lock email when it is switched on, or nil. Only users are
+// notified.
+func lockEmailFor(cfg accountAccessValue, category providers.EntityCategory) *accountAccessLockEmail {
 	if category != providers.EntityCategoryUser || cfg.User == nil {
-		return "", false
+		return nil
 	}
 	email := cfg.User.Notifications.lockEmail()
 	if email == nil || !sysutils.DerefOr(email.Enabled, false) {
-		return "", false
+		return nil
 	}
-	return strings.TrimSpace(sysutils.DerefOr(email.RecipientAttribute, "")), true
+	return email
 }
 
-// lockTemplateFor picks the template for a lock and the facts it fills: no address, identifier or
-// failure count. A lock that does not expire has its own template, so each template's copy is fixed.
-func lockTemplateFor(method providers.AuthenticationMethod, episode LockEpisode) (string, map[string]string) {
-	templates, ok := lockTemplates[method]
-	if !ok {
-		templates = lockTemplates[AuthenticationMethodEntity]
+// lockTemplateFor picks the template for a lock, its override over the default pair, and the facts it
+// fills: no address, identifier or failure count. A lock that does not expire has its own template, so
+// each template's copy is fixed. The entity-wide lock, which holds every method, takes the entity
+// override and fills no method. An empty handle means none is set.
+func lockTemplateFor(email *accountAccessLockEmail, method providers.AuthenticationMethod,
+	episode LockEpisode) (string, map[string]string) {
+	var pair accountAccessTemplatePair
+	if templates := email.Templates; templates != nil {
+		override := templates.Methods[string(method)]
+		if method == AuthenticationMethodEntity {
+			override = sysutils.DerefOr(templates.Entity, accountAccessTemplatePair{})
+		}
+		pair = overlayTemplatePair(templates.accountAccessTemplatePair, override)
 	}
-	data := map[string]string{templateKeyLockDuration: "", templateKeyUnlockTime: ""}
+	data := map[string]string{
+		templateKeyAuthenticationMethod: string(method),
+		templateKeyLockDuration:         "",
+		templateKeyUnlockTime:           "",
+	}
+	if method == AuthenticationMethodEntity {
+		data[templateKeyAuthenticationMethod] = ""
+	}
 
 	ends, err := time.Parse(time.RFC3339, episode.UnlockAt)
 	if episode.UnlockAt == permanentUnlockAt || episode.Duration <= 0 || err != nil {
-		return templates.permanent, data
+		return pair.Permanent, data
 	}
 	data[templateKeyLockDuration] = sysutils.FormatExpiryDuration(int64(episode.Duration / time.Second))
 	data[templateKeyUnlockTime] = ends.UTC().Format(unlockTimeLayout)
-	return templates.expiring, data
+	return pair.Temporary, data
 }
 
 // accountAccessValueFrom converts the deployment configuration into its section form.
@@ -716,11 +807,10 @@ func accountAccessPolicyFrom(c sysconfig.LockPolicyConfig) accountAccessPolicy {
 // states nothing.
 func accountAccessNotificationsFrom(n sysconfig.AccessNotificationsConfig) *accountAccessNotifications {
 	email := n.OnLock.Email
-	if email.Enabled == nil && email.RecipientAttribute == nil {
+	if email.Enabled == nil {
 		return nil
 	}
 	return &accountAccessNotifications{OnLock: &accountAccessLockNotification{Email: &accountAccessLockEmail{
-		Enabled:            email.Enabled,
-		RecipientAttribute: email.RecipientAttribute,
+		Enabled: email.Enabled,
 	}}}
 }

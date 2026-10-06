@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type BuiltInExecutorRegistrationTestSuite struct {
@@ -77,6 +78,48 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_E
 		err := registerBuiltInExecutor(reg, catalog, deps, name)
 		require.NoError(suite.T(), err, "registering %q", name)
 		assert.True(suite.T(), reg.IsRegistered(name), "executor %q should be registered", name)
+	}
+}
+
+func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_PassesIdentityGovernance() {
+	deps := suite.depsForBuiltInRegistration()
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	deps.IdentityGovernance = governance
+	governanceOf := map[string]func(providers.Executor) providers.IdentityGovernanceProvider{
+		ExecutorNameAuthAssert: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*authAssertExecutor).accessGuard.governance
+		},
+		ExecutorNameIdentityGovernance: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*identityGovernanceExecutor).governance
+		},
+		ExecutorNamePreSuspend: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*preSuspendExecutor).governance
+		},
+		ExecutorNameCredentialSetter: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*credentialSetter).accessGuard.governance
+		},
+		ExecutorNameIdentifying: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*identifyingExecutor).accessGuard.governance
+		},
+		ExecutorNameSession: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*sessionExecutor).accessGuard.governance
+		},
+		ExecutorNameOTPExecutor: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*otpExecutor).accessGuard.governance
+		},
+		ExecutorNamePasskeyAuth: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*passkeyAuthExecutor).accessGuard.governance
+		},
+		ExecutorNameMagicLink: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*magicLinkExecutor).accessGuard.governance
+		},
+	}
+	for name, governanceOfExecutor := range governanceOf {
+		reg := newExecutorRegistry()
+		require.NoError(suite.T(), registerBuiltInExecutor(reg, newBuiltInExecutorRegistrars(), deps, name))
+		registered, err := reg.GetExecutor(name)
+		require.NoError(suite.T(), err)
+		assert.Same(suite.T(), governance, governanceOfExecutor(registered), name)
 	}
 }
 

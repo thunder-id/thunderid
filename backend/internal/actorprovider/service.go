@@ -27,6 +27,7 @@ type actorProvider struct {
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
 	entityTypeSvc  entitytype.EntityTypeServiceInterface
+	governance     providers.IdentityGovernanceProvider
 	logger         *log.Logger
 }
 
@@ -38,6 +39,7 @@ func newActorProvider(
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
 	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
@@ -45,6 +47,7 @@ func newActorProvider(
 		authnProvider:  authnProvider,
 		roleService:    roleService,
 		entityTypeSvc:  entityTypeSvc,
+		governance:     governance,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -59,6 +62,11 @@ func (p *actorProvider) GetOAuthClientByClientID(
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+
+	if svcErr := p.refuseHeldActor(ctx, client); svcErr != nil {
+		return nil, svcErr
+	}
+
 	return toProviderOAuthClient(client), nil
 }
 
@@ -71,7 +79,7 @@ func (p *actorProvider) IsOAuthClientAccessibleFromOU(
 }
 
 // GetOAuthClientByID returns the runtime OAuth client for the given entity UUID, or nil when there
-// is none.
+// is none. It does not refuse a held client.
 func (p *actorProvider) GetOAuthClientByID(
 	ctx context.Context, id string,
 ) (*providers.OAuthClient, *tidcommon.ServiceError) {
@@ -128,7 +136,7 @@ func (p *actorProvider) AuthenticateActor(
 
 // GetActor returns the backing entity record for the given actor ID.
 func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntity(actorID)
+	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}
@@ -177,6 +185,25 @@ func (p *actorProvider) GetActorRoles(
 		return nil, nil
 	}
 	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs)
+}
+
+// refuseHeldActor refuses an OAuth client whose entity governance holds at the application plane.
+func (p *actorProvider) refuseHeldActor(ctx context.Context,
+	client *providers.OAuthClient) *tidcommon.ServiceError {
+	if client == nil || client.ID == "" {
+		return nil
+	}
+
+	decision, svcErr := p.governance.EvaluateAccess(ctx, client.ID,
+		providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !decision.Admitted {
+		p.logger.Debug(ctx, "Refused a held actor", log.String("clientID", client.ClientID))
+		return &ErrorActorUnavailable
+	}
+	return nil
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {

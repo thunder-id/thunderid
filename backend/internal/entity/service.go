@@ -74,11 +74,11 @@ type EntityServiceInterface interface {
 	// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
 	GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, error)
 
-	// Authentication
+	// Authentication. The failure is non-nil only when a credential comparison ran and did not match.
 	AuthenticateEntity(ctx context.Context, identifiers map[string]interface{},
-		credentials map[string]interface{}) (*AuthenticateResult, error)
+		credentials map[string]interface{}) (*AuthenticateResult, *CredentialFailure, error)
 	AuthenticateEntityByID(ctx context.Context, entityID string,
-		credentials map[string]interface{}) (*AuthenticateResult, error)
+		credentials map[string]interface{}) (*AuthenticateResult, *CredentialFailure, error)
 
 	// Declarative
 	IsEntityDeclarative(ctx context.Context, entityID string) (bool, error)
@@ -738,17 +738,17 @@ func (s *entityService) AuthenticateEntity(
 	ctx context.Context,
 	identifiers map[string]interface{},
 	credentials map[string]interface{},
-) (*AuthenticateResult, error) {
+) (*AuthenticateResult, *CredentialFailure, error) {
 	if len(identifiers) == 0 {
-		return nil, ErrEntityNotFound
+		return nil, nil, ErrEntityNotFound
 	}
 	if len(credentials) == 0 {
-		return nil, ErrAuthenticationFailed
+		return nil, nil, ErrAuthenticationFailed
 	}
 
 	entityID, err := s.IdentifyEntity(ctx, identifiers)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return s.AuthenticateEntityByID(ctx, *entityID, credentials)
@@ -761,21 +761,25 @@ func (s *entityService) AuthenticateEntityByID(
 	ctx context.Context,
 	entityID string,
 	credentials map[string]interface{},
-) (*AuthenticateResult, error) {
+) (*AuthenticateResult, *CredentialFailure, error) {
 	if entityID == "" {
-		return nil, ErrEntityNotFound
+		return nil, nil, ErrEntityNotFound
 	}
 	if len(credentials) == 0 {
-		return nil, ErrAuthenticationFailed
+		return nil, nil, ErrAuthenticationFailed
 	}
 
 	result, err := s.store.GetEntityWithCredentials(ctx, entityID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	if err := s.verifyCredentials(ctx, credentials, result.SchemaCredentials, result.SystemCredentials); err != nil {
-		return nil, err
+	proven, err := s.verifyCredentials(ctx, credentials, result.SchemaCredentials, result.SystemCredentials)
+	if err != nil {
+		if !proven {
+			return nil, nil, err
+		}
+		return nil, &CredentialFailure{EntityID: result.Entity.ID}, err
 	}
 
 	return &AuthenticateResult{
@@ -783,18 +787,19 @@ func (s *entityService) AuthenticateEntityByID(
 		EntityCategory: result.Entity.Category,
 		EntityType:     result.Entity.Type,
 		OUID:           result.Entity.OUID,
-	}, nil
+	}, nil, nil
 }
 
 // verifyCredentials verifies provided credentials from both schema and system credentials.
+// The first return reports a credential that matched no stored candidate.
 func (s *entityService) verifyCredentials(ctx context.Context, credentials map[string]interface{},
-	schemaCredsJSON, systemCredsJSON json.RawMessage) error {
+	schemaCredsJSON, systemCredsJSON json.RawMessage) (bool, error) {
 	// Merge both credential columns for verification.
 	storedCreds := make(map[string][]StoredCredential)
 	if len(schemaCredsJSON) > 0 {
 		var schemaCreds map[string][]StoredCredential
 		if err := json.Unmarshal(schemaCredsJSON, &schemaCreds); err != nil {
-			return fmt.Errorf("failed to unmarshal schema credentials: %w", err)
+			return false, fmt.Errorf("failed to unmarshal schema credentials: %w", err)
 		}
 		for k, v := range schemaCreds {
 			storedCreds[k] = v
@@ -803,7 +808,7 @@ func (s *entityService) verifyCredentials(ctx context.Context, credentials map[s
 	if len(systemCredsJSON) > 0 {
 		var sysCreds map[string][]StoredCredential
 		if err := json.Unmarshal(systemCredsJSON, &sysCreds); err != nil {
-			return fmt.Errorf("failed to unmarshal system credentials: %w", err)
+			return false, fmt.Errorf("failed to unmarshal system credentials: %w", err)
 		}
 		for k, v := range sysCreds {
 			storedCreds[k] = v
@@ -811,7 +816,7 @@ func (s *entityService) verifyCredentials(ctx context.Context, credentials map[s
 	}
 
 	if len(storedCreds) == 0 {
-		return ErrAuthenticationFailed
+		return false, ErrAuthenticationFailed
 	}
 
 	// Filter to credentials that have stored entries.
@@ -828,36 +833,51 @@ func (s *entityService) verifyCredentials(ctx context.Context, credentials map[s
 	}
 
 	if len(credentialsToVerify) == 0 {
-		return ErrAuthenticationFailed
+		return false, ErrAuthenticationFailed
 	}
 
-	// Verify each credential against stored values.
+	// Verify each credential against stored values. A mismatch decides over an indeterminate result.
+	indeterminateFailure := false
 	for credType, credValue := range credentialsToVerify {
-		credList := storedCreds[credType]
-		verified := false
-		for _, stored := range credList {
-			ref := cryptolib.Credential{
-				Algorithm:  stored.StorageAlgo,
-				Hash:       stored.Value,
-				Parameters: stored.StorageAlgoParams,
-			}
-			ok, verifyErr := s.hashService.Verify([]byte(credValue), ref)
-			if verifyErr != nil {
-				s.logger.Debug(ctx, "Credential verification error", log.String("credentialType", credType),
-					log.Any("error", verifyErr))
-				continue
-			}
-			if ok {
-				verified = true
-				break
-			}
+		verified, indeterminate := s.verifyOneCredential(ctx, credType, credValue, storedCreds[credType])
+		if verified {
+			continue
 		}
-		if !verified {
-			return ErrAuthenticationFailed
+		if indeterminate {
+			indeterminateFailure = true
+			continue
 		}
+		return true, ErrAuthenticationFailed
 	}
 
-	return nil
+	if indeterminateFailure {
+		return false, ErrAuthenticationFailed
+	}
+	return false, nil
+}
+
+// verifyOneCredential compares one supplied value against every stored candidate of its type. It
+// reports whether one matched, and whether any candidate could not be evaluated.
+func (s *entityService) verifyOneCredential(ctx context.Context, credType, credValue string,
+	credList []StoredCredential) (verified, indeterminate bool) {
+	for _, stored := range credList {
+		ref := cryptolib.Credential{
+			Algorithm:  stored.StorageAlgo,
+			Hash:       stored.Value,
+			Parameters: stored.StorageAlgoParams,
+		}
+		ok, verifyErr := s.hashService.Verify([]byte(credValue), ref)
+		if verifyErr != nil {
+			s.logger.Debug(ctx, "Credential verification error", log.String("credentialType", credType),
+				log.Any("error", verifyErr))
+			indeterminate = true
+			continue
+		}
+		if ok {
+			return true, false
+		}
+	}
+	return false, indeterminate
 }
 
 // UpdateCredentials updates schema-defined credentials (e.g., password) by hashing new

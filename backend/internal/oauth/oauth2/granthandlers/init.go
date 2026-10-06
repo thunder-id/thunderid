@@ -31,6 +31,7 @@ func Initialize(
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	enforcementService revocation.EnforcementServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	return newGrantHandlerProvider(
@@ -47,6 +48,7 @@ func Initialize(
 		refreshTokenRevoker,
 		criteriaRevoker,
 		enforcementService,
+		governance,
 		cfg,
 	)
 }

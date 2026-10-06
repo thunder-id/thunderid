@@ -2590,6 +2590,17 @@ func (s *ServiceTestSuite) TestSetServerConfigServiceSetsTheSectionReader() {
 	s.svc.SetServerConfigService(reader)
 }
 
+// The lock email reads its default sender through the same server-config service.
+func (s *ServiceTestSuite) TestSetServerConfigServiceReachesTheNotifier() {
+	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
+	notifier := newLockNotifierInterfaceMock(s.T())
+	s.source.EXPECT().setReader(reader).Once()
+	notifier.EXPECT().setServerConfigService(reader).Once()
+	svc := newIdentityGovernanceService(s.port, s.source, notifier, nil, nil)
+
+	svc.SetServerConfigService(reader)
+}
+
 // testAccountAccessConfig is a representative deployment: a user default and agent locking switched
 // off.
 func testAccountAccessConfig() accountAccessValue {

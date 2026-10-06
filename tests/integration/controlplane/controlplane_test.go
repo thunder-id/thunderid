@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +91,150 @@ func (ts *ControlPlaneTestSuite) TestRuntimeEndpointsAreNotServed() {
 			"application/x-www-form-urlencoded", []byte("grant_type=client_credentials"))
 		ts.Equal(http.StatusNotFound, status, path)
 	}
+}
+
+// The account access policy and the notification defaults are configuration, so a Control Plane
+// serves both sections for authoring and export. A policy written here is the one exported.
+func (ts *ControlPlaneTestSuite) TestTheAccountAccessAndNotificationSectionsAreServed() {
+	for _, name := range []string{"accountAccess", "notification"} {
+		status, raw := ts.call(http.MethodGet, "/server-config/"+name, nil, nil)
+		ts.Equal(http.StatusOK, status, "%s: %s", name, raw)
+	}
+
+	original := ts.writableAccountAccess()
+	status, raw := ts.call(http.MethodPut, "/server-config/accountAccess",
+		map[string]any{"user": map[string]any{"default": map[string]any{"threshold": 7}}}, nil)
+	ts.Require().Equal(http.StatusOK, status, "the policy must be writable here: %s", raw)
+	defer ts.restoreAccountAccess(original)
+
+	ts.Equal(7, ts.mergedUserThreshold(), "the written threshold must be in force")
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw = ts.call(http.MethodPost, "/export", map[string]any{"serverConfigs": []string{"accountAccess"}},
+		&exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Contains(exported.Resources, "accountAccess", "the export must carry the section")
+	ts.Regexp(`threshold"?:\s*7\b`, exported.Resources, "the export must carry the written policy")
+}
+
+// A Control Plane validates the policy as a server does: an invalid value is refused and the stored
+// section is left as it was.
+func (ts *ControlPlaneTestSuite) TestAnInvalidAccountAccessValueIsRefused() {
+	original := ts.writableAccountAccess()
+	status, raw := ts.call(http.MethodPut, "/server-config/accountAccess",
+		map[string]any{"user": map[string]any{"default": map[string]any{"threshold": 7}}}, nil)
+	ts.Require().Equal(http.StatusOK, status, "the policy must be writable here: %s", raw)
+	defer ts.restoreAccountAccess(original)
+	before := ts.writableAccountAccess()
+
+	status, raw = ts.call(http.MethodPut, "/server-config/accountAccess",
+		map[string]any{"user": map[string]any{"default": map[string]any{"failureWindowSeconds": -1}}}, nil)
+	ts.Equal(http.StatusBadRequest, status, "a negative window must be refused: %s", raw)
+	ts.Contains(string(raw), "SCF-1003", "the refusal must be an invalid value")
+	ts.JSONEq(string(before), string(ts.writableAccountAccess()), "a refused write must change nothing")
+	ts.Equal(7, ts.mergedUserThreshold(), "the stored policy must still be in force")
+}
+
+// writableAccountAccess returns the accountAccess section's writable layer.
+func (ts *ControlPlaneTestSuite) writableAccountAccess() json.RawMessage {
+	ts.T().Helper()
+	var layers struct {
+		Writable json.RawMessage `json:"writable"`
+	}
+	status, raw := ts.call(http.MethodGet, "/server-config/accountAccess", nil, &layers)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	if len(layers.Writable) == 0 || string(layers.Writable) == "null" {
+		return json.RawMessage(`{}`)
+	}
+	return layers.Writable
+}
+
+// restoreAccountAccess puts the accountAccess section's writable layer back as it was.
+func (ts *ControlPlaneTestSuite) restoreAccountAccess(layer json.RawMessage) {
+	status, raw := ts.call(http.MethodPut, "/server-config/accountAccess", layer, nil)
+	ts.Equal(http.StatusOK, status, "failed to restore the accountAccess section: %s", raw)
+}
+
+// mergedUserThreshold returns the user threshold the accountAccess section resolves to.
+func (ts *ControlPlaneTestSuite) mergedUserThreshold() int {
+	ts.T().Helper()
+	var layers struct {
+		Merged struct {
+			User struct {
+				Default struct {
+					Threshold int `json:"threshold"`
+				} `json:"default"`
+			} `json:"user"`
+		} `json:"merged"`
+	}
+	status, raw := ts.call(http.MethodGet, "/server-config/accountAccess", nil, &layers)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	return layers.Merged.User.Default.Threshold
+}
+
+// Runs in declarative mode, since outside it the notification service reads no declarative sender.
+func (ts *ControlPlaneTestSuite) TestADeclarativeNotificationSectionCanNameADeclarativeSender() {
+	const senderID = "cp-declarative-email-sender"
+	dir := ts.T().TempDir()
+	deployment, err := os.ReadFile(filepath.Join(testutils.GetExtractedProductHome(), "deployment.yaml"))
+	ts.Require().NoError(err)
+	snapshot := filepath.Join(dir, "deployment.yaml")
+	ts.Require().NoError(os.WriteFile(snapshot, deployment, 0o600))
+	resourcesPath := filepath.Join(dir, "resources.yaml")
+	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(`resource_type: connection
+id: `+senderID+`
+type: email-smtp
+name: Control Plane Declarative Email Sender
+host: localhost
+port: 2525
+fromAddress: noreply@thunderid.test
+---
+resource_type: server_config
+name: notification
+value:
+  defaultEmailSenderId: `+senderID+`
+`), 0o600))
+	defer func() {
+		ts.Assert().NoError(testutils.UpdateDeploymentConfig(snapshot), "the deployment must be put back")
+		ts.Assert().NoError(testutils.RestartServer(), "the Control Plane must start again on the deployment it had")
+	}()
+
+	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
+		"declarative_resources": map[string]interface{}{"enabled": true},
+	}))
+	ts.Require().NoError(testutils.RestartServerWithResourcesFile(resourcesPath),
+		"a declarative section naming a declarative sender must not stop the Control Plane starting")
+
+	var layers struct {
+		ReadOnly struct {
+			DefaultEmailSenderID string `json:"defaultEmailSenderId"`
+		} `json:"readOnly"`
+	}
+	status, raw := ts.call(http.MethodGet, "/server-config/notification", nil, &layers)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Equal(senderID, layers.ReadOnly.DefaultEmailSenderID, "the declarative layer must name the sender")
+
+	status, raw = ts.call(http.MethodPut, "/server-config/notification", map[string]any{}, nil)
+	ts.Equal(http.StatusBadRequest, status, "a write over a declarative sender must be refused: %s", raw)
+	ts.Contains(string(raw), "SCF-1003", "a write over a declarative sender must be refused as an invalid value")
+}
+
+func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
+	name := unique("CP Status App")
+	appID, err := testutils.CreateApplication(testutils.Application{OUID: ts.ouID, Name: name})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	status, raw := ts.call(http.MethodPut, "/applications/"+appID, map[string]any{
+		"ouId": ts.ouID, "name": name, "description": "Updated on the Control Plane",
+	}, &updated)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
 }
 
 // A token from the trusted issuer is accepted only when it carries the system scope.

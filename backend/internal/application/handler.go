@@ -210,6 +210,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 			PasskeyAllowedOrigins:     appDTO.PasskeyAllowedOrigins,
 			Attestation:               appDTO.Attestation,
 		},
+		Status:    appDTO.Status,
 		Type:      model.ApplicationType(appDTO.Type),
 		Template:  appDTO.Template,
 		URL:       appDTO.URL,
@@ -386,6 +387,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 		TosURI:    updatedAppDTO.TosURI,
 		PolicyURI: updatedAppDTO.PolicyURI,
 		Contacts:  updatedAppDTO.Contacts,
+		Status:    updatedAppDTO.Status,
 		Metadata:  updatedAppDTO.Metadata,
 	}
 

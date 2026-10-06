@@ -13,4 +13,7 @@ const (
 	ErrorCodeInvalidRequest       = "AUP-0006"
 	ErrorCodeAmbiguousUser        = "AUP-0007"
 	ErrorCodeEnrollmentFailed     = "AUP-0008"
+	// ErrorCodeAccountLocked and ErrorCodeAccountSuspended state the hold that refused the identity.
+	ErrorCodeAccountLocked    = "AUP-0009"
+	ErrorCodeAccountSuspended = "AUP-0010"
 )

@@ -627,11 +627,9 @@ func (s *UtilsTestSuite) TestMergeAccountAccessCategoryOverlaysEachField() {
 		"default": {accountAccessCategory{Default: &accountAccessPolicy{Threshold: new(3)}},
 			func(want *accountAccessCategory) { want.Default.Threshold = new(3) }},
 		"notifications": {accountAccessCategory{
-			Notifications: lockEmailNotifications(accountAccessLockEmail{RecipientAttribute: new("workEmail")}),
+			Notifications: lockEmailNotifications(accountAccessLockEmail{Enabled: new(false)}),
 		}, func(want *accountAccessCategory) {
-			want.Notifications = lockEmailNotifications(accountAccessLockEmail{
-				Enabled: new(true), RecipientAttribute: new("workEmail"),
-			})
+			want.Notifications = lockEmailNotifications(accountAccessLockEmail{Enabled: new(false)})
 		}},
 	} {
 		want := readOnly()
@@ -641,9 +639,9 @@ func (s *UtilsTestSuite) TestMergeAccountAccessCategoryOverlaysEachField() {
 	}
 }
 
-// Either side of a lock email merge may be absent, and each stated field replaces the other side's.
+// Either side of a lock email merge may be absent, and a stated field replaces the other side's.
 func (s *UtilsTestSuite) TestMergeAccountAccessNotificationsOverlaysEachField() {
-	base := lockEmailNotifications(accountAccessLockEmail{Enabled: new(true), RecipientAttribute: new("email")})
+	base := lockEmailNotifications(accountAccessLockEmail{Enabled: new(true)})
 	override := lockEmailNotifications(accountAccessLockEmail{Enabled: new(false)})
 
 	s.Same(base, mergeAccountAccessNotifications(base, nil), "no override keeps the read-only block")
@@ -657,16 +655,47 @@ func (s *UtilsTestSuite) TestMergeAccountAccessNotificationsOverlaysEachField() 
 		override accountAccessLockEmail
 		want     accountAccessLockEmail
 	}{
-		"enabled": {accountAccessLockEmail{Enabled: new(false)},
-			accountAccessLockEmail{Enabled: new(false), RecipientAttribute: new("email")}},
-		"recipientAttribute": {accountAccessLockEmail{RecipientAttribute: new("workEmail")},
-			accountAccessLockEmail{Enabled: new(true), RecipientAttribute: new("workEmail")}},
-		"both": {accountAccessLockEmail{Enabled: new(false), RecipientAttribute: new("workEmail")},
-			accountAccessLockEmail{Enabled: new(false), RecipientAttribute: new("workEmail")}},
+		"nothing stated": {accountAccessLockEmail{}, accountAccessLockEmail{Enabled: new(true)}},
+		"enabled":        {accountAccessLockEmail{Enabled: new(false)}, accountAccessLockEmail{Enabled: new(false)}},
 	} {
 		s.Equal(lockEmailNotifications(tc.want),
 			mergeAccountAccessNotifications(base, lockEmailNotifications(tc.override)), name)
 	}
+}
+
+// A template the writable layer states replaces the read-only one; the entity and method overrides
+// merge field by field, method by method, and the read-only block is not changed.
+func (s *UtilsTestSuite) TestMergeAccountAccessNotificationsOverlaysTheTemplates() {
+	readOnly := func() *accountAccessNotifications {
+		return lockEmailNotifications(accountAccessLockEmail{Enabled: new(true), Templates: &accountAccessLockTemplates{
+			accountAccessTemplatePair: accountAccessTemplatePair{Temporary: "ro", Permanent: "ro-permanent"},
+			Entity: &accountAccessTemplatePair{
+				Temporary: "ro-entity", Permanent: "ro-entity-permanent"},
+			Methods: map[string]accountAccessTemplatePair{
+				"credential": {Temporary: "ro-credential", Permanent: "ro-credential-permanent"}},
+		}})
+	}
+	base := readOnly()
+	writable := lockEmailNotifications(accountAccessLockEmail{Templates: &accountAccessLockTemplates{
+		accountAccessTemplatePair: accountAccessTemplatePair{Temporary: "wr"},
+		Entity:                    &accountAccessTemplatePair{Permanent: "wr-entity-permanent"},
+		Methods: map[string]accountAccessTemplatePair{
+			"credential": {Temporary: "wr-credential"}, "otp": {Temporary: "wr-otp"}},
+	}})
+
+	s.Equal(lockEmailNotifications(accountAccessLockEmail{Enabled: new(true), Templates: &accountAccessLockTemplates{
+		accountAccessTemplatePair: accountAccessTemplatePair{Temporary: "wr", Permanent: "ro-permanent"},
+		Entity:                    &accountAccessTemplatePair{Temporary: "ro-entity", Permanent: "wr-entity-permanent"},
+		Methods: map[string]accountAccessTemplatePair{
+			"credential": {Temporary: "wr-credential", Permanent: "ro-credential-permanent"},
+			"otp":        {Temporary: "wr-otp"},
+		},
+	}}), mergeAccountAccessNotifications(base, writable))
+	s.Equal(readOnly(), base)
+
+	only := &accountAccessLockTemplates{accountAccessTemplatePair: accountAccessTemplatePair{Temporary: "t"}}
+	s.Same(only, mergeLockTemplates(nil, only), "no read-only block takes the writable one")
+	s.Same(only, mergeLockTemplates(only, nil), "no writable block keeps the read-only one")
 }
 
 // Each policy field the override states replaces the base's; every other field is kept.
@@ -736,7 +765,7 @@ func (s *UtilsTestSuite) TestTheDeploymentConfigurationConverts() {
 		Default: sysconfig.LockPolicyConfig{Threshold: new(5), LockDurationsSeconds: []int{60},
 			MaxConsecutiveFailures: new(50)},
 		Notifications: sysconfig.AccessNotificationsConfig{OnLock: sysconfig.LockNotificationConfig{
-			Email: sysconfig.LockEmailConfig{Enabled: new(true), RecipientAttribute: new("workEmail")},
+			Email: sysconfig.LockEmailConfig{Enabled: new(true)},
 		}},
 	}})
 
@@ -749,7 +778,6 @@ func (s *UtilsTestSuite) TestTheDeploymentConfigurationConverts() {
 	email := value.User.Notifications.lockEmail()
 	s.Require().NotNil(email)
 	s.True(*email.Enabled)
-	s.Equal("workEmail", *email.RecipientAttribute)
 	s.Nil(value.Agent)
 }
 
@@ -766,48 +794,50 @@ func (s *UtilsTestSuite) TestAnEmptyDefaultPolicyIsLeftUnset() {
 }
 
 func (s *UtilsTestSuite) TestLockEmailIsOffUnlessEnabled() {
-	_, enabled := lockEmailRecipient(lockEmailConfig(accountAccessLockEmail{}), providers.EntityCategoryUser)
-	s.False(enabled)
-	_, enabled = lockEmailRecipient(accountAccessValue{}, providers.EntityCategoryUser)
-	s.False(enabled)
-	_, enabled = lockEmailRecipient(accountAccessValue{User: &accountAccessCategory{}}, providers.EntityCategoryUser)
-	s.False(enabled)
-}
+	s.Nil(lockEmailFor(lockEmailConfig(accountAccessLockEmail{}), providers.EntityCategoryUser))
+	s.Nil(lockEmailFor(accountAccessValue{}, providers.EntityCategoryUser))
+	s.Nil(lockEmailFor(accountAccessValue{User: &accountAccessCategory{}}, providers.EntityCategoryUser))
 
-func (s *UtilsTestSuite) TestLockEmailReadsTheNamedAttribute() {
-	attribute, enabled := lockEmailRecipient(lockEmailConfig(accountAccessLockEmail{
-		Enabled: new(true), RecipientAttribute: new(" workEmail "),
-	}), providers.EntityCategoryUser)
-	s.True(enabled)
-	s.Equal("workEmail", attribute)
+	email := enabledLockEmail()
+	s.Equal(&email, lockEmailFor(lockEmailConfig(email), providers.EntityCategoryUser))
 }
 
 // Agents and applications are not notified.
 func (s *UtilsTestSuite) TestOnlyUsersAreNotified() {
-	cfg := lockEmailConfig(accountAccessLockEmail{Enabled: new(true)})
+	cfg := lockEmailConfig(enabledLockEmail())
 	for _, category := range []providers.EntityCategory{providers.EntityCategoryAgent, providers.EntityCategoryApp} {
-		_, enabled := lockEmailRecipient(cfg, category)
-		s.False(enabled, "%s", category)
+		s.Nil(lockEmailFor(cfg, category), "%s", category)
 	}
 }
 
-// A lock that expires renders the method's temporary template with its duration and its unlock time
-// in UTC.
+// testLockTemplates is one template pair for every lock, with the entity-wide lock's temporary template
+// overridden.
+func testLockTemplates() *accountAccessLockEmail {
+	return &accountAccessLockEmail{Templates: &accountAccessLockTemplates{
+		accountAccessTemplatePair: accountAccessTemplatePair{
+			Temporary: "account-locked", Permanent: "account-locked-permanent"},
+		Entity: &accountAccessTemplatePair{Temporary: "account-locked-entity"},
+	}}
+}
+
+// A lock that expires renders its expiring template with the method, its duration and its unlock time
+// in UTC. The entity-wide lock names no method.
 func (s *UtilsTestSuite) TestATemporaryLockFillsItsFacts() {
-	for method, want := range map[providers.AuthenticationMethod]string{
-		providers.AuthenticationMethodCredential: "account-locked-credential",
-		providers.AuthenticationMethodOTP:        "account-locked-otp",
-		AuthenticationMethodEntity:               "account-locked",
+	for method, want := range map[providers.AuthenticationMethod]struct{ handle, method string }{
+		providers.AuthenticationMethodCredential: {"account-locked", "credential"},
+		providers.AuthenticationMethodOTP:        {"account-locked", "otp"},
+		AuthenticationMethodEntity:               {"account-locked-entity", ""},
 	} {
-		handle, data := lockTemplateFor(method, testLockEpisode())
-		s.Equal(want, handle, "method %s", method)
+		handle, data := lockTemplateFor(testLockTemplates(), method, testLockEpisode())
+		s.Equal(want.handle, handle, "method %s", method)
 		s.Equal(map[string]string{
-			templateKeyLockDuration: "5 minutes",
-			templateKeyUnlockTime:   "2026-10-08 10:05",
+			templateKeyAuthenticationMethod: want.method,
+			templateKeyLockDuration:         "5 minutes",
+			templateKeyUnlockTime:           "2026-10-08 10:05",
 		}, data, "method %s", method)
 	}
 
-	_, data := lockTemplateFor(providers.AuthenticationMethodCredential,
+	_, data := lockTemplateFor(testLockTemplates(), providers.AuthenticationMethodCredential,
 		LockEpisode{Duration: time.Minute, UnlockAt: "2026-10-08T15:35:00+05:30"})
 	s.Equal("2026-10-08 10:05", data[templateKeyUnlockTime], "an offset unlock time is written in UTC")
 }
@@ -817,40 +847,60 @@ func (s *UtilsTestSuite) TestTheDurationIsTheCommittedEpisodes() {
 	for duration, want := range map[time.Duration]string{
 		15 * time.Minute: "15 minutes", time.Hour: "1 hour", 24 * time.Hour: "24 hours", 90 * time.Second: "90 seconds",
 	} {
-		_, data := lockTemplateFor(providers.AuthenticationMethodCredential,
+		_, data := lockTemplateFor(testLockTemplates(), providers.AuthenticationMethodCredential,
 			LockEpisode{Duration: duration, UnlockAt: "2026-10-08T10:05:00Z"})
 		s.Equal(want, data[templateKeyLockDuration])
 	}
 }
 
-// A lock that does not expire, or whose unlock time cannot be read, renders the method's permanent
-// template with no duration or unlock time.
+// A lock that does not expire, or whose unlock time cannot be read, renders the permanent template with
+// no duration or unlock time. An override that sets only the expiring template keeps the default
+// permanent one.
 func (s *UtilsTestSuite) TestAPermanentLockRendersItsOwnTemplate() {
 	for name, episode := range map[string]LockEpisode{
 		"the permanent sentinel": {UnlockAt: permanentUnlockAt},
 		"no duration":            {UnlockAt: "2026-10-08T10:05:00Z"},
 		"an unreadable time":     {Duration: time.Minute, UnlockAt: "soon"},
 	} {
-		for method, want := range map[providers.AuthenticationMethod]string{
-			providers.AuthenticationMethodCredential: "account-locked-credential-permanent",
-			providers.AuthenticationMethodOTP:        "account-locked-otp-permanent",
-			AuthenticationMethodEntity:               "account-locked-permanent",
-		} {
-			handle, data := lockTemplateFor(method, episode)
+		for _, method := range []providers.AuthenticationMethod{providers.AuthenticationMethodCredential,
+			providers.AuthenticationMethodOTP, AuthenticationMethodEntity} {
+			handle, data := lockTemplateFor(testLockTemplates(), method, episode)
 
-			s.Equal(want, handle, "%s, method %s", name, method)
+			s.Equal("account-locked-permanent", handle, "%s, method %s", name, method)
 			s.Empty(data[templateKeyLockDuration], name)
 			s.Empty(data[templateKeyUnlockTime], name)
 		}
 	}
 }
 
-// A method with no templates of its own takes the account's, and every placeholder is filled.
-func (s *UtilsTestSuite) TestAnUnknownMethodTakesTheAccountTemplates() {
-	handle, data := lockTemplateFor("something-a-later-build-added", testLockEpisode())
+// A method's override replaces the defaults field by field.
+func (s *UtilsTestSuite) TestAMethodOverrideReplacesTheDefaults() {
+	email := testLockTemplates()
+	email.Templates.Methods = map[string]accountAccessTemplatePair{
+		string(providers.AuthenticationMethodOTP): {Temporary: "otp-locked", Permanent: "otp-locked-permanent"}}
 
-	s.Equal("account-locked", handle)
-	s.Len(data, 2)
+	handle, data := lockTemplateFor(email, providers.AuthenticationMethodOTP, testLockEpisode())
+	s.Equal("otp-locked", handle)
+	s.Equal("otp", data[templateKeyAuthenticationMethod])
+
+	handle, _ = lockTemplateFor(email, providers.AuthenticationMethodOTP, LockEpisode{UnlockAt: permanentUnlockAt})
+	s.Equal("otp-locked-permanent", handle)
+
+	handle, _ = lockTemplateFor(email, providers.AuthenticationMethodCredential, testLockEpisode())
+	s.Equal("account-locked", handle, "another method keeps the defaults")
+}
+
+// With no template set, the handle is empty and every placeholder is still filled.
+func (s *UtilsTestSuite) TestNoTemplateLeavesTheHandleEmpty() {
+	for name, email := range map[string]*accountAccessLockEmail{
+		"no templates block": {},
+		"an empty templates": {Templates: &accountAccessLockTemplates{}},
+	} {
+		handle, data := lockTemplateFor(email, providers.AuthenticationMethodCredential, testLockEpisode())
+
+		s.Empty(handle, name)
+		s.Len(data, 3, name)
+	}
 }
 
 // readOf derives the management read of a hydrated entity with the given runtime attributes, with every

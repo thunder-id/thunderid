@@ -52,7 +52,7 @@ func (_m *EntityServiceInterfaceMock) EXPECT() *EntityServiceInterfaceMock_Expec
 }
 
 // AuthenticateEntity provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) AuthenticateEntity(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) (*entity.AuthenticateResult, error) {
+func (_mock *EntityServiceInterfaceMock) AuthenticateEntity(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error) {
 	ret := _mock.Called(ctx, identifiers, credentials)
 
 	if len(ret) == 0 {
@@ -60,8 +60,9 @@ func (_mock *EntityServiceInterfaceMock) AuthenticateEntity(ctx context.Context,
 	}
 
 	var r0 *entity.AuthenticateResult
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}) (*entity.AuthenticateResult, error)); ok {
+	var r1 *entity.CredentialFailure
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error)); ok {
 		return returnFunc(ctx, identifiers, credentials)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}) *entity.AuthenticateResult); ok {
@@ -71,12 +72,19 @@ func (_mock *EntityServiceInterfaceMock) AuthenticateEntity(ctx context.Context,
 			r0 = ret.Get(0).(*entity.AuthenticateResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, map[string]interface{}) *entity.CredentialFailure); ok {
 		r1 = returnFunc(ctx, identifiers, credentials)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entity.CredentialFailure)
+		}
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, map[string]interface{}, map[string]interface{}) error); ok {
+		r2 = returnFunc(ctx, identifiers, credentials)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // EntityServiceInterfaceMock_AuthenticateEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthenticateEntity'
@@ -115,18 +123,18 @@ func (_c *EntityServiceInterfaceMock_AuthenticateEntity_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_AuthenticateEntity_Call) Return(authenticateResult *entity.AuthenticateResult, err error) *EntityServiceInterfaceMock_AuthenticateEntity_Call {
-	_c.Call.Return(authenticateResult, err)
+func (_c *EntityServiceInterfaceMock_AuthenticateEntity_Call) Return(authenticateResult *entity.AuthenticateResult, credentialFailure *entity.CredentialFailure, err error) *EntityServiceInterfaceMock_AuthenticateEntity_Call {
+	_c.Call.Return(authenticateResult, credentialFailure, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_AuthenticateEntity_Call) RunAndReturn(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) (*entity.AuthenticateResult, error)) *EntityServiceInterfaceMock_AuthenticateEntity_Call {
+func (_c *EntityServiceInterfaceMock_AuthenticateEntity_Call) RunAndReturn(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error)) *EntityServiceInterfaceMock_AuthenticateEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // AuthenticateEntityByID provides a mock function for the type EntityServiceInterfaceMock
-func (_mock *EntityServiceInterfaceMock) AuthenticateEntityByID(ctx context.Context, entityID string, credentials map[string]interface{}) (*entity.AuthenticateResult, error) {
+func (_mock *EntityServiceInterfaceMock) AuthenticateEntityByID(ctx context.Context, entityID string, credentials map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error) {
 	ret := _mock.Called(ctx, entityID, credentials)
 
 	if len(ret) == 0 {
@@ -134,8 +142,9 @@ func (_mock *EntityServiceInterfaceMock) AuthenticateEntityByID(ctx context.Cont
 	}
 
 	var r0 *entity.AuthenticateResult
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) (*entity.AuthenticateResult, error)); ok {
+	var r1 *entity.CredentialFailure
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error)); ok {
 		return returnFunc(ctx, entityID, credentials)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) *entity.AuthenticateResult); ok {
@@ -145,12 +154,19 @@ func (_mock *EntityServiceInterfaceMock) AuthenticateEntityByID(ctx context.Cont
 			r0 = ret.Get(0).(*entity.AuthenticateResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, map[string]interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, map[string]interface{}) *entity.CredentialFailure); ok {
 		r1 = returnFunc(ctx, entityID, credentials)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entity.CredentialFailure)
+		}
 	}
-	return r0, r1
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, map[string]interface{}) error); ok {
+		r2 = returnFunc(ctx, entityID, credentials)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // EntityServiceInterfaceMock_AuthenticateEntityByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthenticateEntityByID'
@@ -189,12 +205,12 @@ func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) Run(run func(c
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) Return(authenticateResult *entity.AuthenticateResult, err error) *EntityServiceInterfaceMock_AuthenticateEntityByID_Call {
-	_c.Call.Return(authenticateResult, err)
+func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) Return(authenticateResult *entity.AuthenticateResult, credentialFailure *entity.CredentialFailure, err error) *EntityServiceInterfaceMock_AuthenticateEntityByID_Call {
+	_c.Call.Return(authenticateResult, credentialFailure, err)
 	return _c
 }
 
-func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) RunAndReturn(run func(ctx context.Context, entityID string, credentials map[string]interface{}) (*entity.AuthenticateResult, error)) *EntityServiceInterfaceMock_AuthenticateEntityByID_Call {
+func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) RunAndReturn(run func(ctx context.Context, entityID string, credentials map[string]interface{}) (*entity.AuthenticateResult, *entity.CredentialFailure, error)) *EntityServiceInterfaceMock_AuthenticateEntityByID_Call {
 	_c.Call.Return(run)
 	return _c
 }

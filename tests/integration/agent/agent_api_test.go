@@ -349,6 +349,39 @@ func (ts *AgentAPITestSuite) TestAgentUpdate() {
 	resp2.Body.Close()
 }
 
+func (ts *AgentAPITestSuite) TestAgentUpdateReportsTheDerivedStatus() {
+	ts.Require().NotEmpty(createdAgentID)
+	encoded, err := json.Marshal(Agent{
+		OUID:        testOUID,
+		Type:        "default",
+		Attributes:  agentAttrs(createdAgentName, nil),
+		Description: "Agent with entity row only",
+	})
+	ts.Require().NoError(err)
+	var body map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(encoded, &body))
+	body["status"] = map[string]interface{}{"value": "SUSPENDED"}
+	payload, err := json.Marshal(body)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut, testServerURL+agentBasePath+"/"+createdAgentID,
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+
+	var updated struct {
+		Status json.RawMessage `json:"status"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &updated))
+	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
+}
+
 func (ts *AgentAPITestSuite) TestAgentUpdate_NameConflict() {
 	// Create a second agent, then try to rename it to the primary agent's name.
 	other := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("agent-conflict-temp", nil)}

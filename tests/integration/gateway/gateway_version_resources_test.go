@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -141,8 +142,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	applied := ts.captureAndApply("applications and agents")
 
 	embedded := ts.shown(applied, "application", embeddedID)
-	ts.Equal(ts.read("/applications/"+embeddedID), embedded.Resource,
+	embeddedRead := ts.read("/applications/" + embeddedID)
+	ts.Contains(embeddedRead, "status", "an application read carries its access status")
+	ts.Equal(withoutAccessState(embeddedRead), embedded.Resource,
 		"an application with no OAuth profile shows as its own read")
+	ts.assertNoAccessState(embedded.Resource, "application")
 	ts.Empty(embedded.Parts)
 
 	// An agent writes its address list only when it has one, so the agent's document is YAML. Its
@@ -156,7 +160,9 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	ts.NotEmpty(viewed["attributes"])
 	ts.Regexp(`^\{\{\.AGENT_[A-Z0-9_]+_CLIENT_ID\}\}$`, viewed["clientId"])
 	// The export writes an empty list as no value, so a scope claim with no claims reads as null.
-	ts.Equal(emptyAsNil(withoutClient(live)), emptyAsNil(withoutClient(viewed)))
+	ts.Contains(live, "status", "an agent read carries its access status")
+	ts.Equal(emptyAsNil(withoutClient(withoutAccessState(live))), emptyAsNil(withoutClient(viewed)))
+	ts.assertNoAccessState(viewed, "agent")
 	ts.NotContains(fmt.Sprint(viewed), "-secret-"+suffix, "a client secret was shown")
 	ts.Empty(agent.Parts)
 
@@ -224,7 +230,10 @@ func (ts *GatewayVersionsTestSuite) TestTheAppliedDirectoryShowsAsItsReads() {
 	agentTypeID := ts.defaultAgentTypeID()
 	ts.Equal(ts.read("/agent-types/"+agentTypeID), ts.shown(applied, "agent_type", agentTypeID).Resource)
 	user := ts.shown(applied, "user", userID)
-	ts.Equal(ts.read("/users/"+userID), user.Resource)
+	userRead := ts.read("/users/" + userID)
+	ts.Contains(userRead, "status", "a user read carries its access status")
+	ts.Equal(withoutAccessState(userRead), user.Resource)
+	ts.assertNoAccessState(user.Resource, "user")
 	ts.Empty(user.Parts)
 
 	group := ts.shown(applied, "group", groupID)
@@ -598,6 +607,29 @@ func (ts *GatewayVersionsTestSuite) field(value any, name string) []any {
 		values[i] = item[name]
 	}
 	return values
+}
+
+// accessStateKeys are the fields of a read the runtime keeps and a version never holds: the access
+// status and the last login.
+var accessStateKeys = []string{"status", "lastLoginAt"}
+
+// withoutAccessState leaves the access state out of a read.
+func withoutAccessState(read document) document {
+	trimmed := make(document, len(read))
+	for key, value := range read {
+		if !slices.Contains(accessStateKeys, key) {
+			trimmed[key] = value
+		}
+	}
+	return trimmed
+}
+
+// assertNoAccessState requires a shown resource to carry none of the access state.
+func (ts *GatewayVersionsTestSuite) assertNoAccessState(resource document, label string) {
+	ts.T().Helper()
+	for _, key := range accessStateKeys {
+		ts.NotContains(resource, key, "%s: a version must not hold %s", label, key)
+	}
 }
 
 // withoutUpdatedAt leaves out of a read the time it was last written, which an apply moves.

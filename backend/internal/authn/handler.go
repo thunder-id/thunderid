@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -405,7 +406,8 @@ func (
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code:
+		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code,
+			authnprovidermgr.ErrorAccountLocked.Code, authnprovidermgr.ErrorAccountSuspended.Code:
 			status = http.StatusUnauthorized
 		case common.ErrorUserNotFound.Code:
 			status = http.StatusNotFound

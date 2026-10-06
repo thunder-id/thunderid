@@ -243,13 +243,13 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessEmptyEngineRespons
 
 func TestAuthorizationServiceEnrichesSubjectPropertiesAndCachesEntities(t *testing.T) {
 	entityService := entitymock.NewEntityServiceInterfaceMock(t)
-	entityService.EXPECT().GetEntity(mock.Anything, "user1").Return(&providers.Entity{
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").Return(&providers.Entity{
 		ID:         "user1",
 		Category:   providers.EntityCategoryUser,
 		OUID:       "ou-1",
 		Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
 	}, nil).Once()
-	entityService.EXPECT().GetEntity(mock.Anything, "agent1").Return(&providers.Entity{
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "agent1").Return(&providers.Entity{
 		ID:         "agent1",
 		Category:   providers.EntityCategoryAgent,
 		OUID:       "ou-2",
@@ -290,7 +290,7 @@ func TestAuthorizationServiceEnrichesSubjectPropertiesAndCachesEntities(t *testi
 
 func TestAuthorizationServiceEnrichRequestRejectsInvalidEntityAttributes(t *testing.T) {
 	entityService := entitymock.NewEntityServiceInterfaceMock(t)
-	entityService.EXPECT().GetEntity(mock.Anything, "user1").Return(&providers.Entity{
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").Return(&providers.Entity{
 		ID:         "user1",
 		Category:   providers.EntityCategoryUser,
 		Attributes: json.RawMessage(`{"email":`),
@@ -308,7 +308,7 @@ func TestAuthorizationServiceEnrichRequestRejectsInvalidEntityAttributes(t *test
 
 func TestAuthorizationServiceEnrichRequestMapsEntityLookupError(t *testing.T) {
 	entityService := entitymock.NewEntityServiceInterfaceMock(t)
-	entityService.EXPECT().GetEntity(mock.Anything, "user1").
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").
 		Return((*providers.Entity)(nil), errors.New("store failed"))
 
 	service := &authorizationService{entityService: entityService}
@@ -323,9 +323,9 @@ func TestAuthorizationServiceEnrichRequestMapsEntityLookupError(t *testing.T) {
 
 func TestAuthorizationServiceEnrichRequestContinuesForUnknownEntity(t *testing.T) {
 	entityService := entitymock.NewEntityServiceInterfaceMock(t)
-	entityService.EXPECT().GetEntity(mock.Anything, "unknown").
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "unknown").
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
-	entityService.EXPECT().GetEntity(mock.Anything, "user1").Return(&providers.Entity{
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").Return(&providers.Entity{
 		ID:         "user1",
 		Category:   providers.EntityCategoryUser,
 		OUID:       "ou-1",

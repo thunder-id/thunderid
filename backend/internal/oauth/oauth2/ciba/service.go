@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -262,7 +263,10 @@ func (s *cibaService) loadPendingRequestForCallback(
 
 	// Resolve the owning client to obtain the expected audience (the app entity ID used as the
 	// assertion `aud`) for defense-in-depth audience validation during signature verification.
-	expectedAud := s.resolveExpectedAudience(ctx, record.ClientID)
+	expectedAud, cibaErr := s.resolveExpectedAudience(ctx, record.ClientID)
+	if cibaErr != nil {
+		return nil, cibaErr
+	}
 
 	if verifyErr := s.jwtService.VerifyJWT(ctx, assertion, expectedAud, ""); verifyErr != nil {
 		s.logger.Debug(ctx, "Assertion verification failed",
@@ -404,19 +408,27 @@ func (s *cibaService) handleFailedCallback(
 }
 
 // resolveExpectedAudience resolves the app entity ID for the given client ID, which the flow uses
-// as the assertion `aud`. It returns an empty string (skipping the audience check) on lookup
-// failure; the authorization_request_id binding remains the primary protection in that case.
-func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) string {
+// as the assertion `aud`. A held client refuses the callback. Any other lookup failure returns an
+// empty string (skipping the audience check); the authorization_request_id binding remains the
+// primary protection in that case, and the token endpoint authenticates the client again.
+func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) (string, *CIBAError) {
 	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if svcErr != nil {
+		if svcErr.Code == actorprovider.ErrorActorUnavailable.Code {
+			s.logger.Debug(ctx, "Refusing a backchannel authentication callback for an unavailable application")
+			return "", &CIBAError{
+				Code:    oauth2const.ErrorUnauthorizedClient,
+				Message: "This application is currently unavailable",
+			}
+		}
 		s.logger.Warn(ctx, "Failed to resolve client for audience validation; skipping audience check",
 			log.String("error", svcErr.Error.DefaultValue))
-		return ""
+		return "", nil
 	}
 	if app == nil {
-		return ""
+		return "", nil
 	}
-	return app.ID
+	return app.ID, nil
 }
 
 // Flow executor error codes that mean the login_hint resolved to no single entity. Matched by

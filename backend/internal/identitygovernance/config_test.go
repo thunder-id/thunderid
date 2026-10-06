@@ -117,21 +117,6 @@ func (s *ConfigTestSuite) TestAnUnexpectedSectionTypeFallsBackToTheDeploymentPol
 	s.Equal(4, userThreshold(s.readingSource(deploymentBase())))
 }
 
-// The deployment configuration is served with the lock email recipient defaulted.
-func (s *ConfigTestSuite) TestTheBaseCarriesTheDefaultRecipientAttribute() {
-	base := deploymentBase()
-	base.User.Notifications = &accountAccessNotifications{
-		OnLock: &accountAccessLockNotification{
-			Email: &accountAccessLockEmail{Enabled: new(true)},
-		},
-	}
-
-	email := newAccountAccessSource(base).Current(context.Background()).User.Notifications.lockEmail()
-
-	s.Equal(defaultLockEmailRecipientAttribute, *email.RecipientAttribute)
-	s.Nil(base.User.Notifications.lockEmail().RecipientAttribute, "the configuration itself is not changed")
-}
-
 // Removing the section removes the policy.
 func (s *ConfigTestSuite) TestAnEmptySectionHasNoPolicy() {
 	s.serves(accountAccessValue{})
@@ -275,5 +260,4 @@ func (s *ConfigTestSuite) TestTheShippedDefaultsResolveToTheDocumentedPolicy() {
 	s.Equal(3600, *effective.Agent.LastLoginResolutionSeconds)
 	email := effective.User.Notifications.lockEmail()
 	s.True(*email.Enabled)
-	s.Equal(defaultLockEmailRecipientAttribute, *email.RecipientAttribute)
 }

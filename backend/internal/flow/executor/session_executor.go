@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -31,6 +32,7 @@ type sessionExecutor struct {
 	providers.Executor
 	sso           session.Service
 	authnProvider providers.AuthnProviderManager
+	accessGuard   *accessGuard
 	logger        *log.Logger
 }
 
@@ -40,7 +42,8 @@ var _ providers.Executor = (*sessionExecutor)(nil)
 // persistence; the authn provider resolves the subject's entity reference when saving and is the
 // contract downstream nodes use to read the subject reconstructed on the SSO load path.
 func newSessionExecutor(flowFactory core.FlowFactoryInterface, sso session.Service,
-	authnProvider providers.AuthnProviderManager) *sessionExecutor {
+	authnProvider providers.AuthnProviderManager,
+	governance providers.IdentityGovernanceProvider) *sessionExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SessionExecutor"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameSession))
 
@@ -53,6 +56,7 @@ func newSessionExecutor(flowFactory core.FlowFactoryInterface, sso session.Servi
 		Executor:      base,
 		sso:           sso,
 		authnProvider: authnProvider,
+		accessGuard:   newAccessGuard(governance, logger),
 		logger:        logger,
 	}
 }
@@ -88,17 +92,52 @@ func (e *sessionExecutor) Execute(ctx *providers.NodeContext) (*providers.Execut
 		return execResp, nil
 	}
 
-	if err := e.saveCheckpoint(ctx, execResp, checkpoint, logger); err != nil {
+	// Checked before the save, which logs and drops its errors.
+	entityRef, refErr := e.resolveEntityReference(ctx)
+	svcErr, fault := e.refuseHeldSubject(ctx, entityRef, logger)
+	if fault != nil {
+		return nil, fault
+	}
+	if svcErr != nil {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = svcErr
+		return execResp, nil
+	}
+
+	if err := e.saveCheckpoint(ctx, execResp, checkpoint, entityRef, refErr, logger); err != nil {
 		logger.Error(ctx.Context, "Failed to save SSO checkpoint; continuing without SSO", log.Error(err))
 	}
 	return execResp, nil
+}
+
+// resolveEntityReference resolves the authenticated user's entity reference, or nil when there is none.
+func (e *sessionExecutor) resolveEntityReference(ctx *providers.NodeContext) (
+	*providers.EntityReference, *tidcommon.ServiceError) {
+	if e.authnProvider == nil || !ctx.AuthUser.IsAuthenticated() {
+		return nil, nil
+	}
+	_, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	return entityRef, svcErr
+}
+
+// refuseHeldSubject returns the refusal for a held subject about to be saved into a session. An
+// unresolved reference is left to the save.
+func (e *sessionExecutor) refuseHeldSubject(ctx *providers.NodeContext, entityRef *providers.EntityReference,
+	logger *log.Logger) (*tidcommon.ServiceError, error) {
+	if entityRef == nil {
+		logger.Debug(ctx.Context, "No resolved subject at the session join; nothing to check")
+		return nil, nil
+	}
+
+	return e.accessGuard.refuseIfHeld(ctx.Context, entityRef.EntityID, providers.AccessPlaneSession, "")
 }
 
 // saveCheckpoint resolves the authenticated subject, builds the snapshot from this join's runtime
 // state, and hands it to the SSO session service to attach to the flow execution's session. It emits
 // the handle for the transport layer to set only when the service minted a new session.
 func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
-	checkpoint string, logger *log.Logger) error {
+	checkpoint string, entityRef *providers.EntityReference, refErr *tidcommon.ServiceError,
+	logger *log.Logger) error {
 	// Always preserve the already-authenticated user; this executor does not change it on the save
 	// path, but it is an authentication-type executor so it must echo the AuthUser back to keep the
 	// engine's authenticated subject.
@@ -131,12 +170,11 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		return nil
 	}
 
-	// Resolve the subject's entity reference — authn is this executor's responsibility. Its entity id
-	// keys the session and drives the cross-checkpoint subject-consistency check. The AuthUser is
-	// snapshotted as-is below; this executor does not materialize attributes or otherwise change it.
-	_, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
-	if svcErr != nil {
-		return fmt.Errorf("failed to resolve subject entity reference: %s", svcErr.ErrorDescription.DefaultValue)
+	// The subject's entity reference, resolved in Execute. Its entity id keys the session and drives the
+	// cross-checkpoint subject-consistency check. The AuthUser is snapshotted as-is below; this executor
+	// does not materialize attributes or otherwise change it.
+	if refErr != nil {
+		return fmt.Errorf("failed to resolve subject entity reference: %s", refErr.ErrorDescription.DefaultValue)
 	}
 	if entityRef == nil || entityRef.EntityID == "" {
 		logger.Debug(ctx.Context, "No resolved subject id; skipping checkpoint save")

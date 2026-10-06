@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 )
 
@@ -269,6 +270,26 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequestSer
 			serviceError:       &ErrorReservedCredentialType,
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  ErrorReservedCredentialType.Code,
+		},
+		{
+			name: "StatedLock",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &authnprovidermgr.ErrorAccountLocked,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  authnprovidermgr.ErrorAccountLocked.Code,
+		},
+		{
+			name: "StatedSuspension",
+			authRequest: map[string]interface{}{
+				"identifiers": map[string]interface{}{"username": "testuser"},
+				"credentials": map[string]interface{}{"password": "testpass"},
+			},
+			serviceError:       &authnprovidermgr.ErrorAccountSuspended,
+			expectedStatusCode: http.StatusUnauthorized,
+			expectedErrorCode:  authnprovidermgr.ErrorAccountSuspended.Code,
 		},
 		{
 			name: "ServerError",

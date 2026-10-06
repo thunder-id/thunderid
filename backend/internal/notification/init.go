@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/internal/notification/client"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -17,9 +18,11 @@ import (
 // loading and sender-CRUD HTTP routing now happen in the connection package
 // (/connections/{vendor}), which is the sole owner of the "connection" declarative resource
 // type. This package no longer registers any HTTP routes; its services are consumed internally
-// by authn, flow executors, and the connection/importer packages.
+// by authn, flow executors, and the connection/importer packages. It also returns the handler of
+// the "notification" server-config section.
 func Initialize(jwtService jwt.JWTServiceInterface) (
-	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface, error) {
+	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
+	serverconfig.ServerConfigHandlerInterface, error) {
 	var notificationStore notificationStoreInterface
 	var tx providers.Transactioner
 
@@ -32,7 +35,7 @@ func Initialize(jwtService jwt.JWTServiceInterface) (
 			// Service initialization runs during application startup, outside any request.
 			log.GetLogger().Error(context.Background(),
 				"Failed to initialize notification store", log.Error(err))
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
@@ -42,5 +45,5 @@ func Initialize(jwtService jwt.JWTServiceInterface) (
 	otpService := newOTPService(jwtService)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
 
-	return mgtService, otpService, notificationSenderService, nil
+	return mgtService, otpService, notificationSenderService, newServerConfigHandler(mgtService), nil
 }

@@ -50,10 +50,6 @@ const (
 // defaultDisclosureMode is the disclosure mode every policy resolves to. It is not configurable.
 const defaultDisclosureMode = discloseAlways
 
-// defaultLockEmailRecipientAttribute is the profile attribute the lock email is sent to when none is
-// configured.
-const defaultLockEmailRecipientAttribute = "email"
-
 // defaultLastLoginResolutionSeconds is the resolution used when recording is on and none is set.
 const defaultLastLoginResolutionSeconds = 3600
 
@@ -111,26 +107,19 @@ const (
 	outcomeTemplateFailed noticeOutcome = "template_failed"
 	outcomeSendFailed     noticeOutcome = "send_failed"
 	outcomeNoSender       noticeOutcome = "no_default_sender"
+	outcomeNoTemplate     noticeOutcome = "no_template"
 	outcomeClosed         noticeOutcome = "notifier_closed"
 	outcomeShutdown       noticeOutcome = "dropped_at_shutdown"
 	outcomeAccepted       noticeOutcome = "mail_server_accepted"
 )
 
-// Lock email template placeholders. Both are always supplied, since the renderer fails on a
+// Lock email template placeholders. All are always supplied, since the renderer fails on a
 // placeholder with no value.
 const (
-	templateKeyLockDuration = "lockDuration"
-	templateKeyUnlockTime   = "unlockTime"
+	templateKeyAuthenticationMethod = "authenticationMethod"
+	templateKeyLockDuration         = "lockDuration"
+	templateKeyUnlockTime           = "unlockTime"
 )
-
-// lockTemplates names the lock email templates for the method that locked. The entity-wide entry,
-// and a method not listed, uses the account's templates.
-var lockTemplates = map[providers.AuthenticationMethod]lockTemplate{
-	providers.AuthenticationMethodCredential: {expiring: "account-locked-credential",
-		permanent: "account-locked-credential-permanent"},
-	providers.AuthenticationMethodOTP: {expiring: "account-locked-otp", permanent: "account-locked-otp-permanent"},
-	AuthenticationMethodEntity:        {expiring: "account-locked", permanent: "account-locked-permanent"},
-}
 
 // unlockTimeLayout writes the unlock time in UTC, locale-neutrally, to the minute. The templates name
 // the zone.

@@ -17,6 +17,8 @@ const (
 	ComponentBackchannelLogout = "BackchannelLogout"
 	// ComponentIdentityGovernance identifies the identity governance service.
 	ComponentIdentityGovernance = "IdentityGovernance"
+	// ComponentServerConfig identifies the server-config service.
+	ComponentServerConfig = "ServerConfig"
 )
 
 // Authentication and Authorization Event Types
@@ -34,6 +36,10 @@ const (
 
 	// EventTypeTokenRevoked is triggered when a token is revoked (RFC 7009).
 	EventTypeTokenRevoked providers.EventType = "TOKEN_REVOKED" //nolint:gosec
+
+	// EventTypeTokenRevocationFailed is triggered when a criteria revocation cannot be stored. A boundary
+	// revocation that fails this way stops the flow it belongs to, such as a suspension.
+	EventTypeTokenRevocationFailed providers.EventType = "TOKEN_REVOCATION_FAILED" //nolint:gosec
 
 	// EventTypeRuntimePersistentDBUnavailable is triggered when the runtime persistent database backing the
 	// deny-list (revocation) check becomes unavailable and enforcement fails closed.
@@ -62,6 +68,10 @@ const (
 	EventTypeIdentityUnlocked providers.EventType = "IDENTITY_UNLOCKED"
 	// EventTypeIdentityUnlockFailed is triggered when an unlock is refused or cannot be written.
 	EventTypeIdentityUnlockFailed providers.EventType = "IDENTITY_UNLOCK_FAILED"
+	// EventTypeServerConfigUpdated is triggered when a server-config section's writable layer is replaced.
+	EventTypeServerConfigUpdated providers.EventType = "SERVER_CONFIG_UPDATED"
+	// EventTypeServerConfigUpdateFailed is triggered when a server-config write is rejected or fails.
+	EventTypeServerConfigUpdateFailed providers.EventType = "SERVER_CONFIG_UPDATE_FAILED"
 
 	// Back-Channel Logout Events
 	// EventTypeBackchannelLogoutDelivered is triggered when a relying party accepts a logout token.

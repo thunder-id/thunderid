@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
@@ -113,6 +114,16 @@ func (suite *ProvisioningExecutorTestSuite) expectSchemaForAgentProvisioning() {
 		Return([]model.AttributeInfo{
 			{Attribute: "name", Required: true}, {Attribute: "model", Required: false},
 		}, nil).Maybe()
+}
+
+// expectProvisionedSignIn requires the created entity to be signed in with the provisioned-entity
+// credential, replacing the suite's catch-all expectation.
+func (suite *ProvisioningExecutorTestSuite) expectProvisionedSignIn(entityID string) {
+	suite.mockAuthnProvider.ExpectedCalls = nil
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(newAuthenticatedAuthUser(), providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil)).Once()
 }
 
 // expectNoExistingUserFor mocks the existing-user lookup over attrs as finding nothing.
@@ -225,6 +236,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Success() {
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID && u.Type == testUserType
 		})).Return(createdUser, nil)
+	// A user the node creates is signed in with the provisioned-entity credential.
+	suite.expectProvisionedSignIn(testNewUserID)
 
 	suite.mockGroupService.On("AddMembersToGroups",
 		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}}, []string{"test-group-id"}).
@@ -242,6 +255,38 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Success() {
 	suite.mockGroupService.AssertExpectations(suite.T())
 	suite.mockRoleService.AssertExpectations(suite.T())
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
+}
+
+// Answered with the authentication error, as any failed bind of the created user is.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AFaultSigningInTheCreatedUserFailsTheNode() {
+	suite.expectSchemaForProvisioning()
+	attrs := map[string]interface{}{"username": "newuser", attributeEmail: "new@example.com"}
+	attrsJSON, _ := json.Marshal(attrs)
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{"username": "newuser", attributeEmail: "new@example.com"},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testUserType},
+		NodeInputs: []providers.Input{
+			{Identifier: "username", Type: "string", Required: true},
+			{Identifier: attributeEmail, Type: "string", Required: true},
+		},
+	}
+	suite.expectNoExistingUserFor(attrs)
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
+		Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON}, nil)
+	suite.mockAuthnProvider.ExpectedCalls = nil
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testNewUserID},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, &tidcommon.InternalServerError).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrEntityAuthFailed.Code, resp.Error.Code)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 // TestExecute_ResolvedEntityReference_SkipsIdentify verifies a local user resolved by account
@@ -1455,6 +1500,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UnknownProvisioningMode_
 // generated identifier and client credentials, which the create response is the only chance to read.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatesToAgentMgtProvider() {
 	suite.expectSchemaForAgentProvisioning()
+	suite.expectProvisionedSignIn(testNewAgentID)
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -2686,7 +2732,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_Success() {
 	}
 
 	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntity", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
 			return u.OUID == testOUID
@@ -2753,7 +2799,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Fails() {
 	}
 
 	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntity", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -2949,7 +2995,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_AuthnFlow
 	}
 
 	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntity", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -2999,7 +3045,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Registrat
 	provMock.On(methodGetRequiredInputs, mock.Anything).Return(nodeInputs).Maybe()
 
 	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntity", existingUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(existingUser, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -3031,7 +3077,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_GetUserError() {
 	}
 
 	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(&existingUserID, nil)
-	suite.mockEntityProvider.On("GetEntity", existingUserID).Return(nil,
+	suite.mockEntityProvider.On("GetEntityProfile", existingUserID).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4526,7 +4572,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Ma
 			{ID: testExistingUserID, OUID: testOUID},
 			{ID: "other-user-id", OUID: "ou-honda"},
 		}, nil)
-	suite.mockEntityProvider.On("GetEntity", testExistingUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", testExistingUserID).
 		Return(&providers.Entity{ID: testExistingUserID, OUID: testOUID}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4978,7 +5024,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 	ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
 	ctx.NodeInputs = []providers.Input{}
 	suite.expectSchemaForProvisioning()
-	suite.mockEntityProvider.On("GetEntity", testExistingUser123ID).
+	suite.mockEntityProvider.On("GetEntityProfile", testExistingUser123ID).
 		Return(&providers.Entity{ID: testExistingUser123ID, OUID: "ou-source"}, nil).Once()
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
 		mock.MatchedBy(func(u *providers.User) bool {
@@ -5086,6 +5132,54 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_AmbiguousRegis
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_HeldTargetOUHolderStatesTheHold() {
+	for code, want := range map[string]string{
+		authnprovidermgr.ErrorAccountLocked.Code:        ErrAccountLocked.Code,
+		authnprovidermgr.ErrorAccountSuspended.Code:     ErrAccountSuspended.Code,
+		authnprovidermgr.ErrorAuthenticationFailed.Code: ErrEntityAuthFailed.Code,
+	} {
+		suite.Run(code, func() {
+			suite.SetupTest()
+			ctx := suite.linkedRegistrationCtx(
+				&providers.Entity{ID: testExistingUser123ID, OUID: testOUID},
+				&providers.Entity{ID: "holder-elsewhere", OUID: "ou-source"})
+			ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
+			ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+			ctx.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+			suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+				map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testExistingUser123ID},
+				mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims{},
+					&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: code}).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+			assert.Equal(suite.T(), want, resp.Error.Code)
+			suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
+		})
+	}
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_TargetOUHolderServerFaultIsReturned() {
+	ctx := suite.linkedRegistrationCtx(
+		&providers.Entity{ID: testExistingUser123ID, OUID: testOUID},
+		&providers.Entity{ID: "holder-elsewhere", OUID: "ou-source"})
+	ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
+	ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+	ctx.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testExistingUser123ID},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, &tidcommon.InternalServerError).Once()
+
+	_, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
 }
 
 // Accepting an invitation settles the link's holders as registration does, so an invitee who already

@@ -20,6 +20,8 @@ const (
 	ConfigNameCSP ConfigName = "csp"
 	// ConfigNameAccountAccess is the configuration key for the automatic account-lockout policy.
 	ConfigNameAccountAccess ConfigName = "accountAccess"
+	// ConfigNameNotification is the configuration key for the notification defaults.
+	ConfigNameNotification ConfigName = "notification"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -30,6 +32,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameFlow,
 	ConfigNameCSP,
 	ConfigNameAccountAccess,
+	ConfigNameNotification,
 }
 
 // IsValid reports whether the config name is one of the supported values.

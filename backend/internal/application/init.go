@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
@@ -38,10 +39,11 @@ func Initialize(
 	artifactLifetime artifactLifetimeResolver,
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService,
+		valueCapturer, sharingService, governance,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

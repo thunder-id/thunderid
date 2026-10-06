@@ -4,6 +4,7 @@
 package notification
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -89,11 +90,32 @@ func (suite *InitTestSuite) TearDownSuite() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	mgtService, _, _, err := Initialize(suite.mockJWTService)
+	mgtService, _, _, configHandler, err := Initialize(suite.mockJWTService)
 	suite.NoError(err)
 
 	suite.NotNil(mgtService)
 	suite.Implements((*NotificationSenderMgtSvcInterface)(nil), mgtService)
+	suite.NotNil(configHandler)
+}
+
+// The returned handler is the notification section's, looking senders up through the returned
+// management service.
+func (suite *InitTestSuite) TestInitialize_ReturnsTheNotificationSectionHandler() {
+	mgtService, _, _, configHandler, err := Initialize(suite.mockJWTService)
+	suite.Require().NoError(err)
+
+	handler, ok := configHandler.(*serverConfigHandler)
+	suite.Require().True(ok, "got %T", configHandler)
+	suite.Same(mgtService, handler.senders)
+
+	declarative, err := configHandler.Decode(json.RawMessage(`{"defaultEmailSenderId":"file"}`))
+	suite.Require().NoError(err)
+	suite.Equal(ServerConfig{DefaultEmailSenderID: "file"}, declarative)
+	_, err = configHandler.Decode(json.RawMessage(`{"defaultEmailSender":"file"}`))
+	suite.Error(err, "an unknown field must be refused")
+	suite.ErrorIs(configHandler.Validate(ServerConfig{DefaultEmailSenderID: "db"}, declarative, ServerConfig{}),
+		errDeclarativeSenderLocked)
+	suite.Equal(declarative, configHandler.Merge(declarative, ServerConfig{DefaultEmailSenderID: "db"}))
 }
 
 func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
@@ -103,10 +125,11 @@ func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
 	getDBProvider = func() provider.DBProviderInterface { return mockProvider }
 	defer func() { getDBProvider = originalGetDBProvider }()
 
-	mgtService, otpService, senderService, err := Initialize(suite.mockJWTService)
+	mgtService, otpService, senderService, configHandler, err := Initialize(suite.mockJWTService)
 
 	suite.Error(err)
 	suite.Nil(mgtService)
 	suite.Nil(otpService)
 	suite.Nil(senderService)
+	suite.Nil(configHandler)
 }

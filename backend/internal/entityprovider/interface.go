@@ -24,6 +24,10 @@ type EntityProviderInterface interface {
 	// GetEntity retrieves an entity by ID. Credentials are never returned.
 	GetEntity(entityID string) (*providers.Entity, *EntityProviderError)
 
+	// GetEntityProfile retrieves an entity's profile by ID, without its runtime state. State is empty.
+	// Use it whenever the caller does not need the entity's status.
+	GetEntityProfile(entityID string) (*providers.Entity, *EntityProviderError)
+
 	// UpdateEntity updates an existing entity's core fields. The entity's state is not written.
 	UpdateEntity(entityID string, entity *providers.Entity) (*providers.Entity, *EntityProviderError)
 

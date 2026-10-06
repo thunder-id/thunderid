@@ -44,6 +44,12 @@ func (p *disabledEntityProvider) GetEntity(
 	return nil, errNotImplemented
 }
 
+// GetEntityProfile is not available without an entity provider.
+func (p *disabledEntityProvider) GetEntityProfile(
+	_ string) (*providers.Entity, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
 func (p *disabledEntityProvider) UpdateEntity(_ string,
 	_ *providers.Entity) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented

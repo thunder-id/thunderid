@@ -168,6 +168,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: () => <div data-testid="account-status-action" />,
     AppleIcon: vi.fn(() => null),
     AndroidLogo: vi.fn(() => null),
     FlutterLogo: vi.fn(() => null),
@@ -463,6 +464,44 @@ describe('ApplicationEditPage', () => {
       renderComponent();
 
       expect(screen.getByText('No description provided')).toBeInTheDocument();
+    });
+  });
+
+  describe('Access status', () => {
+    const renderApplication = (application: Partial<Application>): void => {
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, ...application},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      renderComponent();
+    };
+
+    it('shows the suspension banner for a suspended application', () => {
+      renderApplication({status: {value: 'SUSPENDED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Suspended');
+      expect(screen.getByRole('status')).toHaveTextContent('The application is suspended');
+    });
+
+    it('shows no banner for an active application', () => {
+      renderApplication({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable application', () => {
+      renderApplication({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('hides the lifecycle action on a read-only application', () => {
+      renderApplication({isReadOnly: true});
+
+      expect(screen.queryByTestId('account-status-action')).not.toBeInTheDocument();
     });
   });
 

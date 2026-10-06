@@ -717,6 +717,11 @@ type AccessStatusDetails struct {
 	LockedMethods []AccessLockedMethod `json:"lockedMethods,omitempty" yaml:"-"`
 }
 
+// ApplicationStatusReport exposes only the application lifecycle status.
+type ApplicationStatusReport struct {
+	Value AccessStatus `json:"value"`
+}
+
 // AccessStatusReport is the access status a management read returns: the effective value
 // (SUSPENDED, LOCKED or ACTIVE) and its details, nil when there is nothing to add.
 type AccessStatusReport struct {
@@ -731,15 +736,18 @@ type AccessDecision struct {
 	Reason   AccessRefusalReason
 }
 
-// User represents a user in the system.
+// User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
+// recorded by the runtime, session reuse included, never by a profile write.
 type User struct {
-	ID         string          `json:"id,omitempty"`
-	OUID       string          `json:"ouId,omitempty"`
-	OUHandle   string          `json:"ouHandle,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
-	Display    string          `json:"display,omitempty"`
-	IsReadOnly bool            `json:"isReadOnly"`
+	ID          string              `json:"id,omitempty"`
+	OUID        string              `json:"ouId,omitempty"`
+	OUHandle    string              `json:"ouHandle,omitempty"`
+	Type        string              `json:"type,omitempty"`
+	Attributes  json.RawMessage     `json:"attributes,omitempty"`
+	Display     string              `json:"display,omitempty"`
+	IsReadOnly  bool                `json:"isReadOnly"`
+	Status      *AccessStatusReport `json:"status,omitempty"`
+	LastLoginAt string              `json:"lastLoginAt,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
 }
@@ -1253,6 +1261,9 @@ type Application struct {
 	TosURI    string   `yaml:"tosUri,omitempty" json:"tosUri,omitempty" jsonschema:"Terms of Service URI."`
 	PolicyURI string   `yaml:"policyUri,omitempty" json:"policyUri,omitempty" jsonschema:"Privacy Policy URI."`
 	Contacts  []string `yaml:"contacts,omitempty" json:"contacts,omitempty"`
+
+	// Status is the effective access status, derived at read time.
+	Status *ApplicationStatusReport `yaml:"-" json:"status,omitempty" jsonschema:"Effective access status. Read-only."`
 
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`

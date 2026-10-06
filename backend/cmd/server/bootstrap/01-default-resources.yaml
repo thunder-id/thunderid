@@ -545,6 +545,12 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
+  onSuccess: release_account_locks
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
   onSuccess: recovery_complete
 - id: recovery_complete
   type: PROMPT
@@ -861,13 +867,26 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
-  onSuccess: recovery_complete
+  onSuccess: release_account_locks
   layout:
     size:
       width: 206
       height: 113
     position:
       x: 2820
+      y: 340
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: recovery_complete
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 3200
       y: 340
 - id: recovery_complete
   type: PROMPT
@@ -895,7 +914,7 @@ nodes:
       width: 350
       height: 340
     position:
-      x: 3140
+      x: 3580
       y: 250
 - id: call_authentication
   type: CALL
@@ -916,7 +935,7 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 3600
+      x: 4040
       y: 375
 ---
 resource_type: flow
@@ -6569,6 +6588,675 @@ translations:
     forms.confirm.actions.submit.label: Sign out
     errors.failed.description: Something went wrong. Please try again.
 ---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000087
+name: Default User Unlock Flow
+handle: default-user-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+# Best-effort: tells the holder they can sign in again. Delete this node to stop notifying.
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unlocked
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000086
+name: Default Agent Unlock Flow
+handle: default-agent-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000088
+name: Default User Suspend Flow
+handle: default-user-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+# Checks the operator may suspend the target and plans the revocations. A failure before the hold is
+# written leaves the account unchanged, so the suspend can be retried.
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+# Revokes existing sessions and tokens. Unlike a lock, a suspension also cuts off access already granted.
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+# Writes the hold. The revocation cutoff includes jwt.leeway, which also covers the time since
+# pre_suspend.
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+# Last and best-effort, so a mail failure never blocks or fails the suspension. Delete this node to
+# stop notifying.
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000089
+name: Default User Unsuspend Flow
+handle: default-user-unsuspend-flow
+flowType: ADMINISTRATION
+# No revocation: unsuspend withholds nothing. The user is left on an account-wide lock that
+# self-service recovery or the unlock flow clears.
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+# Best-effort: tells the holder the suspension is lifted and the account is still locked. Delete this
+# node to stop notifying.
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unsuspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000082
+name: Default Agent Suspend Flow
+handle: default-agent-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+# Checks the operator may suspend the target and plans the revocations. A failure before the hold is
+# written leaves the account unchanged, so the suspend can be retried.
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+# Revokes existing sessions and tokens. Unlike a lock, a suspension also cuts off access already granted.
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+# Writes the hold. The revocation cutoff includes jwt.leeway, which also covers the time since
+# pre_suspend.
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+# Last and best-effort, so a mail failure never blocks or fails the suspension. Delete this node to
+# stop notifying.
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000083
+name: Default Agent Unsuspend Flow
+handle: default-agent-unsuspend-flow
+flowType: ADMINISTRATION
+# The agent returns to ACTIVE. It has no self-service recovery, so a lock here could only be cleared
+# by an operator unlock.
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000084
+name: Default Application Suspend Flow
+handle: default-application-suspend-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_suspend
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+# Checks the operator may suspend the target and plans the revocations. A failure before the hold is
+# written leaves the account unchanged, so the suspend can be retried.
+- id: pre_suspend
+  type: TASK_EXECUTION
+  executor:
+    name: PreSuspendExecutor
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 680
+      y: 175
+# Revokes existing sessions and tokens. Unlike a lock, a suspension also cuts off access already granted.
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1440
+      y: 175
+# Writes the hold. The revocation cutoff includes jwt.leeway, which also covers the time since
+# pre_suspend.
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: suspend
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1820
+      y: 175
+# Last and best-effort, so a mail failure never blocks or fails the suspension. Delete this node to
+# stop notifying.
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-suspended
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2580
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000085
+name: Default Application Unsuspend Flow
+handle: default-application-unsuspend-flow
+flowType: ADMINISTRATION
+# The application returns to ACTIVE, as an agent does.
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unsuspend
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
 resource_type: notification_template
 channel: email
 handle: user-invite
@@ -6761,7 +7449,47 @@ channel: email
 handle: account-locked
 ouHandle: default
 displayName: Account Temporarily Locked Email
-description: Sent when repeated failed sign-ins lock sign-in to the account for a limited time.
+description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
+content:
+  subject: "Sign-in was temporarily locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in temporarily locked</h2>
+      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been temporarily locked due to multiple failed attempts.</p>
+      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
+      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-locked-permanent
+ouHandle: default
+displayName: Account Locked Email
+description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
+content:
+  subject: "Sign-in was locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in locked</h2>
+      <p>The {{ctx(authenticationMethod)}} sign-in method on your account has been locked due to multiple failed attempts.</p>
+      <p><strong>This lock does not expire automatically.</strong></p>
+      <p>To regain access, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-locked-entity
+ouHandle: default
+displayName: Account Sign-in Temporarily Locked Email
+description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
 content:
   subject: "Sign-in was temporarily locked on your account"
   body: |
@@ -6778,10 +7506,10 @@ content:
 ---
 resource_type: notification_template
 channel: email
-handle: account-locked-permanent
+handle: account-locked-entity-permanent
 ouHandle: default
-displayName: Account Locked Email
-description: Sent when repeated failed sign-ins lock sign-in to the account until it is released.
+displayName: Account Sign-in Locked Email
+description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
 content:
   subject: "Sign-in was locked on your account"
   body: |
@@ -6798,80 +7526,53 @@ content:
 ---
 resource_type: notification_template
 channel: email
-handle: account-locked-credential
+handle: account-suspended
 ouHandle: default
-displayName: Credential Sign-in Temporarily Locked Email
-description: Sent when repeated failed sign-ins lock credential sign-in for a limited time.
+displayName: Account Suspended Email
+description: Sent when an administrator suspends an account.
 content:
-  subject: "Sign-in was temporarily locked on your account"
+  subject: "Your account has been suspended"
   body: |
     <!DOCTYPE html>
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in temporarily locked</h2>
-      <p>Credential sign-in has been temporarily locked due to multiple failed attempts.</p>
-      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
-      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+      <h2>Your account has been suspended</h2>
+      <p>Your account has been suspended by an administrator. You can no longer sign in, and your existing sessions have been ended.</p>
+      <p>To regain access, contact your administrator. Only an administrator can lift the suspension.</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: email
-handle: account-locked-credential-permanent
+handle: account-unsuspended
 ouHandle: default
-displayName: Credential Sign-in Locked Email
-description: Sent when repeated failed sign-ins lock credential sign-in until it is released.
+displayName: Account Suspension Lifted Email
+description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
 content:
-  subject: "Sign-in was locked on your account"
+  subject: "The suspension on your account has been lifted"
   body: |
     <!DOCTYPE html>
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in locked</h2>
-      <p>Credential sign-in has been locked due to multiple failed attempts.</p>
-      <p><strong>This lock does not expire automatically.</strong></p>
-      <p>To regain access, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+      <h2>Your account suspension has been lifted</h2>
+      <p>An administrator has lifted the suspension on your account.</p>
+      <p><strong>Your account is still locked.</strong> To sign in again, complete account recovery or contact your administrator.</p>
     </body>
     </html>
 ---
 resource_type: notification_template
 channel: email
-handle: account-locked-otp
+handle: account-unlocked
 ouHandle: default
-displayName: Verification Code Sign-in Temporarily Locked Email
-description: Sent when repeated failed sign-ins lock verification code sign-in for a limited time.
+displayName: Account Unlocked Email
+description: Sent when an administrator unlocks an account.
 content:
-  subject: "Sign-in was temporarily locked on your account"
+  subject: "Your account has been unlocked"
   body: |
     <!DOCTYPE html>
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in temporarily locked</h2>
-      <p>Verification code sign-in has been temporarily locked due to multiple failed attempts.</p>
-      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}} UTC.</strong></p>
-      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
-    </body>
-    </html>
----
-resource_type: notification_template
-channel: email
-handle: account-locked-otp-permanent
-ouHandle: default
-displayName: Verification Code Sign-in Locked Email
-description: Sent when repeated failed sign-ins lock verification code sign-in until it is released.
-content:
-  subject: "Sign-in was locked on your account"
-  body: |
-    <!DOCTYPE html>
-    <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
-      <h2>Sign-in locked</h2>
-      <p>Verification code sign-in has been locked due to multiple failed attempts.</p>
-      <p><strong>This lock does not expire automatically.</strong></p>
-      <p>To regain access, complete account recovery or contact your administrator.</p>
-      <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+      <h2>Your account has been unlocked</h2>
+      <p>An administrator has unlocked your account. You can sign in again.</p>
     </body>
     </html>

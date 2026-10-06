@@ -20,6 +20,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -62,6 +63,7 @@ type UserServiceInterface interface {
 type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	entityService      entity.EntityServiceInterface
+	governance         identitygovernance.IdentityGovernanceServiceInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
 	entityTypeService  entitytype.EntityTypeServiceInterface
 	uuidGenerator      func() (string, error)
@@ -75,11 +77,13 @@ func newUserService(
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 ) UserServiceInterface {
 	return &userService{
 		authzService:      authzService,
 		entityService:     entityService,
+		governance:        governance,
 		ouService:         ouService,
 		entityTypeService: entityTypeService,
 		uuidGenerator:     utils.GenerateUUIDv7,
@@ -129,7 +133,7 @@ func (us *userService) listAllUsers(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := us.usersWithAccess(ctx, entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -160,7 +164,7 @@ func (us *userService) listUsersByOUIDs(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := us.usersWithAccess(ctx, entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -419,6 +423,9 @@ func (us *userService) GetUser(
 	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
 		return nil, svcErr
 	}
+	access := us.accessOf(ctx, e)
+	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 
 	if includeDisplay {
 		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
@@ -470,7 +477,7 @@ func (as *userService) GetUserGroups(ctx context.Context, userID string, limit, 
 	}
 
 	// Fetch user to resolve the OU ID for the authorization check.
-	userEntity, err := as.entityService.GetEntity(ctx, userID)
+	userEntity, err := as.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -531,7 +538,7 @@ func (us *userService) UpdateUser(
 	}
 
 	// Fetch the existing user to obtain its OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -612,6 +619,10 @@ func (us *userService) UpdateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = updated.Attributes
+	// The status is derived from the updated entity, never taken from the request.
+	access := us.accessOf(ctx, updated)
+	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -700,6 +711,10 @@ func (us *userService) UpdateUserAttributes(
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 
+	access := us.accessOf(ctx, existingEntity)
+	existingUser.Status = &access.Status
+	existingUser.LastLoginAt = access.LastLoginAt
+
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
 }
@@ -741,7 +756,7 @@ func (us *userService) UpdateUserCredentials(
 	}
 
 	// Fetch user outside the transaction to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -806,7 +821,7 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 	if userID == "" {
 		return &ErrorMissingUserID
 	}
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorUserNotFound
@@ -837,7 +852,7 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 	}
 
 	// Fetch the user to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -966,7 +981,7 @@ func (us *userService) GetUserUsages(
 		return nil, &ErrorMissingUserID
 	}
 
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorUserNotFound
@@ -1126,6 +1141,23 @@ func (us *userService) validateOrganizationUnitForUserType(
 	}
 
 	return nil
+}
+
+// accessOf derives the access facts of one user.
+func (us *userService) accessOf(ctx context.Context, e *providers.Entity) identitygovernance.AccessRead {
+	return us.governance.ReadAccess(ctx, []providers.Entity{*e})[0]
+}
+
+// usersWithAccess converts entities to users with the access facts governance derived for each, in one
+// read.
+func (us *userService) usersWithAccess(ctx context.Context, entities []providers.Entity) []providers.User {
+	reads := us.governance.ReadAccess(ctx, entities)
+	users := entitiesToUsers(entities)
+	for i := range users {
+		users[i].Status = &reads[i].Status
+		users[i].LastLoginAt = reads[i].LastLoginAt
+	}
+	return users
 }
 
 // validateAndProcessHandlePath validates and processes the handle path.

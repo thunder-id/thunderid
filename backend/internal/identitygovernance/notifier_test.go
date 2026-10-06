@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,25 +18,32 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/notification"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 type NotifierTestSuite struct {
 	suite.Suite
 
-	profiles  *entityStateProviderMock
-	templates *notificationTemplateRendererMock
-	senders   *notificationmock.NotificationSenderServiceInterfaceMock
-	sender    *defaultEmailSenderSourceMock
-	sent      chan notifcommon.EmailData
+	profiles     *entityStateProviderMock
+	entityTypes  *entitytypemock.EntityTypeServiceInterfaceMock
+	templates    *notificationTemplateRendererMock
+	senders      *notificationmock.NotificationSenderServiceInterfaceMock
+	serverConfig *serverconfigmock.ServerConfigServiceMock
+	sent         chan notifcommon.EmailData
 }
 
 // testSenderID is the default email sender the suite configures.
@@ -47,10 +55,18 @@ func TestNotifierTestSuite(t *testing.T) {
 
 func (s *NotifierTestSuite) SetupTest() {
 	s.profiles = newEntityStateProviderMock(s.T())
+	// The test user's type maps its primary email to email.
+	s.entityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	s.entityTypes.EXPECT().GetEntityTypeByHandle(mock.MatchedBy(security.IsRuntimeContext),
+		entitytype.TypeCategoryUser, testUser().Type).
+		Return(&entitytype.EntityType{Handle: testUser().Type,
+			SystemAttributes: &entitytype.SystemAttributes{PrimaryEmail: "email"}}, nil).Maybe()
 	s.templates = newNotificationTemplateRendererMock(s.T())
 	s.senders = notificationmock.NewNotificationSenderServiceInterfaceMock(s.T())
-	s.sender = newDefaultEmailSenderSourceMock(s.T())
-	s.sender.EXPECT().DefaultEmailSenderID(mock.Anything).Return(testSenderID).Maybe()
+	// The notification section names the default email sender.
+	s.serverConfig = serverconfigmock.NewServerConfigServiceMock(s.T())
+	s.serverConfig.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameNotification)).
+		Return(notification.ServerConfig{DefaultEmailSenderID: testSenderID}, nil).Maybe()
 	s.sent = make(chan notifcommon.EmailData, 4)
 }
 
@@ -60,6 +76,15 @@ func testUser() GovernedEntity {
 
 func testLockEpisode() LockEpisode {
 	return LockEpisode{Duration: 5 * time.Minute, UnlockAt: "2026-10-08T10:05:00Z", LockCount: 1}
+}
+
+// testLockTemplate is the expiring lock template the enabled lock email names.
+const testLockTemplate = "lock-expiring"
+
+// enabledLockEmail is a switched-on lock email with both templates set.
+func enabledLockEmail() accountAccessLockEmail {
+	return accountAccessLockEmail{Enabled: new(true), Templates: &accountAccessLockTemplates{
+		accountAccessTemplatePair: accountAccessTemplatePair{Temporary: testLockTemplate, Permanent: "lock-permanent"}}}
 }
 
 func lockEmailConfig(email accountAccessLockEmail) accountAccessValue {
@@ -72,8 +97,10 @@ func lockEmailConfig(email accountAccessLockEmail) accountAccessValue {
 
 // newNotifier builds a notifier over the suite's mocks, reading the given settings through the source.
 func (s *NotifierTestSuite) newNotifier(settings accountAccessLockEmail) *lockEmailNotifier {
-	return newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(settings)),
-		s.profiles, s.templates, s.senders, s.sender)
+	notifier := newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(settings)),
+		s.profiles, s.entityTypes, s.templates, s.senders)
+	notifier.setServerConfigService(s.serverConfig)
+	return notifier
 }
 
 // notifierFor builds a notifier with newNotifier and closes it when the test ends.
@@ -93,7 +120,8 @@ func (s *NotifierTestSuite) expectProfile(entity GovernedEntity, attributes map[
 // expectProfileJSON answers the profile read with the given attributes document.
 func (s *NotifierTestSuite) expectProfileJSON(entity GovernedEntity, attributes string) {
 	s.profiles.EXPECT().GetEntityProfile(mock.Anything, entity.ID).Return(
-		&providers.Entity{ID: entity.ID, Category: entity.Category, Attributes: json.RawMessage(attributes)}, nil)
+		&providers.Entity{ID: entity.ID, Category: entity.Category, Type: entity.Type,
+			Attributes: json.RawMessage(attributes)}, nil)
 }
 
 // expectRender returns a rendered mail and captures the handle and template data.
@@ -133,23 +161,23 @@ func (s *NotifierTestSuite) awaitSend() notifcommon.EmailData {
 
 // captureLogs runs fn with the logger writing to a file at the given level and returns what it wrote.
 func (s *NotifierTestSuite) captureLogs(level string, fn func()) string {
-	path := filepath.Join(s.T().TempDir(), "notifier.log")
+	dir := s.T().TempDir()
 	logger := log.GetLogger()
-	s.Require().NoError(logger.Configure(log.OutputOptions{FileEnabled: true, File: rollingfile.Config{Path: path}}))
+	s.Require().NoError(logger.Configure(log.OutputOptions{FileEnabled: true,
+		File: rollingfile.Config{Path: filepath.Join(dir, "notifier.log")}}))
 	s.Require().NoError(logger.SetLevel(level))
 	defer func() {
 		s.Require().NoError(logger.SetLevel("info"))
 		s.Require().NoError(logger.Configure(log.OutputOptions{ConsoleEnabled: true}))
 	}()
 	fn()
-	// #nosec G304 -- path is in the test's temp directory
-	out, err := os.ReadFile(path)
+	out, err := fs.ReadFile(os.DirFS(dir), "notifier.log")
 	s.Require().NoError(err)
 	return string(out)
 }
 
-// With no attribute configured, the source's default attribute is used.
-func (s *NotifierTestSuite) TestSendsToTheDefaultAttribute() {
+// The lock email is sent as HTML to the primary email, with the configured template and the method.
+func (s *NotifierTestSuite) TestSendsTheConfiguredTemplateToThePrimaryEmail() {
 	entity := testUser()
 	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
 	var handle string
@@ -157,13 +185,14 @@ func (s *NotifierTestSuite) TestSendsToTheDefaultAttribute() {
 	s.expectRender(&handle, &data)
 	s.expectSend(nil)
 
-	notifier := s.notifierFor(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.notifierFor(enabledLockEmail())
 	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
 
 	sent := s.awaitSend()
 	s.Equal([]string{"member@example.com"}, sent.To)
 	s.True(sent.IsHTML)
-	s.Equal(lockTemplates[providers.AuthenticationMethodCredential].expiring, handle)
+	s.Equal(testLockTemplate, handle)
+	s.Equal(string(providers.AuthenticationMethodCredential), data[templateKeyAuthenticationMethod])
 }
 
 // deliveryContext is what one delivery step saw of its context, read while the step ran.
@@ -191,11 +220,12 @@ func (s *NotifierTestSuite) TestDeliveryKeepsOnlyTheTraceAndDeploymentOfTheReque
 	s.profiles.EXPECT().GetEntityProfile(mock.Anything, entity.ID).RunAndReturn(
 		func(ctx context.Context, _ string) (*providers.Entity, error) {
 			seen <- observedContext(ctx)
-			return &providers.Entity{ID: entity.ID, Attributes: json.RawMessage(`{"email":"member@example.com"}`)}, nil
+			return &providers.Entity{ID: entity.ID, Type: entity.Type,
+				Attributes: json.RawMessage(`{"email":"member@example.com"}`)}, nil
 		})
 	s.templates.EXPECT().
 		Resolve(mock.Anything, notificationtemplate.ChannelTypeEmail,
-			lockTemplates[providers.AuthenticationMethodCredential].expiring, mock.Anything).
+			testLockTemplate, mock.Anything).
 		RunAndReturn(func(ctx context.Context, _ notificationtemplate.ChannelType, _ string,
 			_ notificationtemplate.RenderInput) (*notificationtemplate.ResolvedContent, *tidcommon.ServiceError) {
 			seen <- observedContext(ctx)
@@ -208,7 +238,7 @@ func (s *NotifierTestSuite) TestDeliveryKeepsOnlyTheTraceAndDeploymentOfTheReque
 			close(delivered)
 			return nil
 		})
-	notifier := s.notifierFor(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.notifierFor(enabledLockEmail())
 	reqCtx, cancel := context.WithCancel(context.WithValue(
 		deployment.WithID(syscontext.WithTraceID(context.Background(), "trace-1"), "deployment-1"),
 		callerKey{}, "caller only"))
@@ -226,66 +256,25 @@ func (s *NotifierTestSuite) TestDeliveryKeepsOnlyTheTraceAndDeploymentOfTheReque
 	}
 }
 
-// The named attribute is used even when an "email" attribute also exists.
-func (s *NotifierTestSuite) TestSendsToTheNamedAttribute() {
-	entity := testUser()
-	s.expectProfile(entity, map[string]string{
-		"email":     "personal@example.com",
-		"workEmail": "work@example.com",
-	})
-	var handle string
-	var data map[string]string
-	s.expectRender(&handle, &data)
-	s.expectSend(nil)
-
-	notifier := s.notifierFor(accountAccessLockEmail{
-		Enabled: new(true), RecipientAttribute: new("workEmail"),
-	})
-	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
-
-	s.Equal([]string{"work@example.com"}, s.awaitSend().To)
-}
-
-// A dotted attribute name is a path into the profile's nested attributes.
-func (s *NotifierTestSuite) TestADottedAttributeIsAPathIntoTheProfile() {
-	entity := testUser()
-	s.expectProfileJSON(entity, `{"email":"personal@example.com","contact":{"email":"member@example.com"}}`)
-	var handle string
-	var data map[string]string
-	s.expectRender(&handle, &data)
-	s.expectSend(nil)
-
-	notifier := s.notifierFor(accountAccessLockEmail{
-		Enabled: new(true), RecipientAttribute: new("contact.email"),
-	})
-	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
-
-	s.Equal([]string{"member@example.com"}, s.awaitSend().To)
-}
-
-// A recipient value that is not a usable address is skipped and recorded, never sent and never logged.
-// A value that is absent or not text is a missing contact; text or a number that is not an address is
-// an invalid one. A missing attribute never falls back to another.
+// A primary email value that is not a usable address is skipped and recorded, never sent and never
+// logged. A value that is not text is a missing contact; text or a number that is not an address is an
+// invalid one.
 func (s *NotifierTestSuite) TestAnUnusableRecipientIsNotSent() {
 	for name, tc := range map[string]struct {
-		attribute string
-		profile   string
-		outcome   noticeOutcome
+		profile string
+		outcome noticeOutcome
 	}{
-		"text that is not an address": {"email", `{"email":"not an address"}`, outcomeInvalidContact},
-		"a number":                    {"email", `{"email":5550142}`, outcomeInvalidContact},
-		"an object":                   {"email", `{"email":{"value":"a@example.com"}}`, outcomeMissingContact},
-		"a boolean":                   {"email", `{"email":true}`, outcomeMissingContact},
-		"null":                        {"email", `{"email":null}`, outcomeMissingContact},
-		"absent, with another address": {"workEmail", `{"email":"personal@example.com"}`,
-			outcomeMissingContact},
-		"a path through text": {"contact.email", `{"contact":"a@example.com"}`, outcomeMissingContact},
+		"text that is not an address": {`{"email":"not an address"}`, outcomeInvalidContact},
+		"a number":                    {`{"email":5550142}`, outcomeInvalidContact},
+		"an object":                   {`{"email":{"value":"a@example.com"}}`, outcomeMissingContact},
+		"a boolean":                   {`{"email":true}`, outcomeMissingContact},
+		"null":                        {`{"email":null}`, outcomeMissingContact},
 	} {
 		s.Run(name, func() {
 			s.SetupTest()
 			entity := testUser()
 			s.expectProfileJSON(entity, tc.profile)
-			notifier := s.newNotifier(accountAccessLockEmail{Enabled: new(true), RecipientAttribute: &tc.attribute})
+			notifier := s.newNotifier(enabledLockEmail())
 
 			logs := s.captureLogs("debug", func() {
 				notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential,
@@ -305,18 +294,18 @@ func (s *NotifierTestSuite) TestAnUnusableRecipientIsNotSent() {
 func (s *NotifierTestSuite) TestSwitchedOffBeforeDeliveryIsNotSent() {
 	source := newAccountAccessSourceInterfaceMock(s.T())
 	source.EXPECT().Current(mock.Anything).
-		Return(lockEmailConfig(accountAccessLockEmail{Enabled: new(true)})).Once()
+		Return(lockEmailConfig(enabledLockEmail())).Once()
 	source.EXPECT().Current(mock.Anything).Return(lockEmailConfig(accountAccessLockEmail{})).Once()
 	notifier := &lockEmailNotifier{
-		source:    source,
-		profiles:  s.profiles,
-		templates: s.templates,
-		senders:   s.senders,
-		sender:    s.sender,
-		queue:     make(chan lockNotice, 1),
-		timeout:   noticeTimeout,
-		ctx:       context.Background(),
-		logger:    log.GetLogger(),
+		source:       source,
+		profiles:     s.profiles,
+		templates:    s.templates,
+		senders:      s.senders,
+		serverConfig: s.serverConfig,
+		queue:        make(chan lockNotice, 1),
+		timeout:      noticeTimeout,
+		ctx:          context.Background(),
+		logger:       log.GetLogger(),
 	}
 
 	notifier.NotifyLockFormed(context.Background(), testUser(), providers.AuthenticationMethodCredential,
@@ -329,7 +318,7 @@ func (s *NotifierTestSuite) TestSwitchedOffBeforeDeliveryIsNotSent() {
 
 // A notice after Close is dropped instead of sending on the closed queue.
 func (s *NotifierTestSuite) TestANoticeAfterCloseIsDropped() {
-	notifier := s.notifierFor(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.notifierFor(enabledLockEmail())
 	notifier.Close()
 
 	s.NotPanics(func() {
@@ -345,7 +334,8 @@ func (s *NotifierTestSuite) TestANoticeAfterCloseIsDropped() {
 func (s *NotifierTestSuite) TestCloseIsBoundedWhenSendsBlock() {
 	s.profiles.EXPECT().GetEntityProfile(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, id string) (*providers.Entity, error) {
-			return &providers.Entity{ID: id, Attributes: json.RawMessage(`{"email":"member@example.com"}`)}, nil
+			return &providers.Entity{ID: id, Type: testUser().Type,
+				Attributes: json.RawMessage(`{"email":"member@example.com"}`)}, nil
 		})
 	s.templates.EXPECT().Resolve(mock.Anything, notificationtemplate.ChannelTypeEmail, mock.Anything, mock.Anything).
 		Return(&notificationtemplate.ResolvedContent{Subject: "Sign-in was locked", Body: "body"}, nil)
@@ -357,7 +347,7 @@ func (s *NotifierTestSuite) TestCloseIsBoundedWhenSendsBlock() {
 			return &tidcommon.InternalServerError
 		})
 	// Not closed on cleanup: if Close hangs, a second Close would wait on the first.
-	notifier := s.newNotifier(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.newNotifier(enabledLockEmail())
 	notifier.shutdownBudget = 100 * time.Millisecond
 
 	// Every worker blocks in a send, and one more notice waits in the queue behind them.
@@ -410,7 +400,7 @@ func (s *NotifierTestSuite) TestDisabledIsNotEvenQueued() {
 // A failed profile read skips the notice without retry, and the error is logged with the outcome.
 func (s *NotifierTestSuite) TestProfileReadFailureSkipsDelivery() {
 	s.profiles.EXPECT().GetEntityProfile(mock.Anything, "user-1").Return(nil, errors.New("store down")).Once()
-	notifier := s.newNotifier(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.newNotifier(enabledLockEmail())
 
 	logs := s.captureLogs("info", func() {
 		notifier.NotifyLockFormed(context.Background(), testUser(), providers.AuthenticationMethodCredential,
@@ -428,13 +418,30 @@ func (s *NotifierTestSuite) TestTemplateFailureSendsNothing() {
 	entity := testUser()
 	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
 	s.templates.EXPECT().Resolve(mock.Anything, notificationtemplate.ChannelTypeEmail,
-		lockTemplates[providers.AuthenticationMethodCredential].expiring,
+		testLockTemplate,
 		mock.Anything).Return(nil, &tidcommon.ServiceError{Code: "NTPL-404"})
 
-	notifier := s.notifierFor(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.notifierFor(enabledLockEmail())
 	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
 
 	notifier.Close()
+	s.assertNothingSent()
+}
+
+// With no template set for the lock, nothing is read, rendered or sent, and the outcome is recorded.
+func (s *NotifierTestSuite) TestNoTemplateSendsNothing() {
+	notifier := s.newNotifier(accountAccessLockEmail{Enabled: new(true), Templates: &accountAccessLockTemplates{
+		accountAccessTemplatePair: accountAccessTemplatePair{Permanent: "lock-permanent"}}})
+
+	logs := s.captureLogs("info", func() {
+		notifier.NotifyLockFormed(context.Background(), testUser(), providers.AuthenticationMethodCredential,
+			testLockEpisode())
+		notifier.Close()
+	})
+
+	s.Contains(logs, "outcome="+string(outcomeNoTemplate))
+	s.profiles.AssertNotCalled(s.T(), "GetEntityProfile", mock.Anything, mock.Anything)
+	s.templates.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	s.assertNothingSent()
 }
 
@@ -447,7 +454,7 @@ func (s *NotifierTestSuite) TestSendFailureIsNotRetried() {
 	s.expectRender(&handle, &data)
 	s.expectSend(&tidcommon.InternalServerError)
 
-	notifier := s.notifierFor(accountAccessLockEmail{Enabled: new(true)})
+	notifier := s.notifierFor(enabledLockEmail())
 	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
 
 	s.awaitSend()
@@ -455,16 +462,15 @@ func (s *NotifierTestSuite) TestSendFailureIsNotRetried() {
 	s.senders.AssertNumberOfCalls(s.T(), "SendEmail", 1)
 }
 
-// Without a default email sender nothing is rendered or sent.
+// Without a default email sender nothing is rendered or sent. A blank ID names none.
 func (s *NotifierTestSuite) TestNoDefaultSenderSendsNothing() {
 	entity := testUser()
 	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
-	sender := newDefaultEmailSenderSourceMock(s.T())
-	sender.EXPECT().DefaultEmailSenderID(mock.Anything).Return("")
+	s.serverConfig = serverconfigmock.NewServerConfigServiceMock(s.T())
+	s.serverConfig.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameNotification)).
+		Return(notification.ServerConfig{DefaultEmailSenderID: "  "}, nil).Once()
 
-	notifier := newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(
-		accountAccessLockEmail{Enabled: new(true)})),
-		s.profiles, s.templates, s.senders, sender)
+	notifier := s.newNotifier(enabledLockEmail())
 	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
 
 	notifier.Close()
@@ -472,15 +478,67 @@ func (s *NotifierTestSuite) TestNoDefaultSenderSendsNothing() {
 	s.assertNothingSent()
 }
 
+// A failed read of the notification section names no sender, and the skip carries the error code.
+func (s *NotifierTestSuite) TestAnUnreadableSenderSectionSendsNothing() {
+	entity := testUser()
+	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
+	s.serverConfig = serverconfigmock.NewServerConfigServiceMock(s.T())
+	s.serverConfig.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameNotification)).
+		Return(nil, &tidcommon.InternalServerError).Once()
+	notifier := s.newNotifier(enabledLockEmail())
+
+	logs := s.captureLogs("info", func() {
+		notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential,
+			testLockEpisode())
+		notifier.Close()
+	})
+
+	s.Contains(logs, "outcome="+string(outcomeNoSender))
+	s.Contains(logs, "errorCode="+tidcommon.InternalServerError.Code)
+	s.assertNothingSent()
+}
+
+// Before the server-config service is set there is no default sender, so nothing is sent.
+func (s *NotifierTestSuite) TestNothingIsSentBeforeTheServerConfigServiceIsSet() {
+	entity := testUser()
+	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
+
+	notifier := newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(
+		enabledLockEmail())), s.profiles, s.entityTypes, s.templates, s.senders)
+	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
+
+	notifier.Close()
+	s.templates.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	s.assertNothingSent()
+}
+
+// The default sender is read from the notification section through the server-config service.
+func (s *NotifierTestSuite) TestTheDefaultSenderIsReadThroughTheServerConfigService() {
+	entity := testUser()
+	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
+	var handle string
+	var data map[string]string
+	s.expectRender(&handle, &data)
+	s.expectSend(nil)
+	s.serverConfig = serverconfigmock.NewServerConfigServiceMock(s.T())
+	s.serverConfig.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameNotification)).
+		Return(notification.ServerConfig{DefaultEmailSenderID: testSenderID}, nil).Once()
+
+	notifier := s.notifierFor(enabledLockEmail())
+	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
+
+	s.Equal([]string{"member@example.com"}, s.awaitSend().To)
+}
+
 // A full queue drops the notice rather than blocking the caller.
 func (s *NotifierTestSuite) TestFullQueueDropsTheNotice() {
 	notifier := &lockEmailNotifier{
 		source: newAccountAccessSource(lockEmailConfig(
-			accountAccessLockEmail{Enabled: new(true)})),
-		profiles:  s.profiles,
-		templates: s.templates,
-		senders:   s.senders,
-		sender:    s.sender,
+			enabledLockEmail())),
+		profiles:     s.profiles,
+		templates:    s.templates,
+		senders:      s.senders,
+		serverConfig: s.serverConfig,
 		// No workers and a queue of one, so the second notice is dropped.
 		queue:   make(chan lockNotice, 1),
 		timeout: noticeTimeout,
@@ -493,4 +551,123 @@ func (s *NotifierTestSuite) TestFullQueueDropsTheNotice() {
 		testLockEpisode())
 
 	s.Len(notifier.queue, 1)
+}
+
+// staffUser is a user whose type maps its primary email to workEmail.
+func staffUser() GovernedEntity {
+	return GovernedEntity{ID: "user-2", Category: providers.EntityCategoryUser, Type: "staff"}
+}
+
+// expectStaffType answers the staff type read, made with runtime privilege, with the given system
+// attributes.
+func (s *NotifierTestSuite) expectStaffType(attributes *entitytype.SystemAttributes) {
+	s.entityTypes.EXPECT().GetEntityTypeByHandle(mock.Anything, entitytype.TypeCategoryUser, "staff").
+		RunAndReturn(func(ctx context.Context, _ entitytype.TypeCategory,
+			handle string) (*entitytype.EntityType, *tidcommon.ServiceError) {
+			s.True(security.IsRuntimeContext(ctx))
+			return &entitytype.EntityType{Handle: handle, SystemAttributes: attributes}, nil
+		})
+}
+
+// The user type's primary email is used even when an "email" attribute also exists.
+func (s *NotifierTestSuite) TestSendsToThePrimaryEmail() {
+	entity := staffUser()
+	s.expectStaffType(&entitytype.SystemAttributes{PrimaryEmail: "workEmail"})
+	s.expectProfile(entity, map[string]string{
+		"email":     "personal@example.com",
+		"workEmail": "work@example.com",
+	})
+	var handle string
+	var data map[string]string
+	s.expectRender(&handle, &data)
+	s.expectSend(nil)
+
+	notifier := s.notifierFor(enabledLockEmail())
+	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
+
+	s.Equal([]string{"work@example.com"}, s.awaitSend().To)
+}
+
+// A type without a primary email, or a user without a value for it, gets no email, and the skip is
+// recorded. No other attribute is tried.
+func (s *NotifierTestSuite) TestNoPrimaryEmailSendsNothing() {
+	for name, tc := range map[string]struct {
+		attributes *entitytype.SystemAttributes
+		profile    map[string]string
+	}{
+		"a type with no system attributes": {nil, map[string]string{"email": "personal@example.com"}},
+		"a type with no primary email": {&entitytype.SystemAttributes{Display: "email"},
+			map[string]string{"email": "personal@example.com"}},
+		"no value": {&entitytype.SystemAttributes{PrimaryEmail: "workEmail"},
+			map[string]string{"email": "personal@example.com"}},
+		"an empty value": {&entitytype.SystemAttributes{PrimaryEmail: "workEmail"},
+			map[string]string{"email": "personal@example.com", "workEmail": ""}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			entity := staffUser()
+			s.expectStaffType(tc.attributes)
+			s.expectProfile(entity, tc.profile)
+			notifier := s.newNotifier(enabledLockEmail())
+
+			logs := s.captureLogs("debug", func() {
+				notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential,
+					testLockEpisode())
+				notifier.Close()
+			})
+
+			s.Contains(logs, "outcome="+string(outcomeMissingContact))
+			s.NotContains(logs, "personal@example.com")
+			s.assertNothingSent()
+		})
+	}
+}
+
+// A profile with no type has no primary email, so no type is read and nothing is sent.
+func (s *NotifierTestSuite) TestAProfileWithoutATypeSendsNothing() {
+	entity := GovernedEntity{ID: "user-3", Category: providers.EntityCategoryUser}
+	s.expectProfile(entity, map[string]string{"email": "personal@example.com"})
+	notifier := s.newNotifier(enabledLockEmail())
+
+	logs := s.captureLogs("debug", func() {
+		notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential,
+			testLockEpisode())
+		notifier.Close()
+	})
+
+	s.Contains(logs, "outcome="+string(outcomeMissingContact))
+	s.entityTypes.AssertNotCalled(s.T(), "GetEntityTypeByHandle", mock.Anything, mock.Anything, mock.Anything)
+	s.assertNothingSent()
+}
+
+// A failed type read sends nothing and is recorded with its error code.
+func (s *NotifierTestSuite) TestAnUnreadableTypeSendsNothing() {
+	entity := staffUser()
+	s.entityTypes.EXPECT().GetEntityTypeByHandle(mock.Anything, entitytype.TypeCategoryUser, "staff").
+		Return(nil, &tidcommon.InternalServerError)
+	s.expectProfile(entity, map[string]string{"email": "personal@example.com", "workEmail": "work@example.com"})
+	notifier := s.newNotifier(enabledLockEmail())
+
+	logs := s.captureLogs("info", func() {
+		notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential,
+			testLockEpisode())
+		notifier.Close()
+	})
+
+	s.Contains(logs, "outcome="+string(outcomeReadFailed))
+	s.Contains(logs, "errorCode="+tidcommon.InternalServerError.Code)
+	s.assertNothingSent()
+}
+
+// An unusable primary email is skipped without trying another attribute.
+func (s *NotifierTestSuite) TestAnUnusablePrimaryEmailNeverFallsBack() {
+	entity := staffUser()
+	s.expectStaffType(&entitytype.SystemAttributes{PrimaryEmail: "workEmail"})
+	s.expectProfile(entity, map[string]string{"email": "personal@example.com", "workEmail": "not an address"})
+
+	notifier := s.notifierFor(enabledLockEmail())
+	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
+
+	notifier.Close()
+	s.assertNothingSent()
 }

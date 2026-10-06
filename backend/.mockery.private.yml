@@ -217,7 +217,6 @@ packages:
       accountAccessSourceInterface:
       lockNotifierInterface:
       notificationTemplateRenderer:
-      defaultEmailSenderSource:
 
   github.com/thunder-id/thunderid/internal/user:
     config:

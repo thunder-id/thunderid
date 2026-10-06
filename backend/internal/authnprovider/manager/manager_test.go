@@ -933,6 +933,33 @@ func (s *ManagerTestSuite) TestInitiateEnrollment_RoutesToDefaultProvider() {
 	s.Equal(expected, result)
 }
 
+func (s *ManagerTestSuite) TestInitiateEnrollment_NormalizesAStatedHold() {
+	cases := []struct {
+		name         string
+		providerCode string
+		expectedCode string
+	}{
+		{name: "locked", providerCode: authnprovidercm.ErrorCodeAccountLocked, expectedCode: ErrorAccountLocked.Code},
+		{name: "suspended", providerCode: authnprovidercm.ErrorCodeAccountSuspended,
+			expectedCode: ErrorAccountSuspended.Code},
+		{name: "enrollment failed", providerCode: authnprovidercm.ErrorCodeEnrollmentFailed,
+			expectedCode: authnprovidercm.ErrorCodeEnrollmentFailed},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.mockProvider.On("InitiateEnrollment", context.Background(), "passkey", mock.Anything, mock.Anything).
+				Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: tc.providerCode}).Once()
+
+			result, svcErr := s.mgr.InitiateEnrollment(context.Background(), "passkey", nil, nil)
+
+			s.Nil(result)
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.expectedCode, svcErr.Code)
+		})
+	}
+}
+
 func (s *ManagerTestSuite) TestEnroll_Success() {
 	credentials := map[string]interface{}{"passkey": "cred"}
 	meta := &providers.AuthnMetadata{}
@@ -997,6 +1024,8 @@ func (s *ManagerTestSuite) TestEnroll_ClientErrorMapping() {
 		{authnprovidercm.ErrorCodeUserNotFound, ErrorUserNotFound.Code},
 		{authnprovidercm.ErrorCodeInvalidRequest, ErrorInvalidRequest.Code},
 		{authnprovidercm.ErrorCodeEnrollmentFailed, ErrorEnrollmentFailed.Code},
+		{authnprovidercm.ErrorCodeAccountLocked, ErrorAccountLocked.Code},
+		{authnprovidercm.ErrorCodeAccountSuspended, ErrorAccountSuspended.Code},
 		{"SOMETHING_ELSE", ErrorEnrollmentFailed.Code},
 	}
 	for _, tc := range cases {
@@ -1693,4 +1722,33 @@ func (s *ManagerTestSuite) TestResolveLinkCandidates_ResolvedStateHasNoPendingId
 	s.Nil(svcErr)
 	s.Nil(candidates)
 	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_HoldMapping() {
+	cases := []struct {
+		name         string
+		providerCode string
+		expectedCode string
+	}{
+		{name: "locked", providerCode: authnprovidercm.ErrorCodeAccountLocked, expectedCode: ErrorAccountLocked.Code},
+		{name: "suspended", providerCode: authnprovidercm.ErrorCodeAccountSuspended,
+			expectedCode: ErrorAccountSuspended.Code},
+		{name: "unstated", providerCode: authnprovidercm.ErrorCodeAuthenticationFailed,
+			expectedCode: ErrorAuthenticationFailed.Code},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			credentials := map[string]interface{}{"password": "correct"}
+			s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, credentials, mock.Anything).
+				Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: tc.providerCode}).Once()
+
+			_, _, svcErr := s.mgr.AuthenticateUser(context.Background(),
+				map[string]interface{}{"username": "alice"}, credentials, nil,
+				&providers.AuthnMetadata{}, providers.AuthUser{})
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.expectedCode, svcErr.Code)
+		})
+	}
 }

@@ -85,6 +85,18 @@ func (p *defaultEntityProvider) GetEntity(
 	return toProviderEntity(result), nil
 }
 
+// GetEntityProfile retrieves an entity's profile by ID, without reading its runtime state.
+func (p *defaultEntityProvider) GetEntityProfile(
+	entityID string,
+) (*providers.Entity, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	result, err := p.entitySvc.GetEntityProfile(ctx, entityID)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	return toProviderEntity(result), nil
+}
+
 // UpdateEntity updates an existing entity.
 func (p *defaultEntityProvider) UpdateEntity(
 	entityID string, e *providers.Entity,

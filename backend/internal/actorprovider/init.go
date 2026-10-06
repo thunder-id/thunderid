@@ -21,6 +21,8 @@ func Initialize(
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 ) providers.ActorProvider {
-	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService, entityTypeService)
+	return newActorProvider(inboundClient, entityProvider, authnProvider, roleService, entityTypeService,
+		governance)
 }

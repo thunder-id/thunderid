@@ -11,8 +11,8 @@ import (
 
 // Initialize builds the identity governance service and the accountAccess server-config handler. Only
 // entityState is required. The server-config service is built with the handler, so it is set on the
-// service afterwards with SetServerConfigService; until then cfg applies. The returned function stops
-// the lock email workers, waiting a bounded time for queued emails.
+// service afterwards with SetServerConfigService; until then cfg applies and the lock email has no
+// sender. The returned function stops the lock email workers, waiting a bounded time for queued emails.
 func Initialize(entityState entityStateProvider, cfg Config, notifications *NotificationDependencies,
 	authorizer sysauthz.SystemAuthorizationServiceInterface, observability providers.ObservabilityProvider) (
 	IdentityGovernanceServiceInterface, serverconfig.ServerConfigHandlerInterface, func(), error) {
@@ -24,10 +24,10 @@ func Initialize(entityState entityStateProvider, cfg Config, notifications *Noti
 	stop := func() {}
 	var notifier lockNotifierInterface
 	if notifications != nil && notifications.Templates != nil && notifications.Senders != nil &&
-		notifications.DefaultSender != nil {
+		notifications.EntityTypes != nil {
 		// Built even when the email is off or no default sender is set, since both are read per notice.
-		notifier = newLockEmailNotifier(source, entityState, notifications.Templates, notifications.Senders,
-			notifications.DefaultSender)
+		notifier = newLockEmailNotifier(source, entityState, notifications.EntityTypes, notifications.Templates,
+			notifications.Senders)
 		stop = notifier.Close
 	}
 

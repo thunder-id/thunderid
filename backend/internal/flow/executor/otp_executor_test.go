@@ -72,7 +72,7 @@ func (suite *OTPExecutorTestSuite) SetupTest() {
 		defaultInputs, prerequisites, mock.Anything).Return(suite.mockBaseExec)
 
 	suite.executor = newOTPExecutor(suite.mockFlowFactory, suite.mockOTPService,
-		suite.mockAuthnProvider, suite.mockEntityProvider)
+		suite.mockAuthnProvider, suite.mockEntityProvider, admitAllAccess(suite.T()))
 	suite.executor.Executor = suite.mockBaseExec
 }
 
@@ -156,6 +156,76 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "654321", fwdData[common.ForwardedDataKeyOTPCode])
 	assert.Equal(suite.T(), "5 minutes", fwdData[common.ForwardedDataKeyExpiryTime])
+}
+
+// heldOTPGenerate runs a generate step for a user the flow already resolved, as in a second factor,
+// under the given governance answer.
+func (suite *OTPExecutorTestSuite) heldOTPGenerate(governance providers.IdentityGovernanceProvider,
+	runtime map[string]string) (*providers.ExecutorResponse, error) {
+	suite.executor.accessGuard = newAccessGuard(governance, suite.executor.logger)
+	runtime[userAttributeUserID] = testOTPUserID
+	return suite.executor.Execute(&providers.NodeContext{
+		ExecutionID:  "exec-held",
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		UserInputs:   map[string]string{},
+		RuntimeData:  runtime,
+	})
+}
+
+// dispatchDecision expects one dispatch check of the resolved user's one-time password.
+func (suite *OTPExecutorTestSuite) dispatchDecision(decision providers.AccessDecision,
+	fault *tidcommon.ServiceError) providers.IdentityGovernanceProvider {
+	return expectAccess(suite.T(), testOTPUserID, providers.AccessPlaneDispatch, providers.AuthenticationMethodOTP,
+		decision, fault)
+}
+
+// A withheld code is generated but not delivered, so the step answers as a sent code does.
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_HeldSkipsDelivery() {
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).Return("session-tok-1", "654321", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.heldOTPGenerate(suite.dispatchDecision(providers.AccessDecision{}, nil),
+		map[string]string{})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Nil(resp.Error)
+	suite.Equal("session-tok-1", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
+	suite.Equal(dataValueTrue, resp.RuntimeData[common.RuntimeKeySkipDelivery])
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_HeldStatesTheHold() {
+	resp, err := suite.heldOTPGenerate(suite.dispatchDecision(
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil), map[string]string{})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.mockOTPService.AssertNotCalled(suite.T(), "GenerateOTP",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_GovernanceFaultIsAnError() {
+	resp, err := suite.heldOTPGenerate(suite.dispatchDecision(providers.AccessDecision{},
+		&tidcommon.InternalServerError), map[string]string{})
+
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.mockOTPService.AssertNotCalled(suite.T(), "GenerateOTP",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_ResendAfterHoldLiftsDelivers() {
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).Return("session-tok-2", "654321", int64(300), (*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.heldOTPGenerate(admitAllAccess(suite.T()),
+		map[string]string{common.RuntimeKeySkipDelivery: dataValueTrue})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("", resp.RuntimeData[common.RuntimeKeySkipDelivery])
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PublishesConfiguredOTPLength() {
@@ -495,33 +565,44 @@ func (suite *OTPExecutorTestSuite) TestExecuteVerify_Success() {
 	assert.Equal(suite.T(), userID, resp.RuntimeData[userAttributeUserID])
 }
 
-func (suite *OTPExecutorTestSuite) TestExecuteVerify_InvalidOTP_ReturnsUserInputRequired() {
-	suite.mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(
-			providers.AuthUser{},
-			providers.AuthenticatedClaims(nil),
-			&authnprovidermgr.ErrorAuthenticationFailed,
-		)
-
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-8",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeVerify,
-		UserInputs: map[string]string{
-			userInputOTP: "000000",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPSessionToken: "session-tok-1",
-		},
+// Every refusal re-prompts; only a stated hold replaces the wrong-code error.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_RefusalsRepromptWithTheirError() {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "wrong code", svcErr: &authnprovidermgr.ErrorAuthenticationFailed, wantCode: ErrInvalidOTP.Code},
+		{name: "invalid request", svcErr: &authnprovidermgr.ErrorInvalidRequest, wantCode: ErrInvalidOTP.Code},
+		{name: "stated lock", svcErr: &authnprovidermgr.ErrorAccountLocked, wantCode: ErrAccountLocked.Code},
+		{name: "stated suspension", svcErr: &authnprovidermgr.ErrorAccountSuspended,
+			wantCode: ErrAccountSuspended.Code},
 	}
 
-	resp, err := suite.executor.Execute(ctx)
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockAuthnProvider.On("AuthenticateUser",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), tc.svcErr)
 
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.NotNil(suite.T(), resp.Error)
-	assert.Equal(suite.T(), ErrInvalidOTP.Code, resp.Error.Code)
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				ExecutionID:  "exec-8",
+				FlowType:     providers.FlowTypeAuthentication,
+				ExecutorMode: ExecutorModeVerify,
+				UserInputs:   map[string]string{userInputOTP: "000000"},
+				RuntimeData: map[string]string{
+					common.RuntimeKeyOTPSessionToken: "session-tok-1",
+				},
+			})
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+			assert.NotNil(suite.T(), resp.Error)
+			assert.Equal(suite.T(), tc.wantCode, resp.Error.Code)
+		})
+	}
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingSessionToken_ReturnsError() {

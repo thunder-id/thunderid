@@ -781,6 +781,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'guides/account-locks-and-suspension',
+          label: 'Account Locks and Suspension',
+        },
+        {
+          type: 'doc',
           id: 'guides/consent',
           label: 'Consent',
         },

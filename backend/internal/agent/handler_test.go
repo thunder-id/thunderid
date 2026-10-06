@@ -6,6 +6,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,11 +15,13 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 )
 
 type InlineStubAgentService struct {
@@ -162,6 +165,28 @@ func TestHandleAgentPutRequest_Success(t *testing.T) {
 
 	handler.HandleAgentPutRequest(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleAgentPutRequest_ReportsTheDerivedStatus(t *testing.T) {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(t)
+	mockSvc.EXPECT().UpdateAgent(mock.Anything, "agent-123", mock.MatchedBy(func(req *model.UpdateAgentRequest) bool {
+		return string(req.Attributes) == `{"name":"Updated Valid Name"}`
+	})).Return(&model.AgentCompleteResponse{ID: "agent-123",
+		Status: &providers.AccessStatusReport{Value: providers.AccessStatusActive}}, nil).Once()
+	handler := newAgentHandler(mockSvc)
+	body := `{"attributes":{"name":"Updated Valid Name"},"status":{"value":"SUSPENDED"}}`
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response struct {
+		Status json.RawMessage `json:"status"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.JSONEq(t, `{"value":"ACTIVE"}`, string(response.Status))
 }
 
 func TestHandleAgentPutRequest_ValidationError(t *testing.T) {

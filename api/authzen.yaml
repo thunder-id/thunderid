@@ -49,6 +49,8 @@ paths:
         maps to a permission registered under that resource server. If the subject type is
         omitted, subject type validation is skipped. Unknown resources and unregistered actions
         are returned as denied decisions with an error context instead of transport errors.
+        A suspended subject is denied with the reason `Subject is suspended`, whatever its roles
+        allow. A locked subject is decided by its roles alone.
       tags:
         - AuthZEN
       requestBody:
@@ -90,6 +92,9 @@ paths:
         Evaluates multiple access requests and preserves the request order in the response.
         Item-level validation failures are returned as denied decisions with an explanatory
         context where possible. An empty `evaluations` array returns a transport error.
+        Every evaluation for a suspended subject is denied; one that is otherwise valid gets the
+        reason `Subject is suspended`, while one with a missing field or an unknown resource keeps
+        that error context.
       tags:
         - AuthZEN
       requestBody:
@@ -136,7 +141,9 @@ paths:
   /access/v1/search/action:
     post:
       summary: Search allowed actions
-      description: Returns the actions that the subject is authorized to perform on the resource.
+      description: |
+        Returns the actions that the subject is authorized to perform on the resource. A suspended
+        subject has no allowed actions.
       tags:
         - AuthZEN
       requestBody:

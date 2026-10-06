@@ -41,7 +41,7 @@ func (s *UtilsTestSuite) SetupTest() {
 	s.mockInbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.provider = Initialize(s.mockInbound, s.mockEntity, managermock.NewAuthnProviderManagerMock(s.T()),
-		rolemock.NewRoleServiceInterfaceMock(s.T()), nil)
+		rolemock.NewRoleServiceInterfaceMock(s.T()), nil, admitAll(s.T()))
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_Success() {
@@ -55,7 +55,7 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 	entity := &providers.Entity{ID: "app-1", SystemAttributes: attrs}
 
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(entity, (*entityprovider.EntityProviderError)(nil))
 
 	app, svcErr := BuildApplication(context.Background(), s.provider, "app-1")
 
@@ -81,7 +81,7 @@ func (s *UtilsTestSuite) TestBuildApplication_NilClient() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 	client := &inboundmodel.InboundClient{ID: "app-1"}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError("INTERNAL_ERROR", "boom", ""))
 
@@ -94,7 +94,7 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityLoadError() {
 func (s *UtilsTestSuite) TestBuildApplication_EntityNotFound() {
 	client := &inboundmodel.InboundClient{ID: "app-1", AllowedUserTypes: []string{"customer"}}
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").Return(client, nil)
-	s.mockEntity.On("GetEntity", "app-1").Return(
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "missing", ""))
 
@@ -224,7 +224,7 @@ func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntity := entityprovidermock.NewEntityProviderInterfaceMock(t)
 	provider := Initialize(mockInbound, mockEntity, managermock.NewAuthnProviderManagerMock(t),
-		rolemock.NewRoleServiceInterfaceMock(t), nil)
+		rolemock.NewRoleServiceInterfaceMock(t), nil, admitAll(t))
 
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").
 		Return((*inboundmodel.InboundClient)(nil), errors.New("db error"))

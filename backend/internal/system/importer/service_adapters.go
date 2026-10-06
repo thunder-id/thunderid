@@ -55,6 +55,35 @@ func (s *importService) resolveImportOUHandle(
 	return ouID, nil
 }
 
+// warnIgnoredEntityState logs that an entity document's top-level state was ignored. Account state
+// is runtime state: a new entity starts ACTIVE and an existing one keeps its state.
+func (s *importService) warnIgnoredEntityState(
+	ctx context.Context, doc parsedDocument, resourceType, resourceID, resourceName string,
+) {
+	state, ok := documentState(doc)
+	if !ok {
+		return
+	}
+	s.logger.Warn(ctx, "State in the document was ignored; a new entity starts ACTIVE and an "+
+		"existing entity keeps its state",
+		log.String("resourceType", resourceType),
+		log.String("resourceID", resourceID),
+		log.String("resourceName", resourceName),
+		log.String("state", state))
+}
+
+// documentState returns a document's top-level state and whether it has a non-empty one.
+func documentState(doc parsedDocument) (string, bool) {
+	for i := 0; i+1 < len(doc.Node.Content); i += 2 {
+		if doc.Node.Content[i].Value != "state" {
+			continue
+		}
+		value := doc.Node.Content[i+1]
+		return value.Value, value.Value != "" || len(value.Content) > 0
+	}
+	return "", false
+}
+
 type roleDeclarativeYAML struct {
 	ID          string                     `yaml:"id"`
 	Name        string                     `yaml:"name"`
@@ -702,6 +731,8 @@ func (s *importService) importUser(
 		return decodeErrorOutcome(resourceTypeUser, req.ID, "", err)
 	}
 
+	s.warnIgnoredEntityState(ctx, doc, resourceTypeUser, req.ID, "")
+
 	resolvedOUID, svcErr := s.resolveImportOUHandle(
 		ctx, resourceTypeUser, req.ID, "", req.OUID, req.OUHandle)
 	if svcErr != nil {
@@ -974,6 +1005,8 @@ func (s *importService) importAgent(
 	if err := doc.Node.Decode(&req); err != nil {
 		return decodeErrorOutcome(resourceTypeAgent, req.ID, "", err)
 	}
+
+	s.warnIgnoredEntityState(ctx, doc, resourceTypeAgent, req.ID, "")
 
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
 		req.AuthFlowID = mappedFlowID

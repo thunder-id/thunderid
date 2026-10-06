@@ -1,7 +1,14 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {
+  AccessStatusBanner,
+  AccountStatusAction,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceAvatar,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {
   getBackchannelLogoutUriServerError,
@@ -239,7 +246,11 @@ export default function AgentEditPage(): JSX.Element {
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
-  const isLogoEditable = !agent.isReadOnly;
+  // A declarative resource has no writable row at all, so editing is withheld for it. A suspended
+  // record is not withheld: the server keeps it writable so an operator can rotate a credential or
+  // correct an attribute while the hold is on, which is the purpose of the state.
+  const editingWithheld = agent.isReadOnly === true;
+  const isLogoEditable = !editingWithheld;
 
   // List every failing check by name rather than a single generic message, so the user knows
   // exactly what to fix instead of guessing which tab has the problem.
@@ -487,7 +498,21 @@ export default function AgentEditPage(): JSX.Element {
             )}
           </Stack>
         </PageTitle.SubHeader>
+        {!agent.isReadOnly && (
+          <PageTitle.Actions>
+            <AccountStatusAction
+              category="agent"
+              subject={agent.id}
+              status={agent.status}
+              onChanged={() => {
+                refetch().catch(() => undefined);
+              }}
+            />
+          </PageTitle.Actions>
+        )}
       </PageTitle>
+
+      <AccessStatusBanner status={agent.status} category="agent" sx={{mb: 2}} />
 
       <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="agent settings tabs">
         {tabs.map((tab, idx) => (
@@ -514,7 +539,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
+          saveDisabled={hasAnyValidationError || editingWithheld}
           error={
             updateAgent.error
               ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??

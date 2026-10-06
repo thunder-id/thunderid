@@ -34,6 +34,12 @@ type AuthenticateResult struct {
 	OUID           string                   `json:"ouId"`
 }
 
+// CredentialFailure names the entity whose stored credential did not match.
+type CredentialFailure struct {
+	// EntityID is the entity whose stored credential the comparison ran against.
+	EntityID string
+}
+
 // StoredCredential represents a single credential entry stored in the entity's schema or
 // system credentials column.
 type StoredCredential struct {

@@ -75,6 +75,14 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 		RuntimeData:    make(map[string]string),
 	}
 
+	// A dispatch marked as skipped sends nothing and reports the SMS as sent.
+	if skip, ok := ctx.RuntimeData[common.RuntimeKeySkipDelivery]; ok && skip == dataValueTrue {
+		logger.Debug(ctx.Context, "Delivery marked as skipped, completing without sending SMS")
+		execResp.AdditionalData[common.DataSMSSent] = dataValueTrue
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
+
 	if e.notifSenderSvc == nil {
 		return nil, errors.New("notification sender service is not configured")
 	}
@@ -204,7 +212,7 @@ func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAt
 		return mobile
 	}
 	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {
-		user, err := e.entityProvider.GetEntity(userID)
+		user, err := e.entityProvider.GetEntityProfile(userID)
 		if err == nil {
 			if mobile, attrErr := GetUserAttribute(user, phoneAttr); attrErr == nil {
 				return mobile

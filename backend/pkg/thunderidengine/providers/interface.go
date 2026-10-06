@@ -333,3 +333,35 @@ type RuntimeCryptoProvider interface {
 	// GetSupportedEncryptionAlgorithms returns the list of algorithms supported by Encrypt and Decrypt.
 	GetSupportedEncryptionAlgorithms() []string
 }
+
+// IdentityGovernanceProvider checks access, records granted activity, and applies lifecycle operations.
+type IdentityGovernanceProvider interface {
+	// EvaluateAccess reports whether the identity may be used at the plane and authentication method;
+	// a refusal names its hold in the decision. An empty or unknown entityID is admitted. An error
+	// means the provider could not decide, and the caller must refuse.
+	EvaluateAccess(ctx context.Context, entityID string, plane AccessPlane,
+		method AuthenticationMethod) (AccessDecision, *common.ServiceError)
+
+	// AdmitSignIn is EvaluateAccess at AccessPlaneSession for a completing sign-in. When it admits, it
+	// also clears a lapsed entity-wide failure record.
+	AdmitSignIn(ctx context.Context, entityID string) (AccessDecision, *common.ServiceError)
+
+	// Unlock releases every automatic lock. It does not release a suspension.
+	Unlock(ctx context.Context, entityID string) *common.ServiceError
+
+	// Suspend places an administrative hold. It writes state only, so the caller composes revocation,
+	// and writes nothing for an identity already suspended. operatorNote is optional and never disclosed.
+	Suspend(ctx context.Context, entityID, operatorNote string) *common.ServiceError
+
+	// ValidateSuspend checks that the caller may suspend the identity, and writes nothing. An identity
+	// already suspended passes.
+	ValidateSuspend(ctx context.Context, entityID string) *common.ServiceError
+
+	// RecordLogin stamps when the identity was last granted access. Callers do not fail the grant on
+	// its error.
+	RecordLogin(ctx context.Context, entityID string) *common.ServiceError
+
+	// Unsuspend releases the hold. A user is left with a non-expiring entity-wide lock, which a
+	// recovery or an unlock clears; an agent or application returns to ACTIVE.
+	Unsuspend(ctx context.Context, entityID string) *common.ServiceError
+}

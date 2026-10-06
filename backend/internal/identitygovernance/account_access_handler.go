@@ -46,14 +46,14 @@ func (h accountAccessHandler) Validate(incoming, readOnly, _ any) error {
 	if err := validateStructure(cfg); err != nil {
 		return err
 	}
-	return validateCoherence(effectiveAccountAccess(h.base, cfg))
+	return validateCoherence(mergeAccountAccessValue(h.base, cfg))
 }
 
 // Merge lays the declarative document over the base when one exists, otherwise the writable layer.
 func (h accountAccessHandler) Merge(readOnly, writable any) any {
 	if ro, ok := readOnly.(accountAccessValue); ok && !ro.isEmpty() {
-		return effectiveAccountAccess(h.base, ro)
+		return mergeAccountAccessValue(h.base, ro)
 	}
 	wr, _ := writable.(accountAccessValue)
-	return effectiveAccountAccess(h.base, wr)
+	return mergeAccountAccessValue(h.base, wr)
 }

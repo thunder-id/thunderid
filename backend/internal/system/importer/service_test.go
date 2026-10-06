@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
@@ -989,6 +992,66 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	assert.Equal(t, 1, resp.Summary.Imported)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+}
+
+// ignoredStateWarning is the warning an import logs for a document that carries a state.
+const ignoredStateWarning = `level=WARN msg="State in the document was ignored`
+
+// stateDocuments are a document without a state and the same document with one.
+func stateDocuments(doc string) []struct {
+	name     string
+	content  string
+	warnings int
+} {
+	return []struct {
+		name     string
+		content  string
+		warnings int
+	}{
+		{name: "without a state", content: doc, warnings: 0},
+		{name: "with a state", content: doc + "state: SUSPENDED\n", warnings: 1},
+	}
+}
+
+// captureImportLogs runs fn with the logger writing to a file and returns what it wrote.
+func captureImportLogs(t *testing.T, fn func()) string {
+	dir := t.TempDir()
+	logger := log.GetLogger()
+	require.NoError(t, logger.Configure(log.OutputOptions{
+		FileEnabled: true, File: rollingfile.Config{Path: filepath.Join(dir, "import.log")}}))
+	defer func() { require.NoError(t, logger.Configure(log.OutputOptions{ConsoleEnabled: true})) }()
+	fn()
+	out, err := fs.ReadFile(os.DirFS(dir), "import.log")
+	require.NoError(t, err)
+	return string(out)
+}
+
+// TestImportResources_ApplicationStateIgnored verifies that a state in an application document
+// does not fail the import and is reported as ignored.
+func TestImportResources_ApplicationStateIgnored(t *testing.T) {
+	for _, tc := range stateDocuments("resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n") {
+		t.Run(tc.name, func(t *testing.T) {
+			appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+			svc := newTestImportService(appSvc)
+
+			var resp *ImportResponse
+			var err *tidcommon.ServiceError
+			logs := captureImportLogs(t, func() {
+				resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+					Content: tc.content,
+					Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true),
+						Target: importTargetRuntime},
+				})
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusSuccess, resp.Results[0].Status)
+			assert.Equal(t, operationCreate, resp.Results[0].Operation)
+			require.Len(t, appSvc.created, 1)
+			assert.Equal(t, tc.warnings, strings.Count(logs, ignoredStateWarning))
+		})
+	}
 }
 
 func TestImportResources_UpdateApplication(t *testing.T) {
@@ -2767,6 +2830,30 @@ func TestImportAgent_Create(t *testing.T) {
 	assert.Equal(t, testAgentLogo, agentSvc.created[0].LogoURL)
 }
 
+// TestImportAgent_StateIgnored verifies that a state in an agent document does not fail the import
+// and is reported as ignored.
+func TestImportAgent_StateIgnored(t *testing.T) {
+	for _, tc := range stateDocuments(agentYAML) {
+		t.Run(tc.name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+			var resp *ImportResponse
+			var svcErr *tidcommon.ServiceError
+			logs := captureImportLogs(t, func() {
+				resp, svcErr = svc.ImportResources(context.Background(), &ImportRequest{Content: tc.content})
+			})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusSuccess, resp.Results[0].Status)
+			require.Len(t, agentSvc.created, 1)
+			assert.Equal(t, tc.warnings, strings.Count(logs, ignoredStateWarning))
+		})
+	}
+}
+
 func TestImportAgent_UpsertUpdate(t *testing.T) {
 	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
 		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
@@ -3403,6 +3490,72 @@ func TestImportUser_OUIDWinsOverHandle(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	require.Len(t, userSvc.created, 1)
 	assert.Equal(t, "ou-explicit", userSvc.created[0].OUID)
+}
+
+// TestImportUser_StateIgnored verifies that a state in a user document does not fail the import, is
+// not passed to the user service, and is reported as ignored.
+func TestImportUser_StateIgnored(t *testing.T) {
+	content := strings.Join([]string{
+		"resource_type: user",
+		"id: user-new",
+		"type: person",
+		"ouId: ou-explicit",
+		"attributes:",
+		"  username: alice",
+		"",
+	}, "\n")
+	for _, tc := range stateDocuments(content) {
+		t.Run(tc.name, func(t *testing.T) {
+			userSvc := &fakeUserService{}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+			var resp *ImportResponse
+			var err *tidcommon.ServiceError
+			logs := captureImportLogs(t, func() {
+				resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+					Content: tc.content,
+					Options: &ImportOptions{Upsert: boolPtr(false)},
+				})
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, statusSuccess, resp.Results[0].Status)
+			require.Len(t, userSvc.created, 1)
+			assert.Nil(t, userSvc.created[0].Status)
+			assert.NotContains(t, string(userSvc.created[0].Attributes), "SUSPENDED")
+			assert.Equal(t, tc.warnings, strings.Count(logs, ignoredStateWarning))
+		})
+	}
+}
+
+// TestDocumentState verifies which top-level state values the import warns about.
+func TestDocumentState(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		state   string
+		found   bool
+	}{
+		{"scalar", "resource_type: user\nstate: SUSPENDED\n", "SUSPENDED", true},
+		{"mapping", "resource_type: agent\nstate:\n  value: SUSPENDED\n", "", true},
+		{"empty", "resource_type: application\nstate: \"\"\n", "", false},
+		{"absent", "resource_type: user\nid: user-1\n", "", false},
+		{"nested only", "resource_type: user\nattributes:\n  state: SUSPENDED\n", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			docs, err := parseDocuments(tc.content)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+
+			state, found := documentState(docs[0])
+
+			assert.Equal(t, tc.found, found)
+			assert.Equal(t, tc.state, state)
+		})
+	}
 }
 
 // TestImportResourceServer_OUHandleResolved verifies that ou_handle on a resource server

@@ -107,7 +107,7 @@ var obsAuthFlow = testutils.Flow{
 type PrincipalEventsTestSuite struct {
 	suite.Suite
 	client *http.Client
-	reader *eventLogReader
+	reader *testutils.EventLogReader
 
 	ouID              string
 	entityTypeID      string
@@ -130,7 +130,7 @@ func TestPrincipalEventsTestSuite(t *testing.T) {
 // log holds the events under test rather than the setup traffic that produced the fixtures.
 func (ts *PrincipalEventsTestSuite) SetupSuite() {
 	ts.client = testutils.GetHTTPClient()
-	ts.reader = newEventLogReader()
+	ts.reader = testutils.NewEventLogReader(eventLogPath())
 
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "obs-principal-ou",
@@ -203,7 +203,7 @@ func (ts *PrincipalEventsTestSuite) SetupSuite() {
 	ts.subjectUserID = ts.createUser(obsSubjectUsername, obsSubjectPassword)
 	ts.actorUserID = ts.createUser(obsActorUsername, obsActorPassword)
 
-	ts.Require().NoError(testutils.PatchDeploymentConfig(observabilityPatch(true)),
+	ts.Require().NoError(testutils.PatchDeploymentConfig(testutils.ObservabilityFileSinkPatch(eventLogPath(), true)),
 		"Failed to enable observability in the deployment config")
 	ts.Require().NoError(testutils.RestartServer(), "Failed to restart the server with observability enabled")
 }
@@ -211,7 +211,7 @@ func (ts *PrincipalEventsTestSuite) SetupSuite() {
 // TearDownSuite turns the sink back off before removing the fixtures, so the restore lands while
 // every resource the running server still references exists.
 func (ts *PrincipalEventsTestSuite) TearDownSuite() {
-	if err := testutils.PatchDeploymentConfig(observabilityPatch(false)); err != nil {
+	if err := testutils.PatchDeploymentConfig(testutils.ObservabilityFileSinkPatch(eventLogPath(), false)); err != nil {
 		ts.T().Errorf("teardown: failed to disable observability: %v", err)
 	} else if err := testutils.RestartServer(); err != nil {
 		ts.T().Errorf("teardown: failed to restart the server after disabling observability: %v", err)
@@ -259,24 +259,24 @@ func (ts *PrincipalEventsTestSuite) TearDownSuite() {
 // flow names the application the flow runs for by resource ID, OAuth client_id and principal type,
 // and that they all share the execution id as both trace and correlation id.
 func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_FlowEventsCarryTheActingApplication() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	executionID, _ := ts.runLoginFlow(obsWebClientID, obsSubjectUsername, obsSubjectPassword)
 
-	flowCompleted, err := ts.reader.await(ofTypeWith(typeFlowCompleted, keyExecutionID, executionID))
+	flowCompleted, err := ts.reader.Await(testutils.EventOfTypeWith(typeFlowCompleted, keyExecutionID, executionID))
 	ts.Require().NoError(err, "No FLOW_COMPLETED event for execution %s", executionID)
 
-	flowStarted, err := ts.reader.await(ofTypeWith(typeFlowStarted, keyExecutionID, executionID))
+	flowStarted, err := ts.reader.Await(testutils.EventOfTypeWith(typeFlowStarted, keyExecutionID, executionID))
 	ts.Require().NoError(err, "No FLOW_STARTED event for execution %s", executionID)
 
-	for _, evt := range []observabilityEvent{flowStarted, flowCompleted} {
+	for _, evt := range []testutils.ObservabilityEvent{flowStarted, flowCompleted} {
 		ts.Equal(executionID, evt.TraceID,
 			"%s must be traced on the execution id so the whole flow shares one trace", evt.Type)
-		ts.Equal(executionID, evt.str(keyCorrelationID),
+		ts.Equal(executionID, evt.Str(keyCorrelationID),
 			"%s must correlate on the execution id", evt.Type)
-		ts.Equal(ts.webAppID, evt.str(keyAppID), "%s must name the application's resource ID", evt.Type)
-		ts.Equal(obsWebClientID, evt.str(keyClientID), "%s must name the application's OAuth client_id", evt.Type)
-		ts.Equal(principalApplication, evt.str(keyActorType),
+		ts.Equal(ts.webAppID, evt.Str(keyAppID), "%s must name the application's resource ID", evt.Type)
+		ts.Equal(obsWebClientID, evt.Str(keyClientID), "%s must name the application's OAuth client_id", evt.Type)
+		ts.Equal(principalApplication, evt.Str(keyActorType),
 			"%s must report an application-driven flow as an application actor", evt.Type)
 	}
 }
@@ -285,22 +285,22 @@ func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_FlowEventsCarryTheActi
 // subject reports it on its own completion event, by opaque resource ID and principal type, rather
 // than only from the next node onwards.
 func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_AuthenticatingNodeReportsTheSubject() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	executionID, _ := ts.runLoginFlow(obsWebClientID, obsSubjectUsername, obsSubjectPassword)
 
-	nodeCompleted, err := ts.reader.await(func(evt observabilityEvent) bool {
+	nodeCompleted, err := ts.reader.Await(func(evt testutils.ObservabilityEvent) bool {
 		return evt.Type == typeNodeExecCompleted &&
-			evt.str(keyExecutionID) == executionID &&
-			evt.str(keyNodeID) == obsCredentialsNodeID
+			evt.Str(keyExecutionID) == executionID &&
+			evt.Str(keyNodeID) == obsCredentialsNodeID
 	})
 	ts.Require().NoError(err, "No completion event for node %s of execution %s", obsCredentialsNodeID, executionID)
 
-	ts.Equal(ts.subjectUserID, nodeCompleted.str(keySubject),
+	ts.Equal(ts.subjectUserID, nodeCompleted.Str(keySubject),
 		"The authenticating node must report the subject it just resolved, as its resource ID")
-	ts.Equal(principalUser, nodeCompleted.str(keySubjectType),
+	ts.Equal(principalUser, nodeCompleted.Str(keySubjectType),
 		"A user authenticated by credentials must be reported as a user subject")
-	ts.NotEqual(obsSubjectUsername, nodeCompleted.str(keySubject),
+	ts.NotEqual(obsSubjectUsername, nodeCompleted.Str(keySubject),
 		"The subject must be the opaque resource ID, never a directly identifying attribute")
 }
 
@@ -308,7 +308,7 @@ func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_AuthenticatingNodeRepo
 // login flow's authorization code reports the same correlation id as the flow's own events, and
 // names the authenticated user as its subject and the application as its actor.
 func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_TokenEventStitchesToTheLoginFlow() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	executionID, code := ts.runLoginFlow(obsWebClientID, obsSubjectUsername, obsSubjectPassword)
 
@@ -317,39 +317,39 @@ func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_TokenEventStitchesToTh
 	ts.Require().NoError(err, "Failed to request a token")
 	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode, string(tokenResult.Body))
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyCorrelationID, executionID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyCorrelationID, executionID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event correlated to execution %s", executionID)
 
-	ts.Equal("authorization_code", issued.str(keyGrantType))
-	ts.Equal(ts.subjectUserID, issued.str(keySubject),
+	ts.Equal("authorization_code", issued.Str(keyGrantType))
+	ts.Equal(ts.subjectUserID, issued.Str(keySubject),
 		"The token event must report the authenticated user as its subject")
-	ts.Equal(principalUser, issued.str(keySubjectType))
-	ts.Equal(ts.webAppID, issued.str(keyAppID))
-	ts.Equal(obsWebClientID, issued.str(keyClientID))
-	ts.Equal(principalApplication, issued.str(keyActorType))
+	ts.Equal(principalUser, issued.Str(keySubjectType))
+	ts.Equal(ts.webAppID, issued.Str(keyAppID))
+	ts.Equal(obsWebClientID, issued.Str(keyClientID))
+	ts.Equal(principalApplication, issued.Str(keyActorType))
 	ts.Equal(false, issued.Data[keyIsDelegated],
 		"A user signing in for themselves is not a delegated grant")
-	ts.False(issued.has(keyActorSub), "A non-delegated grant has no acting principal to report")
+	ts.False(issued.Has(keyActorSub), "A non-delegated grant has no acting principal to report")
 }
 
 // TestClientCredentials_ApplicationIsBothActorAndSubject verifies that an application's own
 // client_credentials token reports that application on both axes: it is the principal acting and the
 // principal the token is about.
 func (ts *PrincipalEventsTestSuite) TestClientCredentials_ApplicationIsBothActorAndSubject() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	status, body := ts.requestClientCredentialsToken(obsM2MClientID, obsM2MClientSecret)
 	ts.Require().Equal(http.StatusOK, status, "%v", body)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyClientID, obsM2MClientID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyClientID, obsM2MClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for client %s", obsM2MClientID)
 
-	ts.Equal("client_credentials", issued.str(keyGrantType))
-	ts.Equal(ts.m2mAppID, issued.str(keyAppID))
-	ts.Equal(principalApplication, issued.str(keyActorType))
-	ts.Equal(ts.m2mAppID, issued.str(keySubject),
+	ts.Equal("client_credentials", issued.Str(keyGrantType))
+	ts.Equal(ts.m2mAppID, issued.Str(keyAppID))
+	ts.Equal(principalApplication, issued.Str(keyActorType))
+	ts.Equal(ts.m2mAppID, issued.Str(keySubject),
 		"A client_credentials token is about the client itself")
-	ts.Equal(principalApplication, issued.str(keySubjectType))
+	ts.Equal(principalApplication, issued.Str(keySubjectType))
 	ts.Equal(false, issued.Data[keyIsDelegated])
 }
 
@@ -357,19 +357,19 @@ func (ts *PrincipalEventsTestSuite) TestClientCredentials_ApplicationIsBothActor
 // distinguishable from an application's without a registry lookup, on both the actor and the subject
 // axis. This is what keeps agent activity separable in the sinks.
 func (ts *PrincipalEventsTestSuite) TestClientCredentials_AgentIsReportedAsAnAgent() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	status, body := ts.requestClientCredentialsToken(obsAgentClientID, obsAgentClientSecret)
 	ts.Require().Equal(http.StatusOK, status, "%v", body)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyClientID, obsAgentClientID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyClientID, obsAgentClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for agent client %s", obsAgentClientID)
 
-	ts.Equal(ts.agentID, issued.str(keyAppID))
-	ts.Equal(principalAgent, issued.str(keyActorType),
+	ts.Equal(ts.agentID, issued.Str(keyAppID))
+	ts.Equal(principalAgent, issued.Str(keyActorType),
 		"An agent authenticating as the client must be reported as an agent actor")
-	ts.Equal(ts.agentID, issued.str(keySubject))
-	ts.Equal(principalAgent, issued.str(keySubjectType),
+	ts.Equal(ts.agentID, issued.Str(keySubject))
+	ts.Equal(principalAgent, issued.Str(keySubjectType),
 		"An agent's own token must be reported as an agent subject, not assumed to be a user")
 }
 
@@ -386,19 +386,19 @@ func (ts *PrincipalEventsTestSuite) TestRefreshToken_ReportsTheOriginalSubject()
 	ts.Require().NotEmpty(tokenResult.Token.RefreshToken, "The grant must issue a refresh token")
 
 	// Reset only now, so the awaited event can only be the refresh grant's, never the login's.
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	refreshed, err := testutils.RefreshAccessToken(obsWebClientID, obsWebClientSecret, tokenResult.Token.RefreshToken)
 	ts.Require().NoError(err, "Failed to refresh the access token")
 	ts.Require().NotEmpty(refreshed.AccessToken)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyGrantType, "refresh_token"))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyGrantType, "refresh_token"))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for the refresh grant")
 
-	ts.Equal(ts.subjectUserID, issued.str(keySubject),
+	ts.Equal(ts.subjectUserID, issued.Str(keySubject),
 		"A refreshed token must still report the user the original login authenticated")
-	ts.Equal(principalUser, issued.str(keySubjectType))
-	ts.Equal(ts.webAppID, issued.str(keyAppID))
+	ts.Equal(principalUser, issued.Str(keySubjectType))
+	ts.Equal(ts.webAppID, issued.Str(keyAppID))
 	ts.Equal(false, issued.Data[keyIsDelegated])
 }
 
@@ -409,7 +409,7 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_DelegatedGrantReportsActor
 	subjectToken := ts.obtainAccessToken(obsSubjectUsername, obsSubjectPassword)
 	actorToken := ts.obtainAccessToken(obsActorUsername, obsActorPassword)
 
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	form := url.Values{}
 	form.Set("grant_type", obsTokenExchangeGrant)
@@ -421,14 +421,14 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_DelegatedGrantReportsActor
 	status, body := ts.postToken(form, obsExchangeClientID, obsExchangeClientSecret)
 	ts.Require().Equal(http.StatusOK, status, "%v", body)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyClientID, obsExchangeClientID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyClientID, obsExchangeClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for the exchange client")
 
-	ts.Equal(ts.subjectUserID, issued.str(keySubject),
+	ts.Equal(ts.subjectUserID, issued.Str(keySubject),
 		"The subject must remain the principal the token is about")
-	ts.Equal(principalUser, issued.str(keySubjectType))
+	ts.Equal(principalUser, issued.Str(keySubjectType))
 	ts.Equal(true, issued.Data[keyIsDelegated], "An exchange with an actor_token is a delegated grant")
-	ts.Equal(ts.actorUserID, issued.str(keyActorSub),
+	ts.Equal(ts.actorUserID, issued.Str(keyActorSub),
 		"The acting principal must be reported alongside the subject it acts for")
 }
 
@@ -437,7 +437,7 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_DelegatedGrantReportsActor
 func (ts *PrincipalEventsTestSuite) TestTokenExchange_UndelegatedGrantIsNotFlaggedAsDelegated() {
 	subjectToken := ts.obtainAccessToken(obsSubjectUsername, obsSubjectPassword)
 
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	form := url.Values{}
 	form.Set("grant_type", obsTokenExchangeGrant)
@@ -447,12 +447,12 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_UndelegatedGrantIsNotFlagg
 	status, body := ts.postToken(form, obsExchangeClientID, obsExchangeClientSecret)
 	ts.Require().Equal(http.StatusOK, status, "%v", body)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyClientID, obsExchangeClientID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyClientID, obsExchangeClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for the exchange client")
 
-	ts.Equal(ts.subjectUserID, issued.str(keySubject))
+	ts.Equal(ts.subjectUserID, issued.Str(keySubject))
 	ts.Equal(false, issued.Data[keyIsDelegated])
-	ts.False(issued.has(keyActorSub), "An exchange without an actor_token has no acting principal")
+	ts.False(issued.Has(keyActorSub), "An exchange without an actor_token has no acting principal")
 }
 
 // TestTokenExchange_AgentWithoutActorTokenIsTheImplicitActor verifies that an agent exchanging a
@@ -462,7 +462,7 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_UndelegatedGrantIsNotFlagg
 func (ts *PrincipalEventsTestSuite) TestTokenExchange_AgentWithoutActorTokenIsTheImplicitActor() {
 	subjectToken := ts.obtainAccessToken(obsSubjectUsername, obsSubjectPassword)
 
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	form := url.Values{}
 	form.Set("grant_type", obsTokenExchangeGrant)
@@ -472,16 +472,16 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_AgentWithoutActorTokenIsTh
 	status, body := ts.postToken(form, obsAgentClientID, obsAgentClientSecret)
 	ts.Require().Equal(http.StatusOK, status, "%v", body)
 
-	issued, err := ts.reader.await(ofTypeWith(typeTokenIssued, keyClientID, obsAgentClientID))
+	issued, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssued, keyClientID, obsAgentClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUED event for the agent's exchange")
 
-	ts.Equal(ts.subjectUserID, issued.str(keySubject),
+	ts.Equal(ts.subjectUserID, issued.Str(keySubject),
 		"The subject must remain the user the exchanged token is about")
-	ts.Equal(principalUser, issued.str(keySubjectType))
-	ts.Equal(principalAgent, issued.str(keyActorType))
+	ts.Equal(principalUser, issued.Str(keySubjectType))
+	ts.Equal(principalAgent, issued.Str(keyActorType))
 	ts.Equal(true, issued.Data[keyIsDelegated],
 		"An agent exchanging a user's token acts on that user's behalf")
-	ts.Equal(ts.agentID, issued.str(keyActorSub),
+	ts.Equal(ts.agentID, issued.Str(keyActorSub),
 		"The agent authenticated as the client is the acting principal")
 }
 
@@ -489,7 +489,7 @@ func (ts *PrincipalEventsTestSuite) TestTokenExchange_AgentWithoutActorTokenIsTh
 // the principal that made it, so failures are attributable to an actor rather than only to a
 // client_id string.
 func (ts *PrincipalEventsTestSuite) TestTokenIssuanceFailed_ReportsTheActingClient() {
-	ts.Require().NoError(ts.reader.reset())
+	ts.Require().NoError(ts.reader.Reset())
 
 	// The M2M client is registered for client_credentials only, so an authorization_code request is
 	// rejected after the client is resolved but before any grant handling.
@@ -502,13 +502,13 @@ func (ts *PrincipalEventsTestSuite) TestTokenIssuanceFailed_ReportsTheActingClie
 	ts.Require().Equal(http.StatusBadRequest, status, "%v", body)
 	ts.Require().Equal("unauthorized_client", body["error"])
 
-	failed, err := ts.reader.await(ofTypeWith(typeTokenIssuanceFailed, keyClientID, obsM2MClientID))
+	failed, err := ts.reader.Await(testutils.EventOfTypeWith(typeTokenIssuanceFailed, keyClientID, obsM2MClientID))
 	ts.Require().NoError(err, "No TOKEN_ISSUANCE_FAILED event for client %s", obsM2MClientID)
 
-	ts.Equal(ts.m2mAppID, failed.str(keyAppID), "A failure must name the acting application's resource ID")
-	ts.Equal(principalApplication, failed.str(keyActorType))
-	ts.NotEmpty(failed.str(keyCorrelationID), "A failure must carry a correlation id of its own")
-	ts.False(failed.has(keySubject), "A grant that never issued a token has no subject to report")
+	ts.Equal(ts.m2mAppID, failed.Str(keyAppID), "A failure must name the acting application's resource ID")
+	ts.Equal(principalApplication, failed.Str(keyActorType))
+	ts.NotEmpty(failed.Str(keyCorrelationID), "A failure must carry a correlation id of its own")
+	ts.False(failed.Has(keySubject), "A grant that never issued a token has no subject to report")
 }
 
 // runLoginFlow drives the authorization-code login flow to completion and returns the flow's

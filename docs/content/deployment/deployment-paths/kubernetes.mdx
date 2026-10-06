@@ -384,6 +384,25 @@ configuration:
 
 When you leave it empty, the server uses `default-deployment`.
 
+### Account Lock Policy
+
+Set the deployment's automatic account lock policy under `configuration.accountAccess`, in camelCase, with one block for `user` and one for `agent`. The chart's `values.yaml` carries the product defaults, so override only the keys you need:
+
+```yaml
+configuration:
+  accountAccess:
+    user:
+      default:
+        threshold: 3
+        lockDurationsSeconds: [600, 3600]
+      notifications:
+        onLock:
+          email:
+            enabled: false
+```
+
+This value is the base of the `accountAccess` section. A change made later through the Console or the API is stored as a separate layer over it. For every key and its default, see [Account Access](../../configuration#account-access).
+
 ### Resource Store Modes
 
 Set a storage mode per resource type so <ProductName /> reads mounted declarative resources at startup. Use `configuration.stores`:

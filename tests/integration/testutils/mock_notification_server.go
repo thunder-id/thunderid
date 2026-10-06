@@ -204,6 +204,16 @@ func (m *MockNotificationServer) GetLastMessage() *SMSMessage {
 	return &lastMessage
 }
 
+// GetMessages returns every message held, oldest first, without consuming them.
+func (m *MockNotificationServer) GetMessages() []SMSMessage {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	messages := make([]SMSMessage, len(m.messages))
+	copy(messages, m.messages)
+	return messages
+}
+
 // ClearMessages clears all stored messages
 func (m *MockNotificationServer) ClearMessages() {
 	m.mutex.Lock()

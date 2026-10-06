@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -63,7 +64,11 @@ func (suite *CIBAServiceTestSuite) SetupTest() {
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockResourceSvc = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
+	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(),
+		nil, nil, governance)
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, testhelpers.OAuthConfig())
 	suite.oauthApp = &providers.OAuthClient{
@@ -714,6 +719,31 @@ func (suite *CIBAServiceTestSuite) TestResolveExpectedAudience_NilApp() {
 	suite.Nil(cibaErr)
 }
 
+// A held application refuses the callback before the assertion is verified or the request changes.
+func (suite *CIBAServiceTestSuite) TestResolveExpectedAudience_HeldApplicationRefusesTheCallback() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, "app-1", providers.AccessPlaneApplication,
+		providers.AuthenticationMethod("")).Return(providers.AccessDecision{}, nil).Once()
+	service := newCIBAService(suite.mockStore, suite.mockFlowExec, suite.mockJWTService,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil,
+			governance), suite.mockResourceSvc, testhelpers.OAuthConfig())
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "client-1").
+		Return(suite.oauthApp, nil).Once()
+	suite.mockStore.EXPECT().GetByID(mock.Anything, "auth-req-1").Return(suite.pendingRecord(), nil)
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":                      testUserID,
+		"authorization_request_id": "auth-req-1",
+		"iat":                      float64(time.Now().Unix()),
+	})
+
+	cibaErr := service.HandleCallback(context.Background(), "auth-req-1", assertion)
+
+	suite.Require().NotNil(cibaErr)
+	suite.Equal(oauth2const.ErrorUnauthorizedClient, cibaErr.Code)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "VerifyJWT", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
 // -------------------------------------------------------------------
 // getRequiredOptionalAttributes tests
 // -------------------------------------------------------------------
@@ -1025,7 +1055,8 @@ const testEntityID = "entity-abc-123"
 func (suite *CIBAServiceTestSuite) withIssuer() {
 	cfg := testhelpers.OAuthConfig()
 	cfg.JWT.Issuer = testIssuer
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(),
+		nil, nil, nil)
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, cfg)
 }
@@ -1320,7 +1351,11 @@ func (suite *CIBAServiceTestSuite) TestHandleCallback_Failure_TransitionsStateBy
 func (suite *CIBAServiceTestSuite) serviceWithServerErrorReporting(enabled bool) CIBAServiceInterface {
 	cfg := testhelpers.OAuthConfig()
 	cfg.OAuth.SendServerErrorsToClient = &enabled
-	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
+	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(),
+		nil, nil, governance)
 	return newCIBAService(suite.mockStore, suite.mockFlowExec,
 		suite.mockJWTService, actorProv, suite.mockResourceSvc, cfg)
 }

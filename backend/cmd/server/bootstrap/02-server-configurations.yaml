@@ -34,3 +34,33 @@ value:
     defaultHandle: default-group-membership-removal-flow
   actionDeletionFlow:
     defaultHandle: default-action-deletion-flow
+  userUnlockFlow:
+    defaultHandle: default-user-unlock-flow
+  userSuspendFlow:
+    defaultHandle: default-user-suspend-flow
+  userUnsuspendFlow:
+    defaultHandle: default-user-unsuspend-flow
+  agentUnlockFlow:
+    defaultHandle: default-agent-unlock-flow
+  agentSuspendFlow:
+    defaultHandle: default-agent-suspend-flow
+  agentUnsuspendFlow:
+    defaultHandle: default-agent-unsuspend-flow
+  applicationSuspendFlow:
+    defaultHandle: default-application-suspend-flow
+  applicationUnsuspendFlow:
+    defaultHandle: default-application-unsuspend-flow
+---
+resource_type: server_config
+name: accountAccess
+value:
+  user:
+    notifications:
+      onLock:
+        email:
+          templates:
+            temporary: account-locked
+            permanent: account-locked-permanent
+            entity:
+              temporary: account-locked-entity
+              permanent: account-locked-entity-permanent

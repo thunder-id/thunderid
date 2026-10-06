@@ -302,6 +302,11 @@ type AgentMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
+// IdentityGovernanceProviderConfig holds the identity governance provider configuration details.
+type IdentityGovernanceProviderConfig struct {
+	Type string `yaml:"type" json:"type"`
+}
+
 // RestConfig holds the REST authentication provider configuration details.
 type RestConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
@@ -761,6 +766,8 @@ type Config struct {
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
 	ResourceSharing      ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
 	AccountAccess        AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
+
+	IdentityGovernanceProvider IdentityGovernanceProviderConfig `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.
@@ -800,11 +807,10 @@ type LockNotificationConfig struct {
 	Email LockEmailConfig `yaml:"email" json:"email"`
 }
 
-// LockEmailConfig is the automatic-lock email for one category. It is sent through the server's
-// default email sender.
+// LockEmailConfig is the automatic-lock email for one category. It is sent to the user type's primary
+// email through the server's default email sender.
 type LockEmailConfig struct {
-	Enabled            *bool   `yaml:"enabled" json:"enabled"`
-	RecipientAttribute *string `yaml:"recipient_attribute" json:"recipient_attribute"`
+	Enabled *bool `yaml:"enabled" json:"enabled"`
 }
 
 // LockPolicyConfig is a category's lockout policy, applied to every authentication method. Fields

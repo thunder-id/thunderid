@@ -6,6 +6,7 @@ package identitygovernance
 import (
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -118,15 +119,15 @@ type AccessRead struct {
 	LastLoginAt string
 }
 
-// NotificationDependencies supplies the template and email sender services the lock email uses.
-// Omitting them disables the email without disabling account locks.
+// NotificationDependencies supplies the services the lock email uses. All are required for the email,
+// and omitting one disables it without disabling account locks.
 type NotificationDependencies struct {
 	// Templates renders the lock email.
 	Templates notificationTemplateRenderer
 	// Senders sends the email.
 	Senders notification.NotificationSenderServiceInterface
-	// DefaultSender names the email sender the email goes through.
-	DefaultSender defaultEmailSenderSource
+	// EntityTypes supplies the user type's primary email, the only address the email goes to.
+	EntityTypes entitytype.EntityTypeServiceInterface
 }
 
 // lockoutPolicy is the resolved lockout configuration for one category and authentication method.
@@ -204,12 +205,6 @@ type lockNotice struct {
 	episode      LockEpisode
 }
 
-// lockTemplate names the email templates for a lock that expires and for one that does not.
-type lockTemplate struct {
-	expiring  string
-	permanent string
-}
-
 // lockEnforcement says which of a category's recorded locks are still enforced. A lock whose method's
 // policy is switched off is not, and under entity granularity only the entity entry is. The zero
 // value enforces every lock.
@@ -279,12 +274,30 @@ type accountAccessLockNotification struct {
 	Email *accountAccessLockEmail `json:"email,omitempty"`
 }
 
-// accountAccessLockEmail is the automatic lock email for one category.
+// accountAccessLockEmail is the automatic lock email for one category. It goes to the user type's
+// primary email.
 type accountAccessLockEmail struct {
 	// Enabled turns the email on or off.
 	Enabled *bool `json:"enabled,omitempty"`
-	// RecipientAttribute is the profile attribute holding the address. A user without it is skipped.
-	RecipientAttribute *string `json:"recipientAttribute,omitempty"`
+	// Templates names the email templates. It is set only through the server config API; the bootstrap
+	// sets the defaults.
+	Templates *accountAccessLockTemplates `json:"templates,omitempty"`
+}
+
+// accountAccessLockTemplates names the lock email templates: the default pair, and overrides for the
+// entity-wide lock and for a lock on one method, each laid over the default field by field.
+type accountAccessLockTemplates struct {
+	accountAccessTemplatePair
+	// Entity is for the entity-wide lock, which holds every method.
+	Entity *accountAccessTemplatePair `json:"entity,omitempty"`
+	// Methods is for a lock on one method, keyed by a lockable method.
+	Methods map[string]accountAccessTemplatePair `json:"methods,omitempty"`
+}
+
+// accountAccessTemplatePair names the templates for a lock that expires and for one that does not.
+type accountAccessTemplatePair struct {
+	Temporary string `json:"temporary,omitempty"`
+	Permanent string `json:"permanent,omitempty"`
 }
 
 // accountAccessPolicy is a lockout policy, used as a category default or a per-method override.

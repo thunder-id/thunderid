@@ -1144,6 +1144,15 @@ func testCredentialsJSON() json.RawMessage {
 		`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}]}`)
 }
 
+// twoCandidateCredentialsJSON stores two password candidates, as an entity mid-rehash holds.
+func twoCandidateCredentialsJSON() json.RawMessage {
+	return json.RawMessage(`{"password":[` +
+		`{"value":"brokenhash","storageAlgo":"LEGACY",` +
+		`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}},` +
+		`{"value":"testhash","storageAlgo":"PBKDF2",` +
+		`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}]}`)
+}
+
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 	storedCreds := testCredentialsJSON()
 	e := testEntity("auth-id-1")
@@ -1151,8 +1160,10 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("password123"), mock.Anything).Return(true, nil)
 
-	result, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
+	result, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "password123"})
 	s.NoError(err)
+	s.Nil(failure, "a successful verification produces no failure evidence")
 	s.Equal(e.ID, result.EntityID)
 	s.Equal(e.Category, result.EntityCategory)
 	s.Equal(e.Type, result.EntityType)
@@ -1160,12 +1171,12 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_EmptyID() {
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "", map[string]interface{}{"password": "p"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "", map[string]interface{}{"password": "p"})
 	s.ErrorIs(err, ErrEntityNotFound)
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_EmptyCredentials() {
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "some-id", map[string]interface{}{})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "some-id", map[string]interface{}{})
 	s.ErrorIs(err, ErrAuthenticationFailed)
 }
 
@@ -1173,7 +1184,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_EntityNotFound() {
 	s.store.On("GetEntityWithCredentials", mock.Anything, "missing").
 		Return(nil, ErrEntityNotFound)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "missing", map[string]interface{}{"password": "p"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "missing", map[string]interface{}{"password": "p"})
 	s.ErrorIs(err, ErrEntityNotFound)
 }
 
@@ -1184,7 +1195,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_DoesNotCheckProfileState()
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
 
 	s.hashService.On("Verify", []byte("p"), mock.Anything).Return(true, nil)
-	result, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "p"})
+	result, _, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "p"})
 	s.NoError(err)
 	s.Require().NotNil(result)
 	s.Equal(e.ID, result.EntityID)
@@ -1197,8 +1208,11 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_WrongCredentials() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "wrong"})
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
 	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Require().NotNil(failure, "a compared and rejected secret is attributable")
+	s.Equal(e.ID, failure.EntityID)
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_VerifyError() {
@@ -1208,7 +1222,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_VerifyError() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("password123"), mock.Anything).Return(false, s.testErr)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
 	s.ErrorIs(err, ErrAuthenticationFailed)
 }
 
@@ -1223,9 +1237,23 @@ func (s *ServiceTestSuite) TestAuthenticateEntity_DelegatesToByID() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("pass"), mock.Anything).Return(true, nil)
 
-	result, err := s.svc.AuthenticateEntity(s.ctx, filters, map[string]interface{}{"password": "pass"})
+	result, _, err := s.svc.AuthenticateEntity(s.ctx, filters, map[string]interface{}{"password": "pass"})
 	s.NoError(err)
 	s.Equal(id, result.EntityID)
+}
+
+func (s *ServiceTestSuite) TestAuthenticateEntity_EmptyIdentifiers() {
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, map[string]interface{}{},
+		map[string]interface{}{"password": "p"})
+	s.ErrorIs(err, ErrEntityNotFound)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestAuthenticateEntity_EmptyCredentials() {
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, map[string]interface{}{"username": "user1"},
+		map[string]interface{}{})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
 }
 
 // --- SetGroupMembershipProvider / GetTransitiveEntityGroups ---
@@ -1691,6 +1719,201 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+// --- Failure evidence ---
+
+func (s *ServiceTestSuite) TestAWrongCredentialProducesEvidence() {
+	e := testEntity("count-1")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
+
+	result, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(result, "a refusal returns no authenticate result")
+	s.Require().NotNil(failure)
+	s.Equal(e.ID, failure.EntityID)
+}
+
+func (s *ServiceTestSuite) TestEvidenceNamesTheComparedEntity() {
+	id := "count-2"
+	e := testEntity(id)
+	filters := map[string]interface{}{"username": "someone"}
+	s.store.On("IdentifyEntity", mock.Anything, filters).Return(&id, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, id).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.Anything).Return(false, nil)
+
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, filters,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Require().NotNil(failure)
+	s.Equal(id, failure.EntityID)
+}
+
+func (s *ServiceTestSuite) TestAnUnknownIdentifierProducesNoEvidence() {
+	filters := map[string]interface{}{"username": "ghost"}
+	s.store.On("IdentifyEntity", mock.Anything, filters).Return(nil, ErrEntityNotFound)
+
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, filters,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrEntityNotFound)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestNoStoredCredentialOfThatTypeProducesNoEvidence() {
+	e := testEntity("count-3")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"pin": "1234"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestAnEntityWithNoStoredCredentialsProducesNoEvidence() {
+	e := testEntity("count-4")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestACorruptCredentialBlobProducesNoEvidence() {
+	corrupt := json.RawMessage(`not json`)
+	cases := []struct {
+		name   string
+		stored *entityWithCredentials
+	}{
+		{name: "schema credentials", stored: &entityWithCredentials{SchemaCredentials: corrupt}},
+		{name: "system credentials", stored: &entityWithCredentials{SystemCredentials: corrupt}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			e := testEntity("count-5")
+			tc.stored.Entity = e
+			s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(tc.stored, nil)
+
+			_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+				map[string]interface{}{"password": "wrong"})
+			s.Require().Error(err)
+			s.NotErrorIs(err, ErrAuthenticationFailed)
+			s.Nil(failure)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestAnIndeterminateHashServiceProducesNoEvidence() {
+	e := testEntity("count-6")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.Anything).
+		Return(false, errors.New("hash service unavailable"))
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestAMatchingCandidateWinsOverAnIndeterminateOne() {
+	e := testEntity("count-7")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: twoCandidateCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "brokenhash"
+	})).Return(false, errors.New("unsupported algorithm"))
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "testhash"
+	})).Return(true, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "right"})
+	s.Require().NoError(err)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestNoMatchWithAnIndeterminateCandidateProducesNoEvidence() {
+	e := testEntity("count-8")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: twoCandidateCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "brokenhash"
+	})).Return(false, errors.New("unsupported algorithm"))
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "testhash"
+	})).Return(false, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+func (s *ServiceTestSuite) TestAProvenMismatchDecidesOverAnIndeterminateSibling() {
+	e := testEntity("count-11")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{
+			Entity: e,
+			SchemaCredentials: json.RawMessage(`{` +
+				`"password":[{"value":"testhash","storageAlgo":"PBKDF2",` +
+				`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}],` +
+				`"pin":[{"value":"brokenhash","storageAlgo":"LEGACY",` +
+				`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}}]}`),
+		}, nil)
+	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
+	// Map order decides whether the sibling is reached, so its call is optional.
+	s.hashService.On("Verify", []byte("0000"), mock.Anything).
+		Return(false, errors.New("unsupported algorithm")).Maybe()
+
+	for range 8 {
+		_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+			map[string]interface{}{"password": "wrong", "pin": "0000"})
+		s.ErrorIs(err, ErrAuthenticationFailed)
+		s.Require().NotNil(failure, "a proven mismatch must decide regardless of map order")
+		s.Equal(e.ID, failure.EntityID)
+	}
+}
+
+func (s *ServiceTestSuite) TestACorrectSecretBesideAnIndeterminateOneProducesNoEvidence() {
+	e := testEntity("count-12")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{
+			Entity: e,
+			SchemaCredentials: json.RawMessage(`{` +
+				`"password":[{"value":"testhash","storageAlgo":"PBKDF2",` +
+				`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}],` +
+				`"pin":[{"value":"brokenhash","storageAlgo":"LEGACY",` +
+				`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}}]}`),
+		}, nil)
+	s.hashService.On("Verify", []byte("right"), mock.Anything).Return(true, nil)
+	s.hashService.On("Verify", []byte("0000"), mock.Anything).
+		Return(false, errors.New("unsupported algorithm"))
+
+	for range 8 {
+		_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+			map[string]interface{}{"password": "right", "pin": "0000"})
+		s.ErrorIs(err, ErrAuthenticationFailed)
+		s.Nil(failure)
+	}
+}
+
+func (s *ServiceTestSuite) TestAStepThatVerifiesNoSecretProducesNoEvidence() {
+	e := testEntity("count-9")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: "count-9"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
 }
 
 // suspendedEntity returns a suspended entity.

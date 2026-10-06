@@ -176,6 +176,10 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
 		})
 	}
+	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
+	}
 	fe.replayPromptInputs(ctx)
 
 	nodeCtx := &providers.NodeContext{

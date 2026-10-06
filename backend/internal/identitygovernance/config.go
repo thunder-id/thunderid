@@ -30,7 +30,7 @@ type accountAccessSource struct {
 // newAccountAccessSource builds the source over the deployment configuration, with no reader yet.
 func newAccountAccessSource(base accountAccessValue) accountAccessSourceInterface {
 	return &accountAccessSource{
-		base:   effectiveAccountAccess(base, accountAccessValue{}),
+		base:   base,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AccountAccessSource")),
 	}
 }
@@ -78,5 +78,5 @@ func (c Config) Validate() error {
 	if err := validateStructure(c.AccountAccess); err != nil {
 		return err
 	}
-	return validateCoherence(effectiveAccountAccess(c.AccountAccess, accountAccessValue{}))
+	return validateCoherence(c.AccountAccess)
 }

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
@@ -310,6 +311,15 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 	// Retrieve the OAuth client based on the client ID.
 	app, lookupErr := as.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if lookupErr != nil {
+		// A held application is shown as unavailable here, where a person reads it, and never
+		// redirected (RFC 6749 §3.1.2.4, §4.1.2.1).
+		if lookupErr.Code == actorprovider.ErrorActorUnavailable.Code {
+			as.logger.Debug(ctx, "Refusing an authorization request for an unavailable application")
+			return nil, &AuthorizationError{
+				Code:    oauth2const.ErrorUnauthorizedClient,
+				Message: "This application is currently unavailable",
+			}
+		}
 		as.logger.Error(ctx, "Failed to retrieve OAuth client",
 			log.String("error", lookupErr.Error.DefaultValue))
 		return nil, &AuthorizationError{

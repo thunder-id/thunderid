@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
+import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -84,6 +84,17 @@ export default function UsersList() {
           <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
             {params.row.id}
           </Typography>
+        ),
+      },
+      {
+        field: 'status',
+        headerName: t('users:listing.columns.status', 'Status'),
+        flex: 0.4,
+        minWidth: 110,
+        sortable: false,
+        // Every row shows its status, so an active account reads as active rather than as unknown.
+        renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
+          <AccessStatusIndicator status={params.row.status} />
         ),
       },
       {

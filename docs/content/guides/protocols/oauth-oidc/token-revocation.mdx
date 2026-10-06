@@ -17,7 +17,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 |---|---|---|
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
-| **User** | Every token belonging to one user, by its `sub` | A user is deleted |
+| **User** | Every token belonging to one user, by its `sub` | A user is deleted or suspended |
 
 A token is rejected if **any** of these matches.
 
@@ -97,6 +97,12 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 :::warning
 Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
 :::
+
+### Account Suspension
+
+Suspending a user, agent, or application runs a suspend flow that revokes, by subject, every token issued to the account before the suspension, and terminates its sessions before the hold is placed. For an application, or an agent that has an OAuth client, the flow also revokes the tokens issued through that client's ID, including user tokens. Unsuspending does not restore revoked tokens. See [Account Locks and Suspension](../../../account-locks-and-suspension#suspend-an-account).
+
+An automatic account lock revokes nothing: it refuses new sign-ins only.
 
 ## Where Revocation Is Enforced
 

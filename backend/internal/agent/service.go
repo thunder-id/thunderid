@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -58,6 +59,7 @@ type agentService struct {
 	logger               *log.Logger
 	authzService         sysauthz.SystemAuthorizationServiceInterface
 	entityService        entity.EntityServiceInterface
+	governance           identitygovernance.IdentityGovernanceServiceInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
 	dependencyRegistry   resourcedependency.Registry
@@ -72,6 +74,7 @@ func newAgentService(
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) AgentServiceInterface {
@@ -79,6 +82,7 @@ func newAgentService(
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         authzService,
 		entityService:        entityService,
+		governance:           governance,
 		inboundClientService: inboundClientService,
 		ouService:            ouService,
 		roleService:          roleService,
@@ -302,7 +306,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	if svcErr := validateLogoURL(req.LogoURL); svcErr != nil {
 		return nil, svcErr
 	}
-	existing, err := s.entityService.GetEntity(ctx, agentID)
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorAgentNotFound
@@ -391,7 +395,8 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	}
 	updatedEntity.SystemAttributes = sysAttrsJSON
 
-	if _, err := s.entityService.UpdateEntity(ctx, agentID, updatedEntity); err != nil {
+	updated, err := s.entityService.UpdateEntity(ctx, agentID, updatedEntity)
+	if err != nil {
 		if mapped := mapEntityError(err); mapped != nil {
 			return nil, mapped
 		}
@@ -428,6 +433,9 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = ouID
+	access := s.accessOf(ctx, updated)
+	resp.Status = &access.Status
+	resp.LastLoginAt = access.LastLoginAt
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp)
 	return resp, nil
@@ -445,7 +453,7 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 		return &ErrorMissingAgentID
 	}
 
-	existing, err := s.entityService.GetEntity(ctx, agentID)
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorAgentNotFound
@@ -594,7 +602,7 @@ func (s *agentService) GetAgentGroups(ctx context.Context, agentID string, limit
 		limit = 30
 	}
 
-	existing, err := s.entityService.GetEntity(ctx, agentID)
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorAgentNotFound
@@ -656,7 +664,7 @@ func (s *agentService) GetAgentRoles(ctx context.Context, agentID string, limit,
 		limit = 30
 	}
 
-	existing, err := s.entityService.GetEntity(ctx, agentID)
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorAgentNotFound
@@ -901,7 +909,7 @@ func (s *agentService) validateOwnerExists(ctx context.Context, ownerID string) 
 	if ownerID == "" {
 		return nil
 	}
-	_, err := s.entityService.GetEntity(ctx, ownerID)
+	_, err := s.entityService.GetEntityProfile(ctx, ownerID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorOwnerNotFound
@@ -1088,6 +1096,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 	*model.AgentGetResponse, *tidcommon.ServiceError) {
 	description, owner, clientID := readSystemAttributes(e.SystemAttributes)
 
+	access := s.accessOf(ctx, e)
 	resp := &model.AgentGetResponse{
 		ID:          e.ID,
 		OUID:        e.OUID,
@@ -1097,6 +1106,8 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 		Owner:       owner,
 		ClientID:    clientID,
 		Attributes:  e.Attributes,
+		Status:      &access.Status,
+		LastLoginAt: access.LastLoginAt,
 	}
 
 	inbound, err := s.inboundClientService.GetInboundClientByEntityID(ctx, e.ID)
@@ -1153,6 +1164,8 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 func (s *agentService) buildListResponse(ctx context.Context, entities []providers.Entity,
 	totalCount, limit, offset int, includeDisplay bool) *model.AgentListResponse {
 	logoByID := s.agentLogoMap(ctx, entities)
+	// One read for the page, so the policy resolves once.
+	reads := s.governance.ReadAccess(ctx, entities)
 	agents := make([]model.BasicAgentResponse, 0, len(entities))
 	for i := range entities {
 		e := &entities[i]
@@ -1168,6 +1181,8 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 			Owner:       owner,
 			Attributes:  e.Attributes,
 			IsReadOnly:  e.IsReadOnly,
+			Status:      &reads[i].Status,
+			LastLoginAt: reads[i].LastLoginAt,
 		})
 	}
 
@@ -2022,4 +2037,9 @@ func (s *agentService) translateCertOperationError(
 		Key:          key,
 		DefaultValue: prefix + err.Underlying.ErrorDescription.DefaultValue,
 	})
+}
+
+// accessOf derives the access facts of one agent.
+func (s *agentService) accessOf(ctx context.Context, e *providers.Entity) identitygovernance.AccessRead {
+	return s.governance.ReadAccess(ctx, []providers.Entity{*e})[0]
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -45,7 +46,7 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
-		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider)
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider, nil)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
@@ -59,7 +60,7 @@ func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
 		[]providers.Input{},
 		suite.mockFlowFactory,
 		suite.mockEntityProvider,
-		nil,
+		nil, nil,
 	)
 	assert.NotNil(suite.T(), exec)
 }
@@ -1032,7 +1033,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Succe
 	filters := map[string]interface{}{userAttributeUserID: entityID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", entityID).
+	suite.mockEntityProvider.On("GetEntityProfile", entityID).
 		Return(&providers.Entity{ID: entityID}, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1047,7 +1048,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_NotFo
 	filters := map[string]interface{}{userAttributeUserID: "missing-id"}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", "missing-id").
+	suite.mockEntityProvider.On("GetEntityProfile", "missing-id").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1063,7 +1064,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Syste
 	filters := map[string]interface{}{userAttributeUserID: testUserID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", testUserID).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1288,6 +1289,28 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures()
 		suite.Equal(providers.ExecFailure, resp.Status)
 		suite.Empty(resp.RuntimeData[userAttributeUserID])
 	})
+	suite.Run("a refusal fails the node with the hold it states", func() {
+		cases := []struct {
+			code string
+			want string
+		}{
+			{code: authnprovidermgr.ErrorAccountLocked.Code, want: ErrAccountLocked.Code},
+			{code: authnprovidermgr.ErrorAccountSuspended.Code, want: ErrAccountSuspended.Code},
+			{code: authnprovidermgr.ErrorAuthenticationFailed.Code, want: ErrFailedToIdentifyEntity.Code},
+		}
+		for _, tc := range cases {
+			suite.SetupTest()
+			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+			suite.expectBind("holder-sales", &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: tc.code})
+
+			resp, err := suite.executor.Execute(linkHolderCtx(nil, map[string]string{"ouHandle": "sales"}))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(tc.want, resp.Error.Code)
+			suite.Empty(resp.RuntimeData[userAttributeUserID])
+		}
+	})
 	suite.Run("server error is returned", func() {
 		suite.SetupTest()
 		suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
@@ -1445,4 +1468,72 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_HolderLookupF
 	suite.Require().NoError(err)
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
+}
+
+// identifyRecoveryTarget identifies testuser in a recovery flow against the given decision or fault,
+// by login hint when hintAttr is set.
+func (suite *IdentifyingExecutorTestSuite) identifyRecoveryTarget(decision providers.AccessDecision,
+	fault *tidcommon.ServiceError, hintAttr string) (*providers.ExecutorResponse, error) {
+	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, nil,
+		expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault))
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "testuser"}).
+		Return(&userID, nil)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRecovery,
+		UserInputs:  map[string]string{"username": "testuser"},
+	}
+	if hintAttr != "" {
+		ctx.NodeProperties = map[string]interface{}{propertyKeyLoginHintAttribute: hintAttr}
+		ctx.UserInputs = map[string]string{userInputLoginHint: "testuser"}
+		return suite.executor.Execute(ctx)
+	}
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "username", Type: "string", Required: true},
+	})
+	return suite.executor.Execute(ctx)
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetReadsAsUnknown() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, nil, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetStatesTheHold() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{
+		Reason: providers.AccessRefusalReasonSuspended,
+	}, nil, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+}
+
+// With a login hint there is no one to re-prompt.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetByLoginHintFails() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, nil, "username")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+	suite.Empty(resp.Inputs)
+	suite.Empty(resp.RuntimeData[userAttributeUserID])
+}
+
+// Answered as a failed account lookup.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_RecoveryTargetGovernanceFaultFails() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, &tidcommon.InternalServerError, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
+	suite.Empty(resp.RuntimeData[userAttributeUserID])
 }

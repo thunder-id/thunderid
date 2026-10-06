@@ -469,6 +469,40 @@ func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_Success() {
 	mockService.AssertExpectations(suite.T())
 }
 
+// The detail response carries the effective status, and a held application does not read as active.
+// The handler rebuilds its response field by field, so status has to be copied explicitly.
+func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_CarriesTheHeldStatus() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	mockService.On("GetApplication", mock.Anything, "held-app").Return(&providers.Application{
+		ID:   "held-app",
+		Name: "HeldApp",
+		Status: &providers.ApplicationStatusReport{
+			Value: providers.AccessStatusSuspended,
+		},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications/held-app", nil)
+	req.SetPathValue("id", "held-app")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationGetRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+
+	var response model.ApplicationGetResponse
+	assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &response))
+	if assert.NotNil(suite.T(), response.Status) {
+		assert.Equal(suite.T(), providers.AccessStatusSuspended, response.Status.Value)
+		var body map[string]json.RawMessage
+		assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &body))
+		assert.JSONEq(suite.T(), `{"value":"SUSPENDED"}`, string(body["status"]))
+	}
+
+	mockService.AssertExpectations(suite.T())
+}
+
 func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_SuccessWithOAuth() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
@@ -747,6 +781,30 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_Success() {
 	assert.Equal(suite.T(), map[string]interface{}{"key2": "val2"}, response.Metadata)
 
 	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_ReportsTheDerivedStatus() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
+		mock.MatchedBy(func(dto *model.ApplicationDTO) bool { return dto.Status == nil })).
+		Return(&model.ApplicationDTO{ID: "test-app-id", Name: "UpdatedApp",
+			Status: &providers.ApplicationStatusReport{Value: providers.AccessStatusActive}}, nil).Once()
+
+	body := `{"ouId":"ou-123","name":"UpdatedApp","status":{"value":"SUSPENDED"}}`
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var response struct {
+		Status json.RawMessage `json:"status"`
+	}
+	suite.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	suite.JSONEq(`{"value":"ACTIVE"}`, string(response.Status))
 }
 
 func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_WithTemplate() {

@@ -512,12 +512,16 @@ account_access:
 {{- if hasKey $email "enabled" }}
           enabled: {{ $email.enabled }}
 {{- end }}
-{{- if hasKey $email "recipientAttribute" }}
-          recipient_attribute: {{ $email.recipientAttribute | quote }}
 {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* Identity governance provider: rendered only when set, so the product default applies otherwise. */}}
+{{- $governanceProviderType := (default dict .Values.configuration.identityGovernanceProvider).type }}
+{{- if $governanceProviderType }}
+
+identity_governance_provider:
+  type: {{ $governanceProviderType | quote }}
 {{- end }}
 {{- /* Notification template store lives under the nested notification.template path. */}}
 {{- if $stores.notification_template }}

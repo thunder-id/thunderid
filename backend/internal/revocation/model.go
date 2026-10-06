@@ -33,6 +33,7 @@ const (
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
 	ReasonUserDeleted                  Reason = "user_deleted"
+	ReasonIdentitySuspended            Reason = "identity_suspended"
 )
 
 // CriterionType identifies an artifact attribute used for revocation.
@@ -99,6 +100,7 @@ type CriteriaRevocation struct {
 // criterion's artifacts outright. The write path, the deny-list SQL, and the Resource Server cache
 // all derive from this slice so they cannot disagree about whether a revocation is terminal.
 var boundaryReasons = []Reason{
+	ReasonIdentitySuspended,
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
 	ReasonRolePermissionRemoved,

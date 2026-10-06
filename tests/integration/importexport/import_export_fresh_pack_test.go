@@ -6,15 +6,19 @@ package importexport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
+	"gopkg.in/yaml.v3"
 )
 
 type exportRequest struct {
@@ -152,6 +156,119 @@ func (suite *ImportExportFreshPackSuite) TestServerConfigExportImportRoundTrip()
 
 	// Leave the section clean for other tests.
 	suite.putServerConfigCORS(`[]`)
+}
+
+// TestAccountAccessExportImportRoundTrip exports the accountAccess section, clears its writable layer,
+// imports the export and checks the effective policy is the one exported, the lock email templates
+// included. The field set is inert, since last-login recording is off by default.
+func (suite *ImportExportFreshPackSuite) TestAccountAccessExportImportRoundTrip() {
+	const section = "accountAccess"
+	original, err := testutils.GetWritableServerConfig(section)
+	suite.Require().NoError(err)
+	defer func() {
+		suite.Require().NoError(testutils.PutWritableServerConfig(section, original))
+	}()
+
+	suite.Require().NoError(testutils.PutWritableServerConfig(section,
+		[]byte(`{"user":{"lastLoginResolutionSeconds":1234,"notifications":{"onLock":{"email":{"templates":{`+
+			`"temporary":"account-locked","permanent":"account-locked-permanent",`+
+			`"methods":{"otp":{"temporary":"account-locked-entity"}}}}}}}}`)))
+	exportedPolicy := suite.getMergedServerConfig(section)
+	written := decodeAccountAccess(suite.T(), exportedPolicy)
+	suite.Require().Equal(1234, written.User.LastLoginResolutionSeconds)
+	suite.Require().Equal("account-locked", written.User.Notifications.OnLock.Email.Templates.Temporary)
+	suite.Require().Equal("account-locked-entity",
+		written.User.Notifications.OnLock.Email.Templates.Methods["otp"].Temporary)
+
+	exported, err := suite.exportResources(exportRequest{ServerConfigs: []string{section}})
+	suite.Require().NoError(err)
+	suite.Require().Equal(written, suite.exportedServerConfig(exported, section),
+		"the export must carry the effective policy")
+
+	suite.Require().NoError(testutils.PutWritableServerConfig(section, []byte(`{}`)))
+	cleared := decodeAccountAccess(suite.T(), suite.getMergedServerConfig(section))
+	suite.Require().NotEqual(1234, cleared.User.LastLoginResolutionSeconds)
+	suite.Require().Empty(cleared.User.Notifications.OnLock.Email.Templates.Temporary)
+
+	importResp, err := suite.importResources(importRequest{
+		Content: exported,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Len(importResp.Results, 1)
+	suite.Equal("server_config", importResp.Results[0].ResourceType)
+	suite.Equal("success", importResp.Results[0].Status, importResp.Results[0].Message)
+
+	suite.JSONEq(string(exportedPolicy), string(suite.getMergedServerConfig(section)))
+}
+
+// accountAccessPolicy is the part of the accountAccess policy the round trip sets.
+type accountAccessPolicy struct {
+	User struct {
+		LastLoginResolutionSeconds int `json:"lastLoginResolutionSeconds"`
+		Notifications              struct {
+			OnLock struct {
+				Email struct {
+					Templates struct {
+						Temporary string `json:"temporary"`
+						Permanent string `json:"permanent"`
+						Methods   map[string]struct {
+							Temporary string `json:"temporary"`
+						} `json:"methods"`
+					} `json:"templates"`
+				} `json:"email"`
+			} `json:"onLock"`
+		} `json:"notifications"`
+	} `json:"user"`
+}
+
+// decodeAccountAccess reads the accountAccess fields the round trip sets from a JSON value.
+func decodeAccountAccess(t *testing.T, raw []byte) accountAccessPolicy {
+	t.Helper()
+	var policy accountAccessPolicy
+	require.NoError(t, json.Unmarshal(raw, &policy), "unreadable accountAccess value: %s", string(raw))
+	return policy
+}
+
+// exportedServerConfig finds the named server-config document in an export and reads its value.
+func (suite *ImportExportFreshPackSuite) exportedServerConfig(exported, name string) accountAccessPolicy {
+	decoder := yaml.NewDecoder(strings.NewReader(exported))
+	for {
+		var document map[string]interface{}
+		err := decoder.Decode(&document)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		suite.Require().NoError(err, "unreadable export: %s", exported)
+		if document["name"] != name {
+			continue
+		}
+		value, err := json.Marshal(document["value"])
+		suite.Require().NoError(err)
+		return decodeAccountAccess(suite.T(), value)
+	}
+	suite.FailNow("the export carries no server config named "+name, exported)
+	return accountAccessPolicy{}
+}
+
+// getMergedServerConfig returns the effective value of a server-config section.
+func (suite *ImportExportFreshPackSuite) getMergedServerConfig(section string) json.RawMessage {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/server-config/"+section, nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+
+	var layers struct {
+		Merged json.RawMessage `json:"merged"`
+	}
+	suite.Require().NoError(json.Unmarshal(body, &layers))
+	return layers.Merged
 }
 
 func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins string) {

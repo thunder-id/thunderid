@@ -577,7 +577,8 @@ configuration:
       lastLoginResolutionSeconds: 3600
       default:
         enabled: true
-        # Failed attempts within failureWindowSeconds that form a lock.
+        # Failed attempts that form a lock. A failure more than failureWindowSeconds after the previous
+        # one restarts the count.
         threshold: 5
         failureWindowSeconds: 3600
         # Durations of consecutive locks; the last one repeats.
@@ -590,8 +591,6 @@ configuration:
         onLock:
           email:
             enabled: true
-            # User attribute holding the address the lock email is sent to.
-            recipientAttribute: "email"
     agent:
       lockGranularity: "authentication_method"
       recordLastLogin: false
@@ -603,6 +602,11 @@ configuration:
         lockDurationsSeconds: [60, 300, 900]
         lockDecaySeconds: 3600
         maxConsecutiveFailures: 50
+
+  # Identity governance provider. "disabled" turns off the governance checks of the flow engine and
+  # OAuth, and the suspend, unsuspend and unlock flows. Leave empty to keep the default provider.
+  identityGovernanceProvider:
+    type: ""
 
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below

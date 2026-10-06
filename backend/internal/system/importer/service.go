@@ -296,6 +296,7 @@ type importService struct {
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
 	references *secretresolver.Resolver
+	logger     *log.Logger
 }
 
 func newImportService(
@@ -347,6 +348,7 @@ func newImportService(
 		serverConfigService:            serverConfigService,
 		gatewayService:                 gatewayService,
 		notifTemplateService:           notifTemplateService,
+		logger:                         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ImportService")),
 	}
 }
 
@@ -1049,6 +1051,8 @@ func (s *importService) importApplication(
 			Message:      "application adapter not configured",
 		}
 	}
+
+	s.warnIgnoredEntityState(ctx, doc, resourceTypeApplication, req.ID, req.Name)
 
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
 		req.AuthFlowID = mappedFlowID

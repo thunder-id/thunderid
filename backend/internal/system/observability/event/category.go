@@ -36,7 +36,8 @@ const (
 	// CategoryFlows groups all flow orchestration events for tracing end-to-end flows.
 	CategoryFlows EventCategory = "observability.flows"
 
-	// CategoryAdministration groups administrative changes such as identity lifecycle operations.
+	// CategoryAdministration groups administrative changes: identity lifecycle operations and
+	// server-config writes.
 	CategoryAdministration EventCategory = "observability.administration"
 
 	// CategoryAll is a special category that matches all events.
@@ -64,6 +65,7 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeTokenIssued:                    CategoryAuthentication,
 	EventTypeTokenIssuanceFailed:            CategoryAuthentication,
 	EventTypeTokenRevoked:                   CategoryAuthentication,
+	EventTypeTokenRevocationFailed:          CategoryAuthentication,
 	EventTypeRuntimePersistentDBUnavailable: CategoryAuthentication,
 	EventTypeBackchannelLogoutDelivered:     CategoryAuthentication,
 	EventTypeBackchannelLogoutFailed:        CategoryAuthentication,
@@ -78,6 +80,8 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeIdentityUnsuspensionFailed: CategoryAdministration,
 	EventTypeIdentityUnlocked:           CategoryAdministration,
 	EventTypeIdentityUnlockFailed:       CategoryAdministration,
+	EventTypeServerConfigUpdated:        CategoryAdministration,
+	EventTypeServerConfigUpdateFailed:   CategoryAdministration,
 
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,

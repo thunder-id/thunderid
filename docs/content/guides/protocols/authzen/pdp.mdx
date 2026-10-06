@@ -211,6 +211,8 @@ If `resource.type` does not match a resource server identifier, or `action.name`
 
 <ProductName /> returns a denied decision with error context instead of allowing the request.
 
+A suspended subject is denied whatever its roles allow, with the reason `Subject is suspended`, and an action search for it returns no actions. In a batch, an evaluation for that subject that is missing a field or names an unknown resource keeps that error context instead, and is denied either way. A locked subject is decided by its roles alone, because a lock only stops new sign-ins.
+
 ## Evaluate Multiple Access Requests
 
 Use `/access/v1/evaluations` when the PEP needs decisions for multiple access requests in one call. <ProductName />

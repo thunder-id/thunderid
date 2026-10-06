@@ -10,20 +10,22 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize wires the server config store, service, and routes, with one handler per supported
 // section injected at construction. In declarative and composite modes it loads the read-only
 // declarative resources into the file store before serving. It returns the service and the resource
-// exporter for registration at the composition root.
+// exporter for registration at the composition root. observability is optional; when set, each write
+// is published as an administration event.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
-	handlers map[ConfigName]ServerConfigHandlerInterface) (
+	handlers map[ConfigName]ServerConfigHandlerInterface, observability providers.ObservabilityProvider) (
 	ServerConfigService, declarativeresource.ResourceExporter, error) {
 	store, err := initializeStore(cacheManager, handlers)
 	if err != nil {
 		return nil, nil, err
 	}
-	service := newServerConfigService(store, handlers)
+	service := newServerConfigService(store, handlers, observability)
 
 	handler := newServerConfigHandler(service)
 	registerRoutes(mux, handler)

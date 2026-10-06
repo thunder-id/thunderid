@@ -237,6 +237,24 @@ describe('UsersList', () => {
     });
   });
 
+  it("shows each user's access status, treating an absent status as active", async () => {
+    mockUseGetUsers.mockReturnValue({
+      data: {
+        ...mockUsersData,
+        users: [{...mockUsersData.users[0], status: {value: 'LOCKED'}}, mockUsersData.users[1]],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<UsersList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Locked')).toBeInTheDocument();
+      expect(screen.getByText('Active')).toBeInTheDocument();
+    });
+  });
+
   it('displays user avatars with initials', async () => {
     render(<UsersList />);
 

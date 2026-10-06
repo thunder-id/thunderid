@@ -6,9 +6,11 @@ package testutils
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -826,6 +828,66 @@ func startServerInternal(port string, extraArgs ...string) error {
 	return nil
 }
 
+// StartServerExpectingExit stops the running server and starts one that is expected to refuse its
+// configuration and exit. It returns nil once the process has exited, and an error if the server
+// stays up for the timeout, in which case it is stopped. Call RestartServer to run normally again.
+func StartServerExpectingExit(timeout time.Duration) error {
+	ensureInitialized()
+	StopServer()
+	if err := waitForPortClosed(serverPort, 30*time.Second); err != nil {
+		return err
+	}
+
+	if err := startServerInternal(serverPort); err != nil {
+		return err
+	}
+	cmd := serverCmd
+	exited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(exited)
+	}()
+	defer func() {
+		serverCmd = nil
+		serverPid = 0
+		removePidFile()
+	}()
+
+	select {
+	case <-exited:
+		return nil
+	case <-time.After(timeout):
+	}
+
+	// The goroutine above is the process's only waiter, so the stop is awaited on its channel.
+	if err := sendStopSignal(cmd.Process); err != nil {
+		_ = cmd.Process.Kill()
+	}
+	select {
+	case <-exited:
+	case <-time.After(3 * time.Second):
+		_ = cmd.Process.Kill()
+		<-exited
+	}
+	return fmt.Errorf("the server was still running %s after it started", timeout)
+}
+
+// waitForPortClosed polls until nothing accepts connections on the port, so a new server can bind it.
+func waitForPortClosed(port string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := net.DialTimeout("tcp", "localhost:"+port, 500*time.Millisecond)
+		if err != nil {
+			return nil
+		}
+		_ = conn.Close()
+		if time.Now().After(deadline) {
+			return fmt.Errorf("port %s still accepted connections %s after the server was stopped", port, timeout)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 // RestartServerWithResourcesFile stops the running server and restarts it with the -resources flag
 // pointing to the given single-file declarative resources YAML. Call RestartServer to return to
 // normal mode afterwards.
@@ -1192,15 +1254,70 @@ func QueryConfigDB(sqlQuery string) (string, error) {
 	if dbType != "sqlite" {
 		return "", fmt.Errorf("QueryConfigDB is only supported for sqlite, current db type: %s", dbType)
 	}
-	dbPath := filepath.Join(extractedProductHome, DatabaseFileBasePath, "configdb.db")
-	absDBPath, err := filepath.Abs(dbPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve configdb path: %v", err)
+	return querySQLiteDB("configdb.db", sqlQuery)
+}
+
+// QueryRuntimeDB runs one SQL statement against the runtime persistent database and returns the
+// trimmed CLI output. It writes as well as reads, for tests that must see or shape what the server
+// stores outside its APIs, so statements must be valid in both dialects. Under postgres it runs psql
+// with the connection the deployment's database.runtime_persistent section names; every other
+// database type keeps that database in SQLite, which sqlite3 reads.
+func QueryRuntimeDB(sqlQuery string) (string, error) {
+	ensureInitialized()
+	if dbType == "postgres" {
+		return queryPostgresRuntimeDB(sqlQuery)
 	}
-	cmd := exec.Command("sqlite3", absDBPath, sqlQuery)
-	out, err := cmd.Output()
+	return querySQLiteDB("runtime_persistent.db", sqlQuery)
+}
+
+// DeleteRuntimeRow removes an entity's runtime row, so the entity reads as one governance has never
+// acted on.
+func DeleteRuntimeRow(entityID string) error {
+	_, err := QueryRuntimeDB(fmt.Sprintf(`DELETE FROM "ENTITY_RUNTIME_DATA" WHERE ENTITY_ID = '%s';`, entityID))
+	return err
+}
+
+// querySQLiteDB runs one SQL statement with the sqlite3 CLI against a database file in the product's
+// database directory and returns the trimmed output. The server holds the file open in WAL mode, so
+// the CLI waits out its locks rather than failing on them.
+func querySQLiteDB(fileName, sqlQuery string) (string, error) {
+	absDBPath, err := filepath.Abs(filepath.Join(extractedProductHome, DatabaseFileBasePath, fileName))
 	if err != nil {
+		return "", fmt.Errorf("failed to resolve the %s path: %v", fileName, err)
+	}
+	out, err := exec.Command("sqlite3", "-cmd", ".timeout 10000", absDBPath, sqlQuery).Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf("sqlite3 query failed: %v: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
 		return "", fmt.Errorf("sqlite3 query failed: %v", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// queryPostgresRuntimeDB runs one SQL statement with psql against the runtime persistent database the
+// deployment's database.runtime_persistent.postgres section names, and returns the trimmed output.
+func queryPostgresRuntimeDB(sqlQuery string) (string, error) {
+	section, err := ReadDeploymentConfigKey("database")
+	if err != nil {
+		return "", err
+	}
+	database, _ := section.(map[string]interface{})
+	persistent, _ := database["runtime_persistent"].(map[string]interface{})
+	conn, _ := persistent["postgres"].(map[string]interface{})
+	if conn == nil {
+		return "", fmt.Errorf("deployment.yaml has no database.runtime_persistent.postgres section")
+	}
+	value := func(key string) string { return fmt.Sprint(conn[key]) }
+
+	cmd := exec.Command("psql", "-X", "-q", "-At", "-v", "ON_ERROR_STOP=1",
+		"-h", value("hostname"), "-p", value("port"), "-U", value("username"), "-d", value("name"),
+		"-c", sqlQuery)
+	cmd.Env = append(os.Environ(), "PGPASSWORD="+value("password"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("psql query failed: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
 }

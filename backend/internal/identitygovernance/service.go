@@ -70,8 +70,9 @@ type IdentityGovernanceServiceInterface interface {
 	// and the last login time. Each category's lockout policy is resolved once per call.
 	ReadAccess(ctx context.Context, entities []providers.Entity) []AccessRead
 
-	// SetServerConfigService injects the server-config service the accountAccess section is read from.
-	// It is built after governance, since it takes the section handler Initialize returns.
+	// SetServerConfigService injects the server-config service the accountAccess section and the lock
+	// email's default sender are read from. It is built after governance, since it takes the section
+	// handler Initialize returns.
 	SetServerConfigService(serverConfigService serverconfig.ServerConfigService)
 }
 
@@ -409,6 +410,9 @@ func (s *identityGovernanceService) ReadAccess(ctx context.Context, entities []p
 // SetServerConfigService injects the server-config service. See IdentityGovernanceServiceInterface.
 func (s *identityGovernanceService) SetServerConfigService(serverConfigService serverconfig.ServerConfigService) {
 	s.source.setReader(serverConfigService)
+	if s.notifier != nil {
+		s.notifier.setServerConfigService(serverConfigService)
+	}
 }
 
 // enforcementFor resolves which recorded locks a category's policy enforces. An application has no

@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -39,6 +40,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
@@ -146,6 +148,8 @@ func (suite *ServiceTestSuite) setupTestService() (
 	mockEntityService.On("IdentifyEntity", mock.Anything, mock.Anything).Maybe().Return((*string)(nil), epNotFound)
 	mockEntityService.On("GetEntity", mock.Anything, mock.Anything).
 		Maybe().Return((*providers.Entity)(nil), epNotFound)
+	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).
+		Maybe().Return((*providers.Entity)(nil), epNotFound)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, mock.Anything).Maybe().Return(false, noEPErr)
 	mockEntityService.On("GetEntitiesByIDs", mock.Anything, mock.Anything).
 		Maybe().Return([]providers.Entity{}, noEPErr)
@@ -168,6 +172,8 @@ func (suite *ServiceTestSuite) setupTestService() (
 		Maybe().Return(nil)
 	mockSharing.EXPECT().ReplacePoliciesForResource(mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Maybe().Return(sharing.PolicyReplay{}, nil)
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadAccess(mock.Anything, mock.Anything).RunAndReturn(activeReads).Maybe()
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: mockStore,
@@ -175,8 +181,18 @@ func (suite *ServiceTestSuite) setupTestService() (
 		ouService:            mockOUService,
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
+		governance:           governance,
 	}
 	return service, mockStore
+}
+
+// activeReads answers a governance read with ACTIVE for every entity.
+func activeReads(_ context.Context, entities []providers.Entity) []identitygovernance.AccessRead {
+	reads := make([]identitygovernance.AccessRead, len(entities))
+	for i := range reads {
+		reads[i].Status.Value = providers.AccessStatusActive
+	}
+	return reads
 }
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
@@ -327,9 +343,9 @@ func (suite *ServiceTestSuite) TestGetOAuthApplication_Success() {
 
 	mockStore.EXPECT().GetOAuthClientByClientID(mock.Anything, "client123").
 		Return(&providers.OAuthClient{ClientID: "client123", ID: "app123"}, nil)
-	resetEntityServiceMethod(service, "GetEntity")
+	resetEntityServiceMethod(service, "GetEntityProfile")
 	service.entityService.(*entitymock.EntityServiceInterfaceMock).
-		On("GetEntity", mock.Anything, "app123").Return(
+		On("GetEntityProfile", mock.Anything, "app123").Return(
 		&providers.Entity{ID: "app123", Category: providers.EntityCategoryApp},
 		nil)
 
@@ -347,9 +363,9 @@ func (suite *ServiceTestSuite) TestGetOAuthApplication_AgentEntity() {
 
 	mockStore.EXPECT().GetOAuthClientByClientID(mock.Anything, "agent-client").
 		Return(&providers.OAuthClient{ClientID: "agent-client", ID: "agent-id"}, nil)
-	resetEntityServiceMethod(service, "GetEntity")
+	resetEntityServiceMethod(service, "GetEntityProfile")
 	service.entityService.(*entitymock.EntityServiceInterfaceMock).
-		On("GetEntity", mock.Anything, "agent-id").Return(
+		On("GetEntityProfile", mock.Anything, "agent-id").Return(
 		&providers.Entity{ID: "agent-id", Category: providers.EntityCategoryAgent},
 		nil)
 
@@ -381,8 +397,8 @@ func (suite *ServiceTestSuite) TestGetOAuthApplication_EntityLoadError() {
 
 	mockStore.EXPECT().GetOAuthClientByClientID(mock.Anything, "client-y").
 		Return(&providers.OAuthClient{ClientID: "client-y", ID: "app-y"}, nil)
-	ep := resetEntityServiceMethod(service, "GetEntity")
-	ep.On("GetEntity", mock.Anything, "app-y").Return(
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, "app-y").Return(
 		(*providers.Entity)(nil),
 		errors.New("boom"))
 
@@ -1150,8 +1166,8 @@ func (suite *ServiceTestSuite) TestDeleteApplication_AgentEntity() {
 	defer config.ResetServerRuntime()
 
 	service, _ := suite.setupTestService()
-	ep := resetEntityServiceMethod(service, "GetEntity")
-	ep.On("GetEntity", mock.Anything, testServiceAppID).Return(
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).Return(
 		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryAgent},
 		nil)
 
@@ -1170,8 +1186,8 @@ func (suite *ServiceTestSuite) TestDeleteApplication_EntityLoadError() {
 	defer config.ResetServerRuntime()
 
 	service, _ := suite.setupTestService()
-	ep := resetEntityServiceMethod(service, "GetEntity")
-	ep.On("GetEntity", mock.Anything, testServiceAppID).Return(
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).Return(
 		(*providers.Entity)(nil),
 		errors.New("boom"))
 
@@ -4528,7 +4544,7 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 	mockStore := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	var noEPErr error
-	mockEntityService.On("GetEntity", mock.Anything, mock.Anything).Maybe().Return(entity, noEPErr)
+	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).Maybe().Return(entity, noEPErr)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, mock.Anything).Maybe().Return(false, noEPErr)
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -4638,7 +4654,8 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 	mockStore := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	var noEPErr error
-	mockEntityService.On("GetEntity", mock.Anything, mock.Anything).Return(appEntityWithClientID("client-x"), noEPErr)
+	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).
+		Return(appEntityWithClientID("client-x"), noEPErr)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, testServiceAppID).Return(true, noEPErr)
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -4651,6 +4668,55 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 
 	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
+}
+
+// The client is resolved by entity ID with no deletion or rotation checks: a public client still
+// reports its client ID.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_ReturnsTheEntitysClientID() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).Return(
+		&providers.OAuthClient{ClientID: "client-to-suspend", PublicClient: true}, nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "client-to-suspend", clientID)
+}
+
+// An empty entity ID is refused before any lookup.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_EmptyEntityIDIsRefused() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), "")
+
+	assert.Empty(suite.T(), clientID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, svcErr.Code)
+	mockStore.AssertNotCalled(suite.T(), "GetOAuthClientByEntityID", mock.Anything, mock.Anything)
+}
+
+// An entity that owns no client, such as a user, yields no client ID.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_NoClientIsEmpty() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).
+		Return((*providers.OAuthClient)(nil), nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), clientID)
+}
+
+// A client that cannot be resolved is a server error, so the suspension publishes no plan.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_UnresolvableClientIsAServerError() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).
+		Return((*providers.OAuthClient)(nil), errors.New("store down"))
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Empty(suite.T(), clientID)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // A public client authenticates without a secret, so rotating one would write a credential that is
@@ -4739,7 +4805,7 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 	mockStore := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	var noEPErr error
-	mockEntityService.On("GetEntity", mock.Anything, mock.Anything).Return(
+	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).Return(
 		appEntityWithClientID("secret-client"), noEPErr)
 	mockEntityService.On("UpdateSystemCredentials", mock.Anything, testServiceAppID, mock.Anything).Return(noEPErr)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, noEPErr)
@@ -5245,7 +5311,7 @@ func (suite *ServiceTestSuite) TestDeleteSharingPolicyStillRefusesADeclaredOne()
 // markAnExistingApplication makes the application's entity readable, which is what puts a delete
 // through the declarative check.
 func markAnExistingApplication(service *applicationService) {
-	resetEntityServiceMethod(service, "GetEntity").On("GetEntity", mock.Anything, testServiceAppID).
+	resetEntityServiceMethod(service, "GetEntityProfile").On("GetEntityProfile", mock.Anything, testServiceAppID).
 		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
 }
 
@@ -5301,8 +5367,8 @@ func (suite *ServiceTestSuite) TestDeleteApplicationSkipsTheDeclarativeCheckForA
 	defer config.ResetServerRuntime()
 
 	service, sharingMock := suite.sharingServiceOnly()
-	ep := resetEntityServiceMethod(service, "GetEntity")
-	ep.On("GetEntity", mock.Anything, testServiceAppID).Return(nil, entity.ErrEntityNotFound)
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).Return(nil, entity.ErrEntityNotFound)
 	sharingMock.EXPECT().DeletePoliciesForResource(mock.Anything, ApplicationSharingType, testServiceAppID).
 		Return(nil).Once()
 	mockStore(service).On("DeleteInboundClient", mock.Anything, testServiceAppID).Maybe().Return(nil)
@@ -5485,4 +5551,116 @@ func callsTo(calls []mock.Call, method string) []mock.Call {
 		}
 	}
 	return out
+}
+
+// An application read reports only the status value, never the suspension details.
+func (suite *ServiceTestSuite) TestGetApplication_ReportsTheGovernedStatus() {
+	service, mockStore := suite.setupTestService()
+	mockLoadFullApplication(mockStore, service, &model.ApplicationProcessedDTO{ID: testServiceAppID})
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadAccess(mock.Anything, mock.MatchedBy(func(entities []providers.Entity) bool {
+		return len(entities) == 1 && entities[0].ID == testServiceAppID
+	})).Return([]identitygovernance.AccessRead{{Status: providers.AccessStatusReport{
+		Value:   providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{OperatorNote: "Operator supplied free text"},
+	}}}).Once()
+	service.governance = governance
+
+	result, svcErr := service.GetApplication(context.Background(), testServiceAppID)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(result.Status)
+	encoded, err := json.Marshal(result.Status)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"value":"`+string(providers.AccessStatusSuspended)+`"}`, string(encoded))
+}
+
+// Each listed application keeps its own status when an entity without an inbound client is skipped.
+func (suite *ServiceTestSuite) TestGetApplicationList_StatusesFollowTheListedApplications() {
+	service, mockStore := suite.setupTestService()
+	entities := []providers.Entity{
+		{ID: "app1", Category: providers.EntityCategoryApp},
+		{ID: "orphan", Category: providers.EntityCategoryApp},
+		{ID: "app3", Category: providers.EntityCategoryApp},
+	}
+	resetEntityServiceMethod(service, "GetEntityList").On("GetEntityList", mock.Anything,
+		providers.EntityCategoryApp, mock.AnythingOfType("int"), mock.AnythingOfType("int"), mock.Anything).
+		Return(entities, nil)
+	resetEntityServiceMethod(service, "GetEntityListCount").
+		On("GetEntityListCount", mock.Anything, providers.EntityCategoryApp, mock.Anything).Return(3, nil)
+	mockStore.On("GetInboundClientList", mock.Anything).
+		Return([]inboundmodel.InboundClient{{ID: "app1"}, {ID: "app3"}}, nil)
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().ReadAccess(mock.Anything, entities).Return([]identitygovernance.AccessRead{
+		{Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}},
+		{Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}},
+		{Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended}},
+	}).Once()
+	service.governance = governance
+
+	result, svcErr := service.GetApplicationList(context.Background())
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(result.Applications, 2)
+	suite.Equal("app1", result.Applications[0].ID)
+	suite.Equal(providers.AccessStatusActive, result.Applications[0].Status.Value)
+	suite.Equal("app3", result.Applications[1].ID)
+	suite.Equal(providers.AccessStatusSuspended, result.Applications[1].Status.Value)
+}
+
+// The status is the one read before the write, which the update cannot change.
+func (suite *ServiceTestSuite) TestUpdateApplication_ReportsTheGovernedStatusValue() {
+	testConfig := &config.Config{DeclarativeResources: config.DeclarativeResources{Enabled: false}}
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	for _, value := range []providers.AccessStatus{providers.AccessStatusSuspended, providers.AccessStatusActive} {
+		suite.Run(string(value), func() {
+			service, mockStore := suite.setupTestService()
+			existing := &model.ApplicationProcessedDTO{ID: testServiceAppID, Name: "Test App",
+				InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "default-auth-flow"}}
+			mockLoadFullApplication(mockStore, service, existing)
+			mockStore.On("UpdateInboundClient",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+			governance.EXPECT().ReadAccess(mock.Anything, mock.MatchedBy(func(entities []providers.Entity) bool {
+				return len(entities) == 1 && entities[0].ID == testServiceAppID
+			})).Return([]identitygovernance.AccessRead{{Status: providers.AccessStatusReport{Value: value,
+				Details: &providers.AccessStatusDetails{OperatorNote: "Operator supplied free text"}}}}).Once()
+			service.governance = governance
+
+			result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, &model.ApplicationDTO{
+				Name: "Test App", OUID: testOUID,
+				InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "default-auth-flow"},
+			})
+
+			suite.Require().Nil(svcErr)
+			suite.Require().NotNil(result.Status)
+			encoded, err := json.Marshal(result.Status)
+			suite.Require().NoError(err)
+			suite.JSONEq(`{"value":"`+string(value)+`"}`, string(encoded))
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_ReportsNoStatus() {
+	testConfig := &config.Config{DeclarativeResources: config.DeclarativeResources{Enabled: false}}
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+	resetEntityServiceMethod(service, "CreateEntity").On("CreateEntity",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&providers.Entity{}, nil)
+	mockStore.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	service.governance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+
+	result, svcErr := service.CreateApplication(context.Background(), &model.ApplicationDTO{
+		Type: model.ApplicationTypeFullStack, Name: "Embedded App", OUID: testOUID,
+		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "auth-flow-id"},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Nil(result.Status)
 }

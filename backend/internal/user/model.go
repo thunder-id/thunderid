@@ -82,7 +82,7 @@ type CreateUserByPathRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
-// entityToUser converts an Entity to a User.
+// entityToUser converts an Entity to a User, without its access status.
 func entityToUser(e *providers.Entity) providers.User {
 	return providers.User{
 		ID:         e.ID,

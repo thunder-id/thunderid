@@ -64,6 +64,16 @@ func TestGetCategory(t *testing.T) {
 			eventType:    EventTypeIdentityUnlocked,
 			wantCategory: CategoryAdministration,
 		},
+		{
+			name:         "server config updated",
+			eventType:    EventTypeServerConfigUpdated,
+			wantCategory: CategoryAdministration,
+		},
+		{
+			name:         "server config update failed",
+			eventType:    EventTypeServerConfigUpdateFailed,
+			wantCategory: CategoryAdministration,
+		},
 
 		// Flow events
 		{

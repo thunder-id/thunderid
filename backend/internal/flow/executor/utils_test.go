@@ -1003,3 +1003,18 @@ func (s *UtilsTestSuite) TestSetFederatedEntityState() {
 		})
 	}
 }
+
+func (s *UtilsTestSuite) TestStatedHoldStatesOnlyTheManagerHoldCodes() {
+	s.Nil(statedHold(nil))
+	s.Nil(statedHold(&tidcommon.ErrorUnauthorized))
+	s.Equal(&ErrAccountLocked, statedHold(&authnprovidermgr.ErrorAccountLocked))
+	s.Equal(&ErrAccountSuspended, statedHold(&authnprovidermgr.ErrorAccountSuspended))
+}
+
+func (s *UtilsTestSuite) TestStatedDecisionStatesOnlyANamedHold() {
+	s.Nil(statedDecision(providers.AccessDecision{}))
+	s.Nil(statedDecision(providers.AccessDecision{Admitted: true}))
+	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
+	s.Equal(&ErrAccountSuspended,
+		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}

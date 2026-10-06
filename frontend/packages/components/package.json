@@ -65,6 +65,7 @@
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
+    "@thunderid/types": "workspace:^",
     "@thunderid/utils": "workspace:^",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

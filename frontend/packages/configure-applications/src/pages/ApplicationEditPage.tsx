@@ -1,7 +1,15 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {
+  AccessStatusBanner,
+  AccountStatusAction,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceAvatar,
+  UnsavedChangesBar,
+} from '@thunderid/components';
+import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -92,6 +100,7 @@ export default function ApplicationEditPage() {
   const routes = useApplicationRoutes();
   const logger = useLogger('ApplicationEditPage');
   const {t} = useTranslation();
+  const {config} = useConfig();
   const navigate = useNavigate();
   const location = useLocation();
   const {applicationId} = useParams<{applicationId: string}>();
@@ -260,6 +269,12 @@ export default function ApplicationEditPage() {
   // A metadata-document client's redirect URIs, authentication method, and keys come from its document.
   const isCimdClient = oauth2Config?.clientIdMetadataDocument === true;
   const isMcpM2mOnly = deriveMcpClientType(oauth2Config?.grantTypes) === McpClientTypes.M2M;
+
+  // Same guard as the Danger Zone, and for a sharper reason: suspending the Console's own client
+  // stops every operator signing in, including whoever clicked it, and there is no surface left to
+  // unsuspend it from. UI only; the backend does not refuse it.
+  const isSystemConsoleClient =
+    oauth2Config?.clientId?.toUpperCase() === (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
 
   // User-facing tabs (Flows, Customization) and the general Access section only apply when the
   // client can act on behalf of a user. When it can't, they are frozen/hidden rather than removed.
@@ -697,7 +712,21 @@ export default function ApplicationEditPage() {
               ) : null;
             })()}
         </PageTitle.SubHeader>
+        {!application.isReadOnly && !isSystemConsoleClient && (
+          <PageTitle.Actions>
+            <AccountStatusAction
+              category="application"
+              subject={application.id}
+              status={application.status}
+              onChanged={() => {
+                refetch().catch(() => undefined);
+              }}
+            />
+          </PageTitle.Actions>
+        )}
       </PageTitle>
+
+      <AccessStatusBanner status={application.status} category="application" sx={{mb: 2}} />
 
       {/* Tabs */}
       <Tabs value={activeTabIndex} onChange={createTabChangeHandler(activeTabs)} aria-label="application settings tabs">
@@ -739,6 +768,9 @@ export default function ApplicationEditPage() {
             isMissingRedirectUri ||
             isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
+            // A declarative resource has no writable row at all. A suspended one is deliberately
+            // still writable: the server keeps it so, because remediating a suspected compromise
+            // means editing the record.
             application.isReadOnly === true
           }
           error={
