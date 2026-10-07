@@ -604,7 +604,9 @@ func (c *compositeRoleStore) GetEntityRoleIDs(
 	return c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs)
 }
 
-// GetUserRoles retrieves role names assigned to an entity from both stores.
+// GetUserRoles retrieves role names assigned to an entity, unioned across the three places a
+// role-to-assignee binding can live: see GetAllPermissionsForAssignees for why no single store
+// can answer this on its own.
 func (c *compositeRoleStore) GetUserRoles(
 	ctx context.Context, entityID string, groupIDs []string,
 ) ([]string, error) {
@@ -618,7 +620,55 @@ func (c *compositeRoleStore) GetUserRoles(
 		return nil, err
 	}
 
-	return mergePermissions(dbRoleNames, fileRoleNames), nil
+	crossStoreRoleNames, err := c.crossStoreUserRoles(ctx, entityID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergePermissions(mergePermissions(dbRoleNames, fileRoleNames), crossStoreRoleNames), nil
+}
+
+// crossStoreUserRoles resolves role names for the (declarative role definition in file store) +
+// (runtime assignment row in DB) case, mirroring crossStoreAuthorizedPermissions.
+func (c *compositeRoleStore) crossStoreUserRoles(
+	ctx context.Context, entityID string, groupIDs []string,
+) ([]string, error) {
+	if entityID == "" && len(groupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(roleIDs) == 0 {
+		return []string{}, nil
+	}
+
+	names := make([]string, 0, len(roleIDs))
+	for _, id := range roleIDs {
+		exists, err := c.fileStore.IsRoleExist(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			// Role is DB-only; already covered by dbStore.GetUserRoles.
+			continue
+		}
+		role, err := c.fileStore.GetRole(ctx, id)
+		if err != nil {
+			// See crossStoreAuthorizedPermissions: benign cases are skipped, anything else propagates.
+			if errors.Is(err, ErrRoleNotFound) || errors.Is(err, ErrRoleDataCorrupted) {
+				continue
+			}
+			log.GetLogger().Error(ctx,
+				"Failed to load declarative role for cross-store role name resolution",
+				log.String("roleID", id), log.Error(err))
+			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
+		}
+		names = append(names, role.Name)
+	}
+	return names, nil
 }
 
 // IsRoleDeclarative checks if a role is immutable (exists in file store).
