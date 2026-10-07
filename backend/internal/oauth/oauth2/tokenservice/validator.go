@@ -5,6 +5,7 @@ package tokenservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -34,6 +35,13 @@ const maxIDJAGJTILength = 256
 // yields revocation.ErrEnforcementUnavailable (fail-closed); callers discriminate via errors.Is.
 type TokenValidatorInterface interface {
 	ValidateAccessToken(ctx context.Context, token string) (*AccessTokenClaims, error)
+	// ValidateRefreshToken validates a refresh token and extracts its claims.
+	//
+	// It returns (claims, *revocation.RotatedTokenError) for a token revoked by refresh token
+	// rotation: the claims are populated so the refresh_token grant can decide whether the
+	// presentation falls inside its application's grace window, but the error is non-nil so every
+	// caller that simply checks err != nil rejects the token, as before. Callers MUST NOT use the
+	// returned claims without first inspecting the error.
 	ValidateRefreshToken(ctx context.Context, token string) (*RefreshTokenClaims, error)
 	// ValidateSubjectToken validates the credential being redeemed. An auth assertion presented here
 	// is spent and cannot be redeemed again.
@@ -146,7 +154,8 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 	}, nil
 }
 
-// ValidateRefreshToken validates a refresh token and extracts the claims.
+// ValidateRefreshToken validates a refresh token and extracts the claims. See the interface for the
+// (claims, *RotatedTokenError) contract the refresh grant uses to apply a rotation grace window.
 func (tv *tokenValidator) ValidateRefreshToken(
 	ctx context.Context, token string,
 ) (*RefreshTokenClaims, error) {
@@ -206,8 +215,13 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		dpopJkt = s
 	}
 
-	if err := tv.ensureNotRevoked(ctx, revocationIdentity(claims, jti, tokenFamilyID)); err != nil {
-		return nil, err
+	// A token inside the rotation grace period is still denied to every other caller, but the refresh
+	// grant needs its claims to serve the concurrent refresh, so the claims are returned alongside the
+	// sentinel. Callers that do not distinguish it see a non-nil error and reject, unchanged.
+	revocationErr := tv.ensureNotRevoked(ctx, revocationIdentity(claims, jti, tokenFamilyID))
+	var rotatedErr *revocation.RotatedTokenError
+	if revocationErr != nil && !errors.As(revocationErr, &rotatedErr) {
+		return nil, revocationErr
 	}
 
 	// Extract user type and organizational unit details if present
@@ -228,7 +242,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		Exp:              exp,
 		TokenFamilyID:    tokenFamilyID,
 		SessionID:        sessionID,
-	}, nil
+	}, revocationErr
 }
 
 // ValidateSubjectToken validates the subject token of a token exchange — the credential being

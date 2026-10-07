@@ -221,6 +221,17 @@ export interface RefreshTokenConfig {
    * @example 86400 (24 hours)
    */
   validityPeriod: number;
+
+  /**
+   * Rotation grace period in seconds
+   *
+   * How long a rotated refresh token stays redeemable for this application, so concurrent refresh
+   * requests do not fail. 0, the default, gives this application no grace window. The effective
+   * window is capped by the deployment ceiling, and is 0 whenever the deployment has the feature
+   * disabled.
+   * @example 30
+   */
+  rotationGracePeriod?: number;
 }
 
 /**

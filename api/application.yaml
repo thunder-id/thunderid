@@ -1361,6 +1361,15 @@ components:
           type: integer
           description: The validity period of the refresh token in seconds. If not specified, falls back to application-level or deployment default.
           example: 86400
+        rotationGracePeriod:
+          type: integer
+          description: |
+            How long a rotated refresh token stays redeemable for this application, in seconds, so
+            that concurrent refresh requests do not fail. Defaults to 0, which disables the grace
+            window for this application. The effective window is capped by the deployment ceiling
+            in the refreshToken block of the oauth server configuration, and is 0 whenever that
+            configuration has the feature disabled.
+          example: 30
 
     IDJAGConfig:
       type: object

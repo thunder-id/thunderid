@@ -96,22 +96,24 @@ func (_c *revocationStoreInterfaceMock_InsertRevokedToken_Call) RunAndReturn(run
 }
 
 // IsTokenRevoked provides a mock function for the type revocationStoreInterfaceMock
-func (_mock *revocationStoreInterfaceMock) IsTokenRevoked(ctx context.Context, jti string) (bool, error) {
+func (_mock *revocationStoreInterfaceMock) IsTokenRevoked(ctx context.Context, jti string) (*revokedTokenEntry, error) {
 	ret := _mock.Called(ctx, jti)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IsTokenRevoked")
 	}
 
-	var r0 bool
+	var r0 *revokedTokenEntry
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*revokedTokenEntry, error)); ok {
 		return returnFunc(ctx, jti)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *revokedTokenEntry); ok {
 		r0 = returnFunc(ctx, jti)
 	} else {
-		r0 = ret.Get(0).(bool)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revokedTokenEntry)
+		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = returnFunc(ctx, jti)
@@ -151,12 +153,12 @@ func (_c *revocationStoreInterfaceMock_IsTokenRevoked_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *revocationStoreInterfaceMock_IsTokenRevoked_Call) Return(b bool, err error) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
-	_c.Call.Return(b, err)
+func (_c *revocationStoreInterfaceMock_IsTokenRevoked_Call) Return(revokedTokenEntryMoqParam *revokedTokenEntry, err error) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
+	_c.Call.Return(revokedTokenEntryMoqParam, err)
 	return _c
 }
 
-func (_c *revocationStoreInterfaceMock_IsTokenRevoked_Call) RunAndReturn(run func(ctx context.Context, jti string) (bool, error)) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
+func (_c *revocationStoreInterfaceMock_IsTokenRevoked_Call) RunAndReturn(run func(ctx context.Context, jti string) (*revokedTokenEntry, error)) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
 	_c.Call.Return(run)
 	return _c
 }

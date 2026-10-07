@@ -40,6 +40,9 @@ type refreshTokenGrantHandler struct {
 	actorProvider    providers.ActorProvider
 	refreshRevoker   revocation.RefreshTokenRevokerInterface
 	criteriaRevoker  revocation.CriteriaRevokerInterface
+	// graceConfigReader reads the deployment's rotation grace policy. It is nil in the embedded
+	// engine, which has no server-config store; a nil reader reports the feature disabled.
+	graceConfigReader OAuthServerConfigReader
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -53,6 +56,7 @@ func newRefreshTokenGrantHandler(
 	actorProvider providers.ActorProvider,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	graceConfigReader OAuthServerConfigReader,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -66,6 +70,8 @@ func newRefreshTokenGrantHandler(
 		actorProvider:    actorProvider,
 		refreshRevoker:   refreshRevoker,
 		criteriaRevoker:  criteriaRevoker,
+
+		graceConfigReader: graceConfigReader,
 	}
 }
 
@@ -102,11 +108,23 @@ func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenReque
 // requesting client. ValidateRefreshToken enforces the RFC 7009 deny list, so a revoked token is
 // rejected as invalid_grant like any other invalid token and an unavailable deny list fails closed
 // with a server_error.
+//
+// A token revoked by rotation that is still inside the configured grace period is the exception: it
+// is accepted so that legitimate concurrent refresh requests succeed, and it is not treated as a
+// replay, so the token family survives. Every other check still applies to it.
 func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
-	tokenRequest *model.TokenRequest, logger *log.Logger) (
+	tokenRequest *model.TokenRequest, oauthApp *providers.OAuthClient, logger *log.Logger) (
 	*tokenservice.RefreshTokenClaims, *model.ErrorResponse) {
 	refreshTokenClaims, err := h.tokenValidator.ValidateRefreshToken(ctx, tokenRequest.RefreshToken)
-	if err != nil {
+
+	// A token rotated out of use is reported with the instant of its rotation, so the window is
+	// decided here, where the application is in hand, rather than inside the process-wide
+	// enforcement service shared with introspection and token exchange.
+	var rotatedErr *revocation.RotatedTokenError
+	graced := err != nil && errors.As(err, &rotatedErr) &&
+		h.withinRotationGrace(ctx, rotatedErr.RotatedAt, oauthApp)
+
+	if err != nil && !graced {
 		logger.Debug(ctx, "Failed to validate refresh token", log.Error(err))
 		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
 			return nil, &model.ErrorResponse{
@@ -117,12 +135,21 @@ func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 		// A revoked (already-rotated) refresh token presented again is a replay signal: revoke
 		// the whole token family so the attacker's freshly rotated tokens die too (RFC 9700 §4.14.2).
 		if errors.Is(err, revocation.ErrTokenRevoked) {
+			// Recorded distinctly from a graced refresh so an operator can tell a client racing
+			// slightly too slowly from a token replayed long after its window closed.
+			logger.Warn(ctx, "Refresh token presented outside any rotation grace period",
+				log.String("clientId", tokenRequest.ClientID))
 			h.revokeTokenFamilyOnReplay(ctx, tokenRequest.RefreshToken, logger)
 		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
+	}
+	if graced {
+		// Inside the rotation grace period: serve the concurrent refresh, and record it so an
+		// operator can see that a client population is racing.
+		h.recordGracedRefresh(ctx, tokenRequest.ClientID, refreshTokenClaims, logger)
 	}
 
 	// A client may only redeem refresh tokens issued to it.
@@ -143,7 +170,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
 
-	refreshTokenClaims, errResp := h.resolveRefreshToken(ctx, tokenRequest, logger)
+	refreshTokenClaims, errResp := h.resolveRefreshToken(ctx, tokenRequest, oauthApp, logger)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -352,6 +379,83 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 
 	return tokenResponse, nil
+}
+
+// recordGracedRefresh records that a refresh request was served against a token inside its rotation
+// grace window. A rising rate says a client population is racing and the window is doing its job.
+// Only identifiers are recorded: the jti and token family id are lookup keys, not credentials, and
+// the refresh token value itself is never logged.
+// withinRotationGrace reports whether a token rotated at rotatedAt is still redeemable for the given
+// application.
+//
+// The effective window is the application's configured period capped by the deployment ceiling, and
+// is zero whenever the deployment has the feature disabled. An application's own value can therefore
+// only narrow the window, never widen it past the ceiling, and turning the feature off closes every
+// open window at once without having to correct each application first.
+//
+// The window is anchored to rotatedAt, which is immutable for the life of the deny-list row because
+// the deny-list insert is idempotent. Redeeming a token inside its window cannot move it, so the
+// window cannot slide forward with use.
+func (h *refreshTokenGrantHandler) withinRotationGrace(ctx context.Context, rotatedAt time.Time,
+	oauthApp *providers.OAuthClient) bool {
+	if rotatedAt.IsZero() {
+		return false
+	}
+	grace := h.effectiveRotationGrace(ctx, oauthApp)
+	if grace <= 0 {
+		return false
+	}
+	return time.Now().UTC().Before(rotatedAt.Add(grace))
+}
+
+// effectiveRotationGrace resolves the grace window for an application: its own configured period,
+// capped by the deployment ceiling, and zero when the deployment has the feature disabled.
+func (h *refreshTokenGrantHandler) effectiveRotationGrace(ctx context.Context,
+	oauthApp *providers.OAuthClient) time.Duration {
+	ceiling := h.rotationGraceCeiling(ctx)
+	if ceiling <= 0 {
+		return 0
+	}
+	if oauthApp == nil || oauthApp.Token == nil {
+		return 0
+	}
+	appGrace := time.Duration(oauthApp.Token.RefreshToken.RotationGracePeriodOrZero()) * time.Second
+	if appGrace <= 0 {
+		return 0
+	}
+	if appGrace > ceiling {
+		return ceiling
+	}
+	return appGrace
+}
+
+// rotationGraceCeiling reads the deployment's grace ceiling from the server-config section. A reader
+// that is absent (the embedded engine has no server-config store) or that cannot be read reports no
+// ceiling, so the feature fails closed to the pre-existing behavior of immediate invalidation.
+func (h *refreshTokenGrantHandler) rotationGraceCeiling(ctx context.Context) time.Duration {
+	if h.graceConfigReader == nil {
+		return 0
+	}
+	value, svcErr := h.graceConfigReader.GetMergedConfig(ctx, configSectionOAuth)
+	if svcErr != nil {
+		return 0
+	}
+	cfg, ok := value.(OAuthServerConfig)
+	if !ok {
+		return 0
+	}
+	return cfg.RefreshToken.Ceiling()
+}
+
+func (h *refreshTokenGrantHandler) recordGracedRefresh(ctx context.Context, clientID string,
+	claims *tokenservice.RefreshTokenClaims, logger *log.Logger) {
+	if claims == nil {
+		return
+	}
+	logger.Info(ctx, "Served a refresh request within the rotation grace period",
+		log.String("clientId", clientID),
+		log.String("jti", claims.JTI),
+		log.String("tokenFamilyId", claims.TokenFamilyID))
 }
 
 // revokeTokenFamilyOnReplay revokes the token family of a replayed (already-revoked) refresh token, when
