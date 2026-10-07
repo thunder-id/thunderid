@@ -177,7 +177,7 @@ func (s *service) Register(ctx context.Context,
 		return nil, &ErrorGatewayLimitReached
 	}
 
-	s.logger.Info(ctx, "Registered a gateway", log.String("gatewayId", registered.ID),
+	s.logger.Info(ctx, "Registered a gateway", log.String("gatewayID", registered.ID),
 		log.String("baseUrl", registered.BaseURL))
 	registered.Key = ""
 	// The generated key travels in the response and is not kept anywhere readable.
@@ -277,7 +277,7 @@ func (s *service) Update(ctx context.Context, id string,
 		return nil, &tidcommon.InternalServerError
 	}
 
-	s.logger.Info(ctx, "Updated a gateway", log.String("gatewayId", existing.ID))
+	s.logger.Info(ctx, "Updated a gateway", log.String("gatewayID", existing.ID))
 	existing.Key = ""
 	return existing, nil
 }
@@ -301,7 +301,7 @@ func (s *service) Delete(ctx context.Context, id string) *tidcommon.ServiceError
 		s.logger.Error(ctx, "Failed to remove the gateway", log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	s.logger.Info(ctx, "Removed a gateway", log.String("gatewayId", id))
+	s.logger.Info(ctx, "Removed a gateway", log.String("gatewayID", id))
 	return nil
 }
 

@@ -706,7 +706,7 @@ func (rs *roleService) validatePermissions(
 
 		if svcErr != nil {
 			logger.Error(ctx, "Failed to validate permissions",
-				log.String("resourceServerId", resPerm.ResourceServerID),
+				log.String("resourceServerID", resPerm.ResourceServerID),
 				log.String("error", svcErr.Error.DefaultValue))
 			return &tidcommon.InternalServerError
 		}
@@ -714,7 +714,7 @@ func (rs *roleService) validatePermissions(
 		// If any permissions are invalid, return error
 		if len(invalidPerms) > 0 {
 			logger.Debug(ctx, "Invalid permissions found",
-				log.String("resourceServerId", resPerm.ResourceServerID),
+				log.String("resourceServerID", resPerm.ResourceServerID),
 				log.Any("invalidPermissions", invalidPerms),
 				log.Int("count", len(invalidPerms)))
 			return &ErrorInvalidPermissions

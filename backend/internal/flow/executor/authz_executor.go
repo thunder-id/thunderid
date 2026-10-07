@@ -303,7 +303,7 @@ func (a *authorizationExecutor) expandMappedGroupAncestors(
 		ancestors, err := a.entityProvider.GetTransitiveGroupAncestors(groupID)
 		if err != nil {
 			a.logger.Warn(ctx.Context, "Failed to resolve ancestors of a mapped group, continuing without them",
-				log.String("groupId", groupID), log.Error(err))
+				log.String("groupID", groupID), log.Error(err))
 			continue
 		}
 		expanded = utils.MergeUniqueStrings(expanded, ancestors)

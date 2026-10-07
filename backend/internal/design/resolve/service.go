@@ -87,7 +87,7 @@ func (drs *designResolveService) ResolveDesign(
 		// which application IDs exist.
 		if svcErr.Code == application.ErrorApplicationNotFound.Code {
 			drs.logger.Debug(ctx, "No design resolved; application does not exist",
-				log.String("applicationId", id))
+				log.String("applicationID", id))
 			return nil, &common.ErrorApplicationHasNoDesign
 		}
 		return nil, svcErr
@@ -113,8 +113,8 @@ func (drs *designResolveService) ResolveDesign(
 				// The referenced theme has been deleted; fall back to the system default by leaving
 				// the theme unset in the response.
 				drs.logger.Warn(ctx, "Application references a deleted theme; falling back to default",
-					log.String("applicationId", id),
-					log.String("themeId", app.ThemeID))
+					log.String("applicationID", id),
+					log.String("themeID", app.ThemeID))
 			} else {
 				return nil, svcErr
 			}
@@ -136,8 +136,8 @@ func (drs *designResolveService) ResolveDesign(
 				// The referenced layout has been deleted; fall back to the system default by leaving
 				// the layout unset in the response.
 				drs.logger.Warn(ctx, "Application references a deleted layout; falling back to default",
-					log.String("applicationId", id),
-					log.String("layoutId", app.LayoutID))
+					log.String("applicationID", id),
+					log.String("layoutID", app.LayoutID))
 			} else {
 				return nil, svcErr
 			}
@@ -149,8 +149,8 @@ func (drs *designResolveService) ResolveDesign(
 	drs.logger.Debug(ctx, "Successfully resolved design configuration",
 		log.String("type", string(resolveType)),
 		log.String("id", id),
-		log.String("themeId", app.ThemeID),
-		log.String("layoutId", app.LayoutID))
+		log.String("themeID", app.ThemeID),
+		log.String("layoutID", app.LayoutID))
 
 	return designResponse, nil
 }

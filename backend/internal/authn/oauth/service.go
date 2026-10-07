@@ -70,7 +70,7 @@ func newOAuthAuthnService(httpClient syshttp.HTTPClientInterface,
 // GetOAuthClientConfig retrieves the OAuth client configuration for the given identity provider ID.
 func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
 	*OAuthClientConfig, *tidcommon.ServiceError) {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &ErrorEmptyIdpID
 	}
@@ -103,7 +103,7 @@ func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID stri
 // BuildAuthorizeURL constructs the authorization request URL for the external identity provider.
 func (s *oAuthAuthnService) BuildAuthorizeURL(
 	ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError) {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Building authorize URL")
 
 	oAuthClientConfig, svcErr := s.GetOAuthClientConfig(ctx, idpID)
@@ -153,7 +153,7 @@ func (s *oAuthAuthnService) BuildAuthorizeURL(
 // and validates the token response if validateResponse is true.
 func (s *oAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
 	*TokenResponse, *tidcommon.ServiceError) {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Exchanging authorization code for token")
 
 	if strings.TrimSpace(code) == "" {
@@ -194,7 +194,7 @@ func (s *oAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, cod
 // to true. Hence generally you may not need to call this method explicitly.
 func (s *oAuthAuthnService) ValidateTokenResponse(ctx context.Context,
 	idpID string, tokenResp *TokenResponse) *tidcommon.ServiceError {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Validating token response")
 
 	if tokenResp == nil {
@@ -301,7 +301,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Performing federated OAuth authentication")
 
 	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)

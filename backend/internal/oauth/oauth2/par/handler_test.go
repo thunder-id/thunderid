@@ -18,9 +18,13 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 )
 
@@ -213,4 +217,19 @@ func (s *HandlerTestSuite) TestHandlePAR_ServerError() {
 	handler.HandlePARRequest(rec, req)
 
 	assert.Equal(s.T(), http.StatusInternalServerError, rec.Code)
+}
+
+func (s *HandlerTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mockDiscovery := discoverymock.NewDiscoveryServiceInterfaceMock(s.T())
+	mockDiscovery.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
+		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://example.com"})
+	mux := http.NewServeMux()
+	registerRoutes(mux, newPARHandler(nil, nil, ""), nil, nil, nil, mockDiscovery, nil, engineconfig.ClientAssertionConfig{}, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/par", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	s.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

@@ -4614,10 +4614,8 @@ func TestFlowStartedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	}
 	evt := (*captured)[0]
 
-	// The whole flow must share one trace, keyed on the execution id, so FLOW_STARTED stitches to
-	// its own child events.
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != "request-trace-1" {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, "request-trace-1")
 	}
 
 	assertEventData(t, evt, map[string]interface{}{
@@ -4744,6 +4742,9 @@ func TestNodeExecutionStartedEvent_ReportsSubjectAndPrincipal(t *testing.T) {
 
 	publishNodeExecutionStartedEvent(agentFlowContext(), node, mockObs)
 
+	if evt := (*captured)[0]; evt.TraceID != "request-trace-1" {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, "request-trace-1")
+	}
 	assertEventData(t, (*captured)[0], map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),
 		event.DataKey.ClientID:      "agent-client-id",
@@ -4804,15 +4805,15 @@ func TestFlowCompletedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	})
 }
 
-func TestFlowFailedEvent_SharesTheFlowTrace(t *testing.T) {
+func TestFlowFailedEvent_CarriesTheRequestTrace(t *testing.T) {
 	mockObs, captured := setupCapturingObservability(t)
 	defer config.ResetServerRuntime()
 
 	publishFlowFailedEvent(agentFlowContext(), nil, 0, 5, mockObs)
 
 	evt := (*captured)[0]
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != "request-trace-1" {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, "request-trace-1")
 	}
 	assertEventData(t, evt, map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),

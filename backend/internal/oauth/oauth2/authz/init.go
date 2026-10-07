@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -53,5 +54,6 @@ func Initialize(
 func registerRoutes(mux *http.ServeMux, authzHandler AuthorizeHandlerInterface) {
 	// CORS MUST NOT be enabled on the authorization endpoint.
 	// The client redirects the user agent to it; it is not accessed directly via XHR/fetch.
-	mux.HandleFunc("GET /oauth2/authorize", authzHandler.HandleAuthorizeGetRequest)
+	mux.HandleFunc("GET /oauth2/authorize",
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(authzHandler.HandleAuthorizeGetRequest)).ServeHTTP)
 }

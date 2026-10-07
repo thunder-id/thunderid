@@ -801,13 +801,13 @@ func (us *entityTypeService) ensureOrganizationUnitExists(
 	exists, svcErr := us.ouService.IsOrganizationUnitExists(ctx, oUID)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to verify organization unit existence",
-			log.String("oUID", oUID), log.Any("error", svcErr))
+			log.String("ouID", oUID), log.Any("error", svcErr))
 		return &tidcommon.InternalServerError
 	}
 
 	if !exists {
 		logger.Debug(ctx, "Organization unit does not exist",
-			log.String("oUID", oUID))
+			log.String("ouID", oUID))
 		return invalidEntityTypeRequestErr(category, "organization unit id does not exist")
 	}
 

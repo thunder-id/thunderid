@@ -158,7 +158,7 @@ func (s *cacheBackedIDPStore) cacheIDP(ctx context.Context, idp *providers.IDPDT
 
 	idKey := cache.CacheKey{Key: idp.ID}
 	if err := s.idpByIDCache.Set(ctx, idKey, idp); err != nil {
-		logger.Error(ctx, "Failed to cache IDP by ID", log.Error(err), log.String("idpID", idp.ID))
+		logger.Error(ctx, "Failed to cache IDP by ID", log.Error(err), log.String(log.LoggerKeyIDPID, idp.ID))
 	}
 }
 
@@ -172,7 +172,7 @@ func (s *cacheBackedIDPStore) invalidateIDP(ctx context.Context, idp *providers.
 		idKey := cache.CacheKey{Key: idp.ID}
 		if err := s.idpByIDCache.Delete(ctx, idKey); err != nil {
 			logger.Error(ctx, "Failed to invalidate IDP cache by ID",
-				log.Error(err), log.String("idpID", idp.ID))
+				log.Error(err), log.String(log.LoggerKeyIDPID, idp.ID))
 		}
 	}
 	for _, prop := range idp.Properties {

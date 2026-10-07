@@ -5,6 +5,7 @@ package introspect
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
@@ -63,4 +65,17 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/introspect"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/introspect")
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mux := http.NewServeMux()
+	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
+		suite.mockTokenValidator, nil, engineconfig.ClientAssertionConfig{}, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/introspect", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

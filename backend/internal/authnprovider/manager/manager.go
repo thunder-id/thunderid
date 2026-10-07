@@ -292,7 +292,7 @@ func (m *authnProviderManager) checkSubjectAllowed(
 		return nil
 	}
 	m.logger.Debug(ctx, "resolved subject is not allowed for the application",
-		log.String("entityId", entityRef.EntityID),
+		log.String(log.LoggerKeyEntityID, entityRef.EntityID),
 		log.String("entityCategory", entityRef.EntityCategory),
 		log.String("entityType", entityRef.EntityType))
 	return &ErrorSubjectNotAllowed

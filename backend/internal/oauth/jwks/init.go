@@ -28,7 +28,7 @@ func registerRoutes(mux *http.ServeMux, jwksHandler *jwksHandler) {
 		MaxAge:           600,
 	}
 	mux.HandleFunc(middleware.WithCORS("GET /oauth2/jwks",
-		jwksHandler.HandleJWKSRequest, opts))
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(jwksHandler.HandleJWKSRequest)).ServeHTTP, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/jwks",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

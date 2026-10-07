@@ -21,6 +21,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -417,6 +418,23 @@ func (suite *DiscoveryTestSuite) TestInitialize() {
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(suite.T(), http.StatusNoContent, w.Code)
+}
+
+func (suite *DiscoveryTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
+
+	mux := http.NewServeMux()
+	registerRoutes(mux, suite.handler)
+
+	for _, path := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName), path)
+	}
 }
 
 func (suite *DiscoveryTestSuite) TestGetBaseURL_WithPublicHostname() {

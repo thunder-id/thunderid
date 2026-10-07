@@ -20,6 +20,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -268,4 +269,16 @@ func (suite *LogoutHandlerTestSuite) TestHandleLogoutCallback_InvalidRequest() {
 	handler.HandleLogoutCallback(rec, req)
 
 	suite.Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (suite *LogoutHandlerTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mux := http.NewServeMux()
+	registerRoutes(mux, newLogoutHandler(nil, gateConfig()))
+
+	req := httptest.NewRequest(http.MethodPost, constants.OAuth2LogoutEndpoint+"/callback", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

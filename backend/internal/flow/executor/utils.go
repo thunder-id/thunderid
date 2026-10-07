@@ -277,14 +277,14 @@ func resolveAndSetMappedAuthorizationTargets(
 	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve IDP for authorization mapping, skipping",
-			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
+			log.String(log.LoggerKeyIDPID, idpID), log.String("error", svcErr.Error.DefaultValue))
 		return
 	}
 	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
 	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
+			log.String(log.LoggerKeyIDPID, idpID), log.String("error", svcErr.Error.DefaultValue))
 	} else {
 		targets = append(targets, directTargets...)
 	}

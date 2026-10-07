@@ -65,7 +65,8 @@ func registerRoutes(
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
 		jtiStore, issuer, assertionCfg, jwtLeeway)
-	authHandler := clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest))
+	authHandler := middleware.CorrelationIDMiddleware(
+		clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest)))
 
 	authPattern, wrappedAuthHandler := middleware.WithCORS(
 		"POST "+constants.OAuth2BackchannelAuthEndpoint,

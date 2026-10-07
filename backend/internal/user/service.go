@@ -224,7 +224,7 @@ func (us *userService) GetUsersByPath(
 				oupkg.ErrorInvalidLimit.Code:             &ErrorInvalidLimit,
 				oupkg.ErrorInvalidOffset.Code:            &ErrorInvalidOffset,
 			},
-			log.String("oUID", oUID),
+			log.String("ouID", oUID),
 			log.Int("limit", limit),
 			log.Int("offset", offset),
 		)
@@ -1052,7 +1052,7 @@ func (us *userService) validateOrganizationUnitForUserType(
 				oupkg.ErrorInvalidRequestFormat.Code:     &ErrorInvalidOUID,
 				oupkg.ErrorMissingOUID.Code:              &ErrorInvalidOUID,
 			},
-			log.String("oUID", oUID),
+			log.String("ouID", oUID),
 		)
 	}
 	if !exists {
@@ -1094,7 +1094,7 @@ func (us *userService) validateOrganizationUnitForUserType(
 				oupkg.ErrorOrganizationUnitNotFound.Code: &ErrorOrganizationUnitNotFound,
 			},
 			log.String("userType", userType),
-			log.String("oUID", oUID),
+			log.String("ouID", oUID),
 			log.String("schemaOUID", entityType.OUID),
 		)
 	}
@@ -1102,7 +1102,7 @@ func (us *userService) validateOrganizationUnitForUserType(
 	if !isParent {
 		logger.Debug(ctx, "Organization unit mismatch for user type",
 			log.String("userType", userType),
-			log.String("oUID", oUID),
+			log.String("ouID", oUID),
 			log.String("schemaOUID", entityType.OUID))
 		return &ErrorOrganizationUnitMismatch
 	}

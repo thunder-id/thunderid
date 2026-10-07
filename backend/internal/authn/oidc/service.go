@@ -134,7 +134,7 @@ func (s *oidcAuthnService) ValidateTokenResponse(ctx context.Context, idpID stri
 // to true. Hence generally you may not need to call this method explicitly if ExchangeCodeForToken method
 // is called with validateResponse set to true.
 func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken string) *tidcommon.ServiceError {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Validating ID token")
 
 	if strings.TrimSpace(idToken) == "" {
@@ -197,7 +197,7 @@ func (s *oidcAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
-	logger := s.logger.With(log.String("idpId", idpID))
+	logger := s.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Performing federated OIDC authentication")
 
 	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)

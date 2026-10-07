@@ -188,7 +188,7 @@ func (is *idpService) GetIdentityProvider(
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		logger.Error(ctx, "Failed to get identity provider", log.String("idpID", idpID), log.Error(err))
+		logger.Error(ctx, "Failed to get identity provider", log.String(log.LoggerKeyIDPID, idpID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -306,7 +306,7 @@ func (is *idpService) UpdateIdentityProvider(
 		return nil, svcErr
 	}
 	if err != nil {
-		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -358,7 +358,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		return svcErr
 	}
 	if err != nil {
-		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
@@ -553,13 +553,13 @@ func (is *idpService) GetIDPUsages(
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		is.logger.Error(ctx, "Failed to retrieve identity provider", log.Error(err), log.String("idpID", idpID))
+		is.logger.Error(ctx, "Failed to retrieve identity provider", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
 	if is.dependencyRegistry == nil {
 		is.logger.Warn(ctx, "Dependency registry not set; returning unknown dependencies",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &resourcedependency.DependenciesResponse{
 			TotalResults: nil,
 			Count:        0,
@@ -570,7 +570,7 @@ func (is *idpService) GetIDPUsages(
 
 	result, err := is.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeIDP, idpID)
 	if err != nil {
-		is.logger.Error(ctx, "Failed to get identity provider usages", log.Error(err), log.String("idpID", idpID))
+		is.logger.Error(ctx, "Failed to get identity provider usages", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -584,20 +584,20 @@ func (is *idpService) GetIDPUsages(
 func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID string) *tidcommon.ServiceError {
 	if is.dependencyRegistry == nil {
 		is.logger.Error(ctx, "Dependency registry not set; refusing to delete identity provider",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
 	deps, err := is.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeIDP, idpID)
 	if err != nil {
 		is.logger.Error(ctx, "Failed to evaluate identity provider dependencies",
-			log.Error(err), log.String("idpID", idpID))
+			log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
 	if deps == nil || deps.TotalResults == nil {
 		is.logger.Error(ctx, "Identity provider dependency data unavailable; refusing to delete",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
@@ -607,7 +607,7 @@ func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID st
 	}
 
 	is.logger.Debug(ctx, "Identity provider has blocking dependencies; deletion refused",
-		log.String("idpID", idpID), log.Int("blockingCount", len(blocking)))
+		log.String(log.LoggerKeyIDPID, idpID), log.Int("blockingCount", len(blocking)))
 	return tidcommon.CustomServiceError(ErrorIDPHasBlockingDependencies, tidcommon.I18nMessage{
 		Key: "error.idpservice.idp_has_blocking_dependencies_description",
 		DefaultValue: fmt.Sprintf(

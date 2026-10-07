@@ -138,7 +138,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
-	logger := g.logger.With(log.String("idpId", idpID))
+	logger := g.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 
 	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)

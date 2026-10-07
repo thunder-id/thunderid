@@ -32,15 +32,16 @@ func registerRoutes(mux *http.ServeMux, handler discoveryHandlerInterface) {
 		MaxAge:           600,
 	}
 
-	mux.HandleFunc(middleware.WithCORS("GET /.well-known/oauth-authorization-server",
-		handler.HandleOAuth2AuthorizationServerMetadata, opts))
+	oauth2Metadata := middleware.CorrelationIDMiddleware(
+		http.HandlerFunc(handler.HandleOAuth2AuthorizationServerMetadata)).ServeHTTP
+	mux.HandleFunc(middleware.WithCORS("GET /.well-known/oauth-authorization-server", oauth2Metadata, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /.well-known/oauth-authorization-server",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts))
 
-	mux.HandleFunc(middleware.WithCORS("GET /.well-known/openid-configuration",
-		handler.HandleOIDCDiscovery, opts))
+	oidcDiscovery := middleware.CorrelationIDMiddleware(http.HandlerFunc(handler.HandleOIDCDiscovery)).ServeHTTP
+	mux.HandleFunc(middleware.WithCORS("GET /.well-known/openid-configuration", oidcDiscovery, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /.well-known/openid-configuration",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
