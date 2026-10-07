@@ -6,6 +6,7 @@ package constants
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 )
@@ -164,14 +165,53 @@ var supportedTokenTypeIdentifiers = []TokenTypeIdentifier{
 	TokenTypeIdentifierIDJAG,
 }
 
-// IsValid checks if the TokenTypeIdentifier is valid.
+// supportedSubjectTokenTypes lists the token types that may be presented as an RFC 8693
+// subject_token, the credential being redeemed.
+var supportedSubjectTokenTypes = []TokenTypeIdentifier{
+	TokenTypeIdentifierAccessToken,
+	TokenTypeIdentifierIDToken,
+	TokenTypeIdentifierJWT,
+}
+
+// supportedActorTokenTypes lists the token types that may be presented as an RFC 8693 actor_token,
+// which identifies the party acting on the subject's behalf. It excludes the same types as the
+// subject slot, and is kept separate because the two slots are not interchangeable: an auth
+// assertion, for one, is spent in the subject slot and refused outright in the actor slot.
+var supportedActorTokenTypes = []TokenTypeIdentifier{
+	TokenTypeIdentifierAccessToken,
+	TokenTypeIdentifierIDToken,
+	TokenTypeIdentifierJWT,
+}
+
+// supportedRequestedTokenTypes lists the token types that may be asked for through
+// requested_token_type. ID-JAG is valid here and only here: it is issued, never redeemed.
+var supportedRequestedTokenTypes = []TokenTypeIdentifier{
+	TokenTypeIdentifierAccessToken,
+	TokenTypeIdentifierJWT,
+	TokenTypeIdentifierIDJAG,
+}
+
+// IsValid checks if the TokenTypeIdentifier is a token type this server knows at all. It answers
+// whether the identifier is recognized, not whether it is legal in the slot it was supplied in;
+// the per-slot checks below answer that.
 func (tti TokenTypeIdentifier) IsValid() bool {
-	for _, valid := range supportedTokenTypeIdentifiers {
-		if tti == valid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(supportedTokenTypeIdentifiers, tti)
+}
+
+// IsValidSubjectTokenType reports whether the identifier may be presented as a subject_token.
+func (tti TokenTypeIdentifier) IsValidSubjectTokenType() bool {
+	return slices.Contains(supportedSubjectTokenTypes, tti)
+}
+
+// IsValidActorTokenType reports whether the identifier may be presented as an actor_token.
+func (tti TokenTypeIdentifier) IsValidActorTokenType() bool {
+	return slices.Contains(supportedActorTokenTypes, tti)
+}
+
+// IsValidRequestedTokenType reports whether the identifier may be asked for through
+// requested_token_type.
+func (tti TokenTypeIdentifier) IsValidRequestedTokenType() bool {
+	return slices.Contains(supportedRequestedTokenTypes, tti)
 }
 
 // OAuth2 error codes.

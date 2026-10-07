@@ -946,3 +946,39 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_SubjectTokenUnsupportedIssue
 	ts.Equal("invalid_request", resp.Error)
 	ts.Contains(resp.ErrorDescription, "issuer is not registered as a trusted token exchange issuer")
 }
+
+// TestTokenExchange_RefreshTokenNotASubjectTokenType verifies that a refresh token is refused as a
+// subject_token_type. The type is one this server knows, so the refusal has to name it rather than
+// fall through to the generic "unsupported" path taken by types it does not recognise at all.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_RefreshTokenNotASubjectTokenType() {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", ts.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:refresh_token")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal("invalid_request", resp.Error)
+	ts.Contains(resp.ErrorDescription, "is not supported as a subject_token_type")
+}
+
+// TestTokenExchange_IDJAGNotASubjectTokenType verifies that an ID-JAG is refused as a
+// subject_token_type. An ID-JAG is a grant addressed to a foreign authorization server, never a
+// credential this server redeems.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_IDJAGNotASubjectTokenType() {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", ts.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, statusCode)
+	ts.Equal("invalid_request", resp.Error)
+	ts.Contains(resp.ErrorDescription, "is not supported as a subject_token_type")
+}
