@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 
 ## Summary
 
@@ -11,7 +11,16 @@ Supporting agent creation requires a change below the UI. Creating an agent invo
 
 The same boundary will apply to users. This specification therefore includes the prerequisite management-provider changes, category-aware flow execution, the onboarding flow, and the Console experience. The initial supported categories will be users and agents. Shared executors must accommodate category differences without introducing a separate provisioning executor for each category.
 
-Agent self-registration, changes to agent editing, and the complete replacement of the entity provider are outside this feature. Enforcing application agent-type restrictions across all OAuth authentication paths is also outside this scope, as is rendering the new user selection input outside the Console, in the client SDKs.
+The items listed under out of scope below are not delivered by this feature.
+
+## Out of scope
+
+- Agent self-registration. Onboarding is performed by an authorized administrator in an administration flow, and agent provisioning in a registration flow is refused (R8).
+- Changes to agent editing.
+- The complete replacement of the entity provider.
+- Enforcing application agent-type restrictions across all OAuth authentication paths.
+- Selecting more than one allowed user type during obo agent onboarding.
+- New OAuth grant modes, changes to agent authorization policy, and changes to the direct agent management API.
 
 ## Architecture
 
@@ -168,6 +177,23 @@ Registering `USER_SELECT` in the SDKs, with a rendering adapter and a user-fetch
 
 The flow builder's input-type picker for executor inputs does not offer `USER_SELECT` either. The owner prompt is composed from the Owner Resolution widget, which carries the input in its own definition.
 
+### The authentication flow and user type selection inputs
+
+A delegated agent needs a login flow and an allowed user type. `SELECT` cannot express either for the reason it cannot express a user: the candidates are managed resources that change between authoring a flow and running it, and the value submitted is an identifier that differs from what a person reads.
+
+`AUTH_FLOW_SELECT` and `USER_TYPE_SELECT` are the input types for those steps, and this feature adds both to the engine. They follow the contract `USER_SELECT` and `OU_SELECT` set: the flow declares the input, the client sources the candidates, and the value submitted is an identifier. The engine must recognize both types before a flow can declare them.
+
+| Input type | Candidates | Shown | Submitted |
+|---|---|---|---|
+| `AUTH_FLOW_SELECT` | Authentication flows only. | Flow name. | Flow ID. |
+| `USER_TYPE_SELECT` | User types. | Display name. | Handle. |
+
+The restriction to authentication flows belongs to the type, so no filter travels in the flow definition. This also lets the Console draw the picker for an input the executor requests through its incomplete path, because such an input reaches the prompt carrying only its type.
+
+The Console will list candidates through the existing flow and user type management APIs and read every page. User types are identified by an immutable handle, and their display names are not unique, so where two types share a display name the Console will show the handle beside it. Candidates are not filtered by organization unit. The inbound client service validates allowed user types against the existing user types without reference to the agent's organization unit, and the Console's other user type selectors list them the same way.
+
+As with `USER_SELECT`, the types are rendering hints and not trust boundaries. The inbound client service validates the submitted flow ID and handle at creation, whatever list the Console offered. The type resolver prompts continue to offer bare handles, because their options carry no separate label. Giving them display names is separate work.
+
 ### Collect and validate agent information
 
 Agent information has two sources of definition. System attributes, including the agent name, belong to the agent management model. Schema attributes belong to the selected agent type and may differ between deployments. The flow will collect these through separate prompts so that each has a correction path appropriate to its validation owner.
@@ -201,9 +227,44 @@ The validator is a schema-attribute uniqueness check, not a replacement for all 
 
 Owner selection will use the separate verification step described above. Description and logo will be optional management fields when included in a custom flow. A missing logo will use the standard agent avatar. These fields must not be treated as schema attributes merely because a flow collects them.
 
-A custom flow may also collect delegation intent and callback URIs. A delegated agent must supply callback URIs before creation; an absent delegation choice will mean a non-delegated agent. An unreadable delegation value must produce an error rather than silently change the requested behavior. Inbound configuration validation will remain with the management services.
+A flow may also make the agent delegated, meaning it acts on behalf of a signed-in user. A delegated agent must supply callback URIs, an authentication flow, and an allowed user type before creation, as described under on-behalf-of agents below. An absent delegation choice will mean a non-delegated agent. An unreadable delegation value must produce an error rather than silently change the requested behavior. Inbound configuration validation will remain with the management services.
 
 The schema details prompt may be unnecessary when no schema information is outstanding. An agent with a valid name and no supplied optional schema attributes must still be eligible for creation. The flow must not require an artificial schema attribute merely to establish that agent information has been collected.
+
+### On-behalf-of agents
+
+An agent acts either on its own behalf or on behalf of a signed-in user. This applies to agents an administrator creates through the flow; it does not let an agent register itself. A delegated agent keeps the client credentials grant it needs to act on its own and gains the authorization code and refresh token grants, as described under creating the complete resource.
+
+#### Deciding the mode
+
+`ProvisioningExecutor` in agent mode will resolve delegation from the first of these that is not empty:
+
+1. The resolved runtime value `delegated`.
+2. The submitted input `delegated`.
+3. The boolean `delegated` node property.
+4. `false`.
+
+An explicit `false` takes precedence over a `true` node property. A runtime or submitted value that is not a boolean, and a node property that is not a boolean, must produce an error that identifies the input; neither may silently select a mode. An empty string counts as absent. A flow that sets the property and never asks for the choice fixes the mode for every run. A flow that asks for the choice uses the property only as the fallback when nothing is submitted.
+
+#### Inputs collected for a delegated agent
+
+| Input | Input type | Meaning | Submitted value |
+|---|---|---|---|
+| `redirectUris` | `TEXT_INPUT` | Callback URIs the agent's users return to after signing in. | One or more URIs separated by commas. Whitespace and empty entries are dropped. |
+| `authFlowId` | `AUTH_FLOW_SELECT` | The authentication flow that signs the user in. | The flow ID. |
+| `allowedUserTypes` | `USER_TYPE_SELECT` | The user type allowed to sign in through the agent. | The type handle. |
+
+`allowedUserTypes` holds a single user type for now. The executor will assign it to the agent profile as a one-entry list, which is the shape the agent service already accepts. Collecting several types is outside this feature.
+
+When effective delegation is true and any of the three is absent, the executor will request it as a required input through its incomplete path. A value that is already supplied is not requested again. When delegation is false, none is requested, and values left over from an earlier choice are neither applied to the agent nor required. Which inputs are mandatory at the screen is decided by the prompt that offers them: the on-behalf-of details prompt marks all three required, and the delegation choice prompt marks them optional so that choosing an own-identity agent is never blocked by them.
+
+The executor will not judge the values beyond reading them. The agent service and the inbound client service remain the authority. A login flow that does not exist or is not an authentication flow, a user type that does not exist or is not a user type, and a redirect URI that is not valid are rejected at creation with the management service's error. The executor will pass the login flow on the agent's authentication profile and will not set any other inbound setting.
+
+#### Correcting a rejected value
+
+A node has one failure connection, and a prompt that receives a failure clears only its own inputs. A failure that returned to a prompt that does not own the rejected fields would leave the rejected values in place and fail again on resubmission. A flow that collects the on-behalf-of details in a dedicated prompt will therefore connect the provisioning failure path to that prompt.
+
+That prompt can also receive errors it cannot fix, such as a schema attribute value rejected at creation, or a server fault. The agent service validates the on-behalf-of configuration before schema attributes, so the on-behalf-of error is reported first when both are present.
 
 ### Uniqueness and existing entities
 
@@ -229,7 +290,7 @@ The default agent provider will derive the supported OAuth configuration:
 | PKCE | No authorization-code requirement | Required |
 | Redirect URIs | Not required | Supplied callback URIs required |
 
-The provider will accept delegation intent and caller-supplied redirect URIs rather than accept arbitrary inbound settings from flow inputs. It will leave flow identifiers and token settings to the inbound service's OU and server defaults. It must not invent a callback URI. Allowed user types on a provider request will apply only to delegated agents; adding a dedicated onboarding control for that setting is outside this feature.
+The provider will accept delegation intent and caller-supplied redirect URIs rather than accept arbitrary inbound settings from flow inputs. It will leave token settings to the inbound service's server defaults, and it must not invent a callback URI. The authentication flow and allowed user type that a flow collects travel on the agent's profile, not as inbound settings. The provider will preserve the authentication flow and will apply the allowed user types only to a delegated agent. Where no authentication flow is supplied, the inbound service's organization unit and server defaults apply.
 
 The agent service will validate the request, resolve an absent owner, generate credentials, and coordinate entity and inbound-resource creation. If inbound creation fails after entity creation, compensation will remain the agent service's responsibility. The executor must not implement its own resource-creation or rollback sequence.
 
@@ -321,7 +382,7 @@ The flow keeps orchestration in the executor layer and creation ownership in the
 
 The provisioning node will set `mode: agent` and `includeOptional: true`. Its incomplete path will return to the details prompt, and its failure path will return to the separate name prompt with the service error, supporting correction of system attributes validated during agent creation. The uniqueness validator will also use agent mode. The details prompt will submit through that validator, whose incomplete path will return to the same details prompt for schema-attribute correction and whose success path will return to provisioning. The validator will declare no failure connection of its own.
 
-The default flow will create a non-delegated agent unless delegation input is added. Flow authors will be able to add the delegation widget and collect callback URIs without changing the Console creation page. The flow will determine screen order, branching, and which optional details are requested.
+The default flow will create an agent acting on its own behalf. Its provisioning node will set `delegated: false` explicitly, so the mode does not depend on an omitted property. Flow authors will build on-behalf-of variants from the templates described under the flow builder, or by adding the delegation widgets, without changing the Console creation page. The flow will determine screen order, branching, and which optional details are requested.
 
 ### Data model and API
 
@@ -336,8 +397,10 @@ No dedicated onboarding endpoint is required. The Console will compose existing 
 | `POST /flow/execute` | Initiate and continue the authorized administration flow. |
 | `GET /users?include=display` | Supply owner candidates with user display values. |
 | Existing OU APIs | Supply the OU selector. |
+| `GET /flows?flowType=AUTHENTICATION` | Supply authentication flow candidates, following pagination. |
+| `GET /user-types?include=display` | Supply user type candidates with display names, following pagination. |
 
-The Console will initiate execution with the resolved `flowId` and continue using the execution ID and action/input contract. Verbose responses will provide the components needed to render each step. Provider contracts and `USER_SELECT` are runtime additions; they do not introduce a new REST creation model. Direct agent creation will continue to use the agent management API.
+The Console will initiate execution with the resolved `flowId` and continue using the execution ID and action/input contract. Verbose responses will provide the components needed to render each step. Provider contracts and the `USER_SELECT`, `AUTH_FLOW_SELECT`, and `USER_TYPE_SELECT` input types are runtime additions; they do not introduce a new REST creation model. Direct agent creation will continue to use the agent management API.
 
 ### UI
 
@@ -345,7 +408,7 @@ The Console will initiate execution with the resolved `flowId` and continue usin
 
 The agent create route will render a flow-driven onboarding page in place of the wizard. The page will resolve the configured flow, start it, render the returned components, and submit the selected action and input values. It must not assemble an agent creation request or fall back to posting to the agent API.
 
-Text, input blocks, ordinary selects, user and OU selectors, actions, and copyable values will use the Console's visual components. The renderer will support runtime options and schema-generated fields. User selection will show a display value while submitting the user ID. The OU selector will respect the root supplied by the flow.
+Text, input blocks, ordinary selects, user, OU, authentication flow, and user type selectors, actions, and copyable values will use the Console's visual components. The renderer will support runtime options and schema-generated fields. User selection will show a display value while submitting the user ID. Authentication flow selection will show flow names while submitting the flow ID, and user type selection will show display names while submitting the handle. The OU selector will respect the root supplied by the flow.
 
 The owner step will follow this layout:
 
@@ -368,17 +431,34 @@ The builder will expose the flow capabilities through its existing resource pane
 | Resource | Authoring behavior |
 |---|---|
 | Provision User | Insert `ProvisioningExecutor` configured for users. |
-| Provision Agent | Insert the same executor with `mode: agent`. |
+| Provision Agent | Insert the same executor with `mode: agent`. Its `delegated` property fixes the agent's mode, or supplies the fallback when the flow asks for the choice. |
 | Agent Type Resolver | Insert `AgentTypeResolver` and edit its allowed agent types. |
 | Owner Resolver | Insert owner verification with a user-selection prompt. |
 | Attribute Uniqueness Validator | Select the category whose schema defines the unique attributes. |
 | Owner Resolution widget | Compose the owner prompt and resolver. |
-| Agent Delegation widget | Collect delegation intent and callback information. |
-| Agent Onboarding Flow template | Start a flow from the permission check, owner resolution, name and details prompts, provisioning node, and credentials screen. |
+| Agent Delegation Choice widget | Ask whether the agent acts on its own behalf or for a signed-in user, with optional on-behalf-of details. |
+| On-Behalf-Of Agent Details widget | Collect the callback URIs, authentication flow, and allowed user type, all required, with no delegation choice. |
+| Own-Identity Agent Onboarding Flow template | Start a flow that creates an agent acting on its own behalf. |
+| On-Behalf-Of Agent Onboarding Flow template | Start a flow that always creates an on-behalf-of agent. |
+| Generic Agent Onboarding Flow template | Start a flow in which the administrator chooses the agent's mode. |
 
 Canvas metadata must distinguish the two provisioning resources by their mode as well as their executor name. Reopening an agent provisioning node must retain its agent label and settings. These resources will use the existing builder panels; a separate agent-specific flow editor is not required.
 
-The template is a starting point, not a runnable onboarding flow. It omits agent type resolution, so a flow authored from it resolves no `categoryType`. An administration flow has no application behind it, which means provisioning cannot fall back to an application's allowed agent types either, and the node fails before it collects anything. An author must add `AgentTypeResolver` ahead of provisioning, and will usually add `OUResolverExecutor` and `AttributeUniquenessValidator` as well. Closing that gap in the shipped template is outstanding work; until then the bootstrapped `default-agent-onboarding-flow` is the reference for a flow that runs end to end.
+#### Agent onboarding templates
+
+The three templates share the default flow's front half: the permission check, agent type, organization unit, and owner resolution, then provisioning with agent details collected through its incomplete path and checked by the uniqueness validator, and the credentials screen. They differ in how the agent's mode is decided and what is collected before provisioning.
+
+| Template | Prompt before provisioning | `delegated` on the provisioning node | Provisioning failure path |
+|---|---|---|---|
+| Own-Identity Agent Onboarding Flow | None. | `false` | Agent details prompt. |
+| On-Behalf-Of Agent Onboarding Flow | On-behalf-of details, all inputs required. | `true` | On-behalf-of details prompt. |
+| Generic Agent Onboarding Flow | Delegation choice, on-behalf-of details optional. | `false`, used only when no choice is submitted | Delegation choice prompt. |
+
+In the two templates with a prompt before provisioning, owner resolution connects to that prompt and the prompt connects to provisioning. The provisioning incomplete path connects to the agent details prompt in all three. An on-behalf-of input still absent when provisioning runs, for example in a flow edited by hand, is requested through that path.
+
+The prompt that precedes provisioning is also the failure target, for the reason given under correcting a rejected value. Agent-creation errors that the prompt cannot fix, such as a schema attribute value rejected at creation, therefore return to a prompt that cannot correct them. The own-identity template has no such prompt, so its failure path remains the agent details prompt.
+
+Each template contains agent type resolution, so a flow created from it resolves a `categoryType`. An administration flow has no application behind it, which means provisioning cannot fall back to an application's allowed agent types; an author who removes `AgentTypeResolver` from a template makes the provisioning node fail before it collects anything.
 
 ### Configuration
 
@@ -390,6 +470,7 @@ The template is a starting point, not a runnable onboarding flow. It omits agent
 | Provisioning or uniqueness node `mode` | `user` when absent or empty | Flow node | Accept `user` or `agent`; reject unknown category names. |
 | Agent resolver `allowedAgentTypes` | `default` in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction. |
 | Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
+| Provisioning `delegated` | Absent, treated as `false`; `false` in the shipped flow and the own-identity and generic templates, `true` in the on-behalf-of template | Flow node, agent mode | Boolean. Fixes the agent's mode, or is the fallback when the flow asks for the choice. A value that is not a boolean is an error. |
 
 The Console must read the `merged` configuration layer. A missing handle, a handle that does not resolve to an administration flow, and a configuration request failure are distinct conditions. Missing configuration will identify the setting to configure; a missing flow will identify the configured handle. A request failure must not be reported as an empty setting.
 
@@ -522,14 +603,34 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 
 **Acceptance criteria:**
 
-- **AC11.1:** Given the builder resource panel, when agent onboarding is authored, then the agent provisioning entry, agent type resolver, owner resolver, related widgets, and template are available.
+- **AC11.1:** Given the builder resource panel, when agent onboarding is authored, then the agent provisioning entry, agent type resolver, owner resolver, the Agent Delegation Choice and On-Behalf-Of Agent Details widgets, and the three agent onboarding templates are available.
 - **AC11.2:** Given an agent provisioning node, when the flow is reopened, then the canvas labels it as Provision Agent and retains agent mode.
 - **AC11.3:** Given an agent resolver or uniqueness validator, when its properties are edited, then the corresponding allowed types or category can be configured.
 - **AC11.4:** Given another valid administration flow handle in the merged server configuration, when onboarding starts, then the Console runs that flow.
-- **AC11.5:** Given a flow authored from the Agent Onboarding Flow template with no agent type resolver added, when it runs, then provisioning fails rather than creating an agent under an assumed type.
+- **AC11.5:** Given a flow authored from any agent onboarding template, when the agent type resolver is removed and the flow runs, then provisioning fails rather than creating an agent under an assumed type.
+
+### R12. Create an on-behalf-of agent through the flow
+
+**Requirement:** A flow must be able to collect the configuration of an on-behalf-of agent, in the flows that fix the mode and in the flow that lets the administrator choose it.
+
+**Acceptance criteria:**
+
+- **AC12.1:** Given a runtime value, a submitted value, and a node property for `delegated`, when provisioning resolves the mode, then the first non-empty value in that order is used, an explicit `false` overrides a `true` property, and `false` applies when none is present.
+- **AC12.2:** Given a `delegated` value or node property that is not a boolean, when provisioning runs, then it fails with an error identifying the input and creates no agent.
+- **AC12.3:** Given effective delegation and an absent callback URI, authentication flow, or allowed user type, when provisioning runs, then each absent one is requested as a required input and a supplied one is not requested again; given no delegation, none is requested.
+- **AC12.4:** Given callback URIs separated by commas, when creation succeeds, then each URI is stored as a separate redirect URI.
+- **AC12.5:** Given a valid authentication flow and user type, when creation succeeds, then the created agent, when read back, carries that login flow and that single allowed user type.
+- **AC12.6:** Given a flow ID that does not exist or is not an authentication flow, a handle that is not an existing user type, or an invalid redirect URI, when creation runs, then the management service rejects it, no agent is created, and the flow follows the provisioning failure path.
+- **AC12.7:** Given on-behalf-of values collected earlier and a later choice of no delegation, when the agent is created, then those values are not applied to it and are not required.
+- **AC12.8:** Given a flow declaring `AUTH_FLOW_SELECT` or `USER_TYPE_SELECT`, when the flow is validated, then the types are accepted; and when the Console renders the step, then it lists only authentication flows by name and user types by display name, reading every page, and submits the flow ID and the handle.
+- **AC12.9:** Given two user types with the same display name, when the Console lists them, then each is distinguishable by its handle.
+- **AC12.10:** Given the on-behalf-of details prompt, when it renders, then it offers no delegation choice and marks all three inputs required; given the delegation choice prompt, then the same inputs are optional and the choice is submitted as `false` when unchecked.
+- **AC12.11:** Given the on-behalf-of template and a rejected authentication flow, user type, or redirect URI, when creation fails, then the flow returns to the on-behalf-of details prompt with the error, that prompt's inputs are cleared, and a corrected resubmission creates the agent.
+- **AC12.12:** Given the default flow, when it is inspected, then its provisioning node sets `delegated` to `false`.
 
 ## Change log
 
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-07 | Initial specification. |
+| 0.2 | 2026-10-06 | Add on-behalf-of agent onboarding: delegation resolution, the login flow and allowed user type inputs, the `AUTH_FLOW_SELECT` and `USER_TYPE_SELECT` input types, two widgets, and three templates. |
