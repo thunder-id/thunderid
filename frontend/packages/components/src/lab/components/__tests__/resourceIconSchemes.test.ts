@@ -9,8 +9,16 @@ import {
   ANONYMOUS_ENTITY_ICONS,
 } from '@thunderid/react';
 import {isAbsoluteUrl as isUrl} from '@thunderid/utils';
-import {describe, it, expect} from 'vitest';
+import {describe, it, expect, vi} from 'vitest';
 import {resolveResourceIcon} from '../resourceIconSchemes';
+
+const {resolveLogoUriMock} = vi.hoisted(() => ({resolveLogoUriMock: vi.fn()}));
+
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  resolveLogoUriMock.mockImplementation(actual.resolveLogoUri as (...args: unknown[]) => unknown);
+  return {...actual, resolveLogoUri: resolveLogoUriMock};
+});
 
 describe('isUrl', () => {
   it('should recognize http and https URLs', () => {
@@ -103,5 +111,15 @@ describe('resolveResourceIcon', () => {
     const resolved = resolveResourceIcon(`avatar:shape=rounded,variant=anonymous_entity,content=${name}`);
     expect(resolved.type).toBe('image');
     expect(decodeURIComponent((resolved as {src: string}).src)).toContain(icon.color);
+  });
+
+  it('should resolve an avatar: spec to an empty emoji when avatar generation throws', () => {
+    resolveLogoUriMock.mockImplementationOnce(() => {
+      throw new URIError('URI malformed');
+    });
+    expect(resolveResourceIcon('avatar:shape=circle,variant=two_letter,colors=0,content=AB')).toEqual({
+      char: '',
+      type: 'emoji',
+    });
   });
 });
