@@ -34,6 +34,12 @@ func (m *mockDesignResolveService) ResolveDesign(
 	return m.resolveDesignFn(ctx, resolveType, id)
 }
 
+func (m *mockDesignResolveService) ResolveDesignContent(
+	_ context.Context, _, _, _ string,
+) (string, *tidcommon.ServiceError) {
+	return "", nil
+}
+
 // Test Suite
 type ResolveHandlerTestSuite struct {
 	suite.Suite

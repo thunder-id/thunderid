@@ -67,8 +67,9 @@ func (ts *CallbackNegativeTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: cbNegUserType,
-		OUID: ouID,
+		Handle:      cbNegUserType,
+		DisplayName: "Authz Callback Neg Person",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},

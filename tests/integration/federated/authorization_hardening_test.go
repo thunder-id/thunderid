@@ -35,7 +35,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ReservedKeyClaimIsNotTrusted() 
 	user := s.baseUser(s.nextSubject())
 	user.Custom["mapped_role_ids"] = privilegedRoleID
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 
 	authorized := s.authorizeFederated(config, user, "delete", "federated-authz-mapping-api")
 	s.NotContains(authorized, "delete",

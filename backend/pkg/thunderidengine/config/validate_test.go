@@ -111,6 +111,15 @@ func (suite *ValidateTestSuite) TestTrustedIssuerConfig_Validate() {
 		}
 		assert.ErrorContains(t, c.Validate(), "https scheme")
 	})
+
+	suite.T().Run("malformed JWKS URL fails", func(t *testing.T) {
+		c := &TrustedIssuerConfig{
+			Issuer:   "https://issuer.example.com",
+			JWKSURL:  "https://issuer.example.com/%zz",
+			Audience: "https://api.example.com",
+		}
+		assert.ErrorContains(t, c.Validate(), "not a valid URL")
+	})
 }
 
 // ----- SecurityConfig -----
@@ -297,6 +306,35 @@ func (suite *ValidateTestSuite) TestDPoPConfig_Validate() {
 	})
 }
 
+// ----- ClientAssertionConfig -----
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_IsConfigured() {
+	assert.False(suite.T(), (&ClientAssertionConfig{}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxLifetime: 300}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxIatAge: 300}).IsConfigured())
+}
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_Validate() {
+	suite.T().Run("unconfigured passes", func(t *testing.T) {
+		assert.NoError(t, (&ClientAssertionConfig{}).Validate())
+	})
+
+	suite.T().Run("zero MaxLifetime fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxIatAge: 300}
+		assert.ErrorContains(t, c.Validate(), "max_lifetime")
+	})
+
+	suite.T().Run("zero MaxIatAge fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxLifetime: 300}
+		assert.ErrorContains(t, c.Validate(), "max_iat_age")
+	})
+
+	suite.T().Run("valid config passes", func(t *testing.T) {
+		c := &ClientAssertionConfig{MaxLifetime: 300, MaxIatAge: 300}
+		assert.NoError(t, c.Validate())
+	})
+}
+
 // ----- AuthClassConfig -----
 
 func (suite *ValidateTestSuite) TestAuthClassConfig_Validate() {
@@ -347,6 +385,20 @@ func (suite *ValidateTestSuite) TestAuthClassConfig_Validate() {
 			AcrAMR: map[string][]string{"urn:acr:low": {"pwd"}, "urn:acr:high": {"pwd", "otp"}},
 		}
 		assert.NoError(t, c.Validate())
+	})
+}
+
+// ----- TokenExchangeConfig -----
+
+func (suite *ValidateTestSuite) TestTokenExchangeConfig_Validate() {
+	for _, family := range []string{"", "none", "inherit"} {
+		suite.T().Run("accepts "+family, func(t *testing.T) {
+			assert.NoError(t, (&TokenExchangeConfig{TokenFamily: family}).Validate())
+		})
+	}
+
+	suite.T().Run("unsupported value fails", func(t *testing.T) {
+		assert.ErrorContains(t, (&TokenExchangeConfig{TokenFamily: "foo"}).Validate(), "token_family")
 	})
 }
 
@@ -426,6 +478,26 @@ func (suite *ValidateTestSuite) TestBackchannelLogoutConfig_Validate() {
 			c := valid()
 			tc.set(&c)
 			assert.ErrorContains(t, c.Validate(), tc.name)
+		}
+	})
+	suite.T().Run("retry settings are accepted up to their bounds", func(t *testing.T) {
+		c := valid()
+		c.RequestTimeout, c.MaxAttempts, c.RetryDelay = 30, 10, 60
+		assert.NoError(t, c.Validate())
+	})
+	suite.T().Run("retry settings above their bounds are rejected", func(t *testing.T) {
+		over := []struct {
+			name string
+			set  func(*BackchannelLogoutConfig)
+		}{
+			{"request_timeout", func(c *BackchannelLogoutConfig) { c.RequestTimeout = 31 }},
+			{"max_attempts", func(c *BackchannelLogoutConfig) { c.MaxAttempts = 11 }},
+			{"retry_delay", func(c *BackchannelLogoutConfig) { c.RetryDelay = 61 }},
+		}
+		for _, tc := range over {
+			c := valid()
+			tc.set(&c)
+			assert.ErrorContains(t, c.Validate(), "oauth.logout.backchannel."+tc.name+" must be at most")
 		}
 	})
 }

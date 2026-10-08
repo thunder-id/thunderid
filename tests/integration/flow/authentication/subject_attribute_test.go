@@ -54,8 +54,9 @@ func (ts *SubjectAttributeTestSuite) SetupSuite() {
 
 	// external_id is unique + required + string, so it is a valid subject-attribute candidate.
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: subAttrUserType,
-		OUID: ts.ouID,
+		Handle:      subAttrUserType,
+		DisplayName: "Subattr Test Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type":     "string",

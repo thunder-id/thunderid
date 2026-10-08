@@ -19,7 +19,7 @@ const ApplicationConstants = {
    * The only agent type the API accepts, written to `allowedAgentTypes` when agent sign-in is
    * enabled for an application. Keep in sync with `backend/internal/entitytype/model.go`.
    */
-  DEFAULT_AGENT_TYPE: 'default',
+  DEFAULT_AGENT_TYPE_HANDLE: 'default',
 
   /**
    * Length rules the API enforces on the application name, mirrored here so the console can

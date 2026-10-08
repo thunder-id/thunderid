@@ -232,10 +232,11 @@ describe('useDeleteUser', () => {
   });
 
   it('should set pending state during deletion', async () => {
+    let resolveExecution: () => void;
     mockFlowDeletion({
       '/flow/execute': () =>
         new Promise((resolve) => {
-          setTimeout(() => resolve({data: {flowStatus: 'COMPLETE'}}), 100);
+          resolveExecution = () => resolve({data: {flowStatus: 'COMPLETE'}});
         }),
     });
 
@@ -248,12 +249,11 @@ describe('useDeleteUser', () => {
       expect(result.current.isPending).toBe(true);
     });
 
-    await waitFor(
-      () => {
-        expect(result.current.isSuccess).toBe(true);
-      },
-      {timeout: 500},
-    );
+    resolveExecution!();
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
 
     expect(result.current.isPending).toBe(false);
   });

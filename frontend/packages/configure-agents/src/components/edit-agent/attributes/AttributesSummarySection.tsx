@@ -42,7 +42,7 @@ export default function AttributesSummarySection({
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
   const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent.type);
+  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent.type);
   const {data: schemaDetails, isLoading, error, refetch} = useGetAgentType(matchedSchema?.id);
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so

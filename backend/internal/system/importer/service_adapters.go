@@ -16,6 +16,7 @@ import (
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -75,7 +76,8 @@ type userDeclarativeYAML struct {
 type entityTypeDeclarativeYAML struct {
 	ID                    string                       `yaml:"id"`
 	Category              entitytype.TypeCategory      `yaml:"category,omitempty"`
-	Name                  string                       `yaml:"name"`
+	Handle                string                       `yaml:"handle"`
+	DisplayName           string                       `yaml:"displayName"`
 	OUID                  string                       `yaml:"ouId,omitempty"`
 	OUHandle              string                       `yaml:"ouHandle,omitempty"`
 	AllowSelfRegistration bool                         `yaml:"allowSelfRegistration,omitempty"`
@@ -97,6 +99,22 @@ type layoutDeclarativeYAML struct {
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
 	Layout      interface{} `yaml:"layout"`
+}
+
+// notificationTemplateDeclarativeYAML is the import shape for a notification template.
+// It mirrors the API create model with an added channel discriminator.
+type notificationTemplateDeclarativeYAML struct {
+	Channel     string `yaml:"channel"`
+	Handle      string `yaml:"handle"`
+	DisplayName string `yaml:"displayName"`
+	Description string `yaml:"description"`
+	Content     struct {
+		Subject string `yaml:"subject"`
+		Body    string `yaml:"body"`
+	} `yaml:"content"`
+	Design *struct {
+		ColorScheme string `yaml:"colorScheme"`
+	} `yaml:"design"`
 }
 
 func (s *importService) importOrganizationUnit(
@@ -182,7 +200,7 @@ func (s *importService) importEntityType(
 
 	var req entityTypeDeclarativeYAML
 	if err := doc.Node.Decode(&req); err != nil {
-		return decodeErrorOutcome(resourceTypeEntityType, req.ID, req.Name, err)
+		return decodeErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, err)
 	}
 
 	var (
@@ -198,7 +216,7 @@ func (s *importService) importEntityType(
 			return ImportItemOutcome{
 				ResourceType: resourceTypeEntityType,
 				ResourceID:   req.ID,
-				ResourceName: req.Name,
+				ResourceName: req.DisplayName,
 				Status:       statusFailed,
 				Code:         ErrorInvalidYAMLContent.Code,
 				Message:      fmt.Sprintf("failed to marshal schema: %v", err),
@@ -218,7 +236,7 @@ func (s *importService) importEntityType(
 		return ImportItemOutcome{
 			ResourceType: resourceTypeEntityType,
 			ResourceID:   req.ID,
-			ResourceName: req.Name,
+			ResourceName: req.DisplayName,
 			Status:       statusFailed,
 			Code:         ErrorInvalidYAMLContent.Code,
 			Message:      fmt.Sprintf("invalid entity type category %q", string(category)),
@@ -227,7 +245,8 @@ func (s *importService) importEntityType(
 
 	createReq := entitytype.CreateEntityTypeRequestWithID{
 		ID:                    req.ID,
-		Name:                  req.Name,
+		Handle:                req.Handle,
+		DisplayName:           req.DisplayName,
 		OUID:                  req.OUID,
 		OUHandle:              req.OUHandle,
 		AllowSelfRegistration: req.AllowSelfRegistration,
@@ -235,7 +254,8 @@ func (s *importService) importEntityType(
 		Schema:                schemaBytes,
 	}
 	updateReq := entitytype.UpdateEntityTypeRequest{
-		Name:                  createReq.Name,
+		Handle:                createReq.Handle,
+		DisplayName:           createReq.DisplayName,
 		OUID:                  createReq.OUID,
 		OUHandle:              createReq.OUHandle,
 		AllowSelfRegistration: createReq.AllowSelfRegistration,
@@ -247,39 +267,39 @@ func (s *importService) importEntityType(
 		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.entityTypeService.GetEntityType(ctx, category, req.ID, false)
 			if svcErr == nil {
-				return successOutcome(resourceTypeEntityType, req.ID, req.Name, operationUpdate)
+				return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate)
 			}
 
 			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.Name, operationUpdate, svcErr)
+				return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 			}
 		}
 
-		return successOutcome(resourceTypeEntityType, req.ID, req.Name, operationCreate)
+		return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
 		updated, svcErr := s.entityTypeService.UpdateEntityType(ctx, category, req.ID, updateReq)
 		if svcErr == nil {
-			return successOutcome(resourceTypeEntityType, updated.ID, updated.Name, operationUpdate)
+			return successOutcome(resourceTypeEntityType, updated.ID, updated.DisplayName, operationUpdate)
 		}
 
 		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.Name, operationUpdate, svcErr)
+			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
 
 		created, createErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
 		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.Name, operationCreate, createErr)
+			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate, createErr)
 		}
-		return successOutcome(resourceTypeEntityType, created.ID, created.Name, operationCreate)
+		return successOutcome(resourceTypeEntityType, created.ID, created.DisplayName, operationCreate)
 	}
 
 	created, svcErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
 	if svcErr != nil {
-		return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.Name, operationCreate, svcErr)
+		return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate, svcErr)
 	}
-	return successOutcome(resourceTypeEntityType, created.ID, created.Name, operationCreate)
+	return successOutcome(resourceTypeEntityType, created.ID, created.DisplayName, operationCreate)
 }
 
 func (s *importService) importRole(
@@ -1217,4 +1237,99 @@ func (s *importService) importCredentialConfiguration(
 		return serviceErrorOutcome(resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationCreate, svcErr)
 	}
 	return successOutcome(resourceTypeCredentialConfiguration, created.ID, created.Handle, operationCreate)
+}
+
+// importNotificationTemplate imports a notification_template document.
+// Templates are keyed by (channel, handle); with upsert, existing templates are matched by handle and updated.
+func (s *importService) importNotificationTemplate(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.notifTemplateService == nil {
+		return unsupportedAdapterOutcome(resourceTypeNotificationTemplate, "notification template")
+	}
+
+	var raw notificationTemplateDeclarativeYAML
+	if err := doc.Node.Decode(&raw); err != nil {
+		return decodeErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, err)
+	}
+
+	channel := notificationtemplate.ChannelType(raw.Channel)
+	content := notificationtemplate.TemplateContent{Subject: raw.Content.Subject, Body: raw.Content.Body}
+	var design *notificationtemplate.TemplateDesign
+	if raw.Design != nil {
+		design = &notificationtemplate.TemplateDesign{ColorScheme: raw.Design.ColorScheme}
+	}
+	createReq := notificationtemplate.CreateTemplateRequest{
+		Handle:      raw.Handle,
+		DisplayName: raw.DisplayName,
+		Description: raw.Description,
+		Design:      design,
+		Content:     content,
+	}
+
+	// Validate before the handle lookup so an invalid or missing handle surfaces as a validation
+	// failure, consistently between a dry run and the real apply, rather than being reported by the
+	// handle-based lookup (which would otherwise mislabel it as an update).
+	if svcErr := s.notifTemplateService.ValidateTemplate(ctx, channel, createReq); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationCreate, svcErr)
+	}
+
+	// Resolve whether the handle already exists so the dry run can predict the real apply's outcome and
+	// upsert can target the existing template. For a real non-upsert apply the create path surfaces any
+	// conflict, so the lookup is only needed for a dry run or an upsert.
+	existingID := ""
+	if dryRun || options.IsUpsertEnabled() {
+		existing, lookupErr := s.notifTemplateService.GetTemplateByHandle(ctx, channel, raw.Handle)
+		if lookupErr != nil && !isNotFoundServiceError(lookupErr) {
+			return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationUpdate, lookupErr)
+		}
+		if existing != nil {
+			existingID = existing.ID
+		}
+	}
+
+	if dryRun {
+		op := operationCreate
+		if existingID != "" && options.IsUpsertEnabled() {
+			op = operationUpdate
+		}
+		// Without upsert, an existing (channel, handle) is a conflict the real apply would hit.
+		if existingID != "" && !options.IsUpsertEnabled() {
+			return serviceErrorOutcome(resourceTypeNotificationTemplate, existingID, raw.Handle,
+				operationCreate, &notificationtemplate.ErrorTemplateHandleConflict)
+		}
+		return successOutcome(resourceTypeNotificationTemplate, existingID, raw.Handle, op)
+	}
+
+	if existingID == "" {
+		created, svcErr := s.notifTemplateService.CreateTemplate(ctx, channel, createReq)
+		if svcErr == nil {
+			return successOutcome(resourceTypeNotificationTemplate, created.ID, created.Handle, operationCreate)
+		}
+		// Create race: the handle appeared between the existence check and the insert. Fall back to
+		// updating it when upsert is on; otherwise surface the conflict as a create failure.
+		if svcErr.Code != notificationtemplate.ErrorTemplateHandleConflict.Code || !options.IsUpsertEnabled() {
+			return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationCreate, svcErr)
+		}
+		existing, lookupErr := s.notifTemplateService.GetTemplateByHandle(ctx, channel, raw.Handle)
+		if lookupErr != nil && !isNotFoundServiceError(lookupErr) {
+			return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationUpdate, lookupErr)
+		}
+		if existing == nil {
+			return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationCreate, svcErr)
+		}
+		existingID = existing.ID
+	}
+
+	updated, updErr := s.notifTemplateService.UpdateTemplate(ctx, channel, existingID,
+		notificationtemplate.UpdateTemplateRequest{
+			DisplayName: raw.DisplayName,
+			Description: raw.Description,
+			Design:      design,
+			Content:     content,
+		})
+	if updErr != nil {
+		return serviceErrorOutcome(resourceTypeNotificationTemplate, existingID, raw.Handle, operationUpdate, updErr)
+	}
+	return successOutcome(resourceTypeNotificationTemplate, updated.ID, updated.Handle, operationUpdate)
 }

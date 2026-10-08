@@ -7,10 +7,11 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent, OAuthAgentConfig} from '../../../../models/agent';
 import AgentOverview from '../AgentOverview';
 
-const {mockGetServerUrl, mockGetDocumentationLink, mockUseGetUsers} = vi.hoisted(() => ({
+const {mockGetServerUrl, mockGetDocumentationLink, mockUseGetUsers, mockUseGetUserTypes} = vi.hoisted(() => ({
   mockGetServerUrl: vi.fn(() => 'https://localhost:8090'),
   mockGetDocumentationLink: vi.fn((key: string) => documentationLinks[key]),
   mockUseGetUsers: vi.fn(),
+  mockUseGetUserTypes: vi.fn(),
 }));
 
 const documentationLinks: Record<string, string | undefined> = {
@@ -32,6 +33,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 vi.mock('@thunderid/configure-users', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-users')>()),
   useGetUsers: (...args: unknown[]): unknown => mockUseGetUsers(...args) as unknown,
+}));
+
+vi.mock('@thunderid/configure-user-types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-user-types')>()),
+  useGetUserTypes: (): unknown => mockUseGetUserTypes() as unknown,
 }));
 
 vi.mock('../../attributes/AttributesSummarySection', () => ({
@@ -61,6 +67,10 @@ describe('AgentOverview', () => {
     mockGetDocumentationLink.mockImplementation((key: string) => documentationLinks[key]);
     mockUseGetUsers.mockReturnValue({
       data: {users: [{id: 'user-1', display: 'Alice'}]},
+      isLoading: false,
+    });
+    mockUseGetUserTypes.mockReturnValue({
+      data: {types: [{id: 'ut-1', handle: 'person', displayName: 'Person'}]},
       isLoading: false,
     });
   });
@@ -102,7 +112,15 @@ describe('AgentOverview', () => {
     render(<AgentOverview agent={{...baseAgent, allowedUserTypes: ['person']}} oauth2Config={delegatedOauth2Config} />);
 
     expect(screen.getByText('Allowed user types')).toBeInTheDocument();
-    expect(screen.getByText('person')).toBeInTheDocument();
+    expect(screen.getByText('Person')).toBeInTheDocument();
+  });
+
+  it('falls back to the handle when an allowed user type is not found', () => {
+    render(
+      <AgentOverview agent={{...baseAgent, allowedUserTypes: ['unknown']}} oauth2Config={delegatedOauth2Config} />,
+    );
+
+    expect(screen.getByText('unknown')).toBeInTheDocument();
   });
 
   it('calls onGoToAdvanced when the Edit in Advanced action is clicked', async () => {

@@ -36,7 +36,8 @@ var (
 	// agentSchema is reused from the entity type subsystem. Agents need a type that maps
 	// to a user type so attribute validation and credential extraction work correctly.
 	agentSchema = testutils.UserType{
-		Name: "default",
+		Handle:      "default",
+		DisplayName: "Default",
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},
@@ -910,7 +911,8 @@ var (
 	}
 
 	attrAgentSchema = testutils.UserType{
-		Name: "default",
+		Handle:      "default",
+		DisplayName: "Default",
 		Schema: map[string]interface{}{
 			"region": map[string]interface{}{"type": "string"},
 			"tier":   map[string]interface{}{"type": "string"},

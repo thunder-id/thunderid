@@ -318,7 +318,7 @@ components:
           description: Category of the referenced entity
         entityType:
           type: string
-          description: Type of the referenced entity
+          description: Handle of the user type or agent type of the referenced entity
         ouId:
           type: string
           description: Organization unit ID the entity belongs to

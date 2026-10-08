@@ -28,14 +28,16 @@ test.describe("User Types - Create User Type", () => {
   // The "zz" prefix is load bearing: GET /user-types sorts by name, and the Create User
   // wizard offers that order as-is while user-management's specs pick its first entry. A name
   // sorting before "Person" would make those specs fill a form for this schema instead.
-  const userTypeName = `zz_e2e_user_type_${TestDataFactory.generateUniqueId()}`;
+  const uniqueId = TestDataFactory.generateUniqueId();
+  const userTypeName = `zz_e2e_user_type_${uniqueId}`;
+  const userTypeHandle = `zz-e2e-user-type-${uniqueId}`;
 
   test.afterAll(async ({ request }) => {
     // beforeAll/afterAll cannot take custom test-scoped fixtures, so construct the shared
     // helper directly here - same class the userTypesApi fixture uses inside the test below.
     const userTypesApi = new UserTypesApi(request);
-    const deleted = await userTypesApi.deleteByName(userTypeName);
-    console.log(`Teardown: removed ${deleted ? 1 : 0} user type(s) matching ${userTypeName}`);
+    const deleted = await userTypesApi.deleteByHandle(userTypeHandle);
+    console.log(`Teardown: removed ${deleted ? 1 : 0} user type(s) matching ${userTypeHandle}`);
   });
 
   /** TC001: Verify a user type can be created through the Console wizard */
@@ -44,10 +46,11 @@ test.describe("User Types - Create User Type", () => {
       await userTypesPage.openCreateWizard();
     });
 
-    await test.step("Name the user type", async () => {
+    await test.step("Name the user type and set its handle", async () => {
       // A single-organization-unit deployment auto-resolves the only unit, so Continue here
       // goes straight to Properties - there's no separate step in between.
       await userTypesPage.fillName(userTypeName);
+      await userTypesPage.fillHandle(userTypeHandle);
       await userTypesPage.continueTo("properties");
     });
 
@@ -61,8 +64,9 @@ test.describe("User Types - Create User Type", () => {
     });
 
     await test.step("Verify the new user type via the User Types API", async () => {
-      const listed = await userTypesApi.findByName(userTypeName);
+      const listed = await userTypesApi.findByHandle(userTypeHandle);
       expect(listed).toBeDefined();
+      expect(listed!.displayName).toBe(userTypeName);
 
       // The list endpoint omits `schema`, so read the type by id to assert on it.
       const userType = await userTypesApi.get(listed!.id);

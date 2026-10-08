@@ -7,7 +7,10 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import ConfigureName from '../ConfigureName';
 import type {ConfigureNameProps} from '../ConfigureName';
 
-vi.mock('@thunderid/utils');
+vi.mock('@thunderid/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/utils')>();
+  return {...actual, generateRandomHumanReadableIdentifiers: vi.fn()};
+});
 
 const mockSuggestions = ['Alpha PID', 'Beta PID', 'Gamma PID'];
 const {generateRandomHumanReadableIdentifiers} = await import('@thunderid/utils');

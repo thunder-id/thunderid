@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-m2m-child-a
+handle: decl-m2m-child-a
+name: M2M Declarative Child A
+description: Child organization unit the M2M application is selectively granted to
+parent: decl-m2m-root

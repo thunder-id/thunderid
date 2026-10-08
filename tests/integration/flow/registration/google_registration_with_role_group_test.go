@@ -130,7 +130,8 @@ var (
 	}
 
 	googleRegGroupRoleEntityType = testutils.UserType{
-		Name: "google_reg_group_role_user",
+		Handle:      "google_reg_group_role_user",
+		DisplayName: "Google Reg Group Role User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -175,7 +176,7 @@ var (
 		ClientID:                  "google_reg_group_role_test_client",
 		ClientSecret:              "google_reg_group_role_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{googleRegGroupRoleEntityType.Name},
+		AllowedUserTypes:          []string{googleRegGroupRoleEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
@@ -431,7 +432,7 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) TestGoogleRegistrationWithGroupA
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)
 	ts.Require().NoError(err, "Failed to decode JWT assertion")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
-	ts.Require().Equal(googleRegGroupRoleEntityType.Name, jwtClaims.UserType, "Expected userType to match")
+	ts.Require().Equal(googleRegGroupRoleEntityType.Handle, jwtClaims.UserType, "Expected userType to match")
 	ts.Require().Equal(googleRegGroupRoleTestAppID, jwtClaims.Aud, "Expected aud to match application ID")
 
 	// Step 4: Verify user was created

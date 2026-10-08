@@ -3,11 +3,11 @@
 
 import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
+import {generateHandle} from '@thunderid/utils';
 import {Stack, TextField, FormControl, FormLabel, Typography} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
 import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
-import deriveHandle from '../../utils/deriveHandle';
 
 export interface ConfigureNameProps {
   name: string;
@@ -72,13 +72,13 @@ export default function ConfigureName({
     const newName = e.target.value;
     onNameChange(newName);
     if (!handleEdited) {
-      onHandleChange(deriveHandle(newName));
+      onHandleChange(generateHandle(newName));
     }
   };
 
   const handleSuggestionSelect = (suggestion: string): void => {
     onNameChange(suggestion);
-    onHandleChange(deriveHandle(suggestion));
+    onHandleChange(generateHandle(suggestion));
     onHandleEditedChange(false);
   };
 

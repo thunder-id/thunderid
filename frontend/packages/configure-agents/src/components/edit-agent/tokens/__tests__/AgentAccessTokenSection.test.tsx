@@ -37,12 +37,13 @@ describe('AgentAccessTokenSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'schema-1', name: 'default', ouId: 'ou-1'}]},
+      data: {types: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'}]},
     });
     mockUseGetAgentType.mockReturnValue({
       data: {
         id: 'schema-1',
-        name: 'default',
+        handle: 'default',
+        displayName: 'Default',
         ouId: 'ou-1',
         schema: {
           department: {type: 'string'},

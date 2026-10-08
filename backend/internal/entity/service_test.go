@@ -37,6 +37,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newEntityStoreInterfaceMock(s.T())
+	s.store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	s.hashService = hashmock.NewHashServiceInterfaceMock(s.T())
 	// Default: hashService.Generate returns a deterministic hash for any input.
 	s.hashService.On("Generate", mock.Anything).Return(cryptolib.Credential{
@@ -757,4 +758,51 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+// newServiceWithIndexedEmail returns a service whose store indexes email. Its store and entity type
+// mocks carry no other expectations, so any schema, uniqueness, or write call fails the test.
+func (s *ServiceTestSuite) newServiceWithIndexedEmail() (*entityService, *entityStoreInterfaceMock) {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("GetIndexedAttributes").Return(map[string]bool{"email": true})
+	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	svc := newEntityService(store, s.hashService, ets, nil, transaction.NewNoOpTransactioner()).(*entityService)
+	return svc, store
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_TooManyIndexedValuesRejectedBeforeSchemaValidation() {
+	svc, _ := s.newServiceWithIndexedEmail()
+	e := testEntity("e1")
+	e.Attributes = emailArrayAttrs(maxIndexedValuesPerAttribute + 1)
+
+	_, err := svc.CreateEntity(s.ctx, e, nil)
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_TooManyIndexedSystemValuesRejected() {
+	svc, _ := s.newServiceWithIndexedEmail()
+	e := testEntity("e1")
+	e.SystemAttributes = emailArrayAttrs(maxIndexedValuesPerAttribute + 1)
+
+	_, err := svc.CreateEntity(s.ctx, e, nil)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_TooManyIndexedValuesRejected() {
+	svc, store := s.newServiceWithIndexedEmail()
+
+	err := svc.UpdateSystemAttributes(s.ctx, "e1", emailArrayAttrs(maxIndexedValuesPerAttribute+1))
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+	store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
+	svc, store := s.newServiceWithIndexedEmail()
+	attrs := emailArrayAttrs(maxIndexedValuesPerAttribute)
+	store.On("GetEntity", mock.Anything, "e1").Return(*testEntity("e1"), nil)
+	store.On("UpdateSystemAttributes", mock.Anything, "e1", mock.AnythingOfType("json.RawMessage")).Return(nil)
+
+	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
 }

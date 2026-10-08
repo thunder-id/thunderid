@@ -1124,6 +1124,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/declarative-configurations/templates',
               label: 'Template Resources',
             },
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/value-references',
+              label: 'Value References',
+            },
           ],
         },
       ],

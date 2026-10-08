@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -27,21 +28,22 @@ import (
 // across all domain packages used by the importer. Used to distinguish upsert fallback (create after
 // update-not-found) from other update errors.
 var notFoundErrorCodes = map[string]struct{}{
-	application.ErrorApplicationNotFound.Code:  {},
-	idp.ErrorIDPNotFound.Code:                  {},
-	notification.ErrorSenderNotFound.Code:      {},
-	flowmgt.ErrorFlowNotFound.Code:             {},
-	ou.ErrorOrganizationUnitNotFound.Code:      {},
-	entitytype.ErrorEntityTypeNotFound.Code:    {},
-	role.ErrorRoleNotFound.Code:                {},
-	group.ErrorGroupNotFound.Code:              {},
-	resource.ErrorResourceServerNotFound.Code:  {},
-	thememgt.ErrorThemeNotFound.Code:           {},
-	layoutmgt.ErrorLayoutNotFound.Code:         {},
-	user.ErrorUserNotFound.Code:                {},
-	agent.ErrorAgentNotFound.Code:              {},
-	presentation.ErrorDefinitionNotFound.Code:  {},
-	credential.ErrorConfigurationNotFound.Code: {},
+	application.ErrorApplicationNotFound.Code:       {},
+	idp.ErrorIDPNotFound.Code:                       {},
+	notification.ErrorSenderNotFound.Code:           {},
+	flowmgt.ErrorFlowNotFound.Code:                  {},
+	ou.ErrorOrganizationUnitNotFound.Code:           {},
+	entitytype.ErrorEntityTypeNotFound.Code:         {},
+	role.ErrorRoleNotFound.Code:                     {},
+	group.ErrorGroupNotFound.Code:                   {},
+	resource.ErrorResourceServerNotFound.Code:       {},
+	thememgt.ErrorThemeNotFound.Code:                {},
+	layoutmgt.ErrorLayoutNotFound.Code:              {},
+	user.ErrorUserNotFound.Code:                     {},
+	agent.ErrorAgentNotFound.Code:                   {},
+	presentation.ErrorDefinitionNotFound.Code:       {},
+	credential.ErrorConfigurationNotFound.Code:      {},
+	notificationtemplate.ErrorTemplateNotFound.Code: {},
 }
 
 var (
@@ -101,6 +103,18 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.import.deleteNotSupported.description",
 			DefaultValue: "The requested resource type does not support runtime deletion",
+		},
+	}
+
+	// ErrorUnresolvedReference represents a document referring to a variable or secret this deployment
+	// holds no value for.
+	ErrorUnresolvedReference = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1006",
+		Error: tidcommon.I18nMessage{Key: "error.import.unresolvedReference", DefaultValue: "Unresolved reference"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.unresolvedReference.description",
+			DefaultValue: "The resource refers to a variable or secret this deployment holds no value for",
 		},
 	}
 )

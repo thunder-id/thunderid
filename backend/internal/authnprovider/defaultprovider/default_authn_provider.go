@@ -592,6 +592,10 @@ func (p *defaultAuthnProvider) handleEntityAuthError(
 		return newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 			"Authentication failed", "Invalid credentials provided")
 	}
+	if errors.Is(err, entity.ErrAmbiguousEntity) {
+		return newClientError(authnprovidercm.ErrorCodeAmbiguousUser,
+			"Ambiguous user", "Multiple users found matching the provided identifiers")
+	}
 	return p.logAndReturnServerError(ctx, serverMsg, log.String("error", err.Error()))
 }
 

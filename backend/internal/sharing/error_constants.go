@@ -344,6 +344,49 @@ var (
 				"a whole family, or the reverse; delete it and issue the policy you want instead",
 		},
 	}
+	// ErrorInvalidLimit is returned when a listing asks for a page size outside what is allowed.
+	ErrorInvalidLimit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_limit_parameter",
+			DefaultValue: "Invalid limit parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_limit_parameter_description",
+			DefaultValue: "The limit parameter must be a positive integer within the maximum page size",
+		},
+	}
+	// ErrorInvalidOffset is returned when a listing starts before the first result.
+	ErrorInvalidOffset = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_offset_parameter",
+			DefaultValue: "Invalid offset parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_offset_parameter_description",
+			DefaultValue: "The offset parameter must be a non-negative integer",
+		},
+	}
+	// ErrorResultLimitExceededInCompositeMode is returned when a resource has more policies across
+	// the two stores than can be merged to page them. Paging is decided after the merge, so the
+	// merge cannot itself be paged, and answering with a truncated page would silently hide
+	// policies that do apply.
+	ErrorResultLimitExceededInCompositeMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.result_limit_exceeded_in_composite_mode",
+			DefaultValue: "Result limit exceeded in composite mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.sharingservice.result_limit_exceeded_in_composite_mode_description",
+			DefaultValue: "The resource has more sharing policies than can be listed while " +
+				"declarative resources are loaded",
+		},
+	}
 )
 
 // errPolicyNotFound is the store's own signal that no row carries an id, kept unexported because
@@ -352,6 +395,11 @@ var (
 // store has also been consulted. The two are separate because absence means different things to
 // different callers, from "the id is free to use" to "another writer moved the row".
 var errPolicyNotFound = errors.New("sharing policy not found")
+
+// errResultLimitExceededInCompositeMode is the composite store's own signal that the two halves
+// together hold more policies than it can merge. The service turns it into
+// ErrorResultLimitExceededInCompositeMode; nothing outside this package sees it.
+var errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 
 // withDetail returns a copy of err whose description names the offending value.
 func withDetail(err tidcommon.ServiceError, detail string) *tidcommon.ServiceError {

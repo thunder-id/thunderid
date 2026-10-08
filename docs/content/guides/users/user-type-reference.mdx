@@ -10,6 +10,17 @@ description: Reference for user type schema settings, attribute types, and const
 
 This page is a reference for all settings, attribute types, and constraint modifiers available when defining a user type schema. For step-by-step instructions on creating and managing user types, see [User Types](../user-types).
 
+## User Type Settings
+
+| Setting | Description |
+|---------|-------------|
+| `handle` | Required. The unique, immutable identifier of the user type. 1 to 100 characters of lowercase letters, numbers, hyphens, and underscores, starting and ending with a letter or a number. Unique among user types. |
+| `displayName` | Required. Human-readable name. |
+| `ouId` | Required. The organization unit the user type belongs to. |
+| `allowSelfRegistration` | Whether users of this type can self-register. Defaults to `false`. |
+| `systemAttributes.display` | The attribute used as the display name of users of this type. |
+| `schema` | The attribute definitions of the user type. |
+
 ## Attribute Types
 
 Each attribute in a user type schema has a **type**. <ProductName /> supports the following attribute types:
@@ -40,7 +51,7 @@ Modifiers add validation and behavior rules to an attribute. You can combine mul
 
 ### Person
 
-The general-purpose user type. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
+The general-purpose user type, with the handle `person` and the display name `Person`. Self-registration is enabled, so users of this type can sign up through the registration flow of any application that lists it under [Allowed User Types](../../applications/application-settings#control-who-can-register). Administrators can also create users of this type.
 
 | Attribute | Type | Constraints | Notes |
 |-----------|------|-------------|-------|

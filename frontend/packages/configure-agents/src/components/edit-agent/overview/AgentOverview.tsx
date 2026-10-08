@@ -8,8 +8,10 @@ import {
   useExternalLinkConfirmation,
 } from '@thunderid/components';
 import {OAuth2GrantTypes} from '@thunderid/configure-applications';
+import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {Box, Button, Chip, Link, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {ArrowRight, ArrowUpRight} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX, type ReactNode} from 'react';
@@ -135,11 +137,14 @@ export default function AgentOverview({
   onGoToAdvanced = undefined,
 }: AgentOverviewProps): JSX.Element {
   const {t} = useTranslation();
-  const {getServerUrl, getDocumentationLink} = useConfig();
+  const {getDocumentationLink} = useConfig();
   const externalLinkConfirmation = useExternalLinkConfirmation();
   const {data: usersData} = useGetUsers({limit: 100, offset: 0});
+  const {data: userTypesData} = useGetUserTypes();
 
-  const serverUrl = getServerUrl();
+  // The endpoints below are for someone to copy into their own agent, so they have to name
+  // the deployment that answers them rather than the one the console is configured against.
+  const runtimeUrl = useRuntimeUrl();
   const quickstartDocsUrl = getDocumentationLink('agents.quickstarts.langchain.docs');
 
   const ownerLabel = useMemo(() => {
@@ -149,33 +154,35 @@ export default function AgentOverview({
   }, [usersData, agent.owner]);
 
   const isDelegated = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
-  const allowedUserTypes = agent.allowedUserTypes ?? [];
+  const allowedUserTypes = (agent.allowedUserTypes ?? []).map((handle) =>
+    getUserTypeLabel(userTypesData?.types ?? [], handle),
+  );
 
   const endpoints = [
     {
       key: 'wellknown',
       label: t('agents:edit.overview.endpoints.wellknown', 'OpenID configuration'),
-      url: `${serverUrl}/.well-known/openid-configuration`,
+      url: `${runtimeUrl}/.well-known/openid-configuration`,
     },
     {
       key: 'authorization',
       label: t('agents:edit.overview.endpoints.authorization', 'Authorization endpoint'),
-      url: `${serverUrl}/oauth2/authorize`,
+      url: `${runtimeUrl}/oauth2/authorize`,
     },
     {
       key: 'token',
       label: t('agents:edit.overview.endpoints.token', 'Token endpoint'),
-      url: `${serverUrl}/oauth2/token`,
+      url: `${runtimeUrl}/oauth2/token`,
     },
     {
       key: 'userinfo',
       label: t('agents:edit.overview.endpoints.userinfo', 'Userinfo endpoint'),
-      url: `${serverUrl}/oauth2/userinfo`,
+      url: `${runtimeUrl}/oauth2/userinfo`,
     },
     {
       key: 'jwks',
       label: t('agents:edit.overview.endpoints.jwks', 'JWKS URI'),
-      url: `${serverUrl}/oauth2/jwks`,
+      url: `${runtimeUrl}/oauth2/jwks`,
     },
   ];
 

@@ -176,7 +176,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_WithDisplay_
 		[]string{"group1"}).Return(map[string]*group.Group{
 		"group1": {Name: "Test Group"},
 	}, (*tidcommon.ServiceError)(nil)).Once()
-	suite.mockEntityTypeService.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+	suite.mockEntityTypeService.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 		[]string{"employee"}).Return(map[string]string{
 		"employee": "email",
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -300,7 +300,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_WithDisplay_
 			Attributes: json.RawMessage(`{"profile":{"fullName":"Alice Smith"}}`),
 		},
 	}, nil).Once()
-	suite.mockEntityTypeService.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+	suite.mockEntityTypeService.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 		[]string{"employee"}).Return(map[string]string{
 		"employee": "profile.fullName",
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -333,7 +333,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_WithDisplay_
 		},
 	}, nil).Once()
 	// Schema service fails — should fall back to user ID.
-	suite.mockEntityTypeService.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+	suite.mockEntityTypeService.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 		[]string{"employee"}).Return(
 		(map[string]string)(nil), &tidcommon.ServiceError{Code: "INTERNAL_ERROR"},
 	).Once()

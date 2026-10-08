@@ -151,6 +151,62 @@ describe('OperationModesSection', () => {
     });
   });
 
+  describe('Back-Channel Logout URI', () => {
+    it('shows the registered URI once a user-facing grant is selected', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={{...delegatedConfig, backchannelLogoutUri: 'https://agent.example.com/bcl'}}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Back-Channel Logout URI')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
+    });
+
+    it('is hidden in Autonomous-only mode, where the agent never joins a session', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByText('Back-Channel Logout URI')).not.toBeInTheDocument();
+    });
+
+    it('commits backchannelLogoutUri on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(
+        screen.getByPlaceholderText('https://example.com/backchannel-logout'),
+        'https://agent.example.com/bcl',
+      );
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({backchannelLogoutUri: 'https://agent.example.com/bcl'});
+    });
+
+    it('reports an invalid typed value, which is not committed', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      const onValidationChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+          onBackchannelLogoutUriValidationChange={onValidationChange}
+        />,
+      );
+
+      await user.type(
+        screen.getByPlaceholderText('https://example.com/backchannel-logout'),
+        'https://agent.example.com/bcl#frag',
+      );
+      await user.tab();
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+      expect(onOAuth2ConfigChange).not.toHaveBeenCalled();
+    });
+  });
+
   describe('read-only', () => {
     it('disables the grant types input when there is no onOAuth2ConfigChange handler', () => {
       render(<OperationModesSection oauth2Config={delegatedConfig} />);

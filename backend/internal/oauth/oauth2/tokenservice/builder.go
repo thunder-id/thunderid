@@ -278,6 +278,12 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims[key] = value
 	}
 
+	// Set after merging subject attributes so the organization the token was issued for wins over
+	// any organization claim the subject's own attributes carried.
+	for key, value := range ctx.OUAttributes {
+		claims[key] = value
+	}
+
 	// Set after merging subject attributes to prevent them from overwriting this system claim.
 	if ctx.AttributeCacheID != "" {
 		claims["aci"] = ctx.AttributeCacheID

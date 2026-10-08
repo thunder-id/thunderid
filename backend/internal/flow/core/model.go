@@ -7,8 +7,30 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// ExternalIdentity is what an external party (a federated identity provider or a credential issuer)
+// asserted, as stored under common.RuntimeKeyExternalIdentity. IdpID and Sub are set only for a
+// federated connection.
+type ExternalIdentity struct {
+	IdpID  string                 `json:"idpId,omitempty"`
+	Sub    string                 `json:"sub,omitempty"`
+	Claims map[string]interface{} `json:"claims,omitempty"`
+}
+
+// Claim returns one claim as a string, and whether it is present. It is safe on a nil identity.
+func (e *ExternalIdentity) Claim(name string) (string, bool) {
+	if e == nil {
+		return "", false
+	}
+	value, ok := e.Claims[name]
+	if !ok {
+		return "", false
+	}
+	return systemutils.ConvertInterfaceValueToString(value), true
+}
 
 // NodeCondition represents a condition that must be met for a node to execute.
 // If specified, the node will only execute when the resolved value of key matches value.

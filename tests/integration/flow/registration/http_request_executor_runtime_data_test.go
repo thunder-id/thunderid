@@ -144,7 +144,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -232,7 +232,8 @@ var (
 	}
 
 	httpRequestRuntimeDataEntityType = testutils.UserType{
-		Name: "http_request_runtime_user",
+		Handle:      "http_request_runtime_user",
+		DisplayName: "Http Request Runtime User",
 		Schema: map[string]interface{}{
 			"sub": map[string]interface{}{
 				"type": "string",
@@ -277,7 +278,7 @@ var (
 		ClientID:                  "http_runtime_data_reg_client",
 		ClientSecret:              "http_runtime_data_reg_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{httpRequestRuntimeDataEntityType.Name},
+		AllowedUserTypes:          []string{httpRequestRuntimeDataEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},

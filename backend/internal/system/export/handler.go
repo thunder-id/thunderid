@@ -10,6 +10,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -59,6 +60,8 @@ func (eh *exportHandler) HandleExportRequest(w http.ResponseWriter, r *http.Requ
 		jsonResponse.EnvironmentVariables = exportResponse.EnvFile.Content
 	}
 
+	// The environment variables carry exported secrets in plain text, so no cache may keep them.
+	w.Header().Set(serverconst.CacheControlHeaderName, serverconst.CacheControlNoStore)
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, jsonResponse)
 }
 

@@ -24,6 +24,9 @@ type DesignResolveServiceInterface interface {
 	ResolveDesign(
 		ctx context.Context, resolveType providers.DesignResolveType, id string,
 	) (*providers.DesignResponse, *tidcommon.ServiceError)
+	ResolveDesignContent(
+		ctx context.Context, themeID, colorScheme, content string,
+	) (string, *tidcommon.ServiceError)
 }
 
 // designResolveService is the default implementation of the DesignResolveServiceInterface.
@@ -150,4 +153,65 @@ func (drs *designResolveService) ResolveDesign(
 		log.String("layoutId", app.LayoutID))
 
 	return designResponse, nil
+}
+
+// ResolveDesignContent replaces every "{{design(<dot.path>)}}" placeholder in content with its value
+// from the theme's color scheme. Unknown placeholders are left as-is; content with no placeholder is
+// returned unchanged without loading the theme.
+//
+// As shallow defense in depth, a value with angle brackets or control characters is left unresolved
+// (see substituteDesignTokens) and logged. Values are NOT encoded — the caller MUST encode the result
+// for its output context to avoid injection.
+func (drs *designResolveService) ResolveDesignContent(
+	ctx context.Context, themeID, colorScheme, content string,
+) (string, *tidcommon.ServiceError) {
+	if !designPlaceholderRegex.MatchString(content) {
+		return content, nil
+	}
+
+	tokens, svcErr := drs.resolveDesignTokens(ctx, themeID, colorScheme)
+	if svcErr != nil {
+		return "", svcErr
+	}
+
+	resolved, dropped := substituteDesignTokens(content, tokens)
+	for _, token := range dropped {
+		drs.logger.Warn(ctx, "Dropped design token with unsafe value; left its placeholder unresolved",
+			log.String("themeId", themeID), log.String("token", token))
+	}
+	return resolved, nil
+}
+
+// resolveDesignTokens resolves a theme into a dot-path token map (e.g. "palette.primary.main" ->
+// "#fa7b3f"). It loads the theme, resolves the applicable theme (the root with the color scheme that
+// applies promoted onto it, the requested one or the theme's defaultColorScheme when that is empty or
+// absent), and flattens it so both scheme-level values (palette.*) and root-level values (typography.*,
+// shape.*) are addressable. It returns InternalServerError (logged with the theme ID) when the theme is
+// empty, malformed, or defines no color scheme that applies. Resolution is generic: any token present in
+// the theme resolves, and which tokens a consumer references is the consumer's concern. The values are
+// raw, theme-authored strings: a consumer must encode them for its output context before use to avoid
+// injection.
+func (drs *designResolveService) resolveDesignTokens(
+	ctx context.Context, themeID, colorScheme string,
+) (map[string]string, *tidcommon.ServiceError) {
+	if drs.themeMgtService == nil {
+		drs.logger.Error(ctx, "Theme management service is not available")
+		return nil, &tidcommon.InternalServerError
+	}
+
+	theme, svcErr := drs.themeMgtService.GetTheme(ctx, themeID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	applicableTheme, err := resolveApplicableTheme(theme.Theme, colorScheme)
+	if err != nil {
+		drs.logger.Error(ctx, "Failed to resolve applicable theme for design tokens",
+			log.String("themeId", themeID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	// rootPrefix is the starting dot-path prefix: top-level theme keys have no parent path.
+	const rootPrefix = ""
+	return flattenTokens(rootPrefix, applicableTheme), nil
 }

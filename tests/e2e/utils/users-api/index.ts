@@ -31,15 +31,15 @@ export class UsersApi {
   }
 
   /** Create a user directly via the API, bypassing the Console's Create User wizard. */
-  async createUser(attributes: Record<string, unknown>, type: string = "Person"): Promise<ApiUser> {
-    const userType = await this.userTypes.findByName(type);
+  async createUser(attributes: Record<string, unknown>, type: string = "person"): Promise<ApiUser> {
+    const userType = await this.userTypes.findByHandle(type);
     if (!userType) {
       throw new Error(`GET /user-types returned no "${type}" user type`);
     }
     const response = await sendOk(this.request, "POST", "/users", {
       ouId: userType.ouId,
-      // CreateUser resolves `type` by entity-type name (e.g. "Person"), not by id.
-      type: userType.name,
+      // CreateUser resolves `type` by entity-type handle (e.g. "person"), not by id.
+      type: userType.handle,
       attributes,
     });
     return (await response.json()) as ApiUser;

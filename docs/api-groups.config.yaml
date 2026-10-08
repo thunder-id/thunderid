@@ -68,6 +68,7 @@ fileGroupNames:
   application.yaml: Applications
   authzen.yaml: Access Control
   authentication.yaml: ~         # all tags claimed by Authentication
+  configuration-version.yaml: ~  # Configuration Versions claimed by System
   connections.yaml: Connections
   design.yaml: ~                 # all tags claimed by Branding & Localization
   discovery.yaml: ~              # all tags claimed by OAuth2 / OIDC
@@ -161,6 +162,8 @@ explicitSubGroups:
       - Variables
       - Secrets
       - Gateways
+      - Gateway values
+      - Configuration Versions
 
   # ── SCIM Provisioning ─────────────────────────────────────────────────────────
   - name: SCIM Provisioning

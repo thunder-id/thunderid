@@ -119,8 +119,9 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.authzOUID = ouID
 
 	typeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: roleAuthzTypeName,
-		OUID: ts.authzOUID,
+		Handle:      roleAuthzTypeName,
+		DisplayName: "Authz Role Type",
+		OUID:        ts.authzOUID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},

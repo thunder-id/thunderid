@@ -105,8 +105,9 @@ func (s *AgentImportExportSuite) SetupSuite() {
 	s.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: s.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},

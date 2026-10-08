@@ -6,10 +6,13 @@ package sharing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // CompositeStoreTestSuite covers the store that puts the declared policies and the stored ones
@@ -127,10 +130,10 @@ func (s *CompositeStoreTestSuite) TestTheInitiatorLookupFallsBackTheSameWay() {
 func (s *CompositeStoreTestSuite) TestListingAResourceReturnsBothHalves() {
 	ctx := context.Background()
 	s.file.seed(declaredPolicy("declared", testResource, otherOU))
-	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource).
+	s.db.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).
 		Return([]Policy{storedPolicy(rootOU)}, nil).Once()
 
-	held, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	held, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 
 	s.Require().NoError(err)
 	s.Require().Len(held, 2)
@@ -144,10 +147,10 @@ func (s *CompositeStoreTestSuite) TestListingAResourceReturnsBothHalves() {
 func (s *CompositeStoreTestSuite) TestADeclaredPolicyIsDroppedWhenARowGovernsTheSameUnit() {
 	ctx := context.Background()
 	s.file.seed(declaredPolicy("declared", testResource, rootOU))
-	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource).
+	s.db.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).
 		Return([]Policy{storedPolicy(rootOU)}, nil).Once()
 
-	held, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	held, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 
 	s.Require().NoError(err)
 	s.Require().Len(held, 1, "one organization unit is answered with one policy")
@@ -176,9 +179,10 @@ func (s *CompositeStoreTestSuite) TestAFailedListIsNotAnsweredFromDeclarationsAl
 	ctx := context.Background()
 	unreachable := errors.New("connection refused")
 	s.file.seed(declaredPolicy("declared", testResource, otherOU))
-	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource).Return(nil, unreachable).Once()
+	s.db.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).
+		Return(nil, unreachable).Once()
 
-	held, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	held, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 
 	s.ErrorIs(err, unreachable)
 	s.Nil(held)
@@ -231,4 +235,114 @@ func (s *CompositeStoreTestSuite) TestTheDeclaredHalfIsOnlyAskedWhenItHasTo() {
 
 	s.Require().NoError(err)
 	asked.AssertNotCalled(s.T(), "GetPolicy", ctx, "stored")
+}
+
+// Paging is decided after the merge, not inside each half. Asking each half for its own page would
+// draw the boundary in a different place in each and return a page that is neither store's.
+func (s *CompositeStoreTestSuite) TestAPageIsCutFromTheMergedSet() {
+	ctx := context.Background()
+	s.file.seed(declaredPolicy("declared", testResource, otherOU))
+	s.db.EXPECT().CountPoliciesForResource(ctx, testType, testResource).Return(1, nil)
+	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource, mock.Anything, 0).
+		Return([]Policy{storedPolicy(rootOU)}, nil)
+
+	first, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 1, 0)
+	s.Require().NoError(err)
+	s.Require().Len(first, 1)
+	s.Equal("stored", first[0].ID, "the stored half comes first, as the merge orders it")
+
+	second, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 1, 1)
+	s.Require().NoError(err)
+	s.Require().Len(second, 1)
+	s.Equal("declared", second[0].ID, "the second page continues into the declared half")
+}
+
+// The count is of the merged set. Adding the two halves' counts would report a declared policy that
+// a stored row supersedes, so a listing would promise a result no page ever returns.
+func (s *CompositeStoreTestSuite) TestTheCountIsOfTheMergedSet() {
+	ctx := context.Background()
+	s.file.seed(declaredPolicy("declared", testResource, rootOU))
+	s.db.EXPECT().CountPoliciesForResource(ctx, testType, testResource).Return(1, nil)
+	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource, mock.Anything, 0).
+		Return([]Policy{storedPolicy(rootOU)}, nil)
+
+	count, err := s.store.CountPoliciesForResource(ctx, testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal(1, count, "one organization unit, one policy, counted once")
+}
+
+// Above the cap the merge cannot be completed, so the listing fails rather than answering with a
+// page drawn from a partial merge, which would silently hide policies that do apply.
+func (s *CompositeStoreTestSuite) TestTooManyPoliciesToMergeIsAFailureNotAShortPage() {
+	ctx := context.Background()
+	s.db.EXPECT().CountPoliciesForResource(ctx, testType, testResource).
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	s.file.seed(declaredPolicy("declared", testResource, otherOU))
+
+	_, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 10, 0)
+
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+// A count the database cannot answer is not a count of zero.
+func (s *CompositeStoreTestSuite) TestAFailedCountIsNotZero() {
+	ctx := context.Background()
+	unreachable := errors.New("connection refused")
+	s.db.EXPECT().CountPoliciesForResource(ctx, testType, testResource).Return(0, unreachable)
+
+	_, err := s.store.CountPoliciesForResource(ctx, testType, testResource)
+
+	s.ErrorIs(err, unreachable)
+}
+
+// The cap is measured against what the two halves actually hold, so the counts reach the helper
+// uncapped. A count already cut down to the cap can never be found to exceed it, and the listing
+// would then page serenely through the first MaxCompositeStoreRecords policies as though the rest
+// did not exist.
+func (s *CompositeStoreTestSuite) TestADatabaseAloneCanExceedTheMergeLimit() {
+	ctx := context.Background()
+	s.db.EXPECT().CountPoliciesForResource(ctx, testType, testResource).
+		Return(serverconst.MaxCompositeStoreRecords+500, nil)
+	s.db.EXPECT().ListPoliciesForResource(ctx, testType, testResource, mock.Anything, mock.Anything).
+		Return(nil, nil).Maybe()
+
+	_, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 10, 0)
+
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+// The whole-set read is not subject to the record cap the paged listing enforces. A resource whose
+// policies outgrew the cap would otherwise stop resolving at all: every coverage question would
+// fail, which is a sharing outage rather than a listing that needs narrowing.
+func (s *CompositeStoreTestSuite) TestTheWholeSetReadIsNotCapped() {
+	ctx := context.Background()
+	stored := make([]Policy, 0, serverconst.MaxCompositeStoreRecords+500)
+	for i := range serverconst.MaxCompositeStoreRecords + 500 {
+		stored = append(stored, declaredPolicy(fmt.Sprintf("p-%04d", i), testResource,
+			fmt.Sprintf("ou-%04d", i)))
+	}
+	s.db.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).Return(stored, nil).Once()
+
+	held, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
+
+	s.Require().NoError(err)
+	s.Len(held, serverconst.MaxCompositeStoreRecords+500, "every policy is returned, cap or not")
+}
+
+// Either half failing fails the whole read. The declared half cannot fail today, but the merge is
+// written against the interface rather than against that fact, and answering from the database
+// alone would quietly drop every declared policy from a coverage decision.
+func (s *CompositeStoreTestSuite) TestEitherHalfFailingFailsTheWholeSetRead() {
+	ctx := context.Background()
+	unreachable := errors.New("declarations unavailable")
+	file := newSharingPolicyStoreInterfaceMock(s.T())
+	file.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).
+		Return(nil, unreachable).Once()
+	s.db.EXPECT().ListAllPoliciesForResource(ctx, testType, testResource).
+		Return([]Policy{storedPolicy(rootOU)}, nil).Once()
+
+	_, err := newCompositeStore(file, s.db).ListAllPoliciesForResource(ctx, testType, testResource)
+
+	s.ErrorIs(err, unreachable)
 }

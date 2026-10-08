@@ -31,7 +31,8 @@ var (
 	}
 
 	adminFlowTestUserType = testutils.UserType{
-		Name: "admin_flow_test_user",
+		Handle:      "admin_flow_test_user",
+		DisplayName: "Admin Flow Test User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -137,7 +138,7 @@ func (ts *AdministrationFlowTestSuite) createTestUser(username string) string {
 	ts.Require().NoError(err)
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       adminFlowTestUserType.Name,
+		Type:       adminFlowTestUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: attributes,
 	})

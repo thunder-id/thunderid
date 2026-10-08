@@ -31,7 +31,7 @@ const (
 )
 
 // The user type the bootstrap seeds, whose schema requires a unique username and email.
-const seededUserTypeName = "Person"
+const seededUserTypeName = "person"
 
 // The keys the provisioning node publishes the generated credentials under.
 const (
@@ -307,7 +307,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnAnonymo
 		"the rejection names the administration authentication requirement: %s", string(body))
 }
 
-// createOwnerUser provisions a user for the owner test to point at, of the seeded Person type and
+// createOwnerUser provisions a user for the owner test to point at, of the seeded person type and
 // in that type's own organization unit so the owner resolves from the flow's scope.
 func (ts *AgentOnboardingFlowTestSuite) createOwnerUser() string {
 	ts.T().Helper()
@@ -317,7 +317,7 @@ func (ts *AgentOnboardingFlowTestSuite) createOwnerUser() string {
 
 	var personType *testutils.UserType
 	for i := range userTypes {
-		if userTypes[i].Name == seededUserTypeName {
+		if userTypes[i].Handle == seededUserTypeName {
 			personType = &userTypes[i]
 			break
 		}
@@ -330,7 +330,7 @@ func (ts *AgentOnboardingFlowTestSuite) createOwnerUser() string {
 
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID:       personType.OUID,
-		Type:       personType.Name,
+		Type:       personType.Handle,
 		Attributes: []byte(attributes),
 	})
 	ts.Require().NoError(err, "Failed to create the owner user")

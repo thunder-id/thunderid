@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
+import {render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {OAuth2Config} from '../../../../models/oauth';
@@ -874,6 +874,77 @@ describe('OAuth2ConfigSection', () => {
       const input = screen.getByPlaceholderText('https://example.com/logged-out');
       await user.click(input);
       await user.tab();
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(false);
+    });
+  });
+
+  describe('Back-Channel Logout URI', () => {
+    const baseConfig: OAuth2Config = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      pkceRequired: false,
+      publicClient: false,
+    };
+    const placeholder = 'https://example.com/backchannel-logout';
+
+    it('commits backchannelLogoutUri on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(<OAuth2ConfigSection oauth2Config={baseConfig} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      await user.type(screen.getByPlaceholderText(placeholder), 'https://example.com/bcl');
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({backchannelLogoutUri: 'https://example.com/bcl'});
+    });
+
+    it('reports a validation error for an http URI on a public client', () => {
+      const onValidationChange = vi.fn();
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{...baseConfig, publicClient: true, backchannelLogoutUri: 'http://example.com/bcl'}}
+          onOAuth2ConfigChange={vi.fn()}
+          onValidationChange={onValidationChange}
+        />,
+      );
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('stays visible when the redirect fields are hidden, as for an MCP client', () => {
+      render(<OAuth2ConfigSection oauth2Config={baseConfig} onOAuth2ConfigChange={vi.fn()} showRedirectUris={false} />);
+
+      expect(screen.getByPlaceholderText(placeholder)).toBeInTheDocument();
+    });
+
+    it('is hidden without a user-facing grant, where the client never joins a session', () => {
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{...baseConfig, grantTypes: ['client_credentials'], responseTypes: []}}
+          onOAuth2ConfigChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();
+    });
+
+    it('reports no error once the section unmounts with an invalid value typed', async () => {
+      const user = userEvent.setup();
+      const onValidationChange = vi.fn();
+      const {unmount} = render(
+        <OAuth2ConfigSection
+          oauth2Config={baseConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          onValidationChange={onValidationChange}
+        />,
+      );
+
+      await user.type(screen.getByPlaceholderText(placeholder), 'https://example.com/bcl#frag');
+      await user.tab();
+      await waitFor(() => expect(onValidationChange).toHaveBeenLastCalledWith(true));
+
+      unmount();
 
       expect(onValidationChange).toHaveBeenLastCalledWith(false);
     });

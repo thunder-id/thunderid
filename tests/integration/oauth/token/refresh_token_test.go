@@ -36,7 +36,8 @@ var (
 	}
 
 	refreshTokenTestUserType = testutils.UserType{
-		Name: "refresh-token-test-person",
+		Handle:      "refresh-token-test-person",
+		DisplayName: "Refresh Token Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -442,7 +443,7 @@ func (ts *RefreshSecurityTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userType := refreshTokenTestUserType
-	userType.Name = refreshSecUserType
+	userType.Handle = refreshSecUserType
 	userType.OUID = ouID
 	entityTypeID, err := testutils.CreateUserType(userType)
 	ts.Require().NoError(err, "Failed to create test user type")

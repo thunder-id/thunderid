@@ -99,8 +99,7 @@ This is used to trigger pod restarts when auto-generated Secrets change.
 {{- $runtimePersistentPostgres := default dict $runtimePersistent.postgres -}}
 {{- $cache := default dict $configuration.cache -}}
 {{- $redis := default dict $cache.redis -}}
-{{- $smtp := default dict (default dict $configuration.email).smtp -}}
-{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimeTransientPostgres.password (not (default dict $runtimeTransientPostgres.passwordRef).key)) (and $runtimeTransientRedis.password (not (default dict $runtimeTransientRedis.passwordRef).key)) (and $entityPostgres.password (not (default dict $entityPostgres.passwordRef).key)) (and $runtimePersistentPostgres.password (not (default dict $runtimePersistentPostgres.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) (and $smtp.host $smtp.password (not (default dict $smtp.passwordRef).key)) }}true{{- end }}
+{{- if or (and $configPostgres.password (not (default dict $configPostgres.passwordRef).key)) (and $runtimeTransientPostgres.password (not (default dict $runtimeTransientPostgres.passwordRef).key)) (and $runtimeTransientRedis.password (not (default dict $runtimeTransientRedis.passwordRef).key)) (and $entityPostgres.password (not (default dict $entityPostgres.passwordRef).key)) (and $runtimePersistentPostgres.password (not (default dict $runtimePersistentPostgres.passwordRef).key)) (and $redis.password (eq $cache.type "redis") (not (default dict $redis.passwordRef).key)) }}true{{- end }}
 {{- end }}
 
 {{/*
@@ -192,25 +191,6 @@ Expected input:
 {{- fail (printf "Invalid %s value %q: expected mutable, declarative, or composite." .field .value) }}
 {{- end }}
 {{- .value }}
-{{- end }}
-
-{{/*
-Generate the SMTP password environment variable definition.
-Injects SMTP_PASSWORD from either the auto-generated Secret or an external one.
-*/}}
-{{- define "thunderid.smtpPasswordEnvVars" -}}
-{{- $defaultDbSecretName := printf "%s-db-credentials" (include "thunderid.fullname" .) -}}
-{{- $configuration := default dict .Values.configuration -}}
-{{- $email := default dict $configuration.email -}}
-{{- $smtp := default dict $email.smtp -}}
-{{- $smtpPasswordRef := default dict $smtp.passwordRef -}}
-{{- if and $smtp.host (or $smtp.password $smtpPasswordRef.key) }}
-- name: SMTP_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: {{ if $smtpPasswordRef.key }}{{ $smtpPasswordRef.name | default $defaultDbSecretName }}{{ else }}{{ $defaultDbSecretName }}{{ end }}
-      key: {{ $smtpPasswordRef.key | default "smtp-password" }}
-{{- end }}
 {{- end }}
 
 {{/*

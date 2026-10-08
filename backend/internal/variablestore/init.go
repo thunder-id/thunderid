@@ -21,14 +21,19 @@ import (
 // a credential held as a reference is resolved on every authentication against it, so an uncached
 // store puts a database read on that path. The cache is invalidated by every write rather than
 // expiring, so replacing a value takes effect on the next read.
+//
+// It also returns the store as a reference resolver, which is how a reference a resource carries is
+// turned into the value held here. That half is not served over HTTP.
 func Initialize(mux *http.ServeMux, crypto kmprovider.ConfigCryptoProvider,
-	cacheManager cache.CacheManagerInterface) ServiceInterface {
+	cacheManager cache.CacheManagerInterface) (ServiceInterface, ReferenceResolverInterface) {
 	variables := cache.GetCache[*Variable](cacheManager, "VariableByNameCache")
 	secrets := cache.GetCache[*Secret](cacheManager, "SecretByNameCache")
 
 	service := newService(newCacheBackedStore(newStore(), variables, secrets), crypto)
 	registerRoutes(mux, newHandler(service))
-	return service
+	// The same service resolves references; ServiceInterface leaves that out, so nothing served over
+	// HTTP can reach the one method that returns a secret's value.
+	return service, service.(ReferenceResolverInterface)
 }
 
 func registerRoutes(mux *http.ServeMux, h *handler) {

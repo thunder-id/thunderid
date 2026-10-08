@@ -41,8 +41,10 @@ const (
 	entityExportOUHandle = "export-entity-ou"
 
 	entityExportUserTypeName = "export-entity-person"
-	entityExportUsername     = "export-entity-user"
-	entityExportPassword     = "ExportEntity@123"
+
+	entityExportUserTypeDisplayName = "Export Entity Person"
+	entityExportUsername            = "export-entity-user"
+	entityExportPassword            = "ExportEntity@123"
 
 	// The agent type is the shared singleton `default`, so its name is fixed.
 	entityExportAgentTypeName = "default"
@@ -69,8 +71,9 @@ func (ts *ExportEntityResourcesTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityExportUserTypeName,
-		OUID: ts.ouID,
+		Handle:      entityExportUserTypeName,
+		DisplayName: entityExportUserTypeDisplayName,
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -88,7 +91,8 @@ func (ts *ExportEntityResourcesTestSuite) SetupSuite() {
 	ts.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		OUID: ts.ouID,
+		DisplayName: "Default",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},
@@ -327,7 +331,8 @@ func (ts *ExportEntityResourcesTestSuite) TestUserTypeExportByID() {
 	ts.Require().NotEmpty(yamlContent)
 
 	ts.Assert().Contains(yamlContent, "resource_type: user_type")
-	ts.Assert().Contains(yamlContent, "name: "+entityExportUserTypeName)
+	ts.Assert().Contains(yamlContent, "handle: "+entityExportUserTypeName)
+	ts.Assert().Contains(yamlContent, "displayName: "+entityExportUserTypeDisplayName)
 	ts.Assert().Contains(yamlContent, "username")
 	ts.Assert().Contains(yamlContent, "email")
 }
@@ -339,7 +344,7 @@ func (ts *ExportEntityResourcesTestSuite) TestUserTypeExportWithWildcard() {
 	ts.Require().NotEmpty(yamlContent)
 
 	ts.Assert().Contains(yamlContent, "resource_type: user_type")
-	ts.Assert().Contains(yamlContent, "name: "+entityExportUserTypeName)
+	ts.Assert().Contains(yamlContent, "handle: "+entityExportUserTypeName)
 }
 
 // TestAgentTypeExportWithWildcard verifies agent types export under their own resource type. The two
@@ -351,7 +356,8 @@ func (ts *ExportEntityResourcesTestSuite) TestAgentTypeExportWithWildcard() {
 	ts.Require().NotEmpty(yamlContent)
 
 	ts.Assert().Contains(yamlContent, "resource_type: agent_type")
-	ts.Assert().Contains(yamlContent, "name: "+entityExportAgentTypeName)
+	ts.Assert().Contains(yamlContent, "handle: "+entityExportAgentTypeName)
+	ts.Assert().Contains(yamlContent, "displayName: ")
 	ts.Assert().NotContains(yamlContent, "resource_type: user_type",
 		"an agent type export must not emit user_type documents")
 }

@@ -78,10 +78,10 @@ test.describe("Application User Access", () => {
     await test.step("Verify every user type was granted via the application detail API", async () => {
       // Read after creation - this test is ordered last precisely so nothing else can create or
       // delete a user type between the wizard's own read and this one.
-      const userTypeNames = (await userTypesApi.list()).map(userType => userType.name);
+      const userTypeHandles = (await userTypesApi.list()).map(userType => userType.handle);
       const app = await applicationsApi.get(createdAppIds[createdAppIds.length - 1]);
-      expect([...(app.allowedUserTypes ?? [])].sort()).toEqual([...userTypeNames].sort());
-      console.log("Application allows every user type in the system — correct:", userTypeNames);
+      expect([...(app.allowedUserTypes ?? [])].sort()).toEqual([...userTypeHandles].sort());
+      console.log("Application allows every user type in the system, correct:", userTypeHandles);
     });
   });
 });

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {waitFor, renderHook} from '@thunderid/test-utils';
@@ -31,8 +31,8 @@ describe('useGetUserTypes', () => {
     startIndex: 1,
     count: 2,
     types: [
-      {id: '123', name: 'UserType1', ouId: 'root-ou', allowSelfRegistration: false},
-      {id: '456', name: 'UserType2', ouId: 'child-ou', allowSelfRegistration: true},
+      {id: '123', handle: 'user-type-1', displayName: 'UserType1', ouId: 'root-ou', allowSelfRegistration: false},
+      {id: '456', handle: 'user-type-2', displayName: 'UserType2', ouId: 'child-ou', allowSelfRegistration: true},
     ],
     links: [{rel: 'self', href: 'https://api.test.com/user-types'}],
   };

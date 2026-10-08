@@ -43,7 +43,8 @@ func (ts *DirectAuthSecretTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userType := testutils.UserType{
-		Name: "direct_auth_secret_person",
+		Handle:      "direct_auth_secret_person",
+		DisplayName: "Direct Auth Secret Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -55,7 +56,7 @@ func (ts *DirectAuthSecretTestSuite) SetupSuite() {
 	ts.userTypeID = userTypeID
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       userType.Name,
+		Type:       userType.Handle,
 		OUID:       ts.ouID,
 		Attributes: json.RawMessage(`{"username": "directauthsecretuser", "password": "TestPassword123!"}`),
 	})

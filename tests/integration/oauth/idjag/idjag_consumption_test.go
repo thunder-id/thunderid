@@ -108,8 +108,9 @@ func (ts *IDJAGConsumptionTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userType := testutils.UserType{
-		Name: "idjag-consumption-person",
-		OUID: ts.ouID,
+		Handle:      "idjag-consumption-person",
+		DisplayName: "Idjag Consumption Person",
+		OUID:        ts.ouID,
 		Schema: map[string]any{
 			"username": map[string]any{"type": "string"},
 			"password": map[string]any{"type": "string", "credential": true},

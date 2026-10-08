@@ -20,7 +20,7 @@ CREATE TABLE "ENTITY" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
     ID                  VARCHAR(36) NOT NULL,
     CATEGORY            VARCHAR(50)  NOT NULL,
-    TYPE                VARCHAR(50)  NOT NULL,
+    TYPE                VARCHAR(100) NOT NULL,
     STATE               VARCHAR(50)  NOT NULL,
     OU_ID               VARCHAR(36)  NOT NULL,
     ATTRIBUTES          TEXT,
@@ -65,6 +65,7 @@ CREATE TABLE "GROUP_MEMBER_REFERENCE" (
 );
 
 -- Table to store indexed entity identifiers for fast lookups (authentication, identification)
+-- An entity may hold multiple values for the same NAME (e.g. more than one email address).
 CREATE TABLE "ENTITY_IDENTIFIER" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
     ENTITY_ID       VARCHAR(36)  NOT NULL,
@@ -72,7 +73,7 @@ CREATE TABLE "ENTITY_IDENTIFIER" (
     VALUE           TEXT         NOT NULL,
     SOURCE          VARCHAR(50)  NOT NULL,
     CREATED_AT      TEXT NOT NULL,
-    PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME),
+    PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME, VALUE),
     FOREIGN KEY (DEPLOYMENT_ID, ENTITY_ID)
         REFERENCES "ENTITY" (DEPLOYMENT_ID, ID) ON DELETE CASCADE
 );

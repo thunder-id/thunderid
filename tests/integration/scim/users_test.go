@@ -48,7 +48,7 @@ type SCIMUsersTestSuite struct {
 	coreExtensionURN string
 }
 
-const scimCoreUserTypeName = "Declarative Test Schema"
+const scimCoreUserTypeName = "declarative-test-schema"
 
 func TestSCIMUsersTestSuite(t *testing.T) {
 	suite.Run(t, new(SCIMUsersTestSuite))
@@ -66,8 +66,9 @@ func (ts *SCIMUsersTestSuite) SetupSuite() {
 
 	ts.entityTypeName = "scim-it-users-person"
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeName,
-		OUID: ouID,
+		Handle:      ts.entityTypeName,
+		DisplayName: "Entity Type",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"email":      map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"department": map[string]interface{}{"type": "string"},
@@ -86,8 +87,9 @@ func (ts *SCIMUsersTestSuite) SetupSuite() {
 
 	ts.altEntityTypeName = "scim-it-users-person-alt"
 	altEntityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.altEntityTypeName,
-		OUID: ouID,
+		Handle:      ts.altEntityTypeName,
+		DisplayName: "Alt Entity Type",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{"type": "string", "required": true, "unique": true},
 		},
@@ -230,6 +232,66 @@ func (ts *SCIMUsersTestSuite) TestCreateCoreSchemaUserOnDesignatedType() {
 	ts.Equal(email, gotEmail)
 }
 
+// TestCreateCoreSchemaUserWithoutExtensionURN tests that a create carrying only the core User schema
+// URN creates the user in the designated core user type.
+func (ts *SCIMUsersTestSuite) TestCreateCoreSchemaUserWithoutExtensionURN() {
+	id := ts.createCoreOnlyUser("scim.it.core-only-create", "scim.it.core-only-create@example.com")
+
+	status, respBody, err := scimRequest(http.MethodGet, "/Users/"+id, nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", respBody)
+
+	var fetched map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(respBody, &fetched))
+	ts.Contains(fetched["schemas"], ts.coreExtensionURN, "the user should belong to the core user type")
+}
+
+// TestReplaceCoreSchemaUserWithoutExtensionURN tests that a replace carrying only the core User schema
+// URN keeps the user's existing type.
+func (ts *SCIMUsersTestSuite) TestReplaceCoreSchemaUserWithoutExtensionURN() {
+	id := ts.createCoreOnlyUser("scim.it.core-only-replace", "scim.it.core-only-replace@example.com")
+
+	email := "scim.it.core-only-replaced@example.com"
+	body, err := json.Marshal(map[string]interface{}{
+		"schemas":  []string{scimCoreUserSchemaURN},
+		"userName": "scim.it.core-only-replace",
+		"emails":   []map[string]interface{}{{"value": email, "type": "work"}},
+	})
+	ts.Require().NoError(err)
+
+	status, respBody, err := scimRequest(http.MethodPut, "/Users/"+id, body, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "replace failed: %s", respBody)
+
+	var replaced map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(respBody, &replaced))
+	gotEmail, ok := firstEmailValue(replaced)
+	ts.Require().True(ok, "response should include the core-mapped emails field")
+	ts.Equal(email, gotEmail)
+	ts.Contains(replaced["schemas"], ts.coreExtensionURN, "the user should keep the core user type")
+}
+
+// createCoreOnlyUser creates a user with only the core User schema URN and returns its ID.
+func (ts *SCIMUsersTestSuite) createCoreOnlyUser(userName, email string) string {
+	body, err := json.Marshal(map[string]interface{}{
+		"schemas":  []string{scimCoreUserSchemaURN},
+		"userName": userName,
+		"emails":   []map[string]interface{}{{"value": email, "type": "work"}},
+	})
+	ts.Require().NoError(err)
+
+	status, respBody, err := scimRequest(http.MethodPost, "/Users", body, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusCreated, status, "expected 201, got body: %s", respBody)
+
+	var created map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(respBody, &created))
+	id, _ := created["id"].(string)
+	ts.Require().NotEmpty(id)
+	ts.createdUserIDs = append(ts.createdUserIDs, id)
+	return id
+}
+
 // TestCoreSchemaRejectedForNonDesignatedType tests that core User schema attributes sent to
 // a user type other than the designated core user type are rejected.
 func (ts *SCIMUsersTestSuite) TestCoreSchemaRejectedForNonDesignatedType() {
@@ -294,8 +356,9 @@ func (ts *SCIMUsersTestSuite) TestListUsersReturnsBareUserWithOrphanedType() {
 
 	orphanTypeName := "scim-it-users-orphan-person"
 	orphanTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: orphanTypeName,
-		OUID: orphanOUID,
+		Handle:      orphanTypeName,
+		DisplayName: "Orphan Type",
+		OUID:        orphanOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{"type": "string", "required": true, "unique": true},
 		},

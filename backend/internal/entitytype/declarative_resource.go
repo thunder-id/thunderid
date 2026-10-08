@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -6,6 +6,7 @@ package entitytype
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -94,7 +96,7 @@ func (e *entityTypeExporter) GetResourceByID(ctx context.Context, id string) (
 	if err != nil {
 		return nil, "", err
 	}
-	return schema, schema.Name, nil
+	return schema, schema.DisplayName, nil
 }
 
 // ValidateResource validates a entity type resource.
@@ -107,7 +109,7 @@ func (e *entityTypeExporter) ValidateResource(ctx context.Context,
 	}
 
 	err := declarativeresource.ValidateResourceName(ctx,
-		schema.Name, e.GetResourceType(), id, "SCHEMA_VALIDATION_ERROR", logger,
+		schema.DisplayName, e.GetResourceType(), id, "SCHEMA_VALIDATION_ERROR", logger,
 	)
 	if err != nil {
 		return "", err
@@ -115,10 +117,10 @@ func (e *entityTypeExporter) ValidateResource(ctx context.Context,
 
 	if len(schema.Schema) == 0 {
 		logger.Warn(ctx, "Entity type has no schema definition",
-			log.String("schemaID", id), log.String("name", schema.Name))
+			log.String("schemaID", id), log.String("handle", schema.Handle))
 	}
 
-	return schema.Name, nil
+	return schema.DisplayName, nil
 }
 
 // GetResourceRules returns the parameterization rules for entity types.
@@ -133,12 +135,14 @@ func (e *entityTypeExporter) GetResourceRules() *declarativeresource.ResourceRul
 func loadDeclarativeResources(
 	entityTypeStore entityTypeStoreInterface, service EntityTypeServiceInterface) error {
 	var fileStore entityTypeStoreInterface
+	var dbStore entityTypeStoreInterface
 
 	// Determine store type and extract file store
 	switch store := entityTypeStore.(type) {
 	case *compositeEntityTypeStore:
-		// Composite mode: extract file store from composite
+		// Composite mode: extract file and DB stores from composite
 		fileStore = store.fileStore
+		dbStore = store.dbStore
 	case *entityTypeFileBasedStore:
 		// Declarative-only mode: only file store available
 		fileStore = store
@@ -165,6 +169,44 @@ func loadDeclarativeResources(
 	loader := declarativeresource.NewResourceLoader(resourceConfig, fileBasedStore)
 	if err := loader.LoadResources(); err != nil {
 		return fmt.Errorf("failed to load entity type resources: %w", err)
+	}
+
+	return validateUniqueDeclarativeHandles(fileBasedStore, dbStore)
+}
+
+// validateUniqueDeclarativeHandles ensures no two declarative entity types of the same category share
+// a handle. In composite mode, it also ensures the handle is not used by an entity type in the DB store.
+func validateUniqueDeclarativeHandles(
+	fileBasedStore *entityTypeFileBasedStore, dbStore entityTypeStoreInterface) error {
+	list, err := fileBasedStore.GenericFileBasedStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to list entity type resources: %w", err)
+	}
+
+	seen := make(map[string]string, len(list))
+	for _, item := range list {
+		entityType, ok := item.Data.(*EntityType)
+		if !ok {
+			continue
+		}
+		key := string(entityType.Category) + ":" + entityType.Handle
+		if existingID, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate entity type handle %q in declarative resources (ids %s and %s)",
+				entityType.Handle, existingID, entityType.ID)
+		}
+		seen[key] = entityType.ID
+
+		if dbStore == nil {
+			continue
+		}
+		_, err := dbStore.GetEntityTypeByHandle(context.Background(), entityType.Category, entityType.Handle)
+		if err == nil {
+			return fmt.Errorf("duplicate entity type handle %q: handle already used in the database store",
+				entityType.Handle)
+		}
+		if !errors.Is(err, ErrEntityTypeNotFound) {
+			return fmt.Errorf("failed to check for duplicate entity type handle %q: %w", entityType.Handle, err)
+		}
 	}
 
 	return nil
@@ -210,7 +252,8 @@ func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
 	schemaDTO := &EntityType{
 		ID:                    schemaRequest.ID,
 		Category:              category,
-		Name:                  schemaRequest.Name,
+		Handle:                schemaRequest.Handle,
+		DisplayName:           schemaRequest.DisplayName,
 		OUID:                  schemaRequest.OUID,
 		OUHandle:              schemaRequest.OUHandle,
 		AllowSelfRegistration: schemaRequest.AllowSelfRegistration,
@@ -232,7 +275,7 @@ func validateEntityTypeWrapper(service EntityTypeServiceInterface) func(interfac
 		if service != nil {
 			if svcErr := service.ResolveEntityTypeHandles(context.Background(), schemaDTO); svcErr != nil {
 				return fmt.Errorf("organization unit with handle %q not found for entity type '%s'",
-					schemaDTO.OUHandle, schemaDTO.Name)
+					schemaDTO.OUHandle, schemaDTO.Handle)
 			}
 		}
 		return validateEntityType(schemaDTO)
@@ -240,8 +283,13 @@ func validateEntityTypeWrapper(service EntityTypeServiceInterface) func(interfac
 }
 
 func validateEntityType(schemaDTO *EntityType) error {
-	if strings.TrimSpace(schemaDTO.Name) == "" {
-		return fmt.Errorf("entity type name is required")
+	if !utils.IsValidHandle(schemaDTO.Handle) {
+		return fmt.Errorf("entity type handle %q is invalid: it must contain only lowercase letters, "+
+			"numbers, hyphens and underscores, and start and end with a letter or a number", schemaDTO.Handle)
+	}
+
+	if strings.TrimSpace(schemaDTO.DisplayName) == "" {
+		return fmt.Errorf("display name is required for entity type '%s'", schemaDTO.Handle)
 	}
 
 	if strings.TrimSpace(schemaDTO.ID) == "" {
@@ -249,22 +297,22 @@ func validateEntityType(schemaDTO *EntityType) error {
 	}
 
 	if strings.TrimSpace(schemaDTO.OUID) == "" {
-		return fmt.Errorf("ouId or ouHandle is required for entity type '%s'", schemaDTO.Name)
+		return fmt.Errorf("ouId or ouHandle is required for entity type '%s'", schemaDTO.Handle)
 	}
 
 	// Validate schema definition is present and valid.
 	if len(schemaDTO.Schema) == 0 {
-		return fmt.Errorf("schema definition is required for entity type '%s'", schemaDTO.Name)
+		return fmt.Errorf("schema definition is required for entity type '%s'", schemaDTO.Handle)
 	}
 
 	compiledSchema, compileErr := model.CompileSchema(schemaDTO.Schema)
 	if compileErr != nil {
-		return fmt.Errorf("invalid schema for entity type '%s': %w", schemaDTO.Name, compileErr)
+		return fmt.Errorf("invalid schema for entity type '%s': %w", schemaDTO.Handle, compileErr)
 	}
 
 	if svcErr := validateSystemAttributes(compiledSchema, schemaDTO.SystemAttributes); svcErr != nil {
 		return fmt.Errorf("invalid system attributes for entity type '%s': %s",
-			schemaDTO.Name, svcErr.ErrorDescription)
+			schemaDTO.Handle, svcErr.ErrorDescription)
 	}
 
 	return nil

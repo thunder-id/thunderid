@@ -517,3 +517,30 @@ func (s *StoreTestSuite) TestParseNullableString_Variants() {
 	s.Equal("x", parseNullableString([]byte("x")))
 	s.Empty(parseNullableString(nil))
 }
+
+func (s *StoreTestSuite) TestDeleteSession_ReportsWhetherARowWasRemoved() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteSession, "sess-1", testDeploymentID).
+		Return(int64(1), nil).Once()
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteSession, "sess-2", testDeploymentID).
+		Return(int64(0), nil).Once()
+
+	removed, err := s.store.DeleteSession(context.Background(), "sess-1")
+	s.NoError(err)
+	s.True(removed)
+
+	removed, err = s.store.DeleteSession(context.Background(), "sess-2")
+	s.NoError(err)
+	s.False(removed, "a row another termination already deleted is reported as not removed")
+}
+
+func (s *StoreTestSuite) TestDeleteSession_PropagatesTheError() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteSession, "sess-1", testDeploymentID).
+		Return(int64(0), errors.New("db down")).Once()
+
+	removed, err := s.store.DeleteSession(context.Background(), "sess-1")
+
+	s.Error(err)
+	s.False(removed)
+}

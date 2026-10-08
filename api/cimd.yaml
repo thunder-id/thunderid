@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: Client ID Metadata Document API
+  version: "1.0"
+  description: Preview the OAuth Client ID Metadata Document of a client before registering it. The returned values are used to create an application, and later an agent, that is marked as registered from the document.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Client ID Metadata Document
+    description: Preview a client's metadata document.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /cimd/preview:
+    post:
+      tags:
+        - Client ID Metadata Document
+      summary: Preview a Client ID Metadata Document
+      description: >-
+        Retrieves and validates the Client ID Metadata Document at the given Client Identifier URL and
+        returns the values to store. Nothing is stored. This is the only operation that retrieves a
+        document. Create the client with the returned values, which include
+        `clientIdMetadataDocument: true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewRequest'
+            example:
+              clientId: "https://client.example.com/oauth/client.json"
+      responses:
+        "200":
+          description: The values taken from the document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewResponse'
+              example:
+                name: "Example Client"
+                url: "https://client.example.com"
+                inboundAuthConfig:
+                  - type: "oauth2"
+                    config:
+                      clientId: "https://client.example.com/oauth/client.json"
+                      clientIdMetadataDocument: true
+                      redirectUris:
+                        - "http://127.0.0.1/callback"
+                      grantTypes:
+                        - "authorization_code"
+                        - "refresh_token"
+                      responseTypes:
+                        - "code"
+                      tokenEndpointAuthMethod: "none"
+                      pkceRequired: true
+                      publicClient: true
+        "400":
+          description: >-
+            The request is malformed, the URL is invalid, or the document cannot be retrieved or breaks a
+            document rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "CIMD-1005"
+                message:
+                  key: "error.cimdservice.invalid_redirect_uri"
+                  defaultValue: "Invalid redirect URI for a Client ID Metadata Document client"
+                description:
+                  key: "error.cimdservice.invalid_redirect_uri_description"
+                  defaultValue: "At least one redirect URI is required, and each must be https on the client ID's origin or http on a loopback address"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  schemas:
+    PreviewRequest:
+      type: object
+      required:
+        - clientId
+      properties:
+        clientId:
+          type: string
+          description: The Client Identifier URL, which serves the client's metadata document.
+          example: "https://client.example.com/oauth/client.json"
+
+    PreviewResponse:
+      type: object
+      description: Values taken from a Client ID Metadata Document, in the shape of the fields a create request takes.
+      properties:
+        name:
+          type: string
+          description: The document's `client_name`, or the host of the Client Identifier URL.
+        url:
+          type: string
+        tosUri:
+          type: string
+        policyUri:
+          type: string
+        contacts:
+          type: array
+          items:
+            type: string
+        inboundAuthConfig:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                  - "oauth2"
+              config:
+                type: object
+                description: The OAuth configuration to store, including `clientIdMetadataDocument` set to true.
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: object
+          properties:
+            key:
+              type: string
+            defaultValue:
+              type: string
+        description:
+          type: object
+          properties:
+            key:
+              type: string
+            defaultValue:
+              type: string

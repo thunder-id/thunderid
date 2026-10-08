@@ -48,6 +48,10 @@ func init() {
 	}
 }
 
+// deploymentYamlSource is the deployment.yaml ReplaceResources installs. The Control Plane suite
+// replaces it through UseControlPlane.
+var deploymentYamlSource = TestDeploymentYamlPath
+
 // Package-level variables for server configuration
 var (
 	serverPort           string
@@ -370,7 +374,7 @@ func ReplaceResources(zipFilePattern string) error {
 		return fmt.Errorf("failed to create conf directory: %v", err)
 	}
 
-	err = copyFile(TestDeploymentYamlPath, destPath)
+	err = copyFile(deploymentYamlSource, destPath)
 	if err != nil {
 		return fmt.Errorf("failed to replace deployment.yaml: %v", err)
 	}

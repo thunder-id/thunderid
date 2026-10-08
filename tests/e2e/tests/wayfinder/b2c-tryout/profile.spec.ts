@@ -49,7 +49,7 @@ describeOrSkip("Wayfinder B2C Tryout - Profile", { tag: [TestTags.WAYFINDER] }, 
   test.beforeAll(async ({ request }) => {
     // beforeAll cannot take custom test-scoped fixtures, so construct the shared helper directly -
     // same class the usersApi fixture uses inside test bodies elsewhere.
-    user = await new UsersApi(request).createUser(customer, "Customer");
+    user = await new UsersApi(request).createUser(customer, "customer");
   });
 
   test.afterAll(async ({ request }) => {

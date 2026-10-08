@@ -9,6 +9,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // ClientFactoryInterface defines the interface for obtaining notification clients.
@@ -30,18 +31,34 @@ func (p *clientFactory) GetClient(ctx context.Context, sender common.Notificatio
 	NotificationClientInterface, *tidcommon.ServiceError) {
 	var _client NotificationClientInterface
 	var err error
-	switch sender.Provider {
-	case common.NotificationProviderTypeVonage:
-		_client, err = newVonageClient(ctx, sender)
-	case common.NotificationProviderTypeTwilio:
-		_client, err = newTwilioClient(ctx, sender)
-	case common.NotificationProviderTypeCustom:
-		_client, err = newCustomClient(ctx, sender)
+	// Dispatch on the sender type first, so a provider name can never resolve to a client
+	// of the wrong channel.
+	switch sender.Type {
+	case common.NotificationSenderTypeMessage:
+		switch sender.Provider {
+		case common.NotificationProviderTypeVonage:
+			_client, err = newVonageClient(ctx, sender)
+		case common.NotificationProviderTypeTwilio:
+			_client, err = newTwilioClient(ctx, sender)
+		case common.NotificationProviderTypeCustom:
+			_client, err = newCustomClient(ctx, sender)
+		default:
+			return nil, &ErrorInvalidProvider
+		}
+	case common.NotificationSenderTypeEmail:
+		switch sender.Provider {
+		case common.NotificationProviderTypeSMTP:
+			_client, err = newSMTPEmailClient(ctx, sender)
+		default:
+			return nil, &ErrorInvalidProvider
+		}
 	default:
 		return nil, &ErrorInvalidProvider
 	}
 
 	if err != nil {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationClientFactory")).Error(ctx,
+			"Failed to create notification client", log.String("senderID", sender.ID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 

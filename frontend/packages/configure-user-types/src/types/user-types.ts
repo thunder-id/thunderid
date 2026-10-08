@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {ApiPaginationLink} from '@thunderid/types';
@@ -98,7 +98,8 @@ export interface SystemAttributes {
  */
 export interface ApiUserType {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   ouHandle?: string;
   allowSelfRegistration: boolean;
@@ -112,7 +113,8 @@ export interface ApiUserType {
  */
 export interface UserTypeListItem {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   ouHandle?: string;
   allowSelfRegistration: boolean;
@@ -135,7 +137,8 @@ export interface UserTypeListResponse {
  * Request body for POST /user-types (create)
  */
 export interface CreateUserTypeRequest {
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   allowSelfRegistration?: boolean;
   systemAttributes?: SystemAttributes;
@@ -146,7 +149,7 @@ export interface CreateUserTypeRequest {
  * Request body for PUT /user-types/{id} (update)
  */
 export interface UpdateUserTypeRequest {
-  name: string;
+  displayName: string;
   ouId: string;
   allowSelfRegistration?: boolean;
   systemAttributes?: SystemAttributes;

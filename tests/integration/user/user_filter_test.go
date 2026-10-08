@@ -9,15 +9,16 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 var (
 	// Test users specifically for filtering tests
 	filterTestEntityTypes = []testutils.UserType{
 		{
-			Name: "employee",
+			Handle:      "employee",
+			DisplayName: "Employee",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{"type": "string"},
 				"email":    map[string]interface{}{"type": "string"},
@@ -40,7 +41,8 @@ var (
 			},
 		},
 		{
-			Name: "customer",
+			Handle:      "customer",
+			DisplayName: "Customer",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{"type": "string"},
 				"email":    map[string]interface{}{"type": "string"},

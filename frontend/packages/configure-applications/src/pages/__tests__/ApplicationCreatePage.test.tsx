@@ -20,8 +20,8 @@ let mockPathname = '/';
 const mockUseGetApplications = vi.hoisted(() => vi.fn());
 const mockUserTypes = vi.hoisted(() => ({
   types: [
-    {id: 'customer', name: 'customer', displayName: 'Customer'},
-    {id: 'employee', name: 'employee', displayName: 'Employee'},
+    {id: 'customer-id', handle: 'customer', displayName: 'Customer'},
+    {id: 'employee-id', handle: 'employee', displayName: 'Employee'},
   ],
 }));
 
@@ -691,8 +691,8 @@ describe('ApplicationCreatePage', () => {
 
     mockUseGetApplications.mockReturnValue({data: {applications: []}});
     mockUserTypes.types = [
-      {id: 'customer', name: 'customer', displayName: 'Customer'},
-      {id: 'employee', name: 'employee', displayName: 'Employee'},
+      {id: 'customer-id', handle: 'customer', displayName: 'Customer'},
+      {id: 'employee-id', handle: 'employee', displayName: 'Employee'},
     ];
   });
 
@@ -1877,7 +1877,7 @@ describe('ApplicationCreatePage', () => {
     });
 
     it('should create backend app without allowedUserTypes', async () => {
-      mockUserTypes.types = [{id: 'customer', name: 'customer', displayName: 'Customer'}];
+      mockUserTypes.types = [{id: 'customer-id', handle: 'customer', displayName: 'Customer'}];
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({id: 'backend-app-no-user-types', name: 'My Backend App'} as Application);
       });
@@ -2813,7 +2813,7 @@ describe('ApplicationCreatePage', () => {
     });
 
     it('should submit the machine-to-machine oauth2 config with client_credentials overrides and no redirect URIs', async () => {
-      mockUserTypes.types = [{id: 'customer', name: 'customer', displayName: 'Customer'}];
+      mockUserTypes.types = [{id: 'customer-id', handle: 'customer', displayName: 'Customer'}];
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({id: 'mcp-app-2', name: 'My MCP App'} as Application);
       });

@@ -214,7 +214,7 @@ nodes:
 
 resource_type: user
 id: agent-identity-john
-type: Person
+type: person
 ouHandle: default
 attributes:
   username: johndoe
@@ -253,7 +253,7 @@ attributes:
 # The user types the Concierge works with: who may sign up through it, and whose schema the user
 # attributes in the tokens below are validated against.
 allowedUserTypes:
-  - Person
+  - person
 inboundAuthConfig:
   - type: oauth2
     config:

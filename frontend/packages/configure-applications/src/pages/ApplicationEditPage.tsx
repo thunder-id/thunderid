@@ -51,6 +51,7 @@ import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
 import {hasUserAccess} from '../utils/oauth2Rules';
+import validateBackchannelLogoutUri from '../utils/validateBackchannelLogoutUri';
 
 interface TabConfig {
   key: string;
@@ -277,6 +278,11 @@ export default function ApplicationEditPage() {
     !isMcpClient &&
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.PRIVATE_KEY_JWT &&
     !oauth2Config?.certificate?.value;
+  // The field shows only with a user-facing grant, so a hidden value never blocks saving. The field
+  // reports only its typed draft; the stored value is checked here, since the tab may be unmounted.
+  const isInvalidBackchannelLogoutUri =
+    hasUserAccess(grantTypes) &&
+    !validateBackchannelLogoutUri(oauth2Config?.backchannelLogoutUri, oauth2Config?.publicClient ?? false).valid;
 
   // Each issue is a full, standalone sentence so the message needs no grammar assembly and stays
   // translatable; multiple issues read as consecutive sentences.
@@ -286,6 +292,11 @@ export default function ApplicationEditPage() {
   }
   if (isMissingCertificate) {
     validationIssues.push(t('applications:edit.page.validation.missingCertificate', 'A certificate is required.'));
+  }
+  if (isInvalidBackchannelLogoutUri) {
+    validationIssues.push(
+      t('applications:edit.page.validation.invalidBackchannelLogoutUri', 'The back-channel logout URI is not valid.'),
+    );
   }
 
   const unsavedChangesMessage =
@@ -702,6 +713,7 @@ export default function ApplicationEditPage() {
             accessSettingsInvalid ||
             credentialsSettingsInvalid ||
             isMissingRedirectUri ||
+            isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
             application.isReadOnly === true
           }

@@ -25,6 +25,10 @@ const AcceptHeaderName = "Accept"
 // ContentTypeHeaderName is the name of the content type header used in HTTP requests.
 const ContentTypeHeaderName = "Content-Type"
 
+// RetryAfterHeaderName is the name of the header a server uses to say how long to wait before
+// retrying a request (RFC 9110 section 10.2.3).
+const RetryAfterHeaderName = "Retry-After"
+
 // CorrelationIDHeaderName is the name of the correlation ID (trace ID) header used to propagate
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
@@ -40,6 +44,10 @@ const APIKeyHeaderName = "API-Key"
 // AttestationTokenHeaderName is the name of the header used to present a platform attestation token
 // (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
 const AttestationTokenHeaderName = "Attestation-Token"
+
+// CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
+// such as SMTP and HTTP.
+const CRLF = "\r\n"
 
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
@@ -61,6 +69,9 @@ const ContentTypeFormURLEncoded = "application/x-www-form-urlencoded"
 
 // WWWAuthenticateHeaderName is the name of the WWW-Authenticate header used in HTTP responses.
 const WWWAuthenticateHeaderName = "WWW-Authenticate"
+
+// LocationHeaderName is the name of the Location header used in HTTP responses.
+const LocationHeaderName = "Location"
 
 // XFrameOptionsHeaderName is the name of the X-Frame-Options header used in HTTP responses.
 const XFrameOptionsHeaderName = "X-Frame-Options"

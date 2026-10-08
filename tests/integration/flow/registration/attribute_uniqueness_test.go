@@ -25,7 +25,8 @@ var uniquenessOU = testutils.OrganizationUnit{
 
 // uniqueAttrsUserType declares two unique attributes so a conflict can be attributed precisely.
 var uniqueAttrsUserType = testutils.UserType{
-	Name:                  "uniqueness-test-customer",
+	Handle:                "uniqueness-test-customer",
+	DisplayName:           "Uniqueness Test Customer",
 	AllowSelfRegistration: true,
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string", "unique": true},
@@ -36,7 +37,8 @@ var uniqueAttrsUserType = testutils.UserType{
 
 // noUniqueAttrsUserType has no unique attributes, so the validator must pass everything through.
 var noUniqueAttrsUserType = testutils.UserType{
-	Name:                  "uniqueness-test-open",
+	Handle:                "uniqueness-test-open",
+	DisplayName:           "Uniqueness Test Open",
 	AllowSelfRegistration: true,
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
@@ -132,7 +134,7 @@ func (ts *AttributeUniquenessTestSuite) SetupSuite() {
 	ts.existingEmail = ts.existingUsername + "@example.com"
 	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
 		OUID: ts.ouID,
-		Type: uniqueAttrsUserType.Name,
+		Type: uniqueAttrsUserType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "` + ts.existingUsername + `",
 			"email":    "` + ts.existingEmail + `",
@@ -165,7 +167,7 @@ func (ts *AttributeUniquenessTestSuite) SetupSuite() {
 		ClientID:                  "attr_uniqueness_client",
 		ClientSecret:              "attr_uniqueness_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{uniqueAttrsUserType.Name},
+		AllowedUserTypes:          []string{uniqueAttrsUserType.Handle},
 		AuthFlowID:                ts.authFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create uniqueness test app")
@@ -179,7 +181,7 @@ func (ts *AttributeUniquenessTestSuite) SetupSuite() {
 		ClientID:                  "attr_uniqueness_open_client",
 		ClientSecret:              "attr_uniqueness_open_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{noUniqueAttrsUserType.Name},
+		AllowedUserTypes:          []string{noUniqueAttrsUserType.Handle},
 		AuthFlowID:                ts.authFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create open-type test app")
@@ -347,7 +349,7 @@ func (ts *AttributeUniquenessTestSuite) TestUniquenessRetryAfterConflictSucceeds
 	ts.Nil(flowStep.Error, "The successful retry must carry no error")
 
 	ts.assertProvisioned(ts.trackCreatedUser(freeUsername),
-		uniqueAttrsUserType.Name, freeUsername, freeEmail)
+		uniqueAttrsUserType.Handle, freeUsername, freeEmail)
 }
 
 // Scenario 4: a unique attribute left blank is skipped rather than checked
@@ -368,7 +370,7 @@ func (ts *AttributeUniquenessTestSuite) TestUniquenessSkipsBlankUniqueAttribute(
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus,
 		"Registration must complete when an optional unique attribute is blank")
 
-	ts.assertProvisioned(ts.trackCreatedUser(username), uniqueAttrsUserType.Name, username, "")
+	ts.assertProvisioned(ts.trackCreatedUser(username), uniqueAttrsUserType.Handle, username, "")
 }
 
 // Scenario 5: a user type with no unique attributes passes straight through the validator.
@@ -386,5 +388,5 @@ func (ts *AttributeUniquenessTestSuite) TestUniquenessNoUniqueAttributesComplete
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
 
 	created := ts.trackCreatedUser(username)
-	ts.assertProvisioned(created, noUniqueAttrsUserType.Name, username, email)
+	ts.assertProvisioned(created, noUniqueAttrsUserType.Handle, username, email)
 }

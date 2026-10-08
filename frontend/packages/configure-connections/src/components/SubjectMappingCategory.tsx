@@ -37,10 +37,10 @@ export default function SubjectMappingCategory({
   if (categoryTypes.length === 0) {
     return null;
   }
-  const usedTypeNames = new Set(
+  const usedTypeHandles = new Set(
     categoryGroups.map((group) => group.userType).filter((userType) => userType.trim() !== ''),
   );
-  const showAddMapping = categoryTypes.some((type) => !usedTypeNames.has(type.name));
+  const showAddMapping = categoryTypes.some((type) => !usedTypeHandles.has(type.handle));
   const sectionTitle =
     category === 'user'
       ? t('subjectMapping.mappings.user', 'User mappings')

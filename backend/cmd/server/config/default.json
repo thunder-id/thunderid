@@ -139,6 +139,9 @@
       "enabled" : true,
       "insecure": false
     },
+    "cimd": {
+      "enabled": true
+    },
     "par": {
       "require_par": false,
       "expires_in": 60
@@ -149,6 +152,10 @@
       "leeway": 5,
       "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
       "max_jti_length": 256
+    },
+    "client_assertion": {
+      "max_lifetime": 300,
+      "max_iat_age": 60
     },
     "allow_wildcard_redirect_uri": false,
     "send_server_errors_to_client": false,
@@ -161,7 +168,7 @@
     "logout" : {
       "enabled" : true,
       "backchannel" : {
-        "enabled" : false,
+        "enabled" : true,
         "token_validity_period" : 120,
         "request_timeout" : 5,
         "max_attempts" : 3,
@@ -186,6 +193,9 @@
     "max_version_history": 10,
     "auto_infer_registration": false,
     "store": "composite"
+  },
+  "direct_api": {
+    "enabled": true
   },
   "notification": {
     "otp": {
@@ -385,6 +395,7 @@
   },
   "gateway": {
     "max_gateways": 1,
+    "max_versions": 3,
     "store": "composite"
   }
 }

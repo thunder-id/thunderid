@@ -52,8 +52,9 @@ func (suite *AssertionCredentialTestSuite) SetupSuite() {
 	suite.ouID = ouID
 
 	entityType := testutils.UserType{
-		Name: fmt.Sprintf("assertion-cred-person-%d", unique),
-		OUID: suite.ouID,
+		Handle:      fmt.Sprintf("assertion-cred-person-%d", unique),
+		DisplayName: "Assertion Cred Person",
+		OUID:        suite.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -74,7 +75,7 @@ func (suite *AssertionCredentialTestSuite) SetupSuite() {
 
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID:       suite.ouID,
-		Type:       entityType.Name,
+		Type:       entityType.Handle,
 		Attributes: attrs,
 	})
 	suite.Require().NoError(err)
@@ -88,7 +89,7 @@ func (suite *AssertionCredentialTestSuite) SetupSuite() {
 		Description:      "Application for API gate assertion credential integration tests",
 		OUID:             suite.ouID,
 		Type:             "fullstack",
-		AllowedUserTypes: []string{entityType.Name},
+		AllowedUserTypes: []string{entityType.Handle},
 		InboundAuthConfig: []map[string]interface{}{
 			{
 				"type": "oauth2",

@@ -124,8 +124,20 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
-	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService, h.actorProvider)
+	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(oauthApp, h.actorProvider)
 	if clientAttrErr != nil {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate token",
+		}
+	}
+
+	// The organization claims are resolved apart from the rest and handed to the builder in a field
+	// of their own.
+	ouAttributes, ouAttrErr := tokenservice.BuildClientEffectiveOUAttributes(ctx, oauthApp, h.ouService)
+	if ouAttrErr != nil {
+		logger.Error(ctx, "Failed to resolve organization unit claims",
+			log.String("appID", oauthApp.ID), log.Error(ouAttrErr))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",
@@ -138,6 +150,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		ClientID:          tokenRequest.ClientID,
 		Scopes:            scopes,
 		SubjectAttributes: clientAttributes,
+		OUAttributes:      ouAttributes,
 		GrantType:         string(providers.GrantTypeClientCredentials),
 		OAuthApp:          oauthApp,
 		ValidityPeriod:    oauthApp.ClientAccessTokenConfig().ValidityPeriodOrZero(),

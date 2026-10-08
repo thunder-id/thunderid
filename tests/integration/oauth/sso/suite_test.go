@@ -56,7 +56,8 @@ var (
 	testOUID string
 
 	testUserType = testutils.UserType{
-		Name: "sso-logout-person",
+		Handle:      "sso-logout-person",
+		DisplayName: "Sso Logout Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -337,7 +338,7 @@ func (ts *SSOLogoutTestSuite) createApplication() string {
 		"authFlowId":                ts.authFlowID,
 		"isRegistrationFlowEnabled": false,
 		"signOutFlowId":             ts.signOutFlowID,
-		"allowedUserTypes":          []string{testUserType.Name},
+		"allowedUserTypes":          []string{testUserType.Handle},
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",
@@ -396,7 +397,7 @@ func (ts *SSOLogoutTestSuite) deleteAppByID(id string) {
 func (ts *SSOLogoutTestSuite) createUser(username string) string {
 	user := testutils.User{
 		OUID: testOUID,
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(fmt.Sprintf(`{
 			"username": "%s",
 			"password": "%s",

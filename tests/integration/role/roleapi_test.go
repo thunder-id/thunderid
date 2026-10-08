@@ -32,7 +32,8 @@ var (
 	}
 
 	testUserType = testutils.UserType{
-		Name: "role-person",
+		Handle:      "role-person",
+		DisplayName: "Role Person",
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",
@@ -1460,7 +1461,7 @@ func (suite *RoleAPITestSuite) TestAddAssignments_DeclarativeRole() {
 	// Step 2: Create a user in the declarative OU via API.
 	user := testutils.User{
 		OUID: declOUID,
-		Type: "Declarative Test Schema",
+		Type: "declarative-test-schema",
 		Attributes: json.RawMessage(`{
 			"email": "decl-role-assign-user@example.com",
 			"username": "declroleassignuser"

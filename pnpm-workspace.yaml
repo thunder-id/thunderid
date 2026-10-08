@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.3.6
+  next: 16.3.8
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -82,8 +82,10 @@ catalog:
 
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p and GHSA-395f-4hp3-45gv (quadratic-complexity DoS in
-  # shell-quote parse()). Transitive via docusaurus dev server (launch-editor), so overridden globally.
-  shell-quote: '>=1.8.5'
+  # shell-quote parse()), and GHSA-pqg4-j6r4-53mv (command injection in quote() via a line terminator
+  # in a token after a `{ comment }` token, fixed in 1.11.0). Transitive via docusaurus dev server
+  # (launch-editor), so overridden globally.
+  shell-quote: '>=1.11.0'
   # JUSTIFICATION: The `ws` package is a transitive dependency of `docusaurus/core -> webpack-bundle-analyzer` and it requires a major version bump.
   ws: '>=8.21.0'
   # JUSTIFICATION: Fixes GHSA-xv26-6w52-cph6 — websocket-driver message corruption via protocol length headers, transitive via Docusaurus dev server sockjs/faye-websocket.
@@ -98,7 +100,14 @@ overrides:
   vite: 'catalog:'
   # JUSTIFICATION: Fixes GHSA-fx2h-pf6j-xcff — vite `server.fs.deny` bypass on Windows alternate paths.
   vite@>=8.0.0 <=8.0.15: '>=8.0.16'
-  vue: 3.5.34
+  # JUSTIFICATION: Fixes GHSA-g2v6-rqmx-r4w6, XSS via a missing carriage return in
+  # @vue/server-renderer's attribute-name blacklist. Keep Vue and its renderer aligned.
+  vue: 3.5.42
+  # JUSTIFICATION: Fixes GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr, prototype-pollution
+  # gadgets leading to RCE in Tinypool worker and run options. Docusaurus still requires 1.x.
+  # Added 2026-10-06. Remove once Docusaurus ships with tinypool 2.1.2 or later.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/5654
+  '@docusaurus/core>tinypool': 2.1.2
   defu: 6.1.5
   # JUSTIFICATION: i18next 26 breaks compatibility, gives a white screen issue on Console when navigating with "TypeError: n.getResourceBundle"
   i18next: '25.6.0'
@@ -201,8 +210,9 @@ overrides:
   # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
   # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
   # Transitive via next's optional image-optimization dependency, which pins sharp to the
-  # vulnerable <0.35.0 range.
-  sharp: '>=0.35.4'
+  # vulnerable <0.35.0 range. Raised to 0.35.5 for GHSA-wq5f-xc86-pv6w (CVE-2026-96889) — librsvg
+  # vulnerability inherited by sharp.
+  sharp: '>=0.35.5'
   # JUSTIFICATION: Fixes GHSA-28wg-ghj8-5hjv — nanoid non-secure generators can loop indefinitely
   # with negative size. Transitive via @scalar packages, which use the nanoid 5.x line. Pinned
   # exact (not an open range) so the resolver can't dedupe this edge onto an untested major.
@@ -274,10 +284,30 @@ auditConfig:
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
     # upgrades its faker dependency.
     - GHSA-qxc2-j82w-r537
+    # JUSTIFICATION: http-cache-semantics max-stale handling can disclose a cached response to
+    # another user of a shared cache. Transitive via docs -> @docusaurus/core -> update-notifier ->
+    # latest-version -> package-json -> got -> cacheable-request. No patched release exists on npm
+    # yet (the advisory lists "Patched: None"; 4.2.0 is the latest), and the latest Docusaurus
+    # (3.10.2) still depends on update-notifier, so neither an upgrade nor an override can fix it.
+    # Not exploitable here: the only use is the Docusaurus CLI's own update check on a developer
+    # machine or CI runner, never a cache shared between users. Revisit once http-cache-semantics
+    # ships a fix.
+    - GHSA-ch52-4w7c-c8xp
+    # JUSTIFICATION: braces stack exhaustion through deeply nested brace patterns. Transitive via
+    # docs -> @docusaurus/core -> chokidar@3 and webpack-dev-server -> http-proxy-middleware ->
+    # micromatch. No patched release exists on npm yet (the advisory lists "Patched: None"; 3.0.3
+    # is the latest), and the latest Docusaurus (3.10.2) still depends on chokidar@3, so neither an
+    # upgrade nor an override can fix it. Not exploitable here: the patterns come from the docs
+    # site's own build and dev-server configuration, never from untrusted input, and the code runs
+    # only while building or serving the docs locally. Revisit once braces ships a fix.
+    - GHSA-vfj7-8cjw-p6xm
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'
   - nanoid@3.3.18
+  # JUSTIFICATION: Install the security patch for GHSA-68fv-2mgg-jv7q without waiting
+  # for the release-age window. Limited to this patched source-map-js version.
+  - source-map-js@1.2.2
 
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch

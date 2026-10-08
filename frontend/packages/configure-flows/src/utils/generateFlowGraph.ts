@@ -76,14 +76,14 @@ function buildMfaChannelChain(
       ? {
           id: sendId,
           type: FlowNodeType.TASK_EXECUTION,
-          properties: {emailTemplate: 'OTP'},
+          properties: {emailTemplate: 'otp'},
           executor: {name: 'EmailExecutor', mode: 'send'},
           onSuccess: promptId,
         }
       : {
           id: sendId,
           type: FlowNodeType.TASK_EXECUTION,
-          properties: {senderId: smsOtpSenderId, smsTemplate: 'OTP'},
+          properties: {senderId: smsOtpSenderId, smsTemplate: 'otp'},
           executor: {name: 'SMSExecutor'},
           onSuccess: promptId,
         },
@@ -270,7 +270,7 @@ function buildMagicLinkChain(onVerified: string): FlowNode[] {
     {
       id: sendId,
       type: FlowNodeType.TASK_EXECUTION,
-      properties: {emailTemplate: 'MAGIC_LINK'},
+      properties: {emailTemplate: 'magic-link'},
       executor: {
         name: 'EmailExecutor',
         mode: 'send',

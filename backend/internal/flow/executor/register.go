@@ -26,16 +26,23 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
-	"github.com/thunder-id/thunderid/internal/system/email"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// notificationTemplateRenderer is the narrow renderer surface the email and SMS executors consume.
+type notificationTemplateRenderer interface {
+	Resolve(
+		ctx context.Context, channel notificationtemplate.ChannelType, handle string,
+		in notificationtemplate.RenderInput,
+	) (*notificationtemplate.ResolvedContent, *tidcommon.ServiceError)
+}
 
 // ExecutorRegistryInterface defines registry operations for executors.
 type ExecutorRegistryInterface interface {
@@ -167,8 +174,7 @@ type ExecutorDependencies struct {
 	UserMgtProvider       providers.UserMgtProvider
 	AgentMgtProvider      providers.AgentMgtProvider
 	AttributeCacheSvc     attributecache.AttributeCacheServiceInterface
-	EmailClient           email.EmailClientInterface
-	TemplateService       template.TemplateServiceInterface
+	TemplateRenderer      notificationtemplate.TemplateRendererInterface
 	OAuthSvc              oauth.OAuthAuthnServiceInterface
 	OIDCSvc               oidc.OIDCAuthnServiceInterface
 	GithubSvc             github.GithubOAuthAuthnServiceInterface
@@ -252,7 +258,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameEmailExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameEmailExecutor, newEmailExecutor(
-				deps.FlowFactory, deps.EmailClient, deps.TemplateService, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
@@ -281,7 +287,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSMSExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(
-				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateService, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
 		},
 		ExecutorNameFederatedAuthResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameFederatedAuthResolver, newFederatedAuthResolverExecutor(deps.FlowFactory,

@@ -254,6 +254,51 @@ func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintBadSignat
 	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
 }
 
+// TestCheckPromptNone_IDTokenHintNotAnIDToken covers a hint that is another JWT this server signs, such
+// as an access or logout token, which does not identify a sign-in.
+func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintNotAnIDToken() {
+	for _, typ := range []string{"at+jwt", "logout+jwt"} {
+		suite.Run(typ, func() {
+			svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+			suite.mockJWTService.EXPECT().VerifyJWTSignature(mock.Anything, mock.Anything).Return(nil).Once()
+			header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"` + typ + `"}`))
+			payload, _ := json.Marshal(map[string]interface{}{
+				"iss": "https://localhost:8090",
+				"sub": promptNoneSubject,
+			})
+			hint := header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+
+			errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
+				Prompt:      oauth2const.PromptNone,
+				IDTokenHint: hint,
+			}, promptNoneApp())
+
+			suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
+		})
+	}
+}
+
+// TestCheckPromptNone_IDTokenHintLegacyRefreshToken covers a refresh token minted before rt+jwt, which
+// shares the generic type with ID tokens and is told apart by its access_token_sub claim.
+func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintLegacyRefreshToken() {
+	svc := suite.wirePromptNone(promptNoneSession(time.Minute))
+	suite.mockJWTService.EXPECT().VerifyJWTSignature(mock.Anything, mock.Anything).Return(nil)
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+	payload, _ := json.Marshal(map[string]interface{}{
+		"iss":              "https://localhost:8090",
+		"sub":              promptNoneSubject,
+		"access_token_sub": promptNoneSubject,
+	})
+	hint := header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+
+	errCode, _ := svc.checkPromptNone(promptNoneCtx(), &oauth2model.OAuthParameters{
+		Prompt:      oauth2const.PromptNone,
+		IDTokenHint: hint,
+	}, promptNoneApp())
+
+	suite.Equal(oauth2const.ErrorInvalidRequest, errCode)
+}
+
 // TestCheckPromptNone_IDTokenHintNoSubject covers a hint carrying no sub claim: there is nothing to
 // compare the session against.
 func (suite *AuthorizeServiceTestSuite) TestCheckPromptNone_IDTokenHintNoSubject() {

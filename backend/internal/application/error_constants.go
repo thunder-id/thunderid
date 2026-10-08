@@ -645,4 +645,18 @@ var (
 			DefaultValue: "The requested action is not supported for this application's credential",
 		},
 	}
+	// ErrorInvalidCIMDClient is the error returned when a client registered from a Client ID Metadata
+	// Document breaks a document rule. The description names the rule.
+	ErrorInvalidCIMDClient = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_cimd_client",
+			DefaultValue: "Invalid Client ID Metadata Document client",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_cimd_client_description",
+			DefaultValue: "The client does not satisfy the Client ID Metadata Document rules",
+		},
+	}
 )

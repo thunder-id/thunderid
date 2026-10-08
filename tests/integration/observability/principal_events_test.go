@@ -45,7 +45,8 @@ const (
 )
 
 var obsUserType = testutils.UserType{
-	Name: obsUserTypeName,
+	Handle:      obsUserTypeName,
+	DisplayName: "Obs Principal Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -151,8 +152,9 @@ func (ts *PrincipalEventsTestSuite) SetupSuite() {
 	ts.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},

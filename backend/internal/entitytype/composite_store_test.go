@@ -57,16 +57,18 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByID() {
 			setupDBStore: func() {
 				suite.dbStoreMock.On("GetEntityTypeByID", ctx, TypeCategoryUser, "db-schema-1").
 					Return(EntityType{
-						ID:   "db-schema-1",
-						Name: "DB Schema",
-						OUID: "ou-1",
+						ID:          "db-schema-1",
+						Handle:      "db-schema",
+						DisplayName: "DB Schema",
+						OUID:        "ou-1",
 					}, nil).
 					Once()
 			},
 			want: EntityType{
-				ID:   "db-schema-1",
-				Name: "DB Schema",
-				OUID: "ou-1",
+				ID:          "db-schema-1",
+				Handle:      "db-schema",
+				DisplayName: "DB Schema",
+				OUID:        "ou-1",
 			},
 		},
 		{
@@ -75,10 +77,11 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByID() {
 			setupFileStore: func() {
 				// Add schema to file store
 				err := suite.fileStore.CreateEntityType(ctx, EntityType{
-					ID:       "file-schema-1",
-					Category: TypeCategoryUser,
-					Name:     "File Schema",
-					OUID:     "ou-1",
+					ID:          "file-schema-1",
+					Category:    TypeCategoryUser,
+					Handle:      "file-schema",
+					DisplayName: "File Schema",
+					OUID:        "ou-1",
 				})
 				suite.NoError(err)
 			},
@@ -88,10 +91,11 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByID() {
 					Once()
 			},
 			want: EntityType{
-				ID:       "file-schema-1",
-				Category: TypeCategoryUser,
-				Name:     "File Schema",
-				OUID:     "ou-1",
+				ID:          "file-schema-1",
+				Category:    TypeCategoryUser,
+				Handle:      "file-schema",
+				DisplayName: "File Schema",
+				OUID:        "ou-1",
 			},
 		},
 		{
@@ -126,8 +130,8 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByID() {
 	}
 }
 
-// TestCompositeStore_GetEntityTypeByName tests retrieving entity types by name from composite store.
-func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByName() {
+// TestCompositeStore_GetEntityTypeByHandle tests retrieving entity types by name from composite store.
+func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByHandle() {
 	ctx := context.Background()
 
 	testCases := []struct {
@@ -140,58 +144,62 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByName() {
 	}{
 		{
 			name:       "retrieves from DB store",
-			schemaName: "DBSchema",
+			schemaName: "db-schema",
 			setupFileStore: func() {
 				// File store doesn't have this schema
 			},
 			setupDBStore: func() {
-				suite.dbStoreMock.On("GetEntityTypeByName", ctx, TypeCategoryUser, "DBSchema").
+				suite.dbStoreMock.On("GetEntityTypeByHandle", ctx, TypeCategoryUser, "db-schema").
 					Return(EntityType{
-						ID:   "db-schema-1",
-						Name: "DBSchema",
-						OUID: "ou-1",
+						ID:          "db-schema-1",
+						Handle:      "db-schema",
+						DisplayName: "db-schema",
+						OUID:        "ou-1",
 					}, nil).
 					Once()
 			},
 			want: EntityType{
-				ID:   "db-schema-1",
-				Name: "DBSchema",
-				OUID: "ou-1",
+				ID:          "db-schema-1",
+				Handle:      "db-schema",
+				DisplayName: "db-schema",
+				OUID:        "ou-1",
 			},
 		},
 		{
 			name:       "retrieves from file store when not in DB",
-			schemaName: "FileSchema",
+			schemaName: "file-schema",
 			setupFileStore: func() {
 				// Add schema to file store
 				err := suite.fileStore.CreateEntityType(ctx, EntityType{
-					ID:       "file-schema-1",
-					Category: TypeCategoryUser,
-					Name:     "FileSchema",
-					OUID:     "ou-1",
+					ID:          "file-schema-1",
+					Category:    TypeCategoryUser,
+					Handle:      "file-schema",
+					DisplayName: "file-schema",
+					OUID:        "ou-1",
 				})
 				suite.NoError(err)
 			},
 			setupDBStore: func() {
-				suite.dbStoreMock.On("GetEntityTypeByName", ctx, TypeCategoryUser, "FileSchema").
+				suite.dbStoreMock.On("GetEntityTypeByHandle", ctx, TypeCategoryUser, "file-schema").
 					Return(EntityType{}, ErrEntityTypeNotFound).
 					Once()
 			},
 			want: EntityType{
-				ID:       "file-schema-1",
-				Category: TypeCategoryUser,
-				Name:     "FileSchema",
-				OUID:     "ou-1",
+				ID:          "file-schema-1",
+				Category:    TypeCategoryUser,
+				Handle:      "file-schema",
+				DisplayName: "file-schema",
+				OUID:        "ou-1",
 			},
 		},
 		{
 			name:       "returns error when not found in both stores",
-			schemaName: "NonExistentSchema",
+			schemaName: "non-existent-schema",
 			setupFileStore: func() {
 				// File store is empty - no schemas added
 			},
 			setupDBStore: func() {
-				suite.dbStoreMock.On("GetEntityTypeByName", ctx, TypeCategoryUser, "NonExistentSchema").
+				suite.dbStoreMock.On("GetEntityTypeByHandle", ctx, TypeCategoryUser, "non-existent-schema").
 					Return(EntityType{}, ErrEntityTypeNotFound).
 					Once()
 			},
@@ -205,7 +213,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeByName() {
 			tc.setupFileStore()
 			tc.setupDBStore()
 
-			result, err := suite.compositeStore.GetEntityTypeByName(ctx, TypeCategoryUser, tc.schemaName)
+			result, err := suite.compositeStore.GetEntityTypeByHandle(ctx, TypeCategoryUser, tc.schemaName)
 
 			if tc.wantErr {
 				suite.Error(err)
@@ -224,10 +232,11 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_IsEntityTypeDeclarative
 	const fileSchema1ID = "file-schema-1"
 	// Setup: Add schema to file store
 	err := suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       fileSchema1ID,
-		Category: TypeCategoryUser,
-		Name:     "File Schema",
-		OUID:     "ou-1",
+		ID:          fileSchema1ID,
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema",
+		DisplayName: "File Schema",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
@@ -243,9 +252,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_CreateEntityType() {
 	ctx := context.Background()
 
 	schema := EntityType{
-		ID:   "new-schema",
-		Name: "New Schema",
-		OUID: "ou-1",
+		ID:          "new-schema",
+		Handle:      "new-schema",
+		DisplayName: "New Schema",
+		OUID:        "ou-1",
 	}
 
 	suite.dbStoreMock.On("CreateEntityType", ctx, schema).
@@ -263,9 +273,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_UpdateEntityTypeByID() 
 
 	schemaID := "schema-1"
 	schema := EntityType{
-		ID:   schemaID,
-		Name: "Updated Schema",
-		OUID: "ou-1",
+		ID:          schemaID,
+		Handle:      "updated-schema",
+		DisplayName: "Updated Schema",
+		OUID:        "ou-1",
 	}
 
 	suite.dbStoreMock.On("UpdateEntityTypeByID", ctx, TypeCategoryUser, schemaID, schema).
@@ -300,10 +311,11 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeList() {
 
 	// Test that retrieves from file store (which doesn't require complex mocking)
 	err := suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-1",
-		Category: TypeCategoryUser,
-		Name:     "File Schema 1",
-		OUID:     "ou-1",
+		ID:          "file-schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema-1",
+		DisplayName: "File Schema 1",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
@@ -316,9 +328,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeList() {
 	suite.dbStoreMock.On("GetEntityTypeList", ctx, TypeCategoryUser, dbCount, 0).
 		Return([]EntityTypeListItem{
 			{
-				ID:   "db-schema-1",
-				Name: "DB Schema 1",
-				OUID: "ou-1",
+				ID:          "db-schema-1",
+				Handle:      "db-schema-1",
+				DisplayName: "DB Schema 1",
+				OUID:        "ou-1",
 			},
 		}, nil).
 		Once()
@@ -341,13 +354,14 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeList() {
 // TestCompositeStore_MergeAndDeduplicateEntityTypes tests the merge and deduplicate function.
 func (suite *CompositeStoreTestSuite) TestCompositeStore_MergeAndDeduplicateEntityTypes() {
 	dbSchemas := []EntityTypeListItem{
-		{ID: "schema-1", Name: "Schema 1"},
-		{ID: "schema-2", Name: "Schema 2"},
+		{ID: "schema-1", Handle: "schema-1", DisplayName: "Schema 1"},
+		{ID: "schema-2", Handle: "schema-2", DisplayName: "Schema 2"},
 	}
 
 	fileSchemas := []EntityTypeListItem{
-		{ID: "schema-3", Name: "Schema 3"},
-		{ID: "schema-1", Name: "Schema 1 Duplicate"}, // Duplicate - should use DB version
+		{ID: "schema-3", Handle: "schema-3", DisplayName: "Schema 3"},
+		// Duplicate - should use DB version
+		{ID: "schema-1", Handle: "schema-1-duplicate", DisplayName: "Schema 1 Duplicate"},
 	}
 
 	result := mergeAndDeduplicateEntityTypes(dbSchemas, fileSchemas)
@@ -372,18 +386,20 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeListCount(
 
 	// Setup: Add schema to file store
 	err := suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-1",
-		Category: TypeCategoryUser,
-		Name:     "File Schema 1",
-		OUID:     "ou-1",
+		ID:          "file-schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema-1",
+		DisplayName: "File Schema 1",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
 	err = suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-2",
-		Category: TypeCategoryUser,
-		Name:     "File Schema 2",
-		OUID:     "ou-1",
+		ID:          "file-schema-2",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema-2",
+		DisplayName: "File Schema 2",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
@@ -465,18 +481,20 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeListCountB
 
 	// Setup: Add schema to file store
 	err := suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-1",
-		Category: TypeCategoryUser,
-		Name:     "File Schema",
-		OUID:     "ou-1",
+		ID:          "file-schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema",
+		DisplayName: "File Schema",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
 	err = suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-2",
-		Category: TypeCategoryUser,
-		Name:     "File Schema 2",
-		OUID:     "ou-2",
+		ID:          "file-schema-2",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema-2",
+		DisplayName: "File Schema 2",
+		OUID:        "ou-2",
 	})
 	suite.NoError(err)
 
@@ -501,10 +519,11 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeListByOUID
 
 	// Setup file store
 	err := suite.fileStore.CreateEntityType(ctx, EntityType{
-		ID:       "file-schema-1",
-		Category: TypeCategoryUser,
-		Name:     "File Schema 1",
-		OUID:     "ou-1",
+		ID:          "file-schema-1",
+		Category:    TypeCategoryUser,
+		Handle:      "file-schema-1",
+		DisplayName: "File Schema 1",
+		OUID:        "ou-1",
 	})
 	suite.NoError(err)
 
@@ -516,9 +535,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_GetEntityTypeListByOUID
 	suite.dbStoreMock.On("GetEntityTypeListByOUIDs", ctx, TypeCategoryUser, ouIDs, dbCount, 0).
 		Return([]EntityTypeListItem{
 			{
-				ID:   "db-schema-1",
-				Name: "DB Schema 1",
-				OUID: "ou-1",
+				ID:          "db-schema-1",
+				Handle:      "db-schema-1",
+				DisplayName: "DB Schema 1",
+				OUID:        "ou-1",
 			},
 		}, nil).
 		Once()

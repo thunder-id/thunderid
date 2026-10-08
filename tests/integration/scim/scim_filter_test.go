@@ -56,8 +56,9 @@ func (ts *SCIMFilterTestSuite) SetupSuite() {
 
 	ts.entityTypeName = "scim-it-filter-person"
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeName,
-		OUID: ouID,
+		Handle:      ts.entityTypeName,
+		DisplayName: "Entity Type",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"email":      map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"given_name": map[string]interface{}{"type": "string"},

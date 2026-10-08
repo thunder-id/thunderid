@@ -107,8 +107,9 @@ func (ts *FlowEventsTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	ts.userTypeID, err = testutils.CreateUserType(testutils.UserType{
-		Name: "flow-events-person",
-		OUID: ouID,
+		Handle:      "flow-events-person",
+		DisplayName: "Flow Events Person",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

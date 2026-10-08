@@ -21,6 +21,7 @@ interface EditAdvancedSettingsProps {
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onDeleteSuccess?: () => void;
+  onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
 }
 
 export default function EditAdvancedSettings({
@@ -29,6 +30,7 @@ export default function EditAdvancedSettings({
   oauth2Config = undefined,
   onFieldChange,
   onDeleteSuccess = undefined,
+  onBackchannelLogoutUriValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
   const {t} = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -106,6 +108,7 @@ export default function EditAdvancedSettings({
       <OperationModesSection
         oauth2Config={oauth2Config}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
+        onBackchannelLogoutUriValidationChange={onBackchannelLogoutUriValidationChange}
         disabled={agent.isReadOnly}
       />
       {!agent.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}

@@ -12,25 +12,25 @@ import (
 )
 
 // cachedBackedEntityTypeStore wraps a entityTypeStoreInterface with in-memory caching
-// for individual schema lookups by ID and Name. Cache keys are namespaced by category so the
-// same name in user vs agent categories never collide.
+// for individual schema lookups by ID and handle. Cache keys are namespaced by category so the
+// same handle in user vs agent categories never collide.
 type cachedBackedEntityTypeStore struct {
-	schemaByIDCache   cache.CacheInterface[*EntityType]
-	schemaByNameCache cache.CacheInterface[*EntityType]
-	store             entityTypeStoreInterface
-	logger            *log.Logger
+	schemaByIDCache     cache.CacheInterface[*EntityType]
+	schemaByHandleCache cache.CacheInterface[*EntityType]
+	store               entityTypeStoreInterface
+	logger              *log.Logger
 }
 
 // newCachedBackedEntityTypeStore creates a cache-backed wrapper around the given store.
 func newCachedBackedEntityTypeStore(
 	store entityTypeStoreInterface,
 	entityTypeByIDCache cache.CacheInterface[*EntityType],
-	entityTypeByNameCache cache.CacheInterface[*EntityType],
+	entityTypeByHandleCache cache.CacheInterface[*EntityType],
 ) entityTypeStoreInterface {
 	return &cachedBackedEntityTypeStore{
-		schemaByIDCache:   entityTypeByIDCache,
-		schemaByNameCache: entityTypeByNameCache,
-		store:             store,
+		schemaByIDCache:     entityTypeByIDCache,
+		schemaByHandleCache: entityTypeByHandleCache,
+		store:               store,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "CacheBackedEntityTypeStore")),
 	}
@@ -40,8 +40,8 @@ func cacheKeyForID(category TypeCategory, schemaID string) cache.CacheKey {
 	return cache.CacheKey{Key: string(category) + ":" + schemaID}
 }
 
-func cacheKeyForName(category TypeCategory, name string) cache.CacheKey {
-	return cache.CacheKey{Key: string(category) + ":" + name}
+func cacheKeyForHandle(category TypeCategory, handle string) cache.CacheKey {
+	return cache.CacheKey{Key: string(category) + ":" + handle}
 }
 
 // GetEntityTypeByID retrieves an entity type by ID, checking cache first.
@@ -62,15 +62,15 @@ func (s *cachedBackedEntityTypeStore) GetEntityTypeByID(ctx context.Context, cat
 	return schema, nil
 }
 
-// GetEntityTypeByName retrieves an entity type by name, checking cache first.
-func (s *cachedBackedEntityTypeStore) GetEntityTypeByName(ctx context.Context, category TypeCategory,
-	name string) (EntityType, error) {
-	cacheKey := cacheKeyForName(category, name)
-	if cached, ok := s.schemaByNameCache.Get(ctx, cacheKey); ok {
+// GetEntityTypeByHandle retrieves an entity type by handle, checking cache first.
+func (s *cachedBackedEntityTypeStore) GetEntityTypeByHandle(ctx context.Context, category TypeCategory,
+	handle string) (EntityType, error) {
+	cacheKey := cacheKeyForHandle(category, handle)
+	if cached, ok := s.schemaByHandleCache.Get(ctx, cacheKey); ok {
 		return *cached, nil
 	}
 
-	schema, err := s.store.GetEntityTypeByName(ctx, category, name)
+	schema, err := s.store.GetEntityTypeByHandle(ctx, category, handle)
 	if err != nil {
 		return schema, err
 	}
@@ -91,27 +91,15 @@ func (s *cachedBackedEntityTypeStore) CreateEntityType(ctx context.Context, enti
 	return nil
 }
 
-// UpdateEntityTypeByID updates an entity type, invalidates old cache entries, and caches the new state.
+// UpdateEntityTypeByID updates an entity type, invalidates its cache entries, and caches the new state.
 func (s *cachedBackedEntityTypeStore) UpdateEntityTypeByID(
 	ctx context.Context, category TypeCategory, schemaID string, entityType EntityType,
 ) error {
-	existingCacheKey := cacheKeyForID(category, schemaID)
-	existing, ok := s.schemaByIDCache.Get(ctx, existingCacheKey)
-	if !ok {
-		existingSchema, err := s.store.GetEntityTypeByID(ctx, category, schemaID)
-		if err == nil {
-			existing = &existingSchema
-		}
-	}
-
 	if err := s.store.UpdateEntityTypeByID(ctx, category, schemaID, entityType); err != nil {
 		return err
 	}
 
-	if existing != nil {
-		s.invalidateEntityTypeCache(ctx, existing.Category, existing.ID, existing.Name)
-	}
-
+	s.invalidateEntityTypeCache(ctx, category, schemaID, entityType.Handle)
 	s.cacheEntityType(ctx, &entityType)
 
 	return nil
@@ -138,7 +126,7 @@ func (s *cachedBackedEntityTypeStore) DeleteEntityTypeByID(ctx context.Context, 
 	}
 
 	if existing != nil {
-		s.invalidateEntityTypeCache(ctx, existing.Category, existing.ID, existing.Name)
+		s.invalidateEntityTypeCache(ctx, existing.Category, existing.ID, existing.Handle)
 	}
 
 	return nil
@@ -176,14 +164,14 @@ func (s *cachedBackedEntityTypeStore) IsEntityTypeDeclarative(category TypeCateg
 	return s.store.IsEntityTypeDeclarative(category, schemaID)
 }
 
-// GetDisplayAttributesByNames delegates to the underlying store.
-func (s *cachedBackedEntityTypeStore) GetDisplayAttributesByNames(
-	ctx context.Context, category TypeCategory, names []string,
+// GetDisplayAttributesByHandles delegates to the underlying store.
+func (s *cachedBackedEntityTypeStore) GetDisplayAttributesByHandles(
+	ctx context.Context, category TypeCategory, handles []string,
 ) (map[string]string, error) {
-	return s.store.GetDisplayAttributesByNames(ctx, category, names)
+	return s.store.GetDisplayAttributesByHandles(ctx, category, handles)
 }
 
-// cacheEntityType populates both ID and Name caches for the given schema.
+// cacheEntityType populates both ID and handle caches for the given schema.
 func (s *cachedBackedEntityTypeStore) cacheEntityType(ctx context.Context, schema *EntityType) {
 	if schema == nil || schema.Category == "" {
 		return
@@ -197,18 +185,18 @@ func (s *cachedBackedEntityTypeStore) cacheEntityType(ctx context.Context, schem
 		}
 	}
 
-	if schema.Name != "" {
-		key := cacheKeyForName(schema.Category, schema.Name)
-		if err := s.schemaByNameCache.Set(ctx, key, schema); err != nil {
-			s.logger.Error(ctx, "Failed to cache entity type by name",
-				log.String("schemaName", schema.Name), log.Error(err))
+	if schema.Handle != "" {
+		key := cacheKeyForHandle(schema.Category, schema.Handle)
+		if err := s.schemaByHandleCache.Set(ctx, key, schema); err != nil {
+			s.logger.Error(ctx, "Failed to cache entity type by handle",
+				log.String("handle", schema.Handle), log.Error(err))
 		}
 	}
 }
 
-// invalidateEntityTypeCache removes entries from both ID and Name caches.
+// invalidateEntityTypeCache removes entries from both ID and handle caches.
 func (s *cachedBackedEntityTypeStore) invalidateEntityTypeCache(ctx context.Context,
-	category TypeCategory, schemaID, schemaName string) {
+	category TypeCategory, schemaID, handle string) {
 	if schemaID != "" {
 		key := cacheKeyForID(category, schemaID)
 		if err := s.schemaByIDCache.Delete(ctx, key); err != nil {
@@ -217,11 +205,11 @@ func (s *cachedBackedEntityTypeStore) invalidateEntityTypeCache(ctx context.Cont
 		}
 	}
 
-	if schemaName != "" {
-		key := cacheKeyForName(category, schemaName)
-		if err := s.schemaByNameCache.Delete(ctx, key); err != nil {
-			s.logger.Error(ctx, "Failed to invalidate entity type cache by name",
-				log.String("schemaName", schemaName), log.Error(err))
+	if handle != "" {
+		key := cacheKeyForHandle(category, handle)
+		if err := s.schemaByHandleCache.Delete(ctx, key); err != nil {
+			s.logger.Error(ctx, "Failed to invalidate entity type cache by handle",
+				log.String("handle", handle), log.Error(err))
 		}
 	}
 }

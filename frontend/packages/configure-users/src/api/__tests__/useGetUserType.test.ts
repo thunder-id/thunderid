@@ -32,7 +32,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 describe('useGetUserType', () => {
   const mockSchema: ApiUserType = {
     id: 'schema-1',
-    name: 'Employee',
+    handle: 'employee',
+    displayName: 'Employee',
     schema: {
       username: {type: 'string', required: true, unique: true},
       email: {type: 'string', required: true},
@@ -73,7 +74,7 @@ describe('useGetUserType', () => {
 
     expect(result.current.data).toEqual(mockSchema);
     expect(result.current.data?.id).toBe(schemaId);
-    expect(result.current.data?.name).toBe('Employee');
+    expect(result.current.data?.displayName).toBe('Employee');
   });
 
   it('should make correct API call with schema ID', async () => {
@@ -194,8 +195,8 @@ describe('useGetUserType', () => {
   });
 
   it('should refetch when id changes', async () => {
-    const schema1 = {...mockSchema, id: 'schema-1', name: 'Employee'};
-    const schema2 = {...mockSchema, id: 'schema-2', name: 'Contractor'};
+    const schema1 = {...mockSchema, id: 'schema-1', handle: 'employee', displayName: 'Employee'};
+    const schema2 = {...mockSchema, id: 'schema-2', handle: 'contractor', displayName: 'Contractor'};
 
     mockHttpRequest.mockResolvedValueOnce({data: schema1}).mockResolvedValueOnce({data: schema2});
 
@@ -277,7 +278,8 @@ describe('useGetUserType', () => {
   it('should handle schema with complex properties', async () => {
     const complexSchema: ApiUserType = {
       id: 'schema-complex',
-      name: 'ComplexUser',
+      handle: 'complex-user',
+      displayName: 'ComplexUser',
       schema: {
         name: {type: 'string', required: true},
         age: {type: 'number', required: false},
@@ -312,8 +314,8 @@ describe('useGetUserType', () => {
   });
 
   it('should handle different schema IDs', async () => {
-    const schema1 = {...mockSchema, id: 'schema-1', name: 'Employee'};
-    const schema2 = {...mockSchema, id: 'schema-2', name: 'Contractor'};
+    const schema1 = {...mockSchema, id: 'schema-1', handle: 'employee', displayName: 'Employee'};
+    const schema2 = {...mockSchema, id: 'schema-2', handle: 'contractor', displayName: 'Contractor'};
 
     mockHttpRequest.mockResolvedValueOnce({data: schema1});
 

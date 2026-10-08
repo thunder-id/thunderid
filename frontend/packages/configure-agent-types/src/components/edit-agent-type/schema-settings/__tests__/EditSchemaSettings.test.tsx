@@ -50,7 +50,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], unique: true, credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -76,7 +76,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], enum: ['ACTIVE', 'INACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -101,7 +101,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['A', 'B']}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -127,7 +127,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -145,7 +145,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: []}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -163,7 +163,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE', 'INACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -182,7 +182,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -200,7 +200,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -222,7 +222,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -243,7 +243,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], credential: false, unique: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -261,7 +261,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -278,7 +278,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -291,7 +291,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -307,7 +307,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -325,7 +325,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], required: false}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -343,7 +343,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], unique: false}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -361,7 +361,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -379,7 +379,7 @@ describe('EditSchemaSettings (agent-type)', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: []}],
       onPropertiesChange: mockOnPropertiesChange,
-      agentTypeName: 'Test',
+      agentTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);

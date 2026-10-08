@@ -631,13 +631,13 @@ var (
 // error whose detail names the specific attribute(s) that the target user type
 // requires but the request did not supply, whether via core fields or the custom
 // extension object. Gives clients an actionable 400 instead of a generic failure.
-func NewMissingRequiredAttributesError(userTypeName string, missing []string) *tidcommon.ServiceError {
+func NewMissingRequiredAttributesError(userTypeHandle string, missing []string) *tidcommon.ServiceError {
 	svcErr := ErrorSchemaValidationFailed
 	svcErr.ErrorDescription = tidcommon.I18nMessage{
 		Key: ErrorSchemaValidationFailed.ErrorDescription.Key,
 		DefaultValue: fmt.Sprintf(
 			"User type %q requires the following attribute(s), which were not provided: %s",
-			userTypeName, strings.Join(missing, ", "),
+			userTypeHandle, strings.Join(missing, ", "),
 		),
 	}
 	return &svcErr
@@ -661,13 +661,13 @@ func NewConflictingAttributeValueError(attrName string) *tidcommon.ServiceError 
 // NewUndeclaredAttributesError builds a SCIM-1017 (schema validation failed)
 // error whose detail names the specific attribute(s) that the request supplied
 // but the target user type schema does not declare.
-func NewUndeclaredAttributesError(userTypeName string, undeclared []string) *tidcommon.ServiceError {
+func NewUndeclaredAttributesError(userTypeHandle string, undeclared []string) *tidcommon.ServiceError {
 	svcErr := ErrorSchemaValidationFailed
 	svcErr.ErrorDescription = tidcommon.I18nMessage{
 		Key: ErrorSchemaValidationFailed.ErrorDescription.Key,
 		DefaultValue: fmt.Sprintf(
 			"User type %q does not declare the following attribute(s): %s",
-			userTypeName, strings.Join(undeclared, ", "),
+			userTypeHandle, strings.Join(undeclared, ", "),
 		),
 	}
 	return &svcErr

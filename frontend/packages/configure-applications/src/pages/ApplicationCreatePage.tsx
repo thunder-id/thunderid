@@ -600,7 +600,7 @@ export default function ApplicationCreatePage(): JSX.Element {
     const userTypes = userTypesData?.types ?? [];
     const allowedUserTypes = (() => {
       if (!allowsUserLogins) return undefined;
-      if (userTypes.length === 1) return [userTypes[0].name];
+      if (userTypes.length === 1) return [userTypes[0].handle];
       if (userTypes.length > 1) return selectedUserTypes.length > 0 ? selectedUserTypes : undefined;
       return undefined;
     })();

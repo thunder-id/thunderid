@@ -4,7 +4,7 @@
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {useState} from 'react';
 import {Controller, type Control} from 'react-hook-form';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {afterEach, describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import EditTokenSettings from '../EditTokenSettings';
@@ -23,7 +23,8 @@ const {mockHttp, mockGetServerUrl, mockLogger} = vi.hoisted(() => {
         types: [
           {
             id: 'schema-1',
-            name: 'default',
+            handle: 'default',
+            displayName: 'Default',
           },
         ],
       },
@@ -37,6 +38,8 @@ const {mockHttp, mockGetServerUrl, mockLogger} = vi.hoisted(() => {
   };
   return {mockHttp: hoistedMockHttp, mockGetServerUrl: hoistedMockGetServerUrl, mockLogger: hoistedMockLogger};
 });
+
+const runtime = vi.hoisted(() => ({url: 'https://api.example.com'}));
 
 // Mock child components.
 // TokenUserAttributesSection receives accessTokenAttributes/idTokenAttributes in OAuth mode
@@ -54,6 +57,7 @@ vi.mock('../TokenUserAttributesSection', () => ({
     onAttributeClick,
     userAttributes,
     scopeMapping,
+    signingAlg,
   }: {
     accessTokenAttributes?: string[];
     idTokenAttributes?: string[];
@@ -64,6 +68,7 @@ vi.mock('../TokenUserAttributesSection', () => ({
     onAttributeClick?: (attr: string, tokenType: 'shared' | 'access' | 'id' | 'userinfo') => void;
     userAttributes?: string[];
     scopeMapping?: React.ReactNode;
+    signingAlg?: string;
   }) => {
     const isOAuthMode = accessTokenAttributes !== undefined || idTokenAttributes !== undefined;
     if (isOAuthMode) {
@@ -71,6 +76,7 @@ vi.mock('../TokenUserAttributesSection', () => ({
         <div>
           <div data-testid="token-user-attributes-section-access">Access Token Attributes</div>
           <div data-testid="token-user-attributes-section-id">ID Token Attributes</div>
+          <div data-testid="signing-alg">{signingAlg ?? ''}</div>
           {userAttributes && <div data-testid="user-attributes-list">{userAttributes.join(',')}</div>}
           <button type="button" onClick={() => onIdTokenConfigChange?.('responseType', 'JWT')}>
             id-token-to-jwt
@@ -206,6 +212,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
     useConfig: () => ({
       getServerUrl: mockGetServerUrl,
     }),
+    useRuntimeUrl: () => runtime.url,
   };
 });
 
@@ -364,6 +371,66 @@ describe('EditTokenSettings', () => {
 
       expect(screen.queryByTestId('token-user-attributes-section-shared')).not.toBeInTheDocument();
       expect(screen.queryByTestId('token-validation-section-shared')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Signing algorithm', () => {
+    const oauth2Config = {
+      token: {
+        accessToken: {userConfig: {validityPeriod: 1800, attributes: ['sub']}},
+        idToken: {validityPeriod: 3600, userAttributes: ['sub']},
+      },
+    } as OAuth2Config;
+
+    const listedUserTypes = mockHttp.request.getMockImplementation();
+
+    // No user types, so the test waits on the discovery lookup alone.
+    beforeEach(() => {
+      mockHttp.request.mockResolvedValue({data: {totalResults: 0, startIndex: 0, count: 0, types: []}});
+    });
+
+    afterEach(() => {
+      runtime.url = 'https://api.example.com';
+      mockHttp.request.mockImplementation(listedUserTypes!);
+      vi.unstubAllGlobals();
+    });
+
+    // A lookup against a new runtime that fails must not leave the previous runtime's answer shown.
+    it('clears the algorithm when the runtime changes and the new lookup fails', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({id_token_signing_alg_values_supported: ['RS256']}),
+        })
+        .mockResolvedValueOnce({ok: false, status: 503});
+      vi.stubGlobal('fetch', fetchMock);
+
+      const {rerender} = render(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('signing-alg')).toHaveTextContent('RS256');
+      });
+
+      runtime.url = 'https://gateway.example.com';
+      rerender(
+        <EditTokenSettings
+          application={mockApplication}
+          oauth2Config={oauth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenLastCalledWith('https://gateway.example.com/.well-known/openid-configuration');
+      });
+      expect(screen.getByTestId('signing-alg')).toBeEmptyDOMElement();
     });
   });
 
@@ -700,7 +767,8 @@ describe('EditTokenSettings', () => {
           return Promise.resolve({
             data: {
               id: 'schema-1',
-              name: 'default',
+              handle: 'default',
+              displayName: 'Default',
               ouId: 'org-1',
               allowSelfRegistration: false,
               schema,
@@ -709,7 +777,12 @@ describe('EditTokenSettings', () => {
         }
 
         return Promise.resolve({
-          data: {totalResults: 1, startIndex: 0, count: 1, types: [{id: 'schema-1', name: 'default'}]},
+          data: {
+            totalResults: 1,
+            startIndex: 0,
+            count: 1,
+            types: [{id: 'schema-1', handle: 'default', displayName: 'Default'}],
+          },
         });
       });
     };

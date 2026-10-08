@@ -103,8 +103,9 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 
 	// ---- 2. Create user types (one per OU) ----
 	schemaOU1ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityTypeOU1Name,
-		OUID: ts.userOU1ID,
+		Handle:      entityTypeOU1Name,
+		DisplayName: "Authz User Type Ou1",
+		OUID:        ts.userOU1ID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -115,8 +116,9 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.entityTypeOU1ID = schemaOU1ID
 
 	schemaOU2ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityTypeOU2Name,
-		OUID: ts.userOU2ID,
+		Handle:      entityTypeOU2Name,
+		DisplayName: "Authz User Type Ou2",
+		OUID:        ts.userOU2ID,
 		Schema: map[string]interface{}{
 			"display_name": map[string]interface{}{"type": "string"},
 		},

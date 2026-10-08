@@ -4,7 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {FullScreenCreationWizardLayout, NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {getErrorMessage} from '@thunderid/utils';
+import {generateHandle, getErrorMessage} from '@thunderid/utils';
 import {Box, Stack, Typography, Button, TextField, Alert, FormControl, FormLabel} from '@wso2/oxygen-ui';
 import {useState, useMemo, useRef, type JSX} from 'react';
 import {useForm, Controller} from 'react-hook-form';
@@ -95,11 +95,6 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
     },
   });
 
-  /**
-   * Generates a handle from the name by lowercasing and replacing spaces with hyphens.
-   */
-  const generateHandleFromName = (nameValue: string): string => nameValue.toLowerCase().replace(/\s+/g, '-');
-
   const listUrl = routes.list();
 
   const handleClose = (): void => {
@@ -115,7 +110,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
     setValue('name', newName, {shouldValidate: true});
     // Auto-generate handle if user hasn't manually edited it
     if (!isHandleManuallyEditedRef.current) {
-      setValue('handle', generateHandleFromName(newName), {shouldValidate: true});
+      setValue('handle', generateHandle(newName), {shouldValidate: true});
     }
   };
 
@@ -130,7 +125,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
     setValue('name', suggestion, {shouldValidate: true});
     // Auto-generate handle from suggestion if user hasn't manually edited it
     if (!isHandleManuallyEditedRef.current) {
-      setValue('handle', generateHandleFromName(suggestion), {shouldValidate: true});
+      setValue('handle', generateHandle(suggestion), {shouldValidate: true});
     }
   };
 

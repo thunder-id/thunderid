@@ -55,7 +55,7 @@ packages:
       filename: "{{.InterfaceName}}_mock_test.go"
     interfaces:
       sharingPolicyStoreInterface:
-      OUEnumerator:
+      SharingServiceInterface:
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/logout:
     interfaces:
@@ -374,6 +374,14 @@ packages:
       pkgname: cert
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: internal/cimd
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimd
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/resource:
     config:
       all: true
@@ -389,6 +397,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: mgt
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/system/outboundauth:
+    interfaces:
+      Authenticator:
+        config:
+          dir: internal/system/outboundauth
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: outboundauth
+          filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/consent:
     config:
@@ -477,6 +494,27 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: users
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/notificationtemplate:
+    config:
+      dir: internal/notificationtemplate
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: notificationtemplate
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      notificationTemplateStoreInterface:
+      NotificationTemplateServiceInterface:
+      translationResolver:
+      designResolver:
+
+  github.com/thunder-id/thunderid/internal/system/importer:
+    config:
+      dir: internal/system/importer
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: importer
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      notificationTemplateAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

@@ -89,7 +89,7 @@ func (s *SMSGatewayTestSuite) TestCreateReturnsPlaintextNonSecretFields() {
 	})
 	req := httptest.NewRequest(http.MethodPost, "/connections/sms-gateway", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
-	createSMSHandler(s.handler, smsGatewayToSenderDTO, smsGatewayFromSenderDTO)(rr, req)
+	createSenderHandler(s.handler, smsGatewayToSenderDTO, smsGatewayFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusCreated, rr.Code)
 	var resp smsGatewayConnectionResponse
@@ -117,7 +117,8 @@ func (s *SMSGatewayTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/sms-gateway/sg-1", nil)
 	req.SetPathValue("id", "sg-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp smsGatewayConnectionResponse
@@ -135,7 +136,8 @@ func (s *SMSGatewayTestSuite) TestGetProviderMismatchReturnsNotFound() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/sms-gateway/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusNotFound, rr.Code)
 }

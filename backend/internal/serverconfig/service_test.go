@@ -61,10 +61,30 @@ const (
 
 // --- ListConfigNames ---
 
+// Only the names a handler is registered for are listed, so a server without a section's service
+// does not offer a section every read of would fail.
 func (suite *ServiceTestSuite) TestListConfigNames() {
 	names, svcErr := suite.service.ListConfigNames(suite.ctx)
 	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), supportedConfigNames, names)
+	assert.Equal(suite.T(), []ConfigName{ConfigNameCORS}, names)
+}
+
+func (suite *ServiceTestSuite) TestListConfigNames_NoHandlers() {
+	names, svcErr := suite.serviceWithoutHandlers().ListConfigNames(suite.ctx)
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), names)
+}
+
+// A name registered with no handler is not listed either: every read of it would fail the same way.
+func (suite *ServiceTestSuite) TestListConfigNames_NilHandler() {
+	service := newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
+		ConfigNameCORS: nil,
+	})
+
+	names, svcErr := service.ListConfigNames(suite.ctx)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), names)
 }
 
 // --- GetConfig ---

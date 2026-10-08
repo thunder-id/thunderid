@@ -150,33 +150,33 @@ func (s *scimUsersService) CreateUser(
 	ctx context.Context, payload *SCIMUserPayload, baseURL string,
 ) (*SCIMUser, *tidcommon.ServiceError) {
 	runtimeCtx := security.WithRuntimeContext(ctx)
-	var resolvedUserTypeName string
+	var et *entitytype.EntityType
 	var svcErr *tidcommon.ServiceError
-	if payload.UserTypeName == "" {
-		resolvedUserTypeName, svcErr = scim.ResolveCoreUserType(runtimeCtx, s.userTypeService, s.cfg.CoreUserTypeID)
+	if payload.UserTypeHandle == "" {
+		var coreUserTypeHandle string
+		coreUserTypeHandle, svcErr = scim.ResolveCoreUserType(runtimeCtx, s.userTypeService, s.cfg.CoreUserTypeID)
 		if svcErr != nil {
 			s.logger.Error(ctx, "SCIM CreateUser: no core user type available", log.Any("error", svcErr))
 			return nil, svcErr
 		}
-	} else {
-		resolvedUserTypeName, svcErr = scim.ResolveUserTypeNameForSchemaURN(
-			runtimeCtx, s.userTypeService, payload.UserTypeName)
-		if svcErr != nil || resolvedUserTypeName == "" {
+		et, svcErr = s.userTypeService.GetEntityTypeByHandle(
+			runtimeCtx, entitytype.TypeCategoryUser, coreUserTypeHandle)
+		if svcErr != nil {
 			s.logger.Error(ctx, "SCIM CreateUser: user type not found",
-				log.String("userTypeName", payload.UserTypeName), log.Any("error", svcErr))
+				log.String("userTypeHandle", coreUserTypeHandle), log.Any("error", svcErr))
+			return nil, scim.BuildUserTypeErrorToSCIM(svcErr)
+		}
+	} else {
+		et, svcErr = scim.ResolveUserTypeForSchemaURN(runtimeCtx, s.userTypeService, payload.UserTypeHandle)
+		if svcErr != nil || et == nil {
+			s.logger.Error(ctx, "SCIM CreateUser: user type not found",
+				log.String("userTypeHandle", payload.UserTypeHandle), log.Any("error", svcErr))
 			return nil, &scim.ErrorUnknownUserType
 		}
 	}
+	resolvedUserTypeHandle := et.Handle
 
-	et, svcErr := s.userTypeService.GetEntityTypeByName(runtimeCtx, entitytype.TypeCategoryUser, resolvedUserTypeName)
-
-	if svcErr != nil {
-		s.logger.Error(ctx, "SCIM CreateUser: user type not found",
-			log.String("userTypeName", resolvedUserTypeName), log.Any("error", svcErr))
-		return nil, scim.BuildUserTypeErrorToSCIM(svcErr)
-	}
-
-	isCoreUserType, svcErr := s.processInboundPayload(runtimeCtx, payload, et, resolvedUserTypeName, false)
+	isCoreUserType, svcErr := s.processInboundPayload(runtimeCtx, payload, et, resolvedUserTypeHandle, false)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -187,7 +187,7 @@ func (s *scimUsersService) CreateUser(
 	}
 	newUser := &providers.User{
 		OUID:       et.OUID,
-		Type:       resolvedUserTypeName,
+		Type:       resolvedUserTypeHandle,
 		Attributes: attrsJSON,
 	}
 
@@ -202,7 +202,7 @@ func (s *scimUsersService) CreateUser(
 	rawProps, parseErr := scim.ParseRawProperties(et.Schema)
 	if parseErr != nil {
 		s.logger.Error(ctx, "SCIM CreateUser: failed to parse user type schema",
-			log.String("userType", resolvedUserTypeName), log.Error(parseErr))
+			log.String("userType", resolvedUserTypeHandle), log.Error(parseErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	scimUser := buildSCIMUserResource(
@@ -226,30 +226,31 @@ func (s *scimUsersService) ReplaceUser(
 	// The user's type is immutable, so an omitted extension URN defaults to the
 	// existing type rather than being treated as ambiguous. A supplied URN must
 	// still match the existing type.
-	resolvedUserTypeName := existingUser.Type
-	if payload.UserTypeName != "" {
-		requestedUserTypeName, svcErr := scim.ResolveUserTypeNameForSchemaURN(
-			runtimeCtx, s.userTypeService, payload.UserTypeName)
-		if svcErr != nil || requestedUserTypeName == "" {
+	resolvedUserTypeHandle := existingUser.Type
+	var et *entitytype.EntityType
+	if payload.UserTypeHandle != "" {
+		et, svcErr = scim.ResolveUserTypeForSchemaURN(runtimeCtx, s.userTypeService, payload.UserTypeHandle)
+		if svcErr != nil || et == nil {
 			s.logger.Error(runtimeCtx, "SCIM ReplaceUser: user type not found",
-				log.String("userTypeName", payload.UserTypeName), log.Any("error", svcErr))
+				log.String("userTypeHandle", payload.UserTypeHandle), log.Any("error", svcErr))
 			return nil, &scim.ErrorUnknownUserType
 		}
-		if requestedUserTypeName != existingUser.Type {
+		if et.Handle != existingUser.Type {
 			s.logger.Error(ctx, "SCIM ReplaceUser: user type mismatch",
 				log.MaskedString(log.LoggerKeyUserID, userID), log.String("existingType", existingUser.Type),
-				log.String("requestedType", requestedUserTypeName))
+				log.String("requestedType", et.Handle))
 			return nil, &scim.ErrorImmutableUserType
 		}
+	} else {
+		et, svcErr = s.userTypeService.GetEntityTypeByHandle(
+			runtimeCtx, entitytype.TypeCategoryUser, resolvedUserTypeHandle)
+		if svcErr != nil {
+			s.logger.Error(runtimeCtx, "SCIM ReplaceUser: user type not found",
+				log.String("userTypeHandle", resolvedUserTypeHandle), log.Any("error", svcErr))
+			return nil, scim.BuildUserTypeErrorToSCIM(svcErr)
+		}
 	}
-
-	et, svcErr := s.userTypeService.GetEntityTypeByName(runtimeCtx, entitytype.TypeCategoryUser, resolvedUserTypeName)
-	if svcErr != nil {
-		s.logger.Error(runtimeCtx, "SCIM ReplaceUser: user type not found",
-			log.String("userTypeName", resolvedUserTypeName), log.Any("error", svcErr))
-		return nil, scim.BuildUserTypeErrorToSCIM(svcErr)
-	}
-	isCoreUserType, svcErr := s.processInboundPayload(runtimeCtx, payload, et, resolvedUserTypeName, true)
+	isCoreUserType, svcErr := s.processInboundPayload(runtimeCtx, payload, et, resolvedUserTypeHandle, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -270,7 +271,7 @@ func (s *scimUsersService) ReplaceUser(
 		updatedUser := &providers.User{
 			ID:         userID,
 			OUID:       existingUser.OUID,
-			Type:       resolvedUserTypeName,
+			Type:       resolvedUserTypeHandle,
 			Attributes: attrsJSON,
 		}
 		result, svcErr = s.userService.UpdateUser(ctx, userID, updatedUser)
@@ -287,7 +288,7 @@ func (s *scimUsersService) ReplaceUser(
 	rawProps, parseErr := scim.ParseRawProperties(et.Schema)
 	if parseErr != nil {
 		s.logger.Error(ctx, "SCIM ReplaceUser: failed to parse user type schema",
-			log.String("userType", resolvedUserTypeName), log.Error(parseErr))
+			log.String("userType", resolvedUserTypeHandle), log.Error(parseErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	scimUser := buildSCIMUserResource(
@@ -350,34 +351,22 @@ func (s *scimUsersService) ValidateFilterSchemaAttribute(
 		return nil
 	}
 
-	userTypeName, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, urn)
+	userTypeHandle, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, urn)
 	if !ok {
 		return scim.NewUnrecognizedSchemaURNError(path)
 	}
-	// Look the type up by name first: that read is cache-backed, unlike the case-insensitive
-	// list scan below, which only runs when the name misses (e.g. a type with upper-case letters).
 	readCtx := security.WithRuntimeContext(ctx)
-	et, lookupErr := s.userTypeService.GetEntityTypeByName(readCtx, entitytype.TypeCategoryUser, userTypeName)
+	et, lookupErr := s.userTypeService.GetEntityTypeByHandle(readCtx, entitytype.TypeCategoryUser, userTypeHandle)
 	if lookupErr != nil {
 		if lookupErr.Type == tidcommon.ServerErrorType {
 			return &tidcommon.InternalServerError
 		}
-		resolved, svcErr := scim.ResolveUserTypeNameForSchemaURN(readCtx, s.userTypeService, userTypeName)
-		if svcErr != nil {
-			return svcErr
-		}
-		if resolved == "" {
-			return scim.NewUnrecognizedSchemaURNError(path)
-		}
-		if et, lookupErr = s.userTypeService.GetEntityTypeByName(
-			readCtx, entitytype.TypeCategoryUser, resolved); lookupErr != nil {
-			return &tidcommon.InternalServerError
-		}
+		return scim.NewUnrecognizedSchemaURNError(path)
 	}
 	props, parseErr := scim.ParseRawProperties(et.Schema)
 	if parseErr != nil {
 		s.logger.Error(ctx, "SCIM: failed to parse user type schema",
-			log.String("userType", et.Name), log.Error(parseErr))
+			log.String("userType", et.Handle), log.Error(parseErr))
 		return &tidcommon.InternalServerError
 	}
 	if _, declared := props[root]; !declared {
@@ -429,16 +418,16 @@ func (s *scimUsersService) validateAttributePath(ctx context.Context, attr strin
 		if strings.Contains(field, ".") {
 			return scim.NewSubAttrProjectionError(attr)
 		}
-		userTypeName, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, urn)
+		userTypeHandle, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, urn)
 		if !ok {
 			return scim.NewUnrecognizedSchemaURNError(attr)
 		}
-		resolved, svcErr := scim.ResolveUserTypeNameForSchemaURN(
-			security.WithRuntimeContext(ctx), s.userTypeService, userTypeName)
+		et, svcErr := scim.ResolveUserTypeForSchemaURN(
+			security.WithRuntimeContext(ctx), s.userTypeService, userTypeHandle)
 		if svcErr != nil {
 			return svcErr
 		}
-		if resolved == "" {
+		if et == nil {
 			return scim.NewUnrecognizedSchemaURNError(attr)
 		}
 		return nil
@@ -457,21 +446,21 @@ func (s *scimUsersService) validateAttributePath(ctx context.Context, attr strin
 // given user type. The entity type ID lets callers decide whether this is the configured
 // CoreUserTypeID without a second lookup.
 func (s *scimUsersService) getSchemaProps(
-	ctx context.Context, resolvedUserTypeName string,
+	ctx context.Context, resolvedUserTypeHandle string,
 ) (map[string]scim.RawPropertyDef, string, *tidcommon.ServiceError) {
 	// A SCIM client holds user/group permissions, not system:usertype:view, so the schema read runs as
 	// an internal runtime call. The user operation itself is authorized against the caller's own context.
-	et, err := s.userTypeService.GetEntityTypeByName(
-		security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, resolvedUserTypeName)
+	et, err := s.userTypeService.GetEntityTypeByHandle(
+		security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, resolvedUserTypeHandle)
 	if err != nil {
 		s.logger.Error(ctx, "SCIM: failed to resolve user type schema",
-			log.String("userType", resolvedUserTypeName), log.Any("error", err))
+			log.String("userType", resolvedUserTypeHandle), log.Any("error", err))
 		return nil, "", &tidcommon.InternalServerError
 	}
 	rawProps, parseErr := scim.ParseRawProperties(et.Schema)
 	if parseErr != nil {
 		s.logger.Error(ctx, "SCIM: failed to parse user type schema",
-			log.String("userType", resolvedUserTypeName), log.Error(parseErr))
+			log.String("userType", resolvedUserTypeHandle), log.Error(parseErr))
 		return nil, "", &tidcommon.InternalServerError
 	}
 	return rawProps, et.ID, nil
@@ -489,7 +478,7 @@ func (s *scimUsersService) coreUserTypeMatcher(ctx context.Context) func(typeNam
 	return func(typeName, _ string) bool {
 		if !resolved {
 			resolved = true
-			if name, err := scim.ResolveDefaultUserTypeName(ctx, s.userTypeService); err == nil {
+			if name, err := scim.ResolveDefaultUserTypeHandle(ctx, s.userTypeService); err == nil {
 				coreTypeName = name
 			}
 		}
@@ -497,28 +486,28 @@ func (s *scimUsersService) coreUserTypeMatcher(ctx context.Context) func(typeNam
 	}
 }
 
-// resolveIsCoreUserType reports whether resolvedUserTypeName is the designated core user type
+// resolveIsCoreUserType reports whether resolvedUserTypeHandle is the designated core user type
 // (explicit SCIMConfig.CoreUserTypeID, or the sole configured user type when unset).
-func (s *scimUsersService) resolveIsCoreUserType(ctx context.Context, resolvedUserTypeName string) bool {
+func (s *scimUsersService) resolveIsCoreUserType(ctx context.Context, resolvedUserTypeHandle string) bool {
 	coreTypeName, err := scim.ResolveCoreUserType(ctx, s.userTypeService, s.cfg.CoreUserTypeID)
-	return err == nil && strings.EqualFold(resolvedUserTypeName, coreTypeName)
+	return err == nil && strings.EqualFold(resolvedUserTypeHandle, coreTypeName)
 }
 
 // processInboundPayload reverse-maps core and enterprise attributes into payload.ExtensionAttrs
-// and validates them against the entity type schema. Returns whether resolvedUserTypeName is the
+// and validates them against the entity type schema. Returns whether resolvedUserTypeHandle is the
 // designated core user type, so callers can reuse it when building the response.
 func (s *scimUsersService) processInboundPayload(
 	ctx context.Context, payload *SCIMUserPayload, et *entitytype.EntityType,
-	resolvedUserTypeName string, isReplace bool,
+	resolvedUserTypeHandle string, isReplace bool,
 ) (isCoreUserType bool, svcErr *tidcommon.ServiceError) {
 	if len(payload.CoreAttrs) > 0 || payload.HasEnterpriseSchema {
-		isCoreUserType = s.resolveIsCoreUserType(ctx, resolvedUserTypeName)
+		isCoreUserType = s.resolveIsCoreUserType(ctx, resolvedUserTypeHandle)
 	}
 
 	if len(payload.CoreAttrs) > 0 {
 		if !isCoreUserType {
 			s.logger.Debug(ctx, "SCIM: core schema not supported for user type",
-				log.String("userType", resolvedUserTypeName))
+				log.String("userType", resolvedUserTypeHandle))
 			return false, &scim.ErrorCoreSchemaNotSupported
 		}
 		reverseMapped, undeclaredCore, err := reverseMapCoreAttrsForSchema(payload.CoreAttrs, et.Schema)
@@ -528,8 +517,8 @@ func (s *scimUsersService) processInboundPayload(
 		}
 		if len(undeclaredCore) > 0 {
 			s.logger.Debug(ctx, "SCIM: undeclared core attributes for user type",
-				log.String("userType", resolvedUserTypeName), log.Any("undeclared", undeclaredCore))
-			return false, scim.NewUndeclaredAttributesError(resolvedUserTypeName, undeclaredCore)
+				log.String("userType", resolvedUserTypeHandle), log.Any("undeclared", undeclaredCore))
+			return false, scim.NewUndeclaredAttributesError(resolvedUserTypeHandle, undeclaredCore)
 		}
 		if svcErr := mergeReverseMappedAttrs(payload.ExtensionAttrs, reverseMapped); svcErr != nil {
 			s.logger.Debug(ctx, "SCIM: conflicting value between core and custom schema", log.Any("error", svcErr))
@@ -539,7 +528,7 @@ func (s *scimUsersService) processInboundPayload(
 	if payload.HasEnterpriseSchema {
 		if !isCoreUserType {
 			s.logger.Debug(ctx, "SCIM: enterprise schema not supported for user type",
-				log.String("userType", resolvedUserTypeName))
+				log.String("userType", resolvedUserTypeHandle))
 			return false, &scim.ErrorEnterpriseSchemaNotSupported
 		}
 		if len(payload.EnterpriseAttrs) > 0 {
@@ -551,8 +540,8 @@ func (s *scimUsersService) processInboundPayload(
 			}
 			if len(undeclaredEnt) > 0 {
 				s.logger.Debug(ctx, "SCIM: undeclared enterprise attributes for user type",
-					log.String("userType", resolvedUserTypeName), log.Any("undeclared", undeclaredEnt))
-				return false, scim.NewUndeclaredAttributesError(resolvedUserTypeName, undeclaredEnt)
+					log.String("userType", resolvedUserTypeHandle), log.Any("undeclared", undeclaredEnt))
+				return false, scim.NewUndeclaredAttributesError(resolvedUserTypeHandle, undeclaredEnt)
 			}
 			if svcErr := mergeReverseMappedAttrs(payload.ExtensionAttrs, reverseMappedEnt); svcErr != nil {
 				s.logger.Debug(ctx, "SCIM: conflicting value between enterprise and custom schema",
@@ -568,8 +557,8 @@ func (s *scimUsersService) processInboundPayload(
 	}
 	if len(missing) > 0 {
 		s.logger.Debug(ctx, "SCIM: missing required attributes for user type",
-			log.String("userType", resolvedUserTypeName), log.Any("missing", missing))
-		return false, scim.NewMissingRequiredAttributesError(resolvedUserTypeName, missing)
+			log.String("userType", resolvedUserTypeHandle), log.Any("missing", missing))
+		return false, scim.NewMissingRequiredAttributesError(resolvedUserTypeHandle, missing)
 	}
 	undeclared, err := undeclaredAttrs(payload.ExtensionAttrs, et.Schema)
 	if err != nil {
@@ -578,8 +567,8 @@ func (s *scimUsersService) processInboundPayload(
 	}
 	if len(undeclared) > 0 {
 		s.logger.Debug(ctx, "SCIM: undeclared attributes for user type",
-			log.String("userType", resolvedUserTypeName), log.Any("undeclared", undeclared))
-		return false, scim.NewUndeclaredAttributesError(resolvedUserTypeName, undeclared)
+			log.String("userType", resolvedUserTypeHandle), log.Any("undeclared", undeclared))
+		return false, scim.NewUndeclaredAttributesError(resolvedUserTypeHandle, undeclared)
 	}
 	return isCoreUserType, nil
 }

@@ -583,9 +583,10 @@ func (p *provisioningExecutor) buildMissingInputs(
 	promptOptional := p.isPromptOptionalAttributesEnabled(ctx)
 	promptOptionalCredentials := p.isPromptOptionalCredentialsEnabled(ctx)
 	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 
 	for _, attr := range schemaAttrs {
-		if p.isAttrSatisfied(ctx, attr.Attribute) {
+		if p.isAttrSatisfied(ctx, extIdentity, attr) {
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
@@ -715,13 +716,22 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 	return 0
 }
 
-// isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs or
-// the runtime data.
-func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr string) bool {
-	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
+// isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs, the
+// runtime data or, for a non-credential attribute, the external identity's claims. Credentials are
+// never taken from claims, so a claim never stands in for one.
+func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extIdentity *core.ExternalIdentity,
+	attr entitytype.AttributeInfo) bool {
+	if val, ok := ctx.UserInputs[attr.Attribute]; ok && val != "" {
 		return true
 	}
-	if val, ok := ctx.RuntimeData[attr]; ok && val != "" {
+	if val, ok := ctx.RuntimeData[attr.Attribute]; ok && val != "" {
+		return true
+	}
+	if attr.Credential {
+		return false
+	}
+	// External claims are only a fallback and must never take priority over runtime data.
+	if val, ok := extIdentity.Claim(attr.Attribute); ok && val != "" {
 		return true
 	}
 	return false
@@ -748,6 +758,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		return identifyingAttrs, credentialAttrs, nil
 	}
 
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, a := range schemaAttrs {
 		if a.Credential {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
@@ -756,10 +767,14 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
+			// External claims are only a fallback and must never take priority over runtime data.
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
+			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
+				claimValue != "" {
+				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
 			}
 		}
 	}
@@ -1141,7 +1156,7 @@ func (p *provisioningExecutor) getDefaultEntityRef(ctx *providers.NodeContext,
 	}
 
 	return &entityRef{
-		entityType: candidates[0].Name,
+		entityType: candidates[0].Handle,
 		ouID:       candidates[0].OUID,
 	}, nil
 }
@@ -1165,11 +1180,11 @@ func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeCon
 	}
 
 	types := make([]entitytype.EntityType, 0, len(allowed))
-	for _, name := range allowed {
-		entityType, svcErr := p.entityTypeService.GetEntityTypeByName(ctx.Context, category, name)
+	for _, handle := range allowed {
+		entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(ctx.Context, category, handle)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
-				name, category, svcErr.Error.DefaultValue)
+				handle, category, svcErr.Error.DefaultValue)
 		}
 		if entityType.AllowSelfRegistration {
 			types = append(types, *entityType)

@@ -547,6 +547,7 @@ type OAuthClient struct {
 	RequirePushedAuthorizationRequests bool                    `yaml:"requirePushedAuthorizationRequests,omitempty"`
 	DPoPBoundAccessTokens              bool                    `yaml:"dpopBoundAccessTokens,omitempty"`
 	IncludeActClaim                    bool                    `yaml:"includeActClaim,omitempty"`
+	ClientIDMetadataDocument           bool                    `yaml:"clientIdMetadataDocument,omitempty"`
 	EntityCategory                     EntityCategory          `yaml:"entityCategory,omitempty"`
 	Token                              *OAuthTokenConfig       `yaml:"token,omitempty"`
 	Scopes                             []string                `yaml:"scopes,omitempty"`
@@ -681,6 +682,7 @@ type OAuthProfile struct {
 	RequirePushedAuthorizationRequests bool                `json:"requirePushedAuthorizationRequests"`
 	DPoPBoundAccessTokens              bool                `json:"dpopBoundAccessTokens"`
 	IncludeActClaim                    bool                `json:"includeActClaim"`
+	ClientIDMetadataDocument           bool                `json:"clientIdMetadataDocument,omitempty"`
 	Token                              *OAuthTokenConfig   `json:"token,omitempty"`
 	Scopes                             []string            `json:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig     `json:"userInfo,omitempty"`
@@ -1239,9 +1241,9 @@ type InboundAuthProfile struct {
 	LayoutID                  string              `json:"layoutId,omitempty"               yaml:"layoutId,omitempty"               jsonschema:"Layout configuration ID. Optional. Customizes the screen structure and component positioning of login pages."`
 	Assertion                 *AssertionConfig    `json:"assertion,omitempty"              yaml:"assertion,omitempty"              jsonschema:"Assertion configuration. Optional. Customize assertion validity periods and included user attributes."`
 	LoginConsent              *LoginConsentConfig `json:"loginConsent,omitempty"           yaml:"loginConsent,omitempty"           jsonschema:"Login consent configuration settings."`
-	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can authenticate to, register, or sign up through this resource."`
-	AllowedAgentTypes         []string            `json:"allowedAgentTypes,omitempty"          yaml:"allowedAgentTypes,omitempty"          jsonschema:"Allowed agent types. Optional. Agents may authenticate to this resource only when their agent type is listed here; when the list is empty no agent can authenticate."`
-	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type name. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
+	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user type handles. Optional. Restricts which user types can authenticate to, register, or sign up through this resource."`
+	AllowedAgentTypes         []string            `json:"allowedAgentTypes,omitempty"          yaml:"allowedAgentTypes,omitempty"          jsonschema:"Allowed agent type handles. Optional. Agents may authenticate to this resource only when their agent type handle is listed here; when the list is empty no agent can authenticate."`
+	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type handle. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
 	PasskeyAllowedOrigins     []string            `json:"passkeyAllowedOrigins,omitempty"      yaml:"passkeyAllowedOrigins,omitempty"      jsonschema:"Allowed origins for WebAuthn/passkey operations for this application. Optional. When set, overrides the server-level passkey allowed origins for flow-based passkey operations."`
 	Attestation               *AttestationConfig  `json:"attestation,omitempty"                yaml:"attestation,omitempty"                jsonschema:"Platform attestation configuration. Optional. Enables a mobile client to initiate flows directly by proving its binary identity (e.g. Google Play Integrity), regardless of protocol. The service account credentials are write-only and never returned in responses."`
 }
@@ -1262,6 +1264,7 @@ type OAuthConfigWithSecret struct {
 	RequirePushedAuthorizationRequests bool                    `json:"requirePushedAuthorizationRequests" yaml:"requirePushedAuthorizationRequests" jsonschema:"Require Pushed Authorization Requests (PAR) per RFC 9126."`
 	DPoPBoundAccessTokens              bool                    `json:"dpopBoundAccessTokens"              yaml:"dpopBoundAccessTokens"              jsonschema:"Require DPoP-bound access tokens (RFC 9449)."`
 	IncludeActClaim                    bool                    `json:"includeActClaim"                    yaml:"includeActClaim"                    jsonschema:"Include an implicit on-behalf-of 'act' claim (identifying the application entity) in access tokens issued through this client's authorization code flow. Agents always include it regardless of this setting."`
+	ClientIDMetadataDocument           bool                    `json:"clientIdMetadataDocument,omitempty" yaml:"clientIdMetadataDocument,omitempty" jsonschema:"Registered from a Client ID Metadata Document. The client ID is the document URL and the values must satisfy the document rules. Fixed at creation."`
 	Token                              *OAuthTokenConfig       `json:"token,omitempty"                    yaml:"token,omitempty"                    jsonschema:"Token configuration for access tokens and ID tokens"`
 	Scopes                             []string                `json:"scopes,omitempty"                   yaml:"scopes,omitempty"                   jsonschema:"Allowed OAuth scopes. Add custom scopes as needed for your application."`
 	UserInfo                           *UserInfoConfig         `json:"userInfo,omitempty"                 yaml:"userInfo,omitempty"                 jsonschema:"UserInfo endpoint configuration. Configure user attributes returned from the OIDC userinfo endpoint."`

@@ -507,20 +507,17 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.oauth.refreshToken.validityPeriod` | Refresh token validity period in seconds                                                                                                                | `86400`                      |
 | `configuration.oauth.authorizationCode.validityPeriod` | Authorization code validity period in seconds                                                                                                      | `600`                        |
 | `configuration.oauth.authorizationRequest.validityPeriod` | How long the authorization request context stays valid while the user completes the login flow, in seconds                                       | `3600`                       |
+| `configuration.oauth.logout.backchannel.enabled` | Send OIDC Back-Channel Logout notifications to applications that registered a back-channel logout URI | `true` |
+| `configuration.oauth.logout.backchannel.rejectPrivateAddresses` | Reject back-channel logout URIs naming localhost or a private IP address, and refuse hostnames that resolve to one. Set to `false` when relying parties run on internal networks | `true` |
+| `configuration.oauth.clientAssertion.maxLifetime` | Maximum lifetime of a `private_key_jwt` client assertion in seconds | `300` |
+| `configuration.oauth.clientAssertion.maxIatAge` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds | `60` |
+| `configuration.oauth.cimd.enabled` | Advertise Client ID Metadata Document support (`client_id_metadata_document_supported`) in the authorization server metadata. Turn it off when MCP clients should register through Dynamic Client Registration instead | `true` |
 | `configuration.oauth.sendServerErrorsToClient`    | Report an authentication flow failure that maps to the OAuth `server_error` code to the client | `false`                      |
 | `configuration.flow.maxVersionHistory`            | Maximum flow version history to retain                                                                                                                  | `3`                          |
 | `configuration.flow.autoInferRegistration`        | Enable auto-infer registration flow                                                                                                                     | `true`                       |
+| `configuration.directApi.enabled`                 | Register the Direct API authentication endpoints (`/auth/**`, `/register/passkey/**`). When `false`, they return `404` and the Console hides them. AuthZEN access endpoints are not affected. | `true` |
 | `configuration.passkey.allowedOrigins`            | Passkey allowed origins                                                                                                                                 | `[]`                         |
 | `configuration.scim.urnPrefix`                    | URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.                                                            | `urn:thunderid:params:scim:schemas:` |
-| `configuration.email.smtp.host`                   | SMTP server host. Empty omits the whole `email` section, and no email can be sent (email OTP, magic link, verification all fail).                        | `""`                         |
-| `configuration.email.smtp.port`                   | SMTP server port. Required once `host` is set.                                                                                                          | `587`                        |
-| `configuration.email.smtp.fromAddress`            | Sender address on outgoing mail. Required once `host` is set.                                                                                            | `""`                         |
-| `configuration.email.smtp.username`               | SMTP username                                                                                                                                            | `""`                         |
-| `configuration.email.smtp.password`               | Inline SMTP password, stored in the generated `<release>-db-credentials` Secret and injected as `SMTP_PASSWORD`                                          | `""`                         |
-| `configuration.email.smtp.passwordRef.name`       | Existing Kubernetes Secret holding the SMTP password. Takes precedence over `password` when set together with `passwordRef.key`.                          | `""`                         |
-| `configuration.email.smtp.passwordRef.key`        | Key within `passwordRef.name` holding the SMTP password                                                                                                  | `""`                         |
-| `configuration.email.smtp.enableStartTls`         | Upgrade the connection with STARTTLS                                                                                                                     | `true`                       |
-| `configuration.email.smtp.enableAuthentication`   | Authenticate against the SMTP server. When `true`, `username` and `password` are required.                                                               | `true`                       |
 | `configuration.log.level`                         | Log level (`debug`, `info`, `warn`, `error`)                                                                                                             | `info`                       |
 | `configuration.log.output.console.enabled`        | Write logs to stdout. This is the default and expected setup on Kubernetes: a log collector reads them from the pod.                                      | `true`                       |
 | `configuration.log.output.file.enabled`           | Optional file output. The container root filesystem is read-only by default, so point `path` at a writable mount before enabling this. Commented out in `values.yaml`. | unset (`false`)   |
@@ -895,7 +892,7 @@ bootstrap:
   scripts:
     70-custom-users.yaml: |
       # resource_type: user
-      type: Person
+      type: person
       ouHandle: default
       attributes:
         username: alice

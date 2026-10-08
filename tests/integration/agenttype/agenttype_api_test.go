@@ -19,12 +19,12 @@ const (
 	agentTypeBasePath = "/agent-types"
 	agentBasePath     = "/agents"
 
-	// defaultAgentTypeName is the only name an agent type is permitted to carry.
+	// defaultAgentTypeName is the only handle an agent type is permitted to carry.
 	defaultAgentTypeName = "default"
 )
 
 // AgentTypeAPITestSuite covers the /agent-types API, whose contract differs from /user-types in
-// three ways that had no integration coverage: exactly one type may exist, it must be named
+// three ways that had no integration coverage: exactly one type may exist, its handle must be
 // `default`, and it cannot be deleted.
 //
 // The `default` agent type is a singleton shared with every other package. This suite therefore
@@ -142,7 +142,7 @@ func (s *AgentTypeAPITestSuite) getAgentType(id string) AgentType {
 	return agentType
 }
 
-// putSchema replaces the singleton's schema, keeping its name and OU.
+// putSchema replaces the singleton's schema, keeping its handle, display name and OU.
 func (s *AgentTypeAPITestSuite) putSchema(schema interface{}) {
 	s.T().Helper()
 
@@ -150,9 +150,10 @@ func (s *AgentTypeAPITestSuite) putSchema(schema interface{}) {
 	s.Require().NoError(err)
 
 	resp := s.do(http.MethodPut, agentTypeBasePath+"/"+s.snapshot.ID, AgentTypeRequest{
-		Name:   defaultAgentTypeName,
-		OUID:   s.snapshot.OUID,
-		Schema: encoded,
+		Handle:      defaultAgentTypeName,
+		DisplayName: s.snapshot.DisplayName,
+		OUID:        s.snapshot.OUID,
+		Schema:      encoded,
 	})
 	defer closeBody(resp)
 
@@ -174,14 +175,15 @@ func closeBody(resp *http.Response) { _ = resp.Body.Close() }
 // ---------------------------------------------------------------------------
 
 // TestCreateNonDefaultAgentTypeRejected verifies that agent types are restricted to the single
-// `default` schema: a create with any other name is refused and nothing is persisted.
+// `default` schema: a create with any other handle is refused and nothing is persisted.
 func (s *AgentTypeAPITestSuite) TestCreateNonDefaultAgentTypeRejected() {
 	before := s.listAgentTypes()
 
 	resp := s.do(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
-		Name:   "custom-agent-type",
-		OUID:   s.ouID,
-		Schema: json.RawMessage(`{"description": {"type": "string"}}`),
+		Handle:      "custom-agent-type",
+		DisplayName: "Custom Agent Type",
+		OUID:        s.ouID,
+		Schema:      json.RawMessage(`{"description": {"type": "string"}}`),
 	})
 	defer closeBody(resp)
 
@@ -191,7 +193,7 @@ func (s *AgentTypeAPITestSuite) TestCreateNonDefaultAgentTypeRejected() {
 	after := s.listAgentTypes()
 	s.Equal(before.TotalResults, after.TotalResults, "a rejected create must not persist a type")
 	for _, t := range after.Types {
-		s.NotEqual("custom-agent-type", t.Name)
+		s.NotEqual("custom-agent-type", t.Handle)
 	}
 }
 
@@ -200,14 +202,15 @@ func (s *AgentTypeAPITestSuite) TestCreateNonDefaultAgentTypeRejected() {
 // ---------------------------------------------------------------------------
 
 // TestCreateDuplicateDefaultAgentTypeRejected verifies that a second `default` agent type is
-// refused as a name conflict, so the singleton cannot be duplicated.
+// refused as a handle conflict, so the singleton cannot be duplicated.
 func (s *AgentTypeAPITestSuite) TestCreateDuplicateDefaultAgentTypeRejected() {
 	before := s.listAgentTypes()
 
 	resp := s.do(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
-		Name:   defaultAgentTypeName,
-		OUID:   s.ouID,
-		Schema: json.RawMessage(`{"description": {"type": "string"}}`),
+		Handle:      defaultAgentTypeName,
+		DisplayName: "Another Default",
+		OUID:        s.ouID,
+		Schema:      json.RawMessage(`{"description": {"type": "string"}}`),
 	})
 	defer closeBody(resp)
 
@@ -219,27 +222,28 @@ func (s *AgentTypeAPITestSuite) TestCreateDuplicateDefaultAgentTypeRejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 27 — `default` cannot be renamed
+// Scenario 27: the `default` handle cannot be changed
 // ---------------------------------------------------------------------------
 
-// TestRenameDefaultAgentTypeRejected verifies that the singleton cannot be renamed out of the
-// `default` name that agent creation depends on, and that the stored name is unchanged.
-func (s *AgentTypeAPITestSuite) TestRenameDefaultAgentTypeRejected() {
+// TestChangeDefaultAgentTypeHandleRejected verifies that the singleton's handle cannot be changed
+// away from the `default` that agent creation depends on, and that the stored handle is unchanged.
+func (s *AgentTypeAPITestSuite) TestChangeDefaultAgentTypeHandleRejected() {
 	schema, err := json.Marshal(s.snapshot.Schema)
 	s.Require().NoError(err)
 
 	resp := s.do(http.MethodPut, agentTypeBasePath+"/"+s.snapshot.ID, AgentTypeRequest{
-		Name:   "renamed-agent-type",
-		OUID:   s.snapshot.OUID,
-		Schema: schema,
+		Handle:      "renamed-agent-type",
+		DisplayName: "Renamed Agent Type",
+		OUID:        s.snapshot.OUID,
+		Schema:      schema,
 	})
 	defer closeBody(resp)
 
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
 	s.decodeError(resp, "USRS-1014")
 
-	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Name,
-		"a rejected rename must not change the stored name")
+	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Handle,
+		"a rejected handle change must not change the stored handle")
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +259,7 @@ func (s *AgentTypeAPITestSuite) TestDeleteAgentTypeRejected() {
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
 	s.decodeError(resp, "USRS-1015")
 
-	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Name,
+	s.Equal(defaultAgentTypeName, s.getAgentType(s.snapshot.ID).Handle,
 		"the agent type must still exist after a refused delete")
 }
 
@@ -289,7 +293,8 @@ func (s *AgentTypeAPITestSuite) TestListAgentTypesReturnsOnlyTheSingleton() {
 	s.Equal(1, list.TotalResults)
 	s.Equal(1, list.Count)
 	s.Require().Len(list.Types, 1)
-	s.Equal(defaultAgentTypeName, list.Types[0].Name)
+	s.Equal(defaultAgentTypeName, list.Types[0].Handle)
+	s.Equal(s.snapshot.DisplayName, list.Types[0].DisplayName)
 	s.Equal(s.snapshot.ID, list.Types[0].ID)
 }
 
@@ -313,6 +318,37 @@ func (s *AgentTypeAPITestSuite) TestUpdateAgentTypeSchemaPersists() {
 	s.Contains(stored, "costCentre", "the edited attribute must be persisted")
 	s.Contains(stored, "description")
 	s.Len(stored, 2, "the update replaces the schema rather than merging into it")
+}
+
+// ---------------------------------------------------------------------------
+// Handle and display name
+// ---------------------------------------------------------------------------
+
+// TestUpdateAgentTypeDisplayNamePersists verifies that a PUT without the immutable handle and with a
+// new display name succeeds, changes only the display name, and keeps the schema.
+func (s *AgentTypeAPITestSuite) TestUpdateAgentTypeDisplayNamePersists() {
+	defer s.restoreSchema()
+
+	schema, err := json.Marshal(s.snapshot.Schema)
+	s.Require().NoError(err)
+
+	resp := s.do(http.MethodPut, agentTypeBasePath+"/"+s.snapshot.ID, AgentTypeRequest{
+		DisplayName: "Agent Type Renamed Label",
+		OUID:        s.snapshot.OUID,
+		Schema:      schema,
+	})
+	defer closeBody(resp)
+	body, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "display name update failed: %s", string(body))
+
+	stored := s.getAgentType(s.snapshot.ID)
+	s.Equal(defaultAgentTypeName, stored.Handle, "the handle must not change")
+	s.Equal("Agent Type Renamed Label", stored.DisplayName)
+
+	var storedSchema map[string]interface{}
+	s.Require().NoError(json.Unmarshal(stored.Schema, &storedSchema))
+	s.Equal(s.snapshot.Schema, storedSchema, "a display name update must keep the schema")
 }
 
 // ---------------------------------------------------------------------------

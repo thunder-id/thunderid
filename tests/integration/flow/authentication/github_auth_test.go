@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -80,7 +80,8 @@ const (
 )
 
 var githubEntityType = testutils.UserType{
-	Name: "github_auth_user",
+	Handle:      "github_auth_user",
+	DisplayName: "Github Auth User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -174,7 +175,7 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 
 	// Create user in the pre-configured OU from database scripts
 	user := testutils.User{
-		Type:       githubEntityType.Name,
+		Type:       githubEntityType.Handle,
 		OUID:       githubEntityType.OUID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -365,7 +366,7 @@ func (ts *GithubAuthFlowTestSuite) TestGithubAuthFlowCompleteSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		githubAuthTestAppID,
-		githubEntityType.Name,
+		githubEntityType.Handle,
 		githubAuthTestOU.ID,
 		githubAuthTestOU.Name,
 		githubAuthTestOU.Handle,

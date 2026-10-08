@@ -139,8 +139,8 @@ export default function ViewAgentTypePage(): JSX.Element {
   // Effective properties (edited or from server)
   const effectiveProperties = editedProperties ?? baseProperties;
 
-  // Effective name (locked to the server-side value)
-  const effectiveName = agentType?.name ?? '';
+  // Handle used as the i18n key prefix (immutable on the server)
+  const agentTypeHandle = agentType?.handle ?? '';
 
   // Whether there are unsaved changes (deep compare edited vs base)
   const hasChanges = useMemo(
@@ -175,7 +175,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   const performSave = useCallback(async (): Promise<void> => {
     if (!id || !agentType) return;
 
-    const name = agentType.name.trim();
+    const {displayName} = agentType;
     const ouId = agentType.ouId.trim();
     const schema = convertPropertiesToSchema(effectiveProperties);
 
@@ -189,7 +189,7 @@ export default function ViewAgentTypePage(): JSX.Element {
       await updateAgentTypeMutation.mutateAsync({
         agentTypeId: id,
         data: {
-          name,
+          displayName,
           ouId,
           ...preservedSystemAttributes,
           schema,
@@ -308,7 +308,7 @@ export default function ViewAgentTypePage(): JSX.Element {
         <EditSchemaSettings
           properties={effectiveProperties}
           onPropertiesChange={handlePropertiesChange}
-          agentTypeName={effectiveName}
+          agentTypeHandle={agentTypeHandle}
         />
       </Stack>
 

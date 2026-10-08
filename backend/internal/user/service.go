@@ -1064,7 +1064,7 @@ func (us *userService) validateOrganizationUnitForUserType(
 		return &tidcommon.InternalServerError
 	}
 
-	entityType, svcErr := us.entityTypeService.GetEntityTypeByName(ctx,
+	entityType, svcErr := us.entityTypeService.GetEntityTypeByHandle(ctx,
 		entitytype.TypeCategoryUser, userType)
 	if svcErr != nil {
 		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {

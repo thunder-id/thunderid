@@ -50,15 +50,15 @@ func CredentialCharacteristics(credential bool) (returned Returned, mutability M
 }
 
 // BuildSchemaURN returns the canonical lowercase SCIM extension URN for a ThunderID user type.
-// Format: <prefix><userTypeName>:2.0:User, where prefix is the deployment-configured custom
+// Format: <prefix><userTypeHandle>:2.0:User, where prefix is the deployment-configured custom
 // schema URN prefix (see scimconfig.SCIMConfig.SchemaURNPrefix).
-func BuildSchemaURN(prefix, userTypeName string) string {
-	return prefix + strings.ToLower(userTypeName) + ThunderIDURNSuffix
+func BuildSchemaURN(prefix, userTypeHandle string) string {
+	return prefix + strings.ToLower(userTypeHandle) + ThunderIDURNSuffix
 }
 
-// ParseUserTypeFromSchemaURN extracts the user type name from a ThunderID extension URN.
+// ParseUserTypeFromSchemaURN extracts the user type handle from a ThunderID extension URN.
 // Matching is case-insensitive per the proposal decision.
-// Returns the name and true on success; empty string and false if the URN is not a
+// Returns the handle and true on success; empty string and false if the URN is not a
 // well-formed ThunderID extension URN.
 func ParseUserTypeFromSchemaURN(prefix, schemaURN string) (string, bool) {
 	lower := strings.ToLower(strings.TrimSpace(schemaURN))

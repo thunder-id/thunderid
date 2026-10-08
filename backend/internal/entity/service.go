@@ -142,6 +142,13 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Enti
 	}
 	s.logger.Debug(ctx, "Creating entity", log.MaskedString("id", entity.ID))
 
+	if err := s.validateIndexedValueLimit(entity.Attributes); err != nil {
+		return nil, err
+	}
+	if err := s.validateIndexedValueLimit(entity.SystemAttributes); err != nil {
+		return nil, err
+	}
+
 	// Validate entity attributes and uniqueness via schema.
 	if err := s.validateEntityType(ctx, entity.Category, entity.Type, entity.Attributes, "", false); err != nil {
 		return nil, err
@@ -236,6 +243,13 @@ func (s *entityService) UpdateEntity(
 	}
 	entity.Attributes = cleanedAttrs
 
+	if err := s.validateIndexedValueLimit(entity.Attributes); err != nil {
+		return nil, err
+	}
+	if err := s.validateIndexedValueLimit(entity.SystemAttributes); err != nil {
+		return nil, err
+	}
+
 	// Validate entity attributes and uniqueness via schema (excludes self for uniqueness).
 	if err := s.validateEntityType(ctx, entity.Category, entity.Type, entity.Attributes, entityID, true); err != nil {
 		return nil, err
@@ -316,6 +330,10 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 		return err
 	}
 
+	if err := s.validateIndexedValueLimit(attributes); err != nil {
+		return err
+	}
+
 	// Validate attribute uniqueness via schema (excludes self, credentials not required for updates).
 	if err := s.validateEntityType(ctx, existing.Category, existing.Type, attributes, entityID, true); err != nil {
 		return err
@@ -357,6 +375,9 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	s.logger.Debug(ctx, "Updating entity system attributes", log.MaskedString("id", entityID))
+	if err := s.validateIndexedValueLimit(attrs); err != nil {
+		return err
+	}
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		preserved, err := s.mergeReservedAttributes(txCtx, entityID, attrs)
 		if err != nil {
@@ -869,6 +890,23 @@ func (s *entityService) populateOUHandles(ctx context.Context, entities []provid
 			entities[i].OUHandle = handle
 		}
 	}
+}
+
+// validateIndexedValueLimit rejects input attributes in which an indexed name has more values than
+// an entity may index. It checks input only: stored data is re-indexed as is on every write, so an
+// entity stored over the limit stays updatable.
+func (s *entityService) validateIndexedValueLimit(attributes json.RawMessage) error {
+	if len(attributes) == 0 {
+		return nil
+	}
+	var attrMap map[string]interface{}
+	if err := json.Unmarshal(attributes, &attrMap); err != nil {
+		return fmt.Errorf("%w: %w", ErrSchemaValidationFailed, err)
+	}
+	if err := validateIndexedValueCounts(attrMap, s.store.GetIndexedAttributes()); err != nil {
+		return fmt.Errorf("%w: %w", ErrSchemaValidationFailed, err)
+	}
+	return nil
 }
 
 // validateEntityType validates entity attributes and uniqueness against the entity type.

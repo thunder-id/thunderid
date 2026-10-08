@@ -41,6 +41,7 @@ func assembleApplication(
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:            client.AuthFlowID,
 			SignOutFlowID:         client.SignOutFlowID,
+			ThemeID:               client.ThemeID,
 			Assertion:             client.Assertion,
 			LoginConsent:          client.LoginConsent,
 			AllowedUserTypes:      client.AllowedUserTypes,

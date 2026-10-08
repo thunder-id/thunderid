@@ -102,6 +102,10 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		}
 
 		token, err := a.generateAuthAssertion(ctx, execResp, logger)
+		// A client failure is recorded on the response; a returned error is a server fault.
+		if execResp.Status == providers.ExecFailure {
+			return execResp, nil
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -337,7 +341,10 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching entity references")
 		}
-		return "", errors.New("failed to fetch entity references: " + svcErr.ErrorDescription.DefaultValue)
+		// A client error here means the identity names no local user.
+		execResp.Status = providers.ExecFailure
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+		return "", nil
 	}
 
 	// Ensure the configured subject attribute for this user type is fetched
@@ -353,7 +360,9 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return "", errors.New("something went wrong while fetching user attributes")
 		}
-		return "", errors.New("failed to fetch user attributes: " + svcErr.ErrorDescription.DefaultValue)
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrAttributeRetrievalFailed
+		return "", nil
 	}
 
 	fetchedAttributes := make(map[string]interface{})
@@ -530,6 +539,7 @@ func (a *authAssertExecutor) resolveUserAttributes(
 
 	standardClaims := oauth2const.GetStandardClaims()
 
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, attr := range requestedAttributes {
 		// Skip attributes that are handled separately
 		if attr == oauth2const.UserAttributeGroups ||
@@ -548,6 +558,11 @@ func (a *authAssertExecutor) resolveUserAttributes(
 
 		// Check runtime data
 		if val, exists := ctx.RuntimeData[attr]; exists && val != "" {
+			attributes[attr] = val
+			continue
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if val, exists := extIdentity.Claim(attr); exists && val != "" {
 			attributes[attr] = val
 			continue
 		}

@@ -40,7 +40,8 @@ var (
 	scopeMultiRSRoleID       string
 	scopeSplitRSRoleID       string
 	scopeTestEntityType      = testutils.UserType{
-		Name: "authz-test-person",
+		Handle:      "authz-test-person",
+		DisplayName: "Authz Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

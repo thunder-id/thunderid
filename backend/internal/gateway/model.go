@@ -40,9 +40,15 @@ type Gateway struct {
 	// publicly-issued certificate verifies against the system roots with nothing configured here.
 	// Naming the one certificate keeps verification on for that gateway, rather than a switch that
 	// turns it off.
-	CACertificate string    `json:"caCertificate,omitempty"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	CACertificate string `json:"caCertificate,omitempty"`
+	// IsDefault marks the default gateway. Its base URL is the one the console shows for an
+	// application's runtime endpoints.
+	//
+	// At most one gateway is the default. The first gateway registered becomes it, and registering
+	// another as the default moves it there, so the most recent choice is the one that stands.
+	IsDefault bool      `json:"isDefault,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // KeyConfigured reports whether a key is held, which is all a read of one discloses.
@@ -61,6 +67,9 @@ type RegisterRequest struct {
 	//
 	// Either way the registration returns it, and that is the only time it is readable.
 	Key string `json:"key,omitempty"`
+	// IsDefault makes this the default gateway. A gateway that already is the default gives that up
+	// to this one. The first gateway registered is the default whether or not it asks.
+	IsDefault bool `json:"isDefault,omitempty"`
 }
 
 // UpdateRequest changes a registration. Every field is optional: what is omitted is left as it is,

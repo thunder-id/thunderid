@@ -4,7 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import type {PropertyDefinition, ApiUserType} from '@thunderid/configure-user-types';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger';
 import {useThunderID} from '@thunderid/react';
 import {Stack} from '@wso2/oxygen-ui';
@@ -177,6 +177,7 @@ export default function EditTokenSettings({
   const {t} = useTranslation();
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const runtimeUrl = useRuntimeUrl();
 
   const [userTypes, setUserTypes] = useState<ApiUserType[]>([]);
   // The algorithm tokens are signed with is determined by the deployment's signing key, not a
@@ -204,7 +205,7 @@ export default function EditTokenSettings({
       return [];
     }
 
-    return userTypesData.types.filter((schema) => allowedUserTypes.includes(schema.name)).map((schema) => schema.id);
+    return userTypesData.types.filter((schema) => allowedUserTypes.includes(schema.handle)).map((schema) => schema.id);
   }, [userTypesData, allowedUserTypes]);
 
   // Determine if this is OAuth/OIDC mode (has separate token configs) or Native mode
@@ -386,19 +387,21 @@ export default function EditTokenSettings({
   }, [schemaIds, http, getServerUrl, logger]);
 
   /**
-   * Fetch the deployment's signing algorithm from the OIDC discovery document. Signing is done
-   * with the server key, so this is informational only and shown read-only in the token sections.
+   * Fetch the signing algorithm from the runtime's OIDC discovery document. Signing is done with
+   * the server key, so this is informational only and shown read-only in the token sections.
    * The discovery document is public, so it is fetched without credentials; sending an
    * Authorization header would fail its CORS preflight (only Content-Type is allowed).
    */
   useEffect(() => {
     if (!isOAuthMode) return undefined;
 
+    // Cleared before each lookup, so a failed one cannot leave the previous runtime's algorithm shown.
+    setSigningAlg(undefined);
     let cancelled = false;
 
     const fetchSigningAlg = async () => {
       try {
-        const response = await fetch(`${getServerUrl()}/.well-known/openid-configuration`);
+        const response = await fetch(`${runtimeUrl}/.well-known/openid-configuration`);
         if (cancelled) return;
         if (!response.ok) {
           logger.error('Discovery request for signing algorithm returned a non-OK status', {
@@ -424,7 +427,7 @@ export default function EditTokenSettings({
     return () => {
       cancelled = true;
     };
-  }, [isOAuthMode, getServerUrl, logger]);
+  }, [isOAuthMode, runtimeUrl, logger]);
 
   const userAttributes = useMemo(() => {
     if (userTypes.length === 0) return [];

@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -30,7 +30,8 @@ var oauthAuthTestOU = testutils.OrganizationUnit{
 }
 
 var oauthEntityType = testutils.UserType{
-	Name: "oauth_user",
+	Handle:      "oauth_user",
+	DisplayName: "Oauth User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -107,7 +108,7 @@ func (suite *OAuthAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       oauthEntityType.Name,
+		Type:       oauthEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}

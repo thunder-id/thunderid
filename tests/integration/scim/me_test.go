@@ -56,7 +56,8 @@ func (ts *SCIMMeTestSuite) SetupSuite() {
 	ts.email = "scim.it.me@example.com"
 
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name:                  ts.entityTypeName,
+		Handle:                ts.entityTypeName,
+		DisplayName:           "Entity Type",
 		OUID:                  ouID,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{

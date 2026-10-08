@@ -13,6 +13,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/notification/client"
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 )
@@ -28,9 +29,34 @@ func validateNotificationSender(sender common.NotificationSenderDTO) *tidcommon.
 	switch sender.Type {
 	case common.NotificationSenderTypeMessage:
 		return validateMessageNotificationSender(sender)
+	case common.NotificationSenderTypeEmail:
+		return validateEmailNotificationSender(sender)
 	default:
 		return &ErrorInvalidSenderType
 	}
+}
+
+// ValidateNotificationSender runs the checks the live /connections create and update APIs run on
+// a sender. For use by the declarative connection loader, which otherwise writes straight to the
+// file store without running this validation.
+func ValidateNotificationSender(sender common.NotificationSenderDTO) error {
+	if svcErr := validateNotificationSender(sender); svcErr != nil {
+		if svcErr.ErrorDescription.DefaultValue != "" {
+			return errors.New(svcErr.ErrorDescription.DefaultValue)
+		}
+		return errors.New(svcErr.Error.DefaultValue)
+	}
+	return nil
+}
+
+// invalidPropertiesError wraps a property validation failure in the client-facing error.
+func invalidPropertiesError(err error) *tidcommon.ServiceError {
+	svcErr := ErrorInvalidRequestFormat
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key:          "error.notificationservice.sender_property_validation_failed_description",
+		DefaultValue: err.Error(),
+	}
+	return &svcErr
 }
 
 // validateMessageNotificationSender validates a message notification sender.
@@ -45,15 +71,46 @@ func validateMessageNotificationSender(sender common.NotificationSenderDTO) *tid
 	}
 
 	if err := validateMessageNotificationSenderProperties(sender); err != nil {
-		svcErr := ErrorInvalidRequestFormat
-		svcErr.ErrorDescription = tidcommon.I18nMessage{
-			Key:          "error.notificationservice.sender_property_validation_failed_description",
-			DefaultValue: err.Error(),
-		}
-		return &svcErr
+		return invalidPropertiesError(err)
 	}
 
 	return nil
+}
+
+// validateEmailNotificationSender validates an email notification sender.
+func validateEmailNotificationSender(sender common.NotificationSenderDTO) *tidcommon.ServiceError {
+	if sender.Provider != common.NotificationProviderTypeSMTP {
+		return &ErrorInvalidProvider
+	}
+
+	if err := validateEmailNotificationSenderProperties(sender); err != nil {
+		return invalidPropertiesError(err)
+	}
+
+	return nil
+}
+
+// validateEmailNotificationSenderProperties validates the properties of an email notification sender.
+func validateEmailNotificationSenderProperties(sender common.NotificationSenderDTO) error {
+	if len(sender.Properties) == 0 {
+		return errors.New("email notification sender properties cannot be empty")
+	}
+
+	for _, prop := range sender.Properties {
+		if prop.GetName() == common.SenderPropertySupportedChannels {
+			val, err := prop.GetValue()
+			if err != nil {
+				return errors.New("failed to read supported channels property")
+			}
+			// An email sender currently only supports the "email" channel.
+			if val != string(common.ChannelTypeEmail) {
+				return fmt.Errorf("invalid supported channel: %s", val)
+			}
+			break
+		}
+	}
+
+	return client.ValidateSMTPProperties(sender.Properties)
 }
 
 // validateMessageNotificationSenderProperties validates the properties of a message notification sender.
@@ -201,7 +258,11 @@ func applyDefaultSenderProperties(sender *common.NotificationSenderDTO) {
 		}
 	}
 	if !hasSupportedChannels {
-		prop, _ := cmodels.NewProperty(common.SenderPropertySupportedChannels, string(common.ChannelTypeSMS), false)
+		defaultChannel := common.ChannelTypeSMS
+		if sender.Type == common.NotificationSenderTypeEmail {
+			defaultChannel = common.ChannelTypeEmail
+		}
+		prop, _ := cmodels.NewProperty(common.SenderPropertySupportedChannels, string(defaultChannel), false)
 		sender.Properties = append(sender.Properties, *prop)
 	}
 }

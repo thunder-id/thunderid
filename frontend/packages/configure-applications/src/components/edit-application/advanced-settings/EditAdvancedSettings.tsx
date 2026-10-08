@@ -3,12 +3,13 @@
 
 import {useConfig} from '@thunderid/contexts';
 import {Stack} from '@wso2/oxygen-ui';
-import {useEffect, useState} from 'react';
+import {useState} from 'react';
 import AudienceSection from './AudienceSection';
 import IdentityAssertionsSection from './IdentityAssertionsSection';
 import MetadataSection from './MetadataSection';
 import OAuth2ConfigSection from './OAuth2ConfigSection';
 import PasskeysSection from './PasskeysSection';
+import useValidationReport from '../../../hooks/useValidationReport';
 import type {Application} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
@@ -102,9 +103,14 @@ export default function EditAdvancedSettings({
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  useEffect(() => {
-    onValidationChange?.(redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid);
-  }, [redirectUrisInvalid, identityAssertionsInvalid, passkeysInvalid, onValidationChange]);
+  // The whole tab unmounts on a tab switch, so a child's own unmount report never reaches the page.
+  // The redirect URI errors come from drafts and go with the tab; the identity assertion and passkey
+  // errors are on committed values and keep blocking Save until the user comes back.
+  useValidationReport(
+    onValidationChange,
+    redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid,
+    identityAssertionsInvalid || passkeysInvalid,
+  );
 
   const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
 

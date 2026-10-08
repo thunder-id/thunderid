@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type UserTreeValidationTestSuite struct {
@@ -159,7 +159,8 @@ func (ts *UserTreeValidationTestSuite) getUniqueName(baseName string) string {
 func (ts *UserTreeValidationTestSuite) createEmployeeSchema() (string, string) {
 	schemaName := ts.getUniqueName("employee")
 	schema := CreateUserTypeRequest{
-		Name: schemaName,
+		Handle:      schemaName,
+		DisplayName: "Employee",
 		Schema: json.RawMessage(`{
 			"given_name": {"type": "string"},
 			"family_name": {"type": "string"},
@@ -177,7 +178,8 @@ func (ts *UserTreeValidationTestSuite) createEmployeeSchema() (string, string) {
 func (ts *UserTreeValidationTestSuite) createComplexSchema() (string, string) {
 	schemaName := ts.getUniqueName("manager")
 	schema := CreateUserTypeRequest{
-		Name: schemaName,
+		Handle:      schemaName,
+		DisplayName: "Manager",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"profile": {

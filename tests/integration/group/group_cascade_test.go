@@ -20,7 +20,7 @@ import (
 func (suite *GroupAPITestSuite) TestDeletingUserRemovesGroupMembership() {
 	tempUserID, err := testutils.CreateUser(testutils.User{
 		OUID: testOUID,
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(`{
 			"email": "cascade-user@example.com",
 			"given_name": "Cascade",

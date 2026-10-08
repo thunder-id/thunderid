@@ -110,8 +110,9 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 
 	ts.entityTypeOU1Name = "scim-authz-type-ou1"
 	entityTypeOU1ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeOU1Name,
-		OUID: ts.ou1ID,
+		Handle:      ts.entityTypeOU1Name,
+		DisplayName: "Entity Type Ou 1",
+		OUID:        ts.ou1ID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string", "unique": true},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -123,8 +124,9 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 
 	ts.entityTypeOU2Name = "scim-authz-type-ou2"
 	entityTypeOU2ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeOU2Name,
-		OUID: ts.ou2ID,
+		Handle:      ts.entityTypeOU2Name,
+		DisplayName: "Entity Type Ou 2",
+		OUID:        ts.ou2ID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{"type": "string", "required": true, "unique": true},
 		},

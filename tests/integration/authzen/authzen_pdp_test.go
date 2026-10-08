@@ -185,8 +185,9 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.ouID = ouID
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "authzen-pdp-person",
-		OUID: s.ouID,
+		Handle:      "authzen-pdp-person",
+		DisplayName: "Authzen Pdp Person",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"email":    map[string]interface{}{"type": "string", "unique": true},

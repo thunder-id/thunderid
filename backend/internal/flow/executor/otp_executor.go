@@ -246,6 +246,7 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 		inputs = e.getGenerateInputs(ctx)
 	}
 
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range inputs {
 		if input.Identifier == userInputOTP || !isSearchableIdentifier(input.Identifier) {
 			continue
@@ -255,6 +256,11 @@ func (e *otpExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[stri
 			continue
 		}
 		if v, ok := ctx.RuntimeData[input.Identifier]; ok && v != "" {
+			attrs[input.Identifier] = v
+			continue
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if v, ok := extIdentity.Claim(input.Identifier); ok && v != "" {
 			attrs[input.Identifier] = v
 			continue
 		}
@@ -320,6 +326,7 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 // Channel is determined by input type or, as a fallback, by the well-known identifier names
 // (mobile_number, email), so flows that use TEXT_INPUT for these attributes work correctly.
 func (e *otpExecutor) resolveOTPDestination(ctx *providers.NodeContext) (attrName, attrValue string) {
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range ctx.NodeInputs {
 		isPhone := input.Type == providers.InputTypePhone || input.Identifier == common.AttributeMobileNumber
 		isEmail := input.Type == providers.InputTypeEmail || input.Identifier == common.AttributeEmail
@@ -330,6 +337,10 @@ func (e *otpExecutor) resolveOTPDestination(ctx *providers.NodeContext) (attrNam
 			return input.Identifier, val
 		}
 		if val, ok := ctx.RuntimeData[input.Identifier]; ok && val != "" {
+			return input.Identifier, val
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if val, ok := extIdentity.Claim(input.Identifier); ok && val != "" {
 			return input.Identifier, val
 		}
 		if val, ok := ctx.ForwardedData[input.Identifier]; ok {

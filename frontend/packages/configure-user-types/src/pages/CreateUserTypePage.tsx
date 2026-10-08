@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {
@@ -35,6 +35,10 @@ export default function CreateUserTypePage(): JSX.Element {
     setCurrentStep,
     name,
     setName,
+    handle,
+    setHandle,
+    handleEdited,
+    setHandleEdited,
     ouId,
     setOuId,
     allowSelfRegistration,
@@ -112,6 +116,21 @@ export default function CreateUserTypePage(): JSX.Element {
       setName(newName);
     },
     [clearCreateError, setName],
+  );
+
+  const handleHandleChange = useCallback(
+    (newHandle: string): void => {
+      clearCreateError();
+      setHandle(newHandle);
+    },
+    [clearCreateError, setHandle],
+  );
+
+  const handleHandleEditedChange = useCallback(
+    (edited: boolean): void => {
+      setHandleEdited(edited);
+    },
+    [setHandleEdited],
   );
 
   const handleOuIdChange = useCallback(
@@ -195,6 +214,25 @@ export default function CreateUserTypePage(): JSX.Element {
       return;
     }
 
+    const trimmedHandle = handle.trim();
+    if (!trimmedHandle) {
+      setError(t('userTypes:validationErrors.handleRequired', 'Please enter a user type handle'));
+      return;
+    }
+
+    if (
+      trimmedHandle.length > UserTypeConstraints.HANDLE_MAX_LENGTH ||
+      !UserTypeConstraints.HANDLE_PATTERN.test(trimmedHandle)
+    ) {
+      setError(
+        t(
+          'userTypes:validationErrors.handleInvalid',
+          'Handle must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores',
+        ),
+      );
+      return;
+    }
+
     const trimmedOuId = ouId.trim();
     if (!trimmedOuId) {
       setError(t('userTypes:validationErrors.ouIdRequired', 'Please provide an organization unit ID'));
@@ -259,7 +297,8 @@ export default function CreateUserTypePage(): JSX.Element {
     });
 
     const requestBody: CreateUserTypeRequest = {
-      name: name.trim(),
+      handle: trimmedHandle,
+      displayName: trimmedName,
       ouId: trimmedOuId,
       schema,
     };
@@ -276,7 +315,7 @@ export default function CreateUserTypePage(): JSX.Element {
       await createUserTypeMutation.mutateAsync(requestBody);
       await navigate(routes.list());
     } catch (submitError) {
-      logger.error('Failed to create user type or navigate', {error: submitError, userTypeName: name});
+      logger.error('Failed to create user type or navigate', {error: submitError, userTypeHandle: handle});
     }
   };
 
@@ -336,7 +375,11 @@ export default function CreateUserTypePage(): JSX.Element {
         return (
           <ConfigureName
             name={name}
+            handle={handle}
+            handleEdited={handleEdited}
             onNameChange={handleNameChange}
+            onHandleChange={handleHandleChange}
+            onHandleEditedChange={handleHandleEditedChange}
             onReadyChange={handleNameStepReadyChange}
             hasMultipleOUs={hasMultipleOUs}
             organizationUnitName={resolvedOrganizationUnit?.name}
@@ -357,7 +400,7 @@ export default function CreateUserTypePage(): JSX.Element {
             displayAttribute={displayAttribute}
             onDisplayAttributeChange={handleDisplayAttributeChange}
             onReadyChange={handlePropertiesStepReadyChange}
-            userTypeName={name.trim()}
+            userTypeHandle={handle.trim()}
           />
         );
       default:

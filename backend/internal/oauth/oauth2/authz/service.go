@@ -161,9 +161,22 @@ func (as *authorizeService) subjectFromIDTokenHint(ctx context.Context, idTokenH
 	if svcErr := as.jwtService.VerifyJWTSignature(ctx, idTokenHint); svcErr != nil {
 		return "", errors.New("id_token_hint signature is not valid")
 	}
+	// A hint must carry the generic JWT type ID tokens use, which keeps out access, refresh and logout tokens.
+	header, err := jwt.DecodeJWTHeader(idTokenHint)
+	if err != nil {
+		return "", errors.New("id_token_hint could not be decoded")
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return "", errors.New("id_token_hint is not an ID token")
+	}
 	payload, err := jwt.DecodeJWTPayload(idTokenHint)
 	if err != nil {
 		return "", errors.New("id_token_hint could not be decoded")
+	}
+	// Refresh tokens minted before rt+jwt share the generic type with ID tokens; this claim marks them.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
+	if _, isRefreshToken := payload[oauth2const.ClaimAccessTokenSubject]; isRefreshToken {
+		return "", errors.New("id_token_hint is not an ID token")
 	}
 	if iss, _ := payload[oauth2const.ClaimIss].(string); iss != as.cfg.JWT.Issuer {
 		return "", errors.New("id_token_hint was not issued by this server")

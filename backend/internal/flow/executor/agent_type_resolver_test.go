@@ -70,7 +70,7 @@ func (suite *AgentTypeResolverTestSuite) listReturns(types ...entitytype.EntityT
 
 // One candidate is no choice, so it is taken without a prompt.
 func (suite *AgentTypeResolverTestSuite) TestSingleTypeResolvesWithoutPrompting() {
-	suite.listReturns(entitytype.EntityTypeListItem{Name: "default", OUID: "ou-agents"})
+	suite.listReturns(entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"})
 
 	resp, err := suite.executor.Execute(agentTypeNodeContext())
 
@@ -84,8 +84,8 @@ func (suite *AgentTypeResolverTestSuite) TestSingleTypeResolvesWithoutPrompting(
 // Several candidates are offered rather than narrowed, so the count is not assumed anywhere.
 func (suite *AgentTypeResolverTestSuite) TestMultipleTypesArePrompted() {
 	suite.listReturns(
-		entitytype.EntityTypeListItem{Name: "default", OUID: "ou-agents"},
-		entitytype.EntityTypeListItem{Name: "worker", OUID: "ou-agents"},
+		entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"},
+		entitytype.EntityTypeListItem{Handle: "worker", OUID: "ou-agents"},
 	)
 
 	resp, err := suite.executor.Execute(agentTypeNodeContext())
@@ -98,6 +98,36 @@ func (suite *AgentTypeResolverTestSuite) TestMultipleTypesArePrompted() {
 	suite.Equal(resp.Inputs, resp.ForwardedData[common.ForwardedDataKeyInputs])
 }
 
+// The prompt offers the type handles as options.
+func (suite *AgentTypeResolverTestSuite) TestPromptOffersHandles() {
+	suite.listReturns(
+		entitytype.EntityTypeListItem{Handle: "default", DisplayName: "Default Agent", OUID: "ou-agents"},
+		entitytype.EntityTypeListItem{Handle: "worker", DisplayName: "Worker", OUID: "ou-agents"},
+	)
+
+	resp, err := suite.executor.Execute(agentTypeNodeContext())
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Require().Len(resp.Inputs, 1)
+	suite.Equal([]string{"default", "worker"}, resp.Inputs[0].Options)
+}
+
+// A submitted handle is written to the runtime data.
+func (suite *AgentTypeResolverTestSuite) TestSubmittedHandleResolves() {
+	ctx := agentTypeNodeContext()
+	ctx.UserInputs = map[string]string{agentTypeKey: "worker"}
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, "worker").
+		Return(&entitytype.EntityType{Handle: "worker", DisplayName: "Worker", OUID: "ou-agents"}, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("worker", resp.RuntimeData[categoryTypeKey])
+	suite.Equal("ou-agents", resp.RuntimeData[defaultOUIDKey])
+}
+
 // The node property narrows the candidates before the count decides the outcome.
 func (suite *AgentTypeResolverTestSuite) TestAllowedAgentTypesNarrowsTheChoice() {
 	ctx := agentTypeNodeContext()
@@ -105,8 +135,8 @@ func (suite *AgentTypeResolverTestSuite) TestAllowedAgentTypesNarrowsTheChoice()
 		propertyKeyAllowedAgentTypes: []interface{}{"default"},
 	}
 	suite.listReturns(
-		entitytype.EntityTypeListItem{Name: "default", OUID: "ou-agents"},
-		entitytype.EntityTypeListItem{Name: "worker", OUID: "ou-other"},
+		entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"},
+		entitytype.EntityTypeListItem{Handle: "worker", OUID: "ou-other"},
 	)
 
 	resp, err := suite.executor.Execute(ctx)

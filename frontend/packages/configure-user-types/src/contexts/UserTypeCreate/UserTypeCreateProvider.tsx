@@ -15,6 +15,8 @@ import type {SchemaPropertyInput} from '../../types/user-types';
 const INITIAL_STATE = {
   currentStep: UserTypeCreateFlowStep.ORGANIZATION_UNIT as UserTypeCreateFlowStep,
   name: '',
+  handle: '',
+  handleEdited: false,
   ouId: '',
   allowSelfRegistration: false,
   properties: [] satisfies SchemaPropertyInput[],
@@ -32,6 +34,8 @@ const INITIAL_STATE = {
 export default function UserTypeCreateProvider({children}: PropsWithChildren) {
   const [currentStep, setCurrentStep] = useState<UserTypeCreateFlowStep>(INITIAL_STATE.currentStep);
   const [name, setName] = useState<string>(INITIAL_STATE.name);
+  const [handle, setHandle] = useState<string>(INITIAL_STATE.handle);
+  const [handleEdited, setHandleEdited] = useState<boolean>(INITIAL_STATE.handleEdited);
   const [ouId, setOuId] = useState<string>(INITIAL_STATE.ouId);
   const [allowSelfRegistration, setAllowSelfRegistration] = useState<boolean>(INITIAL_STATE.allowSelfRegistration);
   const [properties, setProperties] = useState<SchemaPropertyInput[]>(INITIAL_STATE.properties);
@@ -42,6 +46,8 @@ export default function UserTypeCreateProvider({children}: PropsWithChildren) {
   const reset = useCallback((): void => {
     setCurrentStep(INITIAL_STATE.currentStep);
     setName(INITIAL_STATE.name);
+    setHandle(INITIAL_STATE.handle);
+    setHandleEdited(INITIAL_STATE.handleEdited);
     setOuId(INITIAL_STATE.ouId);
     setAllowSelfRegistration(INITIAL_STATE.allowSelfRegistration);
     setProperties(INITIAL_STATE.properties);
@@ -56,6 +62,10 @@ export default function UserTypeCreateProvider({children}: PropsWithChildren) {
       setCurrentStep,
       name,
       setName,
+      handle,
+      setHandle,
+      handleEdited,
+      setHandleEdited,
       ouId,
       setOuId,
       allowSelfRegistration,
@@ -70,7 +80,19 @@ export default function UserTypeCreateProvider({children}: PropsWithChildren) {
       setError,
       reset,
     }),
-    [currentStep, name, ouId, allowSelfRegistration, properties, enumInput, displayAttribute, error, reset],
+    [
+      currentStep,
+      name,
+      handle,
+      handleEdited,
+      ouId,
+      allowSelfRegistration,
+      properties,
+      enumInput,
+      displayAttribute,
+      error,
+      reset,
+    ],
   );
 
   return <UserTypeCreateContext.Provider value={contextValue}>{children}</UserTypeCreateContext.Provider>;

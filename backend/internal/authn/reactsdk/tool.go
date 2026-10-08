@@ -177,14 +177,14 @@ sign-in page automatically renders a **Sign Up** link.
 **1. The application must have registration enabled.**
 
 Use ~thunderid_update_application~ to set ~isRegistrationFlowEnabled~ and point it at a registration flow.
-Also add the user type name to ~allowedUserTypes~:
+Also add the user type handle to ~allowedUserTypes~:
 
 ~~~json
 {
   "inboundAuthConfig": [{
     "isRegistrationFlowEnabled": true,
     "registrationFlowId": "<registration-flow-id>",
-    "allowedUserTypes": ["<user-type-name>"]
+    "allowedUserTypes": ["<user-type-handle>"]
   }]
 }
 ~~~

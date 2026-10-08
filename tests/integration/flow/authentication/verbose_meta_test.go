@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -164,7 +164,8 @@ var (
 	}
 
 	verboseTestEntityType = testutils.UserType{
-		Name: "verbose_test_schema",
+		Handle:      "verbose_test_schema",
+		DisplayName: "Verbose Test Schema",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -186,14 +187,14 @@ var (
 		ClientID:                  "verbose_test_client",
 		ClientSecret:              "verbose_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{verboseTestEntityType.Name},
+		AllowedUserTypes:          []string{verboseTestEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
 	verboseTestUser = testutils.User{
-		Type: verboseTestEntityType.Name,
+		Type: verboseTestEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "verboseuser",
 			"password": "testpassword123",
@@ -372,7 +373,7 @@ func (ts *VerboseMetaTestSuite) TestVerboseModeWithGraphWithoutMeta() {
 		ClientID:                  "no_meta_test_client",
 		ClientSecret:              "no_meta_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{verboseTestEntityType.Name},
+		AllowedUserTypes:          []string{verboseTestEntityType.Handle},
 	}
 
 	appID, err := testutils.CreateApplication(appWithoutMeta)

@@ -31,7 +31,8 @@ var idTokenAlgTestOU = testutils.OrganizationUnit{
 }
 
 var idTokenAlgUserSchema = testutils.UserType{
-	Name: "id_token_alg_test_person",
+	Handle:      "id_token_alg_test_person",
+	DisplayName: "Id Token Alg Test Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -40,7 +41,7 @@ var idTokenAlgUserSchema = testutils.UserType{
 }
 
 var idTokenAlgTestUser = testutils.User{
-	Type: idTokenAlgUserSchema.Name,
+	Type: idTokenAlgUserSchema.Handle,
 	Attributes: json.RawMessage(`{
 		"username": "idtokenalguser",
 		"password": "testpassword",
@@ -291,7 +292,7 @@ func (ts *IDTokenSigningAlgTestSuite) createApplication(signingAlg string) {
 		ClientID:                  idTokenAlgClientID,
 		ClientSecret:              idTokenAlgClientSecret,
 		RedirectURIs:              []string{idTokenAlgRedirectURI},
-		AllowedUserTypes:          []string{idTokenAlgUserSchema.Name},
+		AllowedUserTypes:          []string{idTokenAlgUserSchema.Handle},
 		InboundAuthConfig: []map[string]interface{}{
 			{"type": "oauth2", "config": oauthConfig},
 		},

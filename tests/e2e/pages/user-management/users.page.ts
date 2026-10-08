@@ -344,7 +344,7 @@ export class UsersPage extends BasePage {
 
   /**
    * Select a user type and advance past the (optional) org unit step. Picks the first available
-   * option when `userTypeName` is omitted; matches by exact visible text otherwise (e.g. "Staff",
+   * option when `userTypeName` is omitted; matches by exact visible text otherwise (e.g. "staff",
    * for the Wayfinder staff-onboarding flow).
    */
   async selectUserTypeAndContinue(userTypeName?: string) {

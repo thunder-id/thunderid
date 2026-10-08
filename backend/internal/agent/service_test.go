@@ -113,7 +113,7 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return((*inboundmodel.Certificate)(nil), (*inboundclient.CertOperationError)(nil))
 	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
 		Maybe().Return(nil)
-	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockInbound.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -2962,7 +2962,7 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_InboundValidateFails_NonTr
 	svc, _, mockInbound, _, _ := suite.setupService()
 
 	clearMockCalls(mockInbound, "Validate")
-	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("validate boom"))
 
 	req := &providers.Agent{

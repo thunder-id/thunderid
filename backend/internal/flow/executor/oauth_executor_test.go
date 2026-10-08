@@ -125,7 +125,7 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeProvided_AuthenticatesUser(
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "test@example.com", resp.RuntimeData["email"])
+	assert.Equal(suite.T(), "test@example.com", externalClaim(resp.RuntimeData, "email"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -219,7 +219,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_SubMismatch_Fai
 			"code": "auth_code_123",
 		},
 		RuntimeData: map[string]string{
-			"sub": "stored-sub-123",
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-123", "stored-sub-123", nil),
 		},
 		NodeProperties: map[string]interface{}{
 			"idpId": "idp-123",
@@ -365,7 +365,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
+	assert.Equal(suite.T(), "new-user-sub", externalSub(execResp.RuntimeData))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -622,88 +622,6 @@ func (suite *OAuthExecutorTestSuite) TestHasRequiredInputs_CodeNotProvided() {
 	assert.NotEmpty(suite.T(), execResp.Inputs)
 }
 
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmail() {
-	userInfo := map[string]string{
-		"sub":      "user-sub-123",
-		"email":    "test@example.com",
-		"name":     "Test User",
-		"username": "testuser",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "username")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithoutEmail() {
-	userInfo := map[string]string{
-		"sub":  "user-sub-123",
-		"name": "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "email")
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmptyEmail() {
-	userInfo := map[string]string{
-		"sub":   "user-sub-123",
-		"email": "",
-		"name":  "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "", attributes["email"])
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_FilterSkipAttributes() {
-	userInfo := map[string]string{
-		"sub":      "user-sub-123",
-		"email":    "test@example.com",
-		"name":     "Test User",
-		"username": "testuser",
-		"id":       "some-id",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "username")
-	assert.NotContains(suite.T(), attributes, "id")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
-}
-
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlow_WithEmail() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -734,29 +652,9 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
-	assert.Equal(suite.T(), "newuser@example.com", execResp.RuntimeData["email"])
+	assert.Equal(suite.T(), "new-user-sub", externalSub(execResp.RuntimeData))
+	assert.Equal(suite.T(), "newuser@example.com", externalClaim(execResp.RuntimeData, "email"))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OAuthExecutorTestSuite) TestGetContextUserAttributes_WithEmail_NilRuntimeData() {
-	userInfo := map[string]string{
-		"sub":   "user-sub-123",
-		"email": "test@example.com",
-		"name":  "Test User",
-	}
-
-	execResp := &providers.ExecutorResponse{
-		RuntimeData: nil, // Explicitly nil
-	}
-
-	attributes := suite.executor.(*oAuthExecutor).getContextUserAttributes(execResp, userInfo)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "test@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.NotNil(suite.T(), execResp.RuntimeData, "RuntimeData should be initialized")
-	assert.Equal(suite.T(), "test@example.com", execResp.RuntimeData["email"])
 }
 
 func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithoutLocalUser() {
@@ -796,7 +694,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithou
 	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
 	assert.Equal(suite.T(), dataValueTrue, execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
+	assert.Equal(suite.T(), "new-user-sub", externalSub(execResp.RuntimeData))
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 

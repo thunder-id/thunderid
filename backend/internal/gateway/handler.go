@@ -18,6 +18,8 @@ import (
 // handler serves the gateway registry.
 type handler struct {
 	service ServiceInterface
+	// afterDelete runs once a gateway is removed, so what was applied to it is forgotten with it.
+	afterDelete func(ctx context.Context, id string)
 }
 
 func newHandler(service ServiceInterface) *handler {
@@ -83,6 +85,9 @@ func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		handleError(ctx, w, svcErr)
 		return
 	}
+	if h.afterDelete != nil {
+		h.afterDelete(ctx, r.PathValue("id"))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -121,11 +126,15 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Type == common.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
-	if svcErr.Code == ErrorGatewayNotFound.Code {
+	if svcErr.Code == ErrorGatewayNotFound.Code || svcErr.Code == ErrorVersionNotFound.Code {
 		statusCode = http.StatusNotFound
 	}
+	if svcErr.Code == ErrorGatewayUnreachable.Code {
+		statusCode = http.StatusBadGateway
+	}
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
-		svcErr.Code == ErrorGatewayAlreadyRegistered.Code {
+		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
+		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code {
 		statusCode = http.StatusConflict
 	}
 

@@ -3,6 +3,11 @@
 
 import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {
+  getBackchannelLogoutUriServerError,
+  hasUserAccess,
+  validateBackchannelLogoutUri,
+} from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -89,7 +94,7 @@ export default function AgentEditPage(): JSX.Element {
 
   // The agent's type schema, used to drop stale attribute values on save.
   const {data: agentTypesData, isLoading: isTypesLoading} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent?.type);
+  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent?.type);
   const {data: agentTypeDetails, isLoading: isTypeLoading} = useGetAgentType(matchedSchema?.id);
   // Block save until the schema settles, else stale values bypass sanitization.
   const isSchemaResolving = isTypesLoading || isTypeLoading;
@@ -113,6 +118,7 @@ export default function AgentEditPage(): JSX.Element {
     [],
   );
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
+  const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
 
   const handleBack = async () => {
     await navigate(routes.agents.list());
@@ -231,8 +237,18 @@ export default function AgentEditPage(): JSX.Element {
   const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
   const isMissingCertificate =
     oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt' && !oauth2Config?.certificate?.value;
+  // The field shows only with a user-facing grant, so a hidden value never blocks saving. The field
+  // also reports a typed value it has not committed because it is invalid.
+  const isInvalidBackchannelLogoutUri =
+    hasUserAccess(oauth2Config?.grantTypes) &&
+    (backchannelLogoutUriInvalid ||
+      !validateBackchannelLogoutUri(oauth2Config?.backchannelLogoutUri, oauth2Config?.publicClient ?? false).valid);
   const hasAnyValidationError =
-    hasAnyOtherValidationError || isMissingRedirectUri || isMissingAllowedUserType || isMissingCertificate;
+    hasAnyOtherValidationError ||
+    isMissingRedirectUri ||
+    isMissingAllowedUserType ||
+    isMissingCertificate ||
+    isInvalidBackchannelLogoutUri;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
   // agent has to withhold the callback rather than rely on `editable` alone.
@@ -251,6 +267,11 @@ export default function AgentEditPage(): JSX.Element {
   }
   if (isMissingCertificate) {
     validationIssues.push(t('agents:edit.page.validation.missingCertificate', 'add a certificate'));
+  }
+  if (isInvalidBackchannelLogoutUri) {
+    validationIssues.push(
+      t('agents:edit.page.validation.invalidBackchannelLogoutUri', 'fix the back-channel logout URI'),
+    );
   }
   if (hasAnyOtherValidationError) {
     validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));
@@ -360,10 +381,12 @@ export default function AgentEditPage(): JSX.Element {
     label: t('agents:edit.page.tabs.advanced', 'Advanced'),
     render: () => (
       <EditAdvancedSettings
+        key={sectionResetKey}
         agent={agent}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={handleFieldChange}
+        onBackchannelLogoutUriValidationChange={setBackchannelLogoutUriInvalid}
         onDeleteSuccess={() => {
           void handleBack();
         }}
@@ -541,12 +564,13 @@ export default function AgentEditPage(): JSX.Element {
           saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
           error={
             updateAgent.error
-              ? getErrorMessage(
+              ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??
+                getErrorMessage(
                   updateAgent.error,
                   tForErrors,
                   'update.error',
                   'Failed to update agent. Please try again.',
-                )
+                ))
               : undefined
           }
           onReset={() => {

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -34,7 +35,7 @@ func newAuthenticatedAuthUser() providers.AuthUser {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderWithNilContext() {
-	result := ResolvePlaceholder(nil, "test value", nil, nil, nil)
+	result := ResolvePlaceholder(nil, "test value", nil, nil, true, nil)
 	s.Equal("test value", result)
 }
 
@@ -44,7 +45,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderNoPlaceholder() {
 		UserInputs:  map[string]string{"key2": "value2"},
 	}
 
-	result := ResolvePlaceholder(ctx, "plain text without placeholders", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "plain text without placeholders", nil, nil, true, nil)
 	s.Equal("plain text without placeholders", result)
 }
 
@@ -68,7 +69,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderFromRuntimeData() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, true, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -92,7 +93,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderFromUserInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, true, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -104,7 +105,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderRuntimeTakesPrecedence() {
 		UserInputs:  map[string]string{"key": "user_input_value"},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(key)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(key)}}", nil, nil, true, nil)
 	s.Equal("runtime_value", result, "RuntimeData should take precedence over UserInputs")
 }
 
@@ -125,7 +126,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthnProvider() {
 			OUID:     "ou-456",
 		}, nil)
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, true, logger)
 	s.Equal("user-123", result)
 }
 
@@ -134,7 +135,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromRuntimeData() {
 		RuntimeData: map[string]string{"userId": "runtime-user-456"},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, true, nil)
 	s.Equal("runtime-user-456", result)
 }
 
@@ -149,7 +150,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDRuntimeDataTakesPrecedence(
 	execResp := &providers.ExecutorResponse{}
 	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, true, logger)
 	s.Equal("runtime-user-id", result, "RuntimeData should take precedence over authn provider")
 }
 
@@ -159,7 +160,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDNotFromUserInputs() {
 		RuntimeData: map[string]string{},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(userId)}}", result, "userId should NOT be resolved from UserInputs")
 }
 
@@ -180,7 +181,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProvider() {
 			OUID:     "ou-123",
 		}, nil)
 
-	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, true, logger)
 	s.Equal("ou-123", result)
 }
 
@@ -200,7 +201,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProviderWithoutEntit
 			OUID: "ou-123",
 		}, nil)
 
-	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, true, logger)
 	s.Equal("ou-123", result)
 }
 
@@ -209,7 +210,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromRuntimeData() {
 		RuntimeData: map[string]string{"ouId": "runtime-ou-456"},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", nil, nil, true, nil)
 	s.Equal("runtime-ou-456", result)
 }
 
@@ -224,7 +225,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDRuntimeDataTakesPrecedence() 
 	execResp := &providers.ExecutorResponse{}
 	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", execResp, mockProvider, true, logger)
 	s.Equal("runtime-ou-id", result, "RuntimeData should take precedence over authn provider")
 }
 
@@ -234,7 +235,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDNotFromUserInputs() {
 		RuntimeData: map[string]string{},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(ouId)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(ouId)}}", result, "ouId should NOT be resolved from UserInputs")
 }
 
@@ -255,7 +256,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDAndOUIDShareSingleFetch() {
 			OUID:     "ou-789",
 		}, nil).Once()
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}-{{ctx(ouId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}-{{ctx(ouId)}}", execResp, mockProvider, true, logger)
 	s.Equal("user-789-ou-789", result)
 	mockProvider.AssertNumberOfCalls(s.T(), "GetEntityReference", 1)
 }
@@ -268,7 +269,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithNilAuthnProvider() {
 		AuthUser:    authUser,
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(userId)}}", result, "userId should keep placeholder when authnProvider is nil")
 }
 
@@ -281,7 +282,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithUnauthenticatedUser() {
 	execResp := &providers.ExecutorResponse{}
 	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, logger)
+	result := ResolvePlaceholder(ctx, "{{ctx(userId)}}", execResp, mockProvider, true, logger)
 	s.Equal("{{ctx(userId)}}", result, "userId should keep placeholder when user is not authenticated")
 }
 
@@ -291,7 +292,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderKeyNotFound() {
 		UserInputs:  map[string]string{},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ctx(nonexistent)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(nonexistent)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(nonexistent)}}", result, "Non-existent key should keep placeholder as-is")
 }
 
@@ -302,11 +303,11 @@ func (s *UtilsTestSuite) TestResolvePlaceholderEmptyValue() {
 	}
 
 	// Empty runtime value should fall through to user input (but since key doesn't match, keeps placeholder)
-	result := ResolvePlaceholder(ctx, "{{ctx(empty)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(empty)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(empty)}}", result, "Empty value should not resolve, keeps placeholder")
 
 	// Non-empty user input should be used
-	result = ResolvePlaceholder(ctx, "{{ctx(nonempty)}}", nil, nil, nil)
+	result = ResolvePlaceholder(ctx, "{{ctx(nonempty)}}", nil, nil, true, nil)
 	s.Equal("value", result)
 }
 
@@ -330,7 +331,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderMixedStaticAndDynamic() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, true, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -343,7 +344,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderWithNilMaps() {
 	}
 
 	// Should not panic with nil maps
-	result := ResolvePlaceholder(ctx, "{{ctx(key)}}", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "{{ctx(key)}}", nil, nil, true, nil)
 	s.Equal("{{ctx(key)}}", result)
 }
 
@@ -352,7 +353,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderEmptyString() {
 		RuntimeData: map[string]string{"key": "value"},
 	}
 
-	result := ResolvePlaceholder(ctx, "", nil, nil, nil)
+	result := ResolvePlaceholder(ctx, "", nil, nil, true, nil)
 	s.Equal("", result)
 }
 
@@ -377,8 +378,73 @@ func (s *UtilsTestSuite) TestResolvePlaceholderSpecialCharactersInValue() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, true, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
+}
+
+// externalIdentityData is runtime data holding an external identity with the given claims.
+func externalIdentityData(claims map[string]interface{}) map[string]string {
+	encoded, err := json.Marshal(ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims})
+	if err != nil {
+		panic(err)
+	}
+	return map[string]string{common.RuntimeKeyExternalIdentity: string(encoded)}
+}
+
+func (s *UtilsTestSuite) TestGetExternalClaim() {
+	data := externalIdentityData(map[string]interface{}{"email": "a@example.com", "email_verified": true})
+
+	value, ok := GetExternalClaim(data, "email")
+	s.True(ok)
+	s.Equal("a@example.com", value)
+
+	value, ok = GetExternalClaim(data, "email_verified")
+	s.True(ok)
+	s.Equal("true", value)
+
+	_, ok = GetExternalClaim(data, "given_name")
+	s.False(ok)
+	_, ok = GetExternalClaim(map[string]string{}, "email")
+	s.False(ok)
+	_, ok = GetExternalClaim(map[string]string{common.RuntimeKeyExternalIdentity: "{"}, "email")
+	s.False(ok)
+}
+
+// A claim resolves a placeholder, and a value an executor set in runtime data still wins over it.
+func (s *UtilsTestSuite) TestResolvePlaceholderFromExternalClaims() {
+	ctx := &providers.NodeContext{
+		RuntimeData: externalIdentityData(map[string]interface{}{
+			"email": "claim@example.com", "given_name": "Claimed",
+		}),
+		UserInputs: map[string]string{},
+	}
+	s.Equal("claim@example.com", ResolvePlaceholder(ctx, "{{ctx(email)}}", nil, nil, true, nil))
+	s.Equal("Claimed claim@example.com",
+		ResolvePlaceholder(ctx, "{{ctx(given_name)}} {{ctx(email)}}", nil, nil, true, nil))
+
+	ctx.RuntimeData["email"] = "runtime@example.com"
+	s.Equal("runtime@example.com", ResolvePlaceholder(ctx, "{{ctx(email)}}", nil, nil, true, nil))
+}
+
+func (s *UtilsTestSuite) TestCollectMissingInputsSatisfiedByExternalClaim() {
+	ctx := &providers.NodeContext{
+		Context: context.Background(),
+		RuntimeData: externalIdentityData(map[string]interface{}{
+			"email": "a@example.com", "mobile": "", "password": "chosen-by-idp",
+		}),
+	}
+
+	missing := collectMissingInputs(ctx, nil, []providers.Input{
+		{Identifier: "email", Required: true},
+		{Identifier: "given_name", Required: true},
+		{Identifier: "mobile", Required: true},
+		{Identifier: "password", Type: providers.InputTypePassword, Required: true},
+	}, log.GetLogger())
+
+	s.Len(missing, 3)
+	s.Equal("given_name", missing[0].Identifier)
+	s.Equal("mobile", missing[1].Identifier, "an empty claim must not satisfy an input")
+	s.Equal("password", missing[2].Identifier, "a claim must not satisfy a credential input")
 }

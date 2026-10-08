@@ -3,10 +3,10 @@
 
 import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
 /**
- * Names the bootstrap-provisioned `default` agent type, which the agent listing's Schema button
+ * Handle of the bootstrap-provisioned `default` agent type, which the agent listing's Schema button
  * looks up to show the schema behind the listed agents.
  */
-export const DEFAULT_AGENT_TYPE_NAME = 'default';
+export const DEFAULT_AGENT_TYPE_HANDLE = 'default';
 
 export type OAuthAgentConfig = OAuth2Config;
 

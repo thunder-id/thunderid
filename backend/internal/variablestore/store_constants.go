@@ -99,4 +99,11 @@ var (
 		ID:    "VARQ-08",
 		Query: `DELETE FROM "SECRET" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// querySecretValue reads a secret's ciphertext. Only the import's reference resolution uses it, to put
+	// the value where a reference stood; no read served over HTTP selects the value column.
+	querySecretValue = dbmodel.DBQuery{
+		ID:    "VARQ-13",
+		Query: `SELECT VALUE FROM "SECRET" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )

@@ -28,7 +28,8 @@ var (
 	}
 
 	identifyTestUserType = testutils.UserType{
-		Name: "identify-modes-person",
+		Handle:      "identify-modes-person",
+		DisplayName: "Identify Modes Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -252,7 +253,7 @@ func (ts *IdentifyModesTestSuite) SetupSuite() {
 		`{"username":"identify_cleo","email":"` + uniqueIdentifyEmail + `","given_name":"Cleo"}`,
 	} {
 		userID, err := testutils.CreateUser(testutils.User{
-			Type:       identifyTestUserType.Name,
+			Type:       identifyTestUserType.Handle,
 			OUID:       ouID,
 			Attributes: json.RawMessage(attrs),
 		})
@@ -285,7 +286,7 @@ func (ts *IdentifyModesTestSuite) SetupSuite() {
 		ClientSecret:     "identify_resolve_test_secret",
 		RedirectURIs:     []string{"http://localhost:3000/callback"},
 		OUID:             ouID,
-		AllowedUserTypes: []string{identifyTestUserType.Name},
+		AllowedUserTypes: []string{identifyTestUserType.Handle},
 		AuthFlowID:       resolveFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create resolve mode application")
@@ -297,7 +298,7 @@ func (ts *IdentifyModesTestSuite) SetupSuite() {
 		ClientSecret:     "identify_check_state_test_secret",
 		RedirectURIs:     []string{"http://localhost:3000/callback"},
 		OUID:             ouID,
-		AllowedUserTypes: []string{identifyTestUserType.Name},
+		AllowedUserTypes: []string{identifyTestUserType.Handle},
 		AuthFlowID:       checkStateFlowID,
 	})
 	ts.Require().NoError(err, "Failed to create check state mode application")

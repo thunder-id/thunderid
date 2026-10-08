@@ -157,7 +157,7 @@ export default function ViewUserTypePage(): JSX.Element {
 
   // Edited fields (partial — only fields the user has changed)
   const [editedUserType, setEditedUserType] = useState<
-    Partial<{name: string; ouId: string; allowSelfRegistration: boolean; displayAttribute: string}>
+    Partial<{displayName: string; ouId: string; allowSelfRegistration: boolean; displayAttribute: string}>
   >({});
 
   // Edited schema properties (null = no changes, non-null = user edited)
@@ -176,8 +176,8 @@ export default function ViewUserTypePage(): JSX.Element {
   // Effective properties (edited or from server)
   const effectiveProperties = editedProperties ?? baseProperties;
 
-  // Effective name
-  const effectiveName = editedUserType.name ?? userType?.name ?? '';
+  // Effective display name
+  const effectiveName = editedUserType.displayName ?? userType?.displayName ?? '';
 
   // Eligible display properties (computed from effective properties)
   const eligibleDisplayProperties = useMemo(
@@ -209,7 +209,7 @@ export default function ViewUserTypePage(): JSX.Element {
   // schema properties against the server's, so reverting every edit by hand clears the bar.
   const hasChanges = useMemo(() => {
     const originalOf: Record<string, unknown> = {
-      name: userType?.name,
+      displayName: userType?.displayName,
       ouId: userType?.ouId,
       allowSelfRegistration: userType?.allowSelfRegistration,
       displayAttribute: userType?.systemAttributes?.display ?? '',
@@ -250,7 +250,7 @@ export default function ViewUserTypePage(): JSX.Element {
       ) {
         return;
       }
-      handleFieldChange('name', trimmedName);
+      handleFieldChange('displayName', trimmedName);
     },
     [handleFieldChange],
   );
@@ -274,7 +274,7 @@ export default function ViewUserTypePage(): JSX.Element {
   const performSave = useCallback(async (): Promise<void> => {
     if (!id || !userType) return;
 
-    const name = (editedUserType.name ?? userType.name).trim();
+    const displayName = (editedUserType.displayName ?? userType.displayName).trim();
     const ouId = (editedUserType.ouId ?? userType.ouId).trim();
     const allowSelfRegistration = editedUserType.allowSelfRegistration ?? userType.allowSelfRegistration;
     const displayAttribute = editedUserType.displayAttribute ?? userType.systemAttributes?.display ?? '';
@@ -284,7 +284,7 @@ export default function ViewUserTypePage(): JSX.Element {
       await updateUserTypeMutation.mutateAsync({
         userTypeId: id,
         data: {
-          name,
+          displayName,
           ouId,
           allowSelfRegistration,
           ...(displayAttribute ? {systemAttributes: {display: displayAttribute}} : {}),
@@ -498,7 +498,7 @@ export default function ViewUserTypePage(): JSX.Element {
           <EditSchemaSettings
             properties={effectiveProperties}
             onPropertiesChange={handlePropertiesChange}
-            userTypeName={effectiveName}
+            userTypeHandle={userType.handle}
             disabled={userType.isReadOnly}
           />
         </TabPanel>

@@ -9,24 +9,27 @@ import (
 
 // AgentType represents an agent type as returned by the detail endpoint.
 type AgentType struct {
-	ID     string          `json:"id,omitempty"`
-	Name   string          `json:"name,omitempty"`
-	OUID   string          `json:"ouId"`
-	Schema json.RawMessage `json:"schema,omitempty"`
+	ID          string          `json:"id,omitempty"`
+	Handle      string          `json:"handle,omitempty"`
+	DisplayName string          `json:"displayName,omitempty"`
+	OUID        string          `json:"ouId"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
 }
 
 // AgentTypeRequest is the body for creating or updating an agent type.
 type AgentTypeRequest struct {
-	Name   string          `json:"name"`
-	OUID   string          `json:"ouId"`
-	Schema json.RawMessage `json:"schema"`
+	Handle      string          `json:"handle,omitempty"`
+	DisplayName string          `json:"displayName"`
+	OUID        string          `json:"ouId"`
+	Schema      json.RawMessage `json:"schema"`
 }
 
 // AgentTypeListItem is a list entry. The list endpoint omits the schema.
 type AgentTypeListItem struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-	OUID string `json:"ouId"`
+	ID          string `json:"id,omitempty"`
+	Handle      string `json:"handle,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	OUID        string `json:"ouId"`
 }
 
 // AgentTypeListResponse is the response from listing agent types. The entries live under `types`.

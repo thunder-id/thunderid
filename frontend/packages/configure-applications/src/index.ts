@@ -53,6 +53,7 @@ export {default as useApplicationRoutes, defaultApplicationRoutePaths} from './h
 export type {ApplicationRoutePaths} from './hooks/useApplicationRoutes';
 
 // Components shared with other configure-* packages
+export {default as BackchannelLogoutUriField} from './components/common/BackchannelLogoutUriField';
 export {default as CopyableField} from './components/common/CopyableField';
 export type {CopyableFieldProps} from './components/common/CopyableField';
 export {default as SettingsLockNotice} from './components/common/SettingsLockNotice';
@@ -67,8 +68,15 @@ export {default as EditTokenSettings} from './components/edit-application/token-
 export {default as CertificateTypes} from './constants/certificate-types';
 export {default as TokenConstants} from './constants/token-constants';
 export {getGrantTypeLabel} from './utils/getGrantTypeLabel';
-export {applyGrantTypesChange, applyTokenEndpointAuthMethodChange, deriveOAuth2Flags} from './utils/oauth2Rules';
+export {
+  applyGrantTypesChange,
+  applyTokenEndpointAuthMethodChange,
+  deriveOAuth2Flags,
+  hasUserAccess,
+} from './utils/oauth2Rules';
 export type {OAuth2Flags} from './utils/oauth2Rules';
+export {default as validateBackchannelLogoutUri} from './utils/validateBackchannelLogoutUri';
+export {default as getBackchannelLogoutUriServerError} from './utils/getBackchannelLogoutUriServerError';
 
 // Application templates
 export {default as TechnologyBasedApplicationTemplateMetadata} from './config/TechnologyBasedApplicationTemplateMetadata';

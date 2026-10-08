@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
@@ -84,7 +85,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher := registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -102,6 +103,10 @@ func main() {
 	// still starts and the syncer repopulates the cache on its next tick.
 	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
 	revocationSyncer.Start(ctx)
+
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Start(ctx)
+	}
 
 	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
 	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
@@ -147,7 +152,7 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, backchannelDispatcher)
 }
 
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
@@ -315,6 +320,7 @@ func gracefulShutdown(
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
+	backchannelDispatcher backchannel.DispatcherInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -328,6 +334,12 @@ func gracefulShutdown(
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
+
+	// Stop back-channel logout delivery before observability shuts down, so the final delivery
+	// outcomes still reach a subscriber.
+	if backchannelDispatcher != nil {
+		backchannelDispatcher.Stop()
+	}
 
 	// Shutdown services
 	unregisterServices()

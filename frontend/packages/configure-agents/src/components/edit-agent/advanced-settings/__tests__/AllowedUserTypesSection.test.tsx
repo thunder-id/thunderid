@@ -44,8 +44,8 @@ describe('AllowedUserTypesSection', () => {
     mockUseGetUserTypes.mockReturnValue({
       data: {
         types: [
-          {id: 'ut-1', name: 'employee'},
-          {id: 'ut-2', name: 'customer'},
+          {id: 'ut-1', handle: 'employee', displayName: 'Employee'},
+          {id: 'ut-2', handle: 'customer', displayName: 'Customer'},
         ],
       },
       isLoading: false,
@@ -97,7 +97,7 @@ describe('AllowedUserTypesSection', () => {
       />,
     );
 
-    expect(screen.getByText('employee')).toBeInTheDocument();
+    expect(screen.getByText('Employee')).toBeInTheDocument();
   });
 
   it('prioritizes editedAgent.allowedUserTypes over agent.allowedUserTypes', () => {
@@ -110,8 +110,8 @@ describe('AllowedUserTypesSection', () => {
       />,
     );
 
-    expect(screen.getByText('customer')).toBeInTheDocument();
-    expect(screen.queryByText('employee')).not.toBeInTheDocument();
+    expect(screen.getByText('Customer')).toBeInTheDocument();
+    expect(screen.queryByText('Employee')).not.toBeInTheDocument();
   });
 
   it('falls back to an empty array when neither value is set', () => {
@@ -142,7 +142,7 @@ describe('AllowedUserTypesSection', () => {
     await user.click(combobox);
 
     const listbox = screen.getByRole('listbox');
-    await user.click(within(listbox).getByText('employee'));
+    await user.click(within(listbox).getByText('Employee'));
 
     expect(mockOnFieldChange).toHaveBeenCalledWith('allowedUserTypes', ['employee']);
   });
@@ -161,8 +161,8 @@ describe('AllowedUserTypesSection', () => {
     await user.click(screen.getByRole('combobox'));
 
     const listbox = screen.getByRole('listbox');
-    expect(within(listbox).getByText('employee')).toBeInTheDocument();
-    expect(within(listbox).getByText('customer')).toBeInTheDocument();
+    expect(within(listbox).getByText('Employee')).toBeInTheDocument();
+    expect(within(listbox).getByText('Customer')).toBeInTheDocument();
   });
 
   it('handles missing user-type schemas gracefully', () => {

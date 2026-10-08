@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
@@ -468,8 +468,8 @@ describe('ConfigureDetails', () => {
       },
     };
     const userTypes = [
-      {id: 'user-type-1', name: 'Customer', ouId: 'ou-1', allowSelfRegistration: true},
-      {id: 'user-type-2', name: 'Employee', ouId: 'ou-2', allowSelfRegistration: false},
+      {id: 'user-type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-1', allowSelfRegistration: true},
+      {id: 'user-type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-2', allowSelfRegistration: false},
     ];
 
     renderWithContext(
@@ -499,8 +499,8 @@ describe('ConfigureDetails', () => {
       },
     };
     const userTypes = [
-      {id: 'user-type-1', name: 'Customer', ouId: 'ou-1', allowSelfRegistration: true},
-      {id: 'user-type-2', name: 'Employee', ouId: 'ou-2', allowSelfRegistration: false},
+      {id: 'user-type-1', handle: 'customer', displayName: 'Customer', ouId: 'ou-1', allowSelfRegistration: true},
+      {id: 'user-type-2', handle: 'employee', displayName: 'Employee', ouId: 'ou-2', allowSelfRegistration: false},
     ];
     const onUserTypesChange = vi.fn();
 
@@ -525,7 +525,7 @@ describe('ConfigureDetails', () => {
     const customerOption = await screen.findByText('Customer');
     await user.click(customerOption);
 
-    expect(onUserTypesChange).toHaveBeenCalledWith(['Customer']);
+    expect(onUserTypesChange).toHaveBeenCalledWith(['customer']);
   });
 
   it('does not render user type selection when no user types are provided', () => {

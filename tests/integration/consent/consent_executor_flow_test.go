@@ -481,7 +481,8 @@ var (
 	}
 
 	consentEntityType = testutils.UserType{
-		Name: "consent_flow_user",
+		Handle:      "consent_flow_user",
+		DisplayName: "Consent Flow User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -505,7 +506,7 @@ var (
 	}
 
 	consentTestUser = testutils.User{
-		Type: consentEntityType.Name,
+		Type: consentEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "` + consentTestUsername + `",
 			"password": "` + consentTestPassword + `",

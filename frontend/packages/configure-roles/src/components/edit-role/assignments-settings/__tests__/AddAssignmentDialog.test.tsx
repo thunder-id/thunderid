@@ -75,7 +75,7 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
   };
 });
 
-const {useGetUsers} = await import('@thunderid/configure-users');
+const {useGetUsers, useGetUserTypes} = await import('@thunderid/configure-users');
 const {useGetGroups} = await import('@thunderid/configure-groups');
 const {useGetApplications} = await import('@thunderid/configure-applications');
 const {default: useGetRoleAssignments} = await import('../../../../api/useGetRoleAssignments');
@@ -151,6 +151,15 @@ describe('AddAssignmentDialog', () => {
       error: null,
     } as unknown as ReturnType<typeof useGetUsers>);
 
+    vi.mocked(useGetUserTypes).mockReturnValue({
+      data: {
+        types: [
+          {id: 'type-1', handle: 'local', displayName: 'Local User'},
+          {id: 'type-2', handle: 'federated', displayName: 'Federated User'},
+        ],
+      },
+    } as unknown as ReturnType<typeof useGetUserTypes>);
+
     vi.mocked(useGetGroups).mockReturnValue({
       data: mockGroupsData,
       isLoading: false,
@@ -201,6 +210,12 @@ describe('AddAssignmentDialog', () => {
       expect(screen.getByText('Users')).toBeInTheDocument();
       expect(screen.getByText('Groups')).toBeInTheDocument();
       expect(screen.getByText('Apps')).toBeInTheDocument();
+    });
+
+    it('should show the user type display name', () => {
+      renderComponent();
+      expect(screen.getByText('Local User')).toBeInTheDocument();
+      expect(screen.queryByText('local')).not.toBeInTheDocument();
     });
 
     it('should filter out already-assigned users', () => {

@@ -126,6 +126,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_AuthenticationFaile
 	suite.Equal(authnprovidercm.ErrorCodeAuthenticationFailed, err.Code)
 }
 
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_AmbiguousEntity() {
+	identifiers := map[string]interface{}{"email": "shared@example.com"}
+	credentials := map[string]interface{}{"password": "password"}
+
+	suite.mockService.On("AuthenticateEntity", mock.Anything, identifiers, credentials).
+		Return(nil, entity.ErrAmbiguousEntity).Once()
+
+	result, err := suite.provider.Authenticate(context.Background(), identifiers, credentials, nil)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.ClientErrorType, err.Type)
+	suite.Equal(authnprovidercm.ErrorCodeAmbiguousUser, err.Code)
+}
+
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GenericAuthError() {
 	identifiers := map[string]interface{}{"username": "testuser"}
 	credentials := map[string]interface{}{"password": "password123"}

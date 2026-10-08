@@ -155,7 +155,7 @@ const arrowDefs = (id: string) => (
 // The user asks a question; the agent gets its own token from ThunderID, then
 // calls the tool with it. ThunderID sits above the Agent so the token exchange
 // reads as a short round trip.
-export function AgentOwnTokenFlow() {
+export function AgentOwnTokenFlow({action = 'List modules'}: {action?: string}) {
   const W = 600;
   const H = 320;
   return (
@@ -175,7 +175,7 @@ export function AgentOwnTokenFlow() {
       <ThunderNode left={210} top={12} width={130} height={72} />
       <UserNode left={8} top={205} width={100} height={82} />
       <AgentNode left={210} top={205} width={130} height={82} />
-      <ToolNode left={455} top={78} width={140} action="List modules" actionIcon={<BookOpen size={24} />} />
+      <ToolNode left={455} top={78} width={140} action={action} actionIcon={<BookOpen size={24} />} />
 
       <FlowLabel n={1} text="asks" left={122} top={204} />
       <FlowLabel n={2} text="get token" left={136} top={132} />
@@ -189,7 +189,7 @@ export function AgentOwnTokenFlow() {
 // The user asks; the agent prompts them to sign in, the user signs in to
 // ThunderID, ThunderID returns a delegated token, and the agent then calls the
 // tool with the user's authority.
-export function AgentOboFlow() {
+export function AgentOboFlow({action = 'Enroll module'}: {action?: string}) {
   const W = 600;
   const H = 340;
   return (
@@ -209,7 +209,7 @@ export function AgentOboFlow() {
       <UserNode left={25} top={24} width={130} height={76} />
       <ThunderNode left={385} top={24} width={160} height={76} />
       <AgentNode left={25} top={230} width={140} height={90} />
-      <ToolNode left={420} top={158} width={140} action="Enroll module" actionIcon={<GraduationCap size={24} />} />
+      <ToolNode left={420} top={158} width={140} action={action} actionIcon={<GraduationCap size={24} />} />
 
       <FlowLabel n={1} text="ask to sign in" left={6} top={150} />
       <FlowLabel n={2} text="signs in" left={208} top={22} />

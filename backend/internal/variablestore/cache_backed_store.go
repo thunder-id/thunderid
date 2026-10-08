@@ -112,6 +112,12 @@ func (s *cacheBackedStore) GetSecret(ctx context.Context, name string) (*Secret,
 	return secret, nil
 }
 
+// GetSecretValue is not cached: a secret's ciphertext is read only when an import resolves a
+// reference, and keeping it in a cache would spread it further than that one use.
+func (s *cacheBackedStore) GetSecretValue(ctx context.Context, name string) (string, bool, error) {
+	return s.store.GetSecretValue(ctx, name)
+}
+
 func (s *cacheBackedStore) ListSecrets(ctx context.Context, q listQuery) ([]Secret, int, error) {
 	return s.store.ListSecrets(ctx, q)
 }

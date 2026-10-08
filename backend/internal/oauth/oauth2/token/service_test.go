@@ -6,6 +6,8 @@ package token
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -900,6 +902,12 @@ func (suite *TokenEventsTestSuite) ctx() context.Context {
 	return sysContext.WithTraceID(context.Background(), testTraceID)
 }
 
+// ctxForOU is the context a request to /ou/{ouId}/oauth2/token carries, where the middleware has
+// recorded the organization unit the token is being asked for.
+func (suite *TokenEventsTestSuite) ctxForOU(ouID string) context.Context {
+	return sysContext.WithAccessingOUID(suite.ctx(), ouID)
+}
+
 // lastEvent returns the single event published by the call under test.
 func (suite *TokenEventsTestSuite) lastEvent() *providers.Event {
 	suite.Require().Len(suite.published, 1)
@@ -1044,6 +1052,45 @@ func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsActorTypeWhenClient
 	assert.Equal(suite.T(), testTraceID, evt.Data[event.DataKey.CorrelationID])
 }
 
+// One application acts for many organization units, so an event saying only which client asked is
+// not enough to attribute issuance. Each of the three events carries the organization unit the
+// token was requested for.
+func (suite *TokenEventsTestSuite) TestIssuanceStarted_ReportsTheAccessingOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctxForOU("customer-a"), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+func (suite *TokenEventsTestSuite) TestIssued_ReportsTheAccessingOrganizationUnit() {
+	app := appClient()
+	respDTO := &model.TokenResponseDTO{AccessToken: model.TokenDTO{SubjectID: testAppEntityID}}
+
+	suite.newService().publishTokenIssuedEvent(
+		suite.ctxForOU("customer-a"), app, respDTO, app.ClientID, "client_credentials", "", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// The refusal a caller receives names no organization unit, so that the endpoint cannot be used to
+// discover which ones exist. This event is where an operator finds out which one was refused, which
+// makes it the one that matters most.
+func (suite *TokenEventsTestSuite) TestIssuanceFailed_ReportsTheAccessingOrganizationUnit() {
+	publishTokenIssuanceFailedEvent(suite.mockObsSvc, suite.ctxForOU("customer-a"), appClient(),
+		"app-client-id", "client_credentials", "", 400, "invalid_request", 0)
+
+	assert.Equal(suite.T(), "customer-a", suite.lastEvent().Data[event.DataKey.AccessingOUID])
+}
+
+// A request to the bare endpoint names no organization unit, so the key is absent rather than
+// empty: its presence is what says the prefixed form was used.
+func (suite *TokenEventsTestSuite) TestTheBareEndpointStampsNoOrganizationUnit() {
+	suite.newService().publishTokenIssuanceStartedEvent(
+		suite.ctx(), appClient(), "app-client-id", "client_credentials", "")
+
+	assert.NotContains(suite.T(), suite.lastEvent().Data, event.DataKey.AccessingOUID)
+}
+
 // The subject's category is resolved while the token is built, so the event reports whatever the
 // token carries rather than inferring it from the client.
 func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeIsReadFromTheToken() {
@@ -1073,4 +1120,122 @@ func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeOmittedWhenTokenHasNoCa
 	evt := suite.lastEvent()
 	assert.Equal(suite.T(), "user-1", evt.Data[event.DataKey.Subject])
 	assert.NotContains(suite.T(), evt.Data, event.DataKey.SubjectType)
+}
+
+// AccessingOUResponsesTestSuite covers the two answers this endpoint hands the accessing-OU
+// middleware. Writing them is the middleware's job and is covered there; what is specific here is
+// which answer this endpoint chooses, and the token endpoint speaks OAuth2.
+type AccessingOUResponsesTestSuite struct {
+	suite.Suite
+}
+
+func TestAccessingOUResponsesTestSuite(t *testing.T) {
+	suite.Run(t, new(AccessingOUResponsesTestSuite))
+}
+
+// The refusal is OAuth2's, so a client that speaks the protocol can read it.
+//
+// Its text is the shared constant rather than one of this endpoint's own, which is what keeps it
+// identical to the refusal a client that was never shared receives from client authentication. The
+// two must stay indistinguishable, or the endpoint can be used to tell which organization units
+// exist: an id that names nothing and an id that names something out of reach would read
+// differently. Inlining the text here would let the two drift apart unnoticed.
+func (s *AccessingOUResponsesTestSuite) TestTheRefusalIsTheSharedOAuthError() {
+	s.Equal(constants.ErrorUnauthorizedClient, ouAccessRefusal.Code)
+	s.Equal(constants.OUAccessRefusal, ouAccessRefusal.Description)
+	s.Equal(http.StatusBadRequest, ouAccessRefusal.StatusCode)
+}
+
+// The refusal carries no organization unit of its own, so every id is answered with the same bytes
+// without the endpoint having to erase anything.
+func (s *AccessingOUResponsesTestSuite) TestTheRefusalNamesNoOrganizationUnit() {
+	for _, ouID := range []string{"ghost-a", "ghost-b"} {
+		s.NotContains(ouAccessRefusal.Description, ouID)
+	}
+}
+
+// A lookup that fails because the deployment is broken is a server error, not a refusal. Answering
+// it as a refusal would blame the caller for an outage and hide it from whoever watches for server
+// errors.
+func (s *AccessingOUResponsesTestSuite) TestAFailedLookupIsAServerError() {
+	s.Equal(constants.ErrorServerError, ouLookupFailure.Code)
+	s.Equal(http.StatusInternalServerError, ouLookupFailure.StatusCode)
+	s.NotEqual(ouAccessRefusal.Code, ouLookupFailure.Code)
+}
+
+// The proof is bound to the URI the request was sent to, and one handler serves both the bare token
+// endpoint and the organization-unit-scoped one. These pin the expected htu that is handed to the
+// verifier, which is the whole of what binds a proof to the path it arrived on.
+
+const testTokenEndpoint = "https://localhost:8090/oauth2/token" // #nosec G101
+
+func TestExpectedHTUUsesTheRequestPath(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")
+
+	assert.Equal(t, "https://localhost:8090/ou/customer-a/oauth2/token", ts.expectedHTU(ctx),
+		"a proof presented on the scoped path is bound to the scoped URI")
+}
+
+// A proof minted for the bare endpoint must not satisfy a request to the scoped one. The two
+// expected values differ, which is what makes the verifier reject it.
+func TestExpectedHTUDiffersBetweenTheTwoPaths(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+
+	bare := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/oauth2/token"))
+	scoped := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token"))
+
+	assert.Equal(t, testTokenEndpoint, bare)
+	assert.NotEqual(t, bare, scoped)
+}
+
+// The scheme and host stay the deployment's configured ones. Reading them off the request would
+// mean trusting a header the caller controls, and the caller also writes the proof.
+func TestExpectedHTUKeepsTheConfiguredOrigin(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")
+
+	parsed, err := url.Parse(ts.expectedHTU(ctx))
+	assert.NoError(t, err)
+	assert.Equal(t, "https", parsed.Scheme)
+	assert.Equal(t, "localhost:8090", parsed.Host)
+}
+
+// An organization unit id that needs escaping keeps its escaping, so the expected value matches the
+// URI the client actually called.
+func TestExpectedHTUPreservesPathEscaping(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+	ctx := dpop.WithRequestPath(context.Background(), "/ou/a%2Fb/oauth2/token")
+
+	assert.Equal(t, "https://localhost:8090/ou/a%2Fb/oauth2/token", ts.expectedHTU(ctx))
+}
+
+// A request that recorded no path falls back to the configured endpoint, so a caller that never
+// reaches the handler's DPoP branch is unaffected.
+func TestExpectedHTUFallsBackToTheConfiguredEndpoint(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: testTokenEndpoint}
+
+	assert.Equal(t, testTokenEndpoint, ts.expectedHTU(context.Background()))
+}
+
+// A deployment published under a path prefix keeps it. The request arrives without the prefix,
+// because a proxy strips it before routing, so dropping it here would compare every proof against a
+// URI the client never called and would break the bare endpoint as well as the scoped one.
+func TestExpectedHTUKeepsAConfiguredPathPrefix(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: "https://localhost:8090/abaa/oauth2/token"}
+
+	bare := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/oauth2/token"))
+	scoped := ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token"))
+
+	assert.Equal(t, "https://localhost:8090/abaa/oauth2/token", bare)
+	assert.Equal(t, "https://localhost:8090/abaa/ou/customer-a/oauth2/token", scoped)
+}
+
+// An endpoint that does not end in the token path is not something this can rebuild, so it is left
+// alone rather than guessed at.
+func TestExpectedHTUFallsBackWhenTheEndpointHasNoTokenPath(t *testing.T) {
+	ts := &tokenService{tokenEndpoint: "https://localhost:8090/something-else"}
+
+	assert.Equal(t, "https://localhost:8090/something-else",
+		ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")))
 }

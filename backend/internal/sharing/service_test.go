@@ -6,6 +6,7 @@ package sharing
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"testing"
 
@@ -15,20 +16,26 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
 const (
-	testType     = ResourceType("role")
-	testResource = "resource-1"
-	ownerOU      = "owner-ou"
-	rootOU       = "root-ou"
-	childOU      = "child-ou"
-	grandOU      = "grand-ou"
-	otherOU      = "other-ou"
+	testType = ResourceType("role")
+	// fieldlessType declares no overlay field. Sharing it grants the right to be named and nothing
+	// else, which is the whole of what sharing means for a resource whose configuration is global
+	// rather than per-organization-unit state layered on a shared definition.
+	fieldlessType = ResourceType("fieldless")
+	testResource  = "resource-1"
+	ownerOU       = "owner-ou"
+	rootOU        = "root-ou"
+	childOU       = "child-ou"
+	grandOU       = "grand-ou"
+	otherOU       = "other-ou"
 	// nestedOwnerOU owns a resource while sitting inside a tree, which is the case the cross-tree
 	// restriction exists for.
 	nestedOwnerOU = "nested-owner-ou"
@@ -38,12 +45,28 @@ const (
 	declaredID = "01900000-0000-7000-8000-0000000000d1"
 )
 
+// fieldlessDeclaration is a resource type that declares no field. It brings the two required
+// capabilities and nothing more: with no field to name, there is no delimiter to resolve, no member
+// to validate and no per-organization-unit state to clean up when visibility goes.
+type fieldlessDeclaration struct{}
+
+func (d *fieldlessDeclaration) ResourceType() ResourceType { return fieldlessType }
+func (d *fieldlessDeclaration) Fields() []FieldDeclaration { return nil }
+func (d *fieldlessDeclaration) OwningOUID(
+	_ context.Context, _ string,
+) (string, *tidcommon.ServiceError) {
+	return ownerOU, nil
+}
+
 // storeState is the in-memory state behind the generated store mock. The mock supplies the
 // interface, so a change to sharingPolicyStoreInterface breaks compilation here rather than going
 // unnoticed; this type supplies the behavior, because the service's orchestration is what the
 // tests exercise and a create followed by a read has to give the policy back.
 type storeState struct {
 	policies map[string]Policy
+	// order is the fake's CREATED_AT: the ids in the order they were inserted. A map alone gives
+	// reads a random order, which a paginated listing cannot be tested against.
+	order    []string
 	values   map[string]map[string][]string
 	failNext error
 	// beforeCreate runs at the start of CreatePolicy, so a test can simulate another writer
@@ -71,8 +94,8 @@ func newStoreState() *storeState {
 }
 
 // newMockStore returns a generated store mock backed by fresh state, along with that state so a
-// test can seed it or inject a failure. Every method is wired as Maybe, since no test needs all
-// twelve and an unused one is not a failure.
+// test can seed it or inject a failure. Every method is wired as Maybe, since no test needs every
+// one of them and an unused one is not a failure.
 func newMockStore(t interface {
 	mock.TestingT
 	Cleanup(func())
@@ -84,7 +107,9 @@ func newMockStore(t interface {
 	e.CreatePolicy(a, a).RunAndReturn(st.CreatePolicy).Maybe()
 	e.GetPolicy(a, a).RunAndReturn(st.GetPolicy).Maybe()
 	e.GetPolicyByInitiator(a, a, a, a).RunAndReturn(st.GetPolicyByInitiator).Maybe()
-	e.ListPoliciesForResource(a, a, a).RunAndReturn(st.ListPoliciesForResource).Maybe()
+	e.ListPoliciesForResource(a, a, a, a, a).RunAndReturn(st.ListPoliciesForResource).Maybe()
+	e.ListAllPoliciesForResource(a, a, a).RunAndReturn(st.ListAllPoliciesForResource).Maybe()
+	e.CountPoliciesForResource(a, a, a).RunAndReturn(st.CountPoliciesForResource).Maybe()
 	e.ListPoliciesRelevantToChain(a, a, a, a).RunAndReturn(st.ListPoliciesRelevantToChain).Maybe()
 	e.ReplacePolicyContents(a, a, a).RunAndReturn(st.ReplacePolicyContents).Maybe()
 	e.DeletePolicy(a, a).RunAndReturn(st.DeletePolicy).Maybe()
@@ -115,6 +140,9 @@ func (f *storeState) CreatePolicy(_ context.Context, p Policy) error {
 		f.failNext = nil
 		return err
 	}
+	if _, existing := f.policies[p.ID]; !existing {
+		f.order = append(f.order, p.ID)
+	}
 	f.policies[p.ID] = asStored(p)
 	return nil
 }
@@ -140,17 +168,56 @@ func (f *storeState) GetPolicyByInitiator(
 	return Policy{}, errPolicyNotFound
 }
 
-// ListPoliciesForResource returns every policy recorded for one resource.
-func (f *storeState) ListPoliciesForResource(
+// ListAllPoliciesForResource returns the whole ordered set, as the unbounded query does.
+func (f *storeState) ListAllPoliciesForResource(
 	_ context.Context, rt ResourceType, resourceID string,
 ) ([]Policy, error) {
+	if f.failNext != nil {
+		err := f.failNext
+		f.failNext = nil
+		return nil, err
+	}
+	return f.forResource(rt, resourceID), nil
+}
+
+// ListPoliciesForResource cuts a page from the ordered set, which is what LIMIT and OFFSET do to
+// the query's ORDER BY.
+func (f *storeState) ListPoliciesForResource(
+	_ context.Context, rt ResourceType, resourceID string, limit, offset int,
+) ([]Policy, error) {
+	if f.failNext != nil {
+		err := f.failNext
+		f.failNext = nil
+		return nil, err
+	}
+	all := f.forResource(rt, resourceID)
+	if offset >= len(all) {
+		return nil, nil
+	}
+	return all[offset:min(offset+limit, len(all))], nil
+}
+
+// CountPoliciesForResource mirrors the COUNT the database answers with.
+func (f *storeState) CountPoliciesForResource(
+	_ context.Context, rt ResourceType, resourceID string,
+) (int, error) {
+	if f.failNext != nil {
+		err := f.failNext
+		f.failNext = nil
+		return 0, err
+	}
+	return len(f.forResource(rt, resourceID)), nil
+}
+
+// forResource returns a resource's policies in insertion order, as ORDER BY CREATED_AT, ID does.
+func (f *storeState) forResource(rt ResourceType, resourceID string) []Policy {
 	out := make([]Policy, 0, len(f.policies))
-	for _, p := range f.policies {
-		if p.ResourceType == rt && p.ResourceID == resourceID {
+	for _, id := range f.order {
+		if p := f.policies[id]; p.ResourceType == rt && p.ResourceID == resourceID {
 			out = append(out, p)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // ListPoliciesRelevantToChain mirrors the SQL predicate rather than returning everything, so a test
@@ -201,6 +268,7 @@ func (f *storeState) DeletePolicy(_ context.Context, id string) error {
 	// No cascade: PARENT_POLICY_ID carries no foreign key, so dependent policies are removed by the
 	// service rather than by the database.
 	delete(f.policies, id)
+	f.order = slices.DeleteFunc(f.order, func(existing string) bool { return existing == id })
 	return nil
 }
 
@@ -291,7 +359,7 @@ func (f *ouTree) IsAncestor(
 	return false, nil
 }
 
-// DescendantOUIDs and AllOUIDs answer the OUEnumerator half, deriving the downward view by
+// DescendantOUIDs and AllOUIDs answer the enumerator half, deriving the downward view by
 // inverting the same ancestor table the upward walks use.
 func (f *ouTree) DescendantOUIDs(_ context.Context, ouID string) ([]string, *tidcommon.ServiceError) {
 	out := []string{}
@@ -411,6 +479,9 @@ func (d *testDeclaration) OnVisibilityLost(_ context.Context, resourceID, ouID s
 
 type ServiceTestSuite struct {
 	suite.Suite
+	// storeMock is the generated mock itself, kept so a test can assert which store method a code
+	// path reached rather than only what it returned.
+	storeMock *sharingPolicyStoreInterfaceMock
 	store     *storeState
 	declStore *fileBasedStore
 	decl      *testDeclaration
@@ -425,6 +496,7 @@ func TestServiceTestSuite(t *testing.T) {
 // SetupTest rebuilds the store, declaration and service, so each test starts from a clean slate.
 func (s *ServiceTestSuite) SetupTest() {
 	storeMock, storeState := newMockStore(s.T())
+	s.storeMock = storeMock
 	s.store = storeState
 	// The service carries a declarative store, because a declared policy is now only ever held in
 	// memory: it never reaches the database, so a test that needs one has to seed it here.
@@ -434,6 +506,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.svc = newSharingService(storeMock, s.declStore, hierarchy, enumerator,
 		inlineTx(s.T()), nil, nil, false)
 	s.svc.RegisterResourceType(s.decl)
+	s.svc.RegisterResourceType(&fieldlessDeclaration{})
 }
 
 // testResolver returns the generated hierarchy and enumerator mocks over the fixture tree: two
@@ -442,7 +515,7 @@ func (s *ServiceTestSuite) SetupTest() {
 func testResolver(t interface {
 	mock.TestingT
 	Cleanup(func())
-}) (*sysauthzmock.OUHierarchyResolverMock, *OUEnumeratorMock) {
+}) (*sysauthzmock.OUHierarchyResolverMock, *oumock.HierarchyEnumeratorInterfaceMock) {
 	tree := &ouTree{ancestors: map[string][]string{
 		rootOU:        {},
 		childOU:       {rootOU},
@@ -456,7 +529,7 @@ func testResolver(t interface {
 	hierarchy := sysauthzmock.NewOUHierarchyResolverMock(t)
 	hierarchy.EXPECT().GetAncestorOUIDs(a, a).RunAndReturn(tree.GetAncestorOUIDs).Maybe()
 	hierarchy.EXPECT().IsAncestor(a, a, a).RunAndReturn(tree.IsAncestor).Maybe()
-	enumerator := NewOUEnumeratorMock(t)
+	enumerator := oumock.NewHierarchyEnumeratorInterfaceMock(t)
 	enumerator.EXPECT().DescendantOUIDs(a, a).RunAndReturn(tree.DescendantOUIDs).Maybe()
 	enumerator.EXPECT().AllOUIDs(a).RunAndReturn(tree.AllOUIDs).Maybe()
 	return hierarchy, enumerator
@@ -2464,6 +2537,174 @@ func (s *ServiceTestSuite) TestCleanupCoversFieldsNoPolicyNamed() {
 	s.Contains(cleaned, rootOU)
 }
 
+// Evaluation must read through the unbounded method. Routing it at the paged one would answer a
+// coverage question from a page, which reads as a resource an organization unit has lost access to
+// rather than as a truncated list.
+func (s *ServiceTestSuite) TestEvaluationNeverReadsThroughThePagedListing() {
+	ctx := context.Background()
+	owner := s.share(nil)
+
+	// Every path that asks a coverage question: the create's frontier check, the edit's, the
+	// re-materialization an edit and a delete each trigger, and a plain visibility read.
+	reshare, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
+		PolicyRequest{InitiatingOUID: rootOU, TargetOUScope: entry(childOU)})
+	s.Require().Nil(svcErr)
+	visible, svcErr := s.svc.IsVisible(ctx, testType, testResource, childOU)
+	s.Require().Nil(svcErr)
+	s.True(visible)
+	_, svcErr = s.svc.UpdatePolicy(ctx, owner.ID, PolicyRequest{
+		TargetOUScope: TargetOUScope{RootOUIDs: []string{rootOU}}, Version: owner.Version,
+	})
+	s.Require().Nil(svcErr)
+	s.Require().Nil(s.svc.DeletePolicy(ctx, reshare.ID))
+
+	s.storeMock.AssertNotCalled(s.T(), "ListPoliciesForResource",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A management API serves a page at a time, so the listing is the one read in the framework that
+// may answer with part of a resource's policies. These cover what a page has to get right; every
+// evaluation read goes through ListPolicies and is asserted on elsewhere.
+
+// Paging walks the whole set once: each page carries its own slice, the total stays the resource's
+// total rather than the page's, and no policy is dropped or repeated across the boundary.
+func (s *ServiceTestSuite) TestPagingWalksEveryPolicyExactlyOnce() {
+	ctx := context.Background()
+	// Three policies, because one organization unit holds only one: the owner reaches rootOU, which
+	// reshares to childOU, which reshares in turn.
+	s.share(nil)
+	for _, reshare := range []struct{ initiator, target string }{
+		{rootOU, childOU},
+		{childOU, grandOU},
+	} {
+		_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
+			InitiatingOUID: reshare.initiator, TargetOUScope: entry(reshare.target),
+		})
+		s.Require().Nil(svcErr)
+	}
+
+	seen := make([]string, 0, 3)
+	for offset := 0; offset < 3; offset += 2 {
+		page, svcErr := s.svc.GetPolicyList(ctx, testType, testResource, 2, offset)
+		s.Require().Nil(svcErr)
+		s.Equal(3, page.TotalResults, "the total counts the resource's policies, not the page's")
+		s.Equal(offset+1, page.StartIndex)
+		s.Equal(len(page.Policies), page.Count)
+		for _, p := range page.Policies {
+			seen = append(seen, p.ID)
+		}
+	}
+
+	s.Len(seen, 3)
+	s.Len(slices.Compact(slices.Sorted(slices.Values(seen))), 3, "no policy is returned twice")
+}
+
+// A page past the end is empty rather than an error: a listing whose last page was deleted between
+// two requests is a race, not a bad request.
+func (s *ServiceTestSuite) TestAPageBeyondTheEndIsEmpty() {
+	s.share(nil)
+
+	page, svcErr := s.svc.GetPolicyList(context.Background(), testType, testResource, 10, 50)
+
+	s.Require().Nil(svcErr)
+	s.Empty(page.Policies)
+	s.Equal(1, page.TotalResults, "the resource still has its policy; this page just starts past it")
+	s.Equal(0, page.Count)
+}
+
+// A resource nobody has shared lists as empty, not as missing. The framework stores no resource
+// rows, so it cannot tell a resource with no policies from one that does not exist, and answering
+// "not found" would be a claim it has no basis for.
+func (s *ServiceTestSuite) TestAResourceWithNoPoliciesListsEmpty() {
+	page, svcErr := s.svc.GetPolicyList(context.Background(), testType, "never-shared", 10, 0)
+
+	s.Require().Nil(svcErr)
+	s.Equal(0, page.TotalResults)
+	s.Empty(page.Policies)
+	s.Equal(1, page.StartIndex, "the first index is one even when there is nothing at it")
+}
+
+// The page parameters are checked before the store is asked, so a bad request is a client error
+// rather than a query.
+func (s *ServiceTestSuite) TestAnUnusablePageIsRefused() {
+	tests := []struct {
+		name          string
+		limit, offset int
+		expected      string
+	}{
+		{"a page of nothing", 0, 0, ErrorInvalidLimit.Code},
+		{"a negative page", -1, 0, ErrorInvalidLimit.Code},
+		{"a page larger than the maximum", serverconst.MaxPageSize + 1, 0, ErrorInvalidLimit.Code},
+		{"starting before the first result", 10, -1, ErrorInvalidOffset.Code},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			_, svcErr := s.svc.GetPolicyList(context.Background(), testType, testResource, tt.limit, tt.offset)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tt.expected, svcErr.Code)
+			s.Equal(tidcommon.ClientErrorType, svcErr.Type)
+		})
+	}
+}
+
+// A resource with more policies than the two stores can be merged across is the caller's problem,
+// not the operator's: the answer names the limit so the listing can be narrowed, rather than
+// reporting an internal failure nobody can act on.
+func (s *ServiceTestSuite) TestTheMergeLimitIsReportedAsSuch() {
+	s.share(nil)
+	s.store.failNext = errResultLimitExceededInCompositeMode
+
+	_, svcErr := s.svc.GetPolicyList(context.Background(), testType, testResource, 10, 0)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorResultLimitExceededInCompositeMode.Code, svcErr.Code)
+	s.Equal(tidcommon.ClientErrorType, svcErr.Type)
+}
+
+// The count can succeed and the page read still fail, so that half has its own answer. Returning an
+// empty page there would read as a resource nobody shares, while the total above it said otherwise.
+func (s *ServiceTestSuite) TestAFailedPageReadIsReportedSeparatelyFromTheCount() {
+	hierarchy, enumerator := testResolver(s.T())
+	storeMock := newSharingPolicyStoreInterfaceMock(s.T())
+	storeMock.EXPECT().CountPoliciesForResource(mock.Anything, testType, testResource).
+		Return(3, nil).Once()
+	storeMock.EXPECT().
+		ListPoliciesForResource(mock.Anything, testType, testResource, mock.Anything, mock.Anything).
+		Return(nil, errors.New("connection refused")).Once()
+	svc := newSharingService(storeMock, nil, hierarchy, enumerator, inlineTx(s.T()), nil, nil, false)
+	svc.RegisterResourceType(&testDeclaration{})
+
+	_, svcErr := svc.GetPolicyList(context.Background(), testType, testResource, 10, 0)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// The unbounded read every evaluation depends on fails loudly too. Answering with no policies would
+// resolve as a resource nobody can see, which is an outage wearing the shape of an empty list.
+func (s *ServiceTestSuite) TestAFailedWholeSetReadIsNotAnEmptyList() {
+	s.share(nil)
+	s.store.failNext = errors.New("connection refused")
+
+	_, svcErr := s.svc.ListPolicies(context.Background(), testType, testResource)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A store that cannot be read is an internal failure, not an empty page. A listing that answered
+// with nothing here would read as a resource nobody shares.
+func (s *ServiceTestSuite) TestAFailedListingIsNotAnEmptyPage() {
+	s.share(nil)
+	s.store.failNext = errors.New("connection refused")
+
+	_, svcErr := s.svc.GetPolicyList(context.Background(), testType, testResource, 10, 0)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
 // An owner tightening its own resource must succeed even when a reshare below asked for more than
 // the new ceiling allows. The reshare is cut back to fit; refusing the edit would let a sharee's old
 // request veto the owner, which AC9.4 does not permit.
@@ -2514,7 +2755,7 @@ func (s *ServiceTestSuite) TestADeclaredPolicyCannotBeEditedThroughTheAPI() {
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorPolicyDeclared.Code, svcErr.Code)
 
-	stored, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	stored, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 	s.Require().NoError(err)
 	s.Empty(stored, "a refused edit must not have written the policy to the database")
 }
@@ -2538,7 +2779,7 @@ func (s *ServiceTestSuite) TestReapplyingADeclarationDropsAnExclusion() {
 	s.Require().Nil(svcErr)
 	s.True(visible, "dropping the exclusion hands the resource back to childOU")
 
-	stored, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	stored, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 	s.Require().NoError(err)
 	s.Empty(stored, "a declared policy never reaches the database")
 }
@@ -2609,7 +2850,7 @@ func (s *ServiceTestSuite) TestDeleteRemovesTheReshareRowsBeneathIt() {
 
 	s.Require().Nil(s.svc.DeletePolicy(ctx, owner.ID))
 
-	remaining, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	remaining, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 	s.Require().NoError(err)
 	s.Empty(remaining, "the reshare beneath the deleted policy has to go with it")
 	_, err = s.store.GetPolicy(ctx, reshare.ID)
@@ -2797,7 +3038,7 @@ func (s *ServiceTestSuite) TestAnEditDoesNotRewriteAPolicyItIsAboutToKill() {
 	s.Require().Nil(svcErr)
 	s.False(visible)
 
-	remaining, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+	remaining, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
 	s.Require().NoError(err)
 	for _, p := range remaining {
 		s.NotEqual(rootOU, p.InitiatingOUID, "the reshare goes with the visibility it depended on")
@@ -3193,4 +3434,114 @@ func (s *ServiceTestSuite) TestADeclarationForAnotherOUIsUnaffectedByAStoredPoli
 	})
 
 	s.Require().Nil(svcErr)
+}
+
+// A resource type that declares no overlay field is the second shape the framework has to serve.
+// Sharing one hands over visibility and nothing else: there is no field to narrow, no value to
+// choose and nothing to clean up. These cover that shape; everything above exercises a type whose
+// fields are the point.
+
+// declareFieldless issues the one kind of policy a fieldless type can carry: a reach, and no rules.
+func (s *ServiceTestSuite) declareFieldless(id string, scope TargetOUScope) *tidcommon.ServiceError {
+	_, svcErr := s.svc.CreateDeclarativePolicy(context.Background(), fieldlessType, testResource,
+		ownerOU, PolicyRequest{ID: id, TargetOUScope: scope})
+	return svcErr
+}
+
+// A blanket policy reaches every organization unit, which is all sharing a fieldless type means:
+// those units may be named, and nothing about the resource changes.
+func (s *ServiceTestSuite) TestABlanketPolicyOnAFieldlessTypeReachesEveryUnit() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	for _, ouID := range []string{rootOU, childOU, grandOU, otherOU} {
+		visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ouID)
+		s.Require().Nil(svcErr)
+		s.True(visible, ouID+" is reached by a deployment-wide policy")
+	}
+}
+
+// A carve-out takes the branch beneath it, so a resource shared to everyone except one unit is not
+// reachable by that unit's children either.
+func (s *ServiceTestSuite) TestACarveOutOnAFieldlessTypeTakesTheBranchBeneathIt() {
+	s.Require().Nil(s.declareFieldless(declaredID,
+		TargetOUScope{AllOUs: true, ExcludedOUIDs: []string{childOU}}))
+
+	for ouID, want := range map[string]bool{rootOU: true, childOU: false, grandOU: false, otherOU: true} {
+		visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ouID)
+		s.Require().Nil(svcErr)
+		s.Equal(want, visible, ouID)
+	}
+}
+
+// The owner needs no policy of its own, so a fieldless resource nobody has shared is still visible
+// in the organization unit that owns it.
+func (s *ServiceTestSuite) TestTheOwnerOfAFieldlessTypeNeedsNoPolicy() {
+	visible, svcErr := s.svc.IsVisible(context.Background(), fieldlessType, testResource, ownerOU)
+
+	s.Require().Nil(svcErr)
+	s.True(visible)
+}
+
+// Being reached hands over no field. This is what "a sharee may not edit anything" means in the
+// framework: a policy can only speak about fields the type declares, and this type declares none.
+func (s *ServiceTestSuite) TestBeingReachedHandsOverNoFieldWhenNoneAreDeclared() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), fieldlessType, testResource, childOU)
+
+	s.Require().Nil(svcErr)
+	s.True(resolved.Visible)
+	s.Empty(resolved.Rules, "there is no field to hold a rule")
+	s.Empty(resolved.Sources)
+}
+
+// A rule naming a field the type never declared is refused rather than stored and ignored, so a file
+// that tries to hand part of the resource over fails at startup instead of taking no effect.
+func (s *ServiceTestSuite) TestARuleOnAFieldlessTypeIsRefusedHavingNoFieldToName() {
+	_, svcErr := s.svc.CreateDeclarativePolicy(context.Background(), fieldlessType, testResource, ownerOU,
+		PolicyRequest{
+			ID:            declaredID,
+			TargetOUScope: TargetOUScope{AllOUs: true},
+			OverlayRules:  map[string]OverlayRule{"anything": {Editable: true}},
+		})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorUnknownFieldKey.Code, svcErr.Code)
+}
+
+// The file owns the policy, so it cannot be deleted through the API: a resource shared by a file
+// stays shared until that file says otherwise.
+func (s *ServiceTestSuite) TestADeclaredPolicyOnAFieldlessTypeCannotBeDeleted() {
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+
+	svcErr := s.svc.DeletePolicy(context.Background(), declaredID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorPolicyDeclared.Code, svcErr.Code)
+}
+
+// Re-declaring for the same organization unit replaces what was declared rather than adding to it,
+// which is what makes replaying a file on every startup idempotent instead of accumulating.
+//
+// The replacement is keyed on the resource and the initiating organization unit, not on the policy
+// id, so a file that rewrites its policy under a new id still replaces the old one. The consequence
+// worth knowing: two separate documents declaring policies for one resource and one initiator
+// collapse to whichever loaded last, rather than being reported as a conflict.
+func (s *ServiceTestSuite) TestRedeclaringForTheSameInitiatorReplacesIt() {
+	ctx := context.Background()
+	s.Require().Nil(s.declareFieldless(declaredID, TargetOUScope{AllOUs: true}))
+	reachedBefore, svcErr := s.svc.IsVisible(ctx, fieldlessType, testResource, otherOU)
+	s.Require().Nil(svcErr)
+	s.Require().True(reachedBefore, "a deployment-wide policy reaches another tree")
+
+	s.Require().Nil(s.declareFieldless("a-second-policy-id", TargetOUScope{AllChildren: true}))
+
+	held, svcErr := s.svc.ListPolicies(ctx, fieldlessType, testResource)
+	s.Require().Nil(svcErr)
+	s.Require().Len(held, 1, "one organization unit holds one policy, however often it is declared")
+	s.Equal("a-second-policy-id", held[0].ID, "the latest application of the file is what stands")
+
+	reachedAfter, svcErr := s.svc.IsVisible(ctx, fieldlessType, testResource, otherOU)
+	s.Require().Nil(svcErr)
+	s.False(reachedAfter, "and the reach it replaced is gone with it")
 }

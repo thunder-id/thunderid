@@ -34,7 +34,7 @@ Typical uses:
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` · `:id-jag`. **`id_token` and `refresh_token` outputs are not supported.** When `:id-jag` is requested, the flow switches to the [Identity Assertion Grant](../identity-assertion-grant) path. |
 | `audience` parameter | Accepted for RFC 8693 compatibility but does not determine the issued access token's `aud` claim |
 | `resource` parameter | RFC 8707 resource indicator. The issued access token is bound to exactly this resource server. Permission-bearing requests use `defaultResourceServer` when it is omitted. OIDC-only or scopeless requests use the application's `token.accessToken.defaultAudience`, falling back to `client_id` |
-| `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope`. Final scopes must also be permissions on the target resource server and authorized for the issuing app or agent. |
+| `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope`. Final scopes must also be permissions on the target resource server and authorized for the issuing app or agent. When the subject token's issuer is a connection with Authorization Mapping configured, that mapping decides authorization instead of the subject token's own scope claim — see [Token Exchange with External Identity Providers](../../../identity-providers/token-exchange-idp#attribute-configuration). |
 | Client authentication | Required, same methods as the token endpoint |
 | Issued token shape | `issued_token_type` is echoed in the response so the caller knows what it received |
 

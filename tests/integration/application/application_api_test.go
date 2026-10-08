@@ -4250,8 +4250,9 @@ func (ts *ApplicationAPITestSuite) TestThemeAndLayoutDeletableWhenAssociatedWith
 func (ts *ApplicationAPITestSuite) TestApplicationWithAllowedUserTypes() {
 	// Create test user types first
 	employeeSchema := testutils.UserType{
-		Name: "employee",
-		OUID: testOUID,
+		Handle:      "employee",
+		DisplayName: "Employee",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",
@@ -4262,8 +4263,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithAllowedUserTypes() {
 		},
 	}
 	customerSchema := testutils.UserType{
-		Name: "customer",
-		OUID: testOUID,
+		Handle:      "customer",
+		DisplayName: "Customer",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",
@@ -4387,8 +4389,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithInvalidAllowedUserTypes() 
 func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithAllowedUserTypes() {
 	// Create test user types
 	employeeSchema := testutils.UserType{
-		Name: "employee_update",
-		OUID: testOUID,
+		Handle:      "employee_update",
+		DisplayName: "Employee Update",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",
@@ -4396,8 +4399,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithAllowedUserTypes() {
 		},
 	}
 	partnerSchema := testutils.UserType{
-		Name: "partner",
-		OUID: testOUID,
+		Handle:      "partner",
+		DisplayName: "Partner",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",
@@ -4594,8 +4598,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationWithEmptyAllowedUserTypes() {
 func (ts *ApplicationAPITestSuite) TestApplicationWithPartialInvalidAllowedUserTypes() {
 	// Create one valid user type
 	validSchema := testutils.UserType{
-		Name: "valid_user_type",
-		OUID: testOUID,
+		Handle:      "valid_user_type",
+		DisplayName: "Valid User Type",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",

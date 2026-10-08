@@ -31,16 +31,24 @@ describe('useSubjectMappingTypes', () => {
       const offset = url.searchParams.get('offset');
       const path = url.pathname;
       if (path === '/user-types' && offset === '0') {
-        return Promise.resolve({data: {totalResults: 101, types: [{id: 'user-1', name: 'employee'}]}});
+        return Promise.resolve({
+          data: {totalResults: 101, types: [{id: 'user-1', handle: 'employee', displayName: 'Employee'}]},
+        });
       }
       if (path === '/user-types' && offset === '100') {
-        return Promise.resolve({data: {totalResults: 101, types: [{id: 'user-2', name: 'customer'}]}});
+        return Promise.resolve({
+          data: {totalResults: 101, types: [{id: 'user-2', handle: 'customer', displayName: 'Customer'}]},
+        });
       }
       if (path === '/agent-types' && offset === '0') {
-        return Promise.resolve({data: {totalResults: 101, types: [{id: 'agent-1', name: 'assistant'}]}});
+        return Promise.resolve({
+          data: {totalResults: 101, types: [{id: 'agent-1', handle: 'assistant', displayName: 'Assistant'}]},
+        });
       }
       if (path === '/agent-types' && offset === '100') {
-        return Promise.resolve({data: {totalResults: 101, types: [{id: 'agent-2', name: 'default'}]}});
+        return Promise.resolve({
+          data: {totalResults: 101, types: [{id: 'agent-2', handle: 'default', displayName: 'Default'}]},
+        });
       }
       throw new Error(`Unexpected subject type request: ${request.url}`);
     });
@@ -50,12 +58,12 @@ describe('useSubjectMappingTypes', () => {
     await waitFor(() => {
       expect(result.current.data).toEqual({
         userTypes: [
-          {id: 'user-1', name: 'employee', category: 'user'},
-          {id: 'user-2', name: 'customer', category: 'user'},
+          {id: 'user-1', handle: 'employee', displayName: 'Employee', category: 'user'},
+          {id: 'user-2', handle: 'customer', displayName: 'Customer', category: 'user'},
         ],
         agentTypes: [
-          {id: 'agent-1', name: 'assistant', category: 'agent'},
-          {id: 'agent-2', name: 'default', category: 'agent'},
+          {id: 'agent-1', handle: 'assistant', displayName: 'Assistant', category: 'agent'},
+          {id: 'agent-2', handle: 'default', displayName: 'Default', category: 'agent'},
         ],
       });
     });

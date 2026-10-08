@@ -37,6 +37,10 @@ const FlowQueryKeys = {
    * Key for a flow usages query
    */
   FLOW_USAGES: 'flow-usages',
+  /**
+   * Key for notification templates of a channel (consumed by useGetNotificationTemplates)
+   */
+  NOTIFICATION_TEMPLATES: 'notification-templates',
 } as const;
 
 export default FlowQueryKeys;

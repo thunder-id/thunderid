@@ -101,14 +101,14 @@ describe('ConfigureFlowName', () => {
       });
     });
 
-    it('should sanitize handle by removing non-alphanumeric characters', async () => {
+    it('should replace non-alphanumeric characters in handle with a hyphen', async () => {
       render(<ConfigureFlowName {...defaultProps} />);
 
       const nameInput = screen.getByPlaceholderText('e.g. Customer Sign-in');
       fireEvent.change(nameInput, {target: {value: 'My Flow @#$!'}});
 
       await waitFor(() => {
-        expect(mockOnChange).toHaveBeenCalledWith({name: 'My Flow @#$!', handle: 'my-flow-'});
+        expect(mockOnChange).toHaveBeenCalledWith({name: 'My Flow @#$!', handle: 'my-flow'});
       });
     });
   });

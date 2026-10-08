@@ -451,12 +451,27 @@ func matchesFilters(attributes json.RawMessage, filters map[string]interface{}) 
 
 	for key, expected := range filters {
 		value, ok := getNestedValue(attrsMap, key)
-		if !ok || !valuesEqual(value, expected) {
+		if !ok || !matchesValue(value, expected) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// matchesValue reports whether an attribute value matches a filter value. An array matches when
+// any of its elements does, the same way the DB store indexes each array element separately.
+func matchesValue(value interface{}, expected interface{}) bool {
+	items, ok := value.([]interface{})
+	if !ok {
+		return valuesEqual(value, expected)
+	}
+	for _, item := range items {
+		if valuesEqual(item, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func getNestedValue(data map[string]interface{}, key string) (interface{}, bool) {

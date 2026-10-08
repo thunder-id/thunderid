@@ -852,13 +852,13 @@ components:
           type: array
           items:
             type: string
-          description: User types allowed to sign up through this application.
+          description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
           type: array
           items:
             type: string
-          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
           example: ["default"]
         passkeyAllowedOrigins:
           type: array
@@ -1004,13 +1004,13 @@ components:
           type: array
           items:
             type: string
-          description: User types allowed to sign up through this application.
+          description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
           type: array
           items:
             type: string
-          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
           example: ["default"]
         passkeyAllowedOrigins:
           type: array
@@ -1137,13 +1137,13 @@ components:
           type: array
           items:
             type: string
-          description: User types allowed to sign up through this application.
+          description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
           type: array
           items:
             type: string
-          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
           example: ["default"]
         passkeyAllowedOrigins:
           type: array
@@ -1619,6 +1619,15 @@ components:
             Agent clients always include the claim, regardless of this setting.
           example: false
           default: false
+        clientIdMetadataDocument:
+          type: boolean
+          description: >-
+            Whether the application was registered from a Client ID Metadata Document. When true,
+            `clientId` is the Client Identifier URL, the values are those returned by
+            `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
+            Fixed at creation.
+          example: false
+          default: false
         scopes:
           type: array
           items:
@@ -1743,6 +1752,15 @@ components:
             When true, access tokens this client obtains for a user through the authorization_code
             or CIBA grant include an implicit on-behalf-of `act` claim identifying the application.
             Agent clients always include the claim, regardless of this setting.
+          example: false
+          default: false
+        clientIdMetadataDocument:
+          type: boolean
+          description: >-
+            Whether the application was registered from a Client ID Metadata Document. When true,
+            `clientId` is the Client Identifier URL, the values are those returned by
+            `POST /cimd/preview` and must satisfy the document rules, and `clientSecret` must be omitted.
+            Fixed at creation.
           example: false
           default: false
         scopes:

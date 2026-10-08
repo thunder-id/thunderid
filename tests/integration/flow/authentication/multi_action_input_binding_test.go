@@ -116,7 +116,8 @@ var (
 	}
 
 	multiActionInputBindingEntityType = testutils.UserType{
-		Name: "multi_action_input_binding_test_person",
+		Handle:      "multi_action_input_binding_test_person",
+		DisplayName: "Multi Action Input Binding Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -141,7 +142,7 @@ var (
 	}
 
 	testUserMultiActionInputBinding = testutils.User{
-		Type: multiActionInputBindingEntityType.Name,
+		Type: multiActionInputBindingEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "multiactionuser",
 			"password": "testpassword",

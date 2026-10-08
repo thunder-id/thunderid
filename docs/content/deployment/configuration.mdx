@@ -36,9 +36,12 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
+| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. The number is never less than one. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 
 Resources are stored against this identifier, so it is fixed for the life of a deployment's data.
+
+One registered gateway is the default gateway, marked `isDefault` in the Gateway API. The first gateway registered through `POST /gateways` becomes the default. Registering another with `isDefault: true` moves the default to it, so no more than one gateway is the default at a time. The Console shows the default gateway's `baseUrl` in the runtime endpoints it lists for applications and agents. With no default gateway, it shows the server's own URL. A gateway declared in a file is never the default.
 
 When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
 
@@ -400,7 +403,7 @@ That means you can override only the fields you need. <ProductName /> continues 
 - `CertificateByIDCache`
 - `CertificateByReferenceCache`
 - `EntityTypeByIDCache`
-- `EntityTypeByNameCache`
+- `EntityTypeByHandleCache`
 - `FlowGraphCache`
 
 :::note
@@ -470,11 +473,17 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
 | `oauth.dcr.insecure` | `false` | If `true`, allows insecure dynamic client registration (development only) |
+| `oauth.client_assertion.max_lifetime` | `300` | Maximum lifetime of a `private_key_jwt` client assertion in seconds. The `exp` claim must not be later than `iat` plus this value, or the current time plus this value when `iat` is absent |
+| `oauth.client_assertion.max_iat_age` | `60` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds. Assertions with an older `iat` are rejected |
 | `oauth.allowed_auth_methods` | `["client_secret_basic", "client_secret_post", "private_key_jwt", "none"]` | Client token endpoint authentication methods allowed during client registration |
 | `oauth.allowed_response_types` | `["code"]` | OAuth response types allowed during client registration |
 | `oauth.allowed_grant_types` | `["client_credentials", "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:jwt-bearer"]` | OAuth grant types allowed during client registration |
 | `oauth.allow_wildcard_redirect_uri` | `false` | If `true`, allows wildcard patterns in registered redirect URIs: `*` and `**` in the path component, and `*` in the host component (label-internal, alphanumeric only). When `false`, only exact redirect URI matching is performed and registering a wildcard URI returns a `400 Bad Request` error. |
 | `oauth.send_server_errors_to_client` | `false` | If `true`, an authentication flow failure that maps to the OAuth `server_error` code is reported to the client, as RFC 6749 section 4.1.2.1 requires. If `false`, the authorization code flow shows the error page instead of redirecting to the client, and CIBA leaves the request pending so the polling client times out. Denials (`access_denied`) are always reported to the client and are not affected by this setting. |
+
+:::note
+Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_age` together, each greater than `0`. When both are unset, the `iat` and lifetime checks on client assertions are skipped.
+:::
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
@@ -525,6 +534,18 @@ User management settings.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `user.indexed_attributes` | `["username", "email", "mobile_number", "sub"]` | User attributes that are indexed for fast `lookups` |
+
+An indexed attribute's value can be a single scalar value or a list of scalar values. A list indexes each scalar element separately, so a user can be looked up by any one of them. Non-scalar elements in the list (for example, a nested object) are skipped and are not indexed. For example, a user with `email` set to `["primary@example.com", "secondary@example.com"]` can be identified, searched, or filtered by either address.
+
+A list can hold at most 100 scalar values for one indexed attribute. A request that exceeds this fails schema validation.
+
+:::note
+List values aren't checked for uniqueness, so two users can hold the same value in a list. A value that more than one user holds can't be used to identify either of them.
+:::
+
+:::note
+If the same attribute name is present in both schema attributes and system attributes, the system attribute's scalar value or values are indexed and the schema attribute's scalar value or values are not. If the system attribute has no scalar value to index (for example, it is empty), the schema attribute's values are indexed instead.
+:::
 
 ## Declarative Resources
 
@@ -1098,6 +1119,28 @@ WebAuthn/Passkey settings (typically defined in `deployment.yaml`).
 passkey:
   allowed_origins:
     - "https://localhost:8090"
+```
+
+## Direct API Configuration
+
+Controls the [Direct API](../../key-concepts/authentication/integration-models#direct-api) authentication endpoints.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `direct_api.enabled` | `true` | If `false`, <ProductName /> does not register the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`), and requests to them return `404`. AuthZEN access endpoints (`/access/**`) are not affected |
+
+**Example:**
+```yaml
+direct_api:
+  enabled: false
+```
+
+To hide the passkey registration endpoints in the Console as well, set `direct_api.enabled` to `false` in the Console `config.js`:
+
+```js
+direct_api: {
+  enabled: false,
+},
 ```
 
 ## Security Configuration

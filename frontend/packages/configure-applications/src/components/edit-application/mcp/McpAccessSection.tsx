@@ -4,6 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {SettingsCard} from '@thunderid/components';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {
   Autocomplete,
   Box,
@@ -111,7 +112,9 @@ export default function McpAccessSection({
   const {t} = useTranslation();
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
 
-  const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
+  // Options and stored values are handles; labels show the display name, falling back to the handle.
+  const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
+  const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
   // Agent access is a single on/off choice in the console for now: on means the default agent type
   // (which is the only one) is the only allowed one, off means no agent type is allowed.
@@ -123,7 +126,7 @@ export default function McpAccessSection({
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
     setIsAgentSignInEnabled(enabled);
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
@@ -258,6 +261,7 @@ export default function McpAccessSection({
             fullWidth
             id="mcp-allowed-user-types-autocomplete"
             options={userTypeOptions}
+            getOptionLabel={getLabel}
             value={application.allowedUserTypes ?? []}
             onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
             loading={loadingUserTypes}
@@ -279,7 +283,7 @@ export default function McpAccessSection({
               />
             )}
             renderTags={(value, getTagProps) =>
-              value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
+              value.map((option, index) => <Chip label={getLabel(option)} {...getTagProps({index})} key={option} />)
             }
             freeSolo={false}
             disableClearable={false}

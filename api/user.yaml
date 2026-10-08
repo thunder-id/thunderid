@@ -1439,19 +1439,22 @@ paths:
                 count: 3
                 types:
                   - id: "660e8400-e29b-41d4-a716-446655440001"
-                    name: "employee"
+                    handle: "employee"
+                    displayName: "Employee"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     allowSelfRegistration: false
                     systemAttributes:
                       display: "username"
                   - id: "550e8400-e29b-41d4-a716-446655440000"
-                    name: "customer"
+                    handle: "customer"
+                    displayName: "Customer"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     allowSelfRegistration: true
                     systemAttributes:
                       display: "email"
                   - id: "770e8400-e29b-41d4-a716-446655440002"
-                    name: "partner"
+                    handle: "partner"
+                    displayName: "Partner"
                     ouId: "770e8400-e29b-41d4-a716-446655440002"
                     allowSelfRegistration: false
                     systemAttributes:
@@ -1500,7 +1503,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateUserTypeRequest'
             example:
-              name: "partner"
+              handle: "partner"
+              displayName: "Partner"
               ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
               allowSelfRegistration: false
               systemAttributes:
@@ -1537,7 +1541,8 @@ paths:
                 $ref: '#/components/schemas/UserType'
               example:
                 id: "880e8400-e29b-41d4-a716-446655440003"
-                name: "partner"
+                handle: "partner"
+                displayName: "Partner"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 allowSelfRegistration: false
                 systemAttributes:
@@ -1592,6 +1597,16 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_user_type_request_description"
                       defaultValue: "One or more attribute definitions are invalid"
+                invalid-handle:
+                  summary: Invalid handle
+                  value:
+                    code: "USRS-1016"
+                    message:
+                      key: "error.entitytypeservice.invalid_entity_type_handle"
+                      defaultValue: "Invalid entity type handle"
+                    description:
+                      key: "error.entitytypeservice.invalid_entity_type_handle_description"
+                      defaultValue: "The handle must contain only lowercase letters, numbers, hyphens and underscores, and must start and end with a letter or a number"
         "409":
           description: Conflict
           content:
@@ -1601,11 +1616,11 @@ paths:
               example:
                 code: "USRS-1003"
                 message:
-                  key: "error.entitytypeservice.user_type_name_conflict"
-                  defaultValue: "User type name conflict"
+                  key: "error.entitytypeservice.user_type_handle_conflict"
+                  defaultValue: "User type handle conflict"
                 description:
-                  key: "error.entitytypeservice.user_type_name_conflict_description"
-                  defaultValue: "A user type with the same name already exists"
+                  key: "error.entitytypeservice.user_type_handle_conflict_description"
+                  defaultValue: "A user type with the same handle already exists"
         "500":
           description: Internal server error
 
@@ -1637,7 +1652,8 @@ paths:
                   summary: Employee schema with simple attributes
                   value:
                     id: "660e8400-e29b-41d4-a716-446655440001"
-                    name: "employee"
+                    handle: "employee"
+                    displayName: "Employee"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     allowSelfRegistration: false
                     systemAttributes:
@@ -1669,7 +1685,8 @@ paths:
                   summary: Customer schema with complex attributes
                   value:
                     id: "550e8400-e29b-41d4-a716-446655440000"
-                    name: "customer"
+                    handle: "customer"
+                    displayName: "Customer"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     allowSelfRegistration: true
                     systemAttributes:
@@ -1726,6 +1743,8 @@ paths:
       description: |
         Updates an existing user type schema with new attribute definitions.
         This operation replaces the entire schema definition.
+        The handle is optional. When provided, it must match the existing handle of the user type.
+        The display name can be changed at any time.
       parameters:
         - in: path
           name: id
@@ -1741,7 +1760,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateUserTypeRequest'
             example:
-              name: "customer"
+              handle: "customer"
+              displayName: "Customer"
               ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
               allowSelfRegistration: true
               systemAttributes:
@@ -1774,7 +1794,8 @@ paths:
                 $ref: '#/components/schemas/UserType'
               example:
                 id: "550e8400-e29b-41d4-a716-446655440000"
-                name: "customer"
+                handle: "customer"
+                displayName: "Customer"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 allowSelfRegistration: true
                 systemAttributes:
@@ -1825,6 +1846,16 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_user_type_request_description"
                       defaultValue: "One or more attribute definitions are invalid"
+                handle-update-not-allowed:
+                  summary: Handle cannot be changed
+                  value:
+                    code: "USRS-1017"
+                    message:
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed"
+                      defaultValue: "Entity type handle cannot be changed"
+                    description:
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed_description"
+                      defaultValue: "The handle of an entity type cannot be changed once it is created"
         "404":
           description: User type not found
           content:
@@ -1839,20 +1870,6 @@ paths:
                 description:
                   key: "error.entitytypeservice.user_type_not_found_description"
                   defaultValue: "The user type with the specified id does not exist"
-        "409":
-          description: User type name already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: "USRS-1003"
-                message:
-                  key: "error.entitytypeservice.user_type_name_conflict"
-                  defaultValue: "User type name conflict"
-                description:
-                  key: "error.entitytypeservice.user_type_name_conflict_description"
-                  defaultValue: "A user type with the same name already exists"
         "500":
           description: Internal server error
 
@@ -2138,7 +2155,7 @@ components:
       properties:
         type:
           type: string
-          description: "The type of user"
+          description: "The handle of the user type"
           example: "employee"
         attributes:
           type: object
@@ -2161,7 +2178,7 @@ components:
           description: "The organization unit ID where the user will be created"
         type:
           type: string
-          description: "The type of user"
+          description: "The handle of the user type"
           example: "customer"
         attributes:
           type: object
@@ -2177,7 +2194,7 @@ components:
           description: "The organization unit ID where the user belongs"
         type:
           type: string
-          description: "The type of user"
+          description: "The handle of the user type"
         attributes:
           type: object
           description: "User attributes"
@@ -2203,15 +2220,26 @@ components:
 
     UserType:
       type: object
-      required: [id, name, ouId, schema]
+      required: [id, handle, displayName, ouId, schema]
       properties:
         id:
           type: string
           format: uuid
           description: "The unique identifier of the user type"
-        name:
+        handle:
           type: string
-          description: "The user type this schema defines"
+          description: |
+            Unique handle of the user type (lowercase letters, numbers, hyphens, and underscores only).
+            The handle is unique among user types. Once set, the handle cannot be changed.
+          pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
+          maxLength: 100
+          example: "customer"
+        displayName:
+          type: string
+          description: "Human-readable name of the user type. It does not need to be unique and can be changed at any time."
+          minLength: 1
+          maxLength: 100
+          example: "Customer"
         ouId:
           type: string
           format: uuid
@@ -2402,15 +2430,16 @@ components:
           type: array
           items:
             type: object
-            required: [id, name, ouId]
+            required: [id, handle, displayName, ouId]
             properties:
               id:
                 type: string
                 format: uuid
                 description: "The unique identifier of the user type"
-              name:
-                type: string
-                description: "The user type this schema defines"
+              handle:
+                $ref: "#/components/schemas/UserType/properties/handle"
+              displayName:
+                $ref: "#/components/schemas/UserType/properties/displayName"
               ouId:
                 type: string
                 format: uuid
@@ -2431,6 +2460,10 @@ components:
                     type: string
                     description: "The schema attribute to use as the human-readable display name for users of this type"
                 additionalProperties: false
+              isReadOnly:
+                type: boolean
+                readOnly: true
+                description: "Indicates whether the user type is defined declaratively and cannot be modified through the API"
         links:
           type: array
           items:
@@ -2438,11 +2471,22 @@ components:
 
     CreateUserTypeRequest:
       type: object
-      required: [name, ouId, schema]
+      required: [handle, displayName, ouId, schema]
       properties:
-        name:
+        handle:
           type: string
-          description: "The user type this schema will define"
+          description: |
+            Unique handle for the user type (lowercase letters, numbers, hyphens, and underscores only).
+            The handle must be unique among user types. Once set, the handle cannot be changed.
+          pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
+          maxLength: 100
+          example: "partner"
+        displayName:
+          type: string
+          description: "Human-readable name of the user type. It does not need to be unique."
+          minLength: 1
+          maxLength: 100
+          example: "Partner"
         ouId:
           type: string
           format: uuid
@@ -2461,11 +2505,22 @@ components:
 
     UpdateUserTypeRequest:
       type: object
-      required: [name, ouId, schema]
+      required: [displayName, ouId, schema]
       properties:
-        name:
+        handle:
           type: string
-          description: "The user type this schema defines"
+          description: |
+            Optional. The handle cannot be changed, so when provided it must match the handle the user
+            type was created with. When omitted, the existing handle is kept.
+          pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
+          maxLength: 100
+          example: "customer"
+        displayName:
+          type: string
+          description: "Human-readable name of the user type. It does not need to be unique."
+          minLength: 1
+          maxLength: 100
+          example: "Customer"
         ouId:
           type: string
           format: uuid

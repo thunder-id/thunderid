@@ -129,6 +129,25 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_OneMatch() {
 	s.Equal("e6", *id)
 }
 
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_ArrayItemMatch() {
+	attrs, _ := json.Marshal(map[string]interface{}{"email": []string{"primary@test.com", "secondary@test.com"}})
+	s.seedEntity(providers.Entity{ID: "arr1", Category: providers.EntityCategoryUser, Attributes: attrs})
+
+	id, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "secondary@test.com"})
+	s.NoError(err)
+	s.Equal("arr1", *id)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_ArrayItemSharedWithScalar_Ambiguous() {
+	arrayAttrs, _ := json.Marshal(map[string]interface{}{"email": []string{"shared@test.com", "other@test.com"}})
+	scalarAttrs, _ := json.Marshal(map[string]interface{}{"email": "shared@test.com"})
+	s.seedEntity(providers.Entity{ID: "arr2", Category: providers.EntityCategoryUser, Attributes: arrayAttrs})
+	s.seedEntity(providers.Entity{ID: "scl2", Category: providers.EntityCategoryUser, Attributes: scalarAttrs})
+
+	_, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "shared@test.com"})
+	s.ErrorIs(err, ErrAmbiguousEntity)
+}
+
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 	attrs1, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
 	attrs2, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
@@ -292,6 +311,17 @@ func (s *FileBasedStoreTestSuite) TestMatchesFilters() {
 	s.False(matchesFilters(attrs, map[string]interface{}{"nested.missing": "val"}))
 	s.False(matchesFilters(nil, map[string]interface{}{"email": "a@b.com"}))
 	s.False(matchesFilters(json.RawMessage(`invalid-json`), map[string]interface{}{"k": "v"}))
+}
+
+func (s *FileBasedStoreTestSuite) TestMatchesFilters_ArrayMatchesAnyElement() {
+	attrs := json.RawMessage(`{"email":["a@b.com","c@d.com"],"codes":[1,2],"nested":[["a@b.com"]]}`)
+
+	s.True(matchesFilters(attrs, map[string]interface{}{"email": "a@b.com"}))
+	s.True(matchesFilters(attrs, map[string]interface{}{"email": "c@d.com"}))
+	s.False(matchesFilters(attrs, map[string]interface{}{"email": "x@y.com"}))
+	s.True(matchesFilters(attrs, map[string]interface{}{"codes": int64(2)}))
+	s.False(matchesFilters(json.RawMessage(`{"email":[]}`), map[string]interface{}{"email": "a@b.com"}))
+	s.False(matchesFilters(attrs, map[string]interface{}{"nested": "a@b.com"}), "nested arrays are not searched")
 }
 
 func (s *FileBasedStoreTestSuite) TestGetNestedValue() {

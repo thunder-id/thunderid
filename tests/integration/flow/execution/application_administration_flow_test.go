@@ -62,7 +62,8 @@ var appAdminFlowTestOU = testutils.OrganizationUnit{
 // appAdminFlowTestUserType backs the user that stands in for a target that exists but is not an
 // application, so the flows can be pointed at a real id of the wrong kind.
 var appAdminFlowTestUserType = testutils.UserType{
-	Name: "app_admin_flow_test_user",
+	Handle:      "app_admin_flow_test_user",
+	DisplayName: "App Admin Flow Test User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -109,7 +110,7 @@ func (ts *ApplicationAdministrationFlowTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err)
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       appAdminFlowTestUserType.Name,
+		Type:       appAdminFlowTestUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: attributes,
 	})

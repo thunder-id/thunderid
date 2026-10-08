@@ -17,6 +17,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -91,11 +92,15 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 		return nil, svcErr
 	}
 	for _, sender := range senders {
-		if sender.Type != ncommon.NotificationSenderTypeMessage {
-			continue
-		}
-		if _, ok := smsVendorName(sender.Provider); ok {
-			ids = append(ids, sender.ID)
+		switch sender.Type {
+		case ncommon.NotificationSenderTypeMessage:
+			if _, ok := smsVendorName(sender.Provider); ok {
+				ids = append(ids, sender.ID)
+			}
+		case ncommon.NotificationSenderTypeEmail:
+			if _, ok := emailVendorName(sender.Provider); ok {
+				ids = append(ids, sender.ID)
+			}
 		}
 	}
 
@@ -207,21 +212,46 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{SecretVariables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{SecretVariables: []string{"APISecret"}}
+	case emailSMTPVendorName:
+		return authenticationResourceRules(model.Authentication)
 	default:
-		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
+		// Any future vendor with no secret of its own has nothing to externalize.
 		return &declarativeresource.ResourceRules{}
 	}
 }
 
-// isIDPBackedVendorName reports whether name is a registered IdP-backed vendor's connection
-// name (e.g. "google"), as opposed to an SMS-backed vendor name.
-func isIDPBackedVendorName(name string) bool {
-	for _, vendor := range idpBackedVendors {
-		if vendor.name == name {
-			return true
+// authenticationResourceRules externalizes each secret field of a connection's outbound
+// authentication to a template variable. The field names are not statically known, since they
+// come from the registered method, so the paths are derived rather than hardcoded. That is what
+// keeps a new authentication method from needing a change here.
+func authenticationResourceRules(
+	auth *outboundauth.Authentication) *declarativeresource.ResourceRules {
+	if auth == nil {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	authType, ok := outboundauth.ParseType(auth.Type)
+	if !ok {
+		return &declarativeresource.ResourceRules{}
+	}
+	method, ok := outboundauth.GetMethod(authType)
+	if !ok {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	var variables []string
+	for _, field := range method.Fields {
+		// An empty value has nothing to externalize, matching how an unset vendor secret is
+		// left out rather than exported as a blank variable.
+		if field.Credential && auth.Properties[field.Key] != "" {
+			variables = append(variables, "Authentication.Properties."+field.Key)
 		}
 	}
-	return false
+	if len(variables) == 0 {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	return &declarativeresource.ResourceRules{SecretVariables: variables}
 }
 
 // rawPropertyValues returns a name->value map for the given properties WITHOUT masking secret
@@ -282,8 +312,10 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connectionExportModel, error) {
 	vendor, ok := smsVendorName(dto.Provider)
 	if !ok {
-		return connectionExportModel{}, fmt.Errorf(
-			"unsupported message provider for connection export: %s", dto.Provider)
+		if vendor, ok = emailVendorName(dto.Provider); !ok {
+			return connectionExportModel{}, fmt.Errorf(
+				"unsupported notification provider for connection export: %s", dto.Provider)
+		}
 	}
 	values, err := rawPropertyValues(dto.Properties)
 	if err != nil {
@@ -310,6 +342,14 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
 		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
 		model.ContentType = values[ncommon.CustomPropKeyContentType]
+	case ncommon.NotificationProviderTypeSMTP:
+		model.Host = values[ncommon.SMTPPropKeyHost]
+		model.Port, _ = strconv.Atoi(values[ncommon.SMTPPropKeyPort])
+		model.FromAddress = values[ncommon.SMTPPropKeyFromAddress]
+		model.FromName = values[ncommon.SMTPPropKeyFromName]
+		model.TLS = values[ncommon.SMTPPropKeyTLS]
+		auth := outboundauth.AuthenticationFromValues(values)
+		model.Authentication = &auth
 	}
 	return model, nil
 }
@@ -415,6 +455,17 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 		}
 		dto.ID = model.ID
 		return nil, dto, nil
+	case emailSMTPVendorName:
+		dto, err := emailSMTPToSenderDTO(emailSMTPConnectionRequest{
+			Name: model.Name, Description: model.Description, Host: model.Host, Port: model.Port,
+			FromAddress: model.FromAddress, FromName: model.FromName, TLS: model.TLS,
+			Authentication: model.Authentication,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		return nil, dto, nil
 	default:
 		return nil, nil, fmt.Errorf("unsupported connection vendor: %s", model.Type)
 	}
@@ -498,9 +549,10 @@ func connectionResourceID(dto interface{}) string {
 
 // validateConnectionDTOWrapper validates a parsed connection DTO before it is stored declaratively.
 // IdP DTOs go through idp.ValidateIDP, the same required-property and type-default checks the live
-// /connections create/update API runs. Notification-sender DTOs only get a name presence check —
-// full semantic validation for senders (e.g. a custom sender's required URL) is deferred to
-// runtime use, matching the legacy declarative notification-sender behavior.
+// /connections create/update API runs. Email senders go through the same validation as the API,
+// so a provider that cannot deliver fails the load rather than every send. Message senders only
+// get a name presence check; their full semantic validation (e.g. a custom sender's required URL)
+// is deferred to runtime use, matching the legacy declarative notification-sender behavior.
 //
 // idpService may be nil, in which case the schema-aware defaults the live API applies are skipped
 // and the declarative document stands entirely on its own.
@@ -525,6 +577,11 @@ func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInte
 	case *ncommon.NotificationSenderDTO:
 		if d.Name == "" {
 			return fmt.Errorf("connection resource %q is missing a name", d.ID)
+		}
+		if d.Type == ncommon.NotificationSenderTypeEmail {
+			if err := notification.ValidateNotificationSender(*d); err != nil {
+				return fmt.Errorf("connection resource %q is invalid: %w", d.ID, err)
+			}
 		}
 	case *authzenpdp.AuthZENPDPConnection:
 		if d.Name == "" || d.Endpoint == "" {

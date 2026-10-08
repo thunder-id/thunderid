@@ -9,7 +9,8 @@ export interface SubjectAttributeRow {
 
 export interface SubjectTypeOption {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   category: 'agent' | 'user';
 }
 

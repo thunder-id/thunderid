@@ -3139,3 +3139,97 @@ func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_EncryptionFailurePropag
 
 	suite.Error(err)
 }
+
+// OUAttributesTestSuite covers how the builder places the organization claims the grant handler
+// resolved. The builder does not decide which organization unit they describe, only that they win.
+type OUAttributesTestSuite struct {
+	suite.Suite
+	jwtService *jwtmock.JWTServiceInterfaceMock
+	builder    *tokenBuilder
+}
+
+func TestOUAttributesTestSuite(t *testing.T) {
+	suite.Run(t, new(OUAttributesTestSuite))
+}
+
+func (s *OUAttributesTestSuite) SetupTest() {
+	_ = config.InitializeServerRuntime("test", &config.Config{
+		JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
+	})
+	s.jwtService = jwtmock.NewJWTServiceInterfaceMock(s.T())
+	s.builder = &tokenBuilder{
+		cfg: oauthconfig.Config{
+			JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
+		},
+		jwtService: s.jwtService,
+	}
+}
+
+// issue builds one access token and returns the claims the builder handed the signer.
+func (s *OUAttributesTestSuite) issue(subjectAttributes, ouAttributes map[string]interface{},
+) map[string]interface{} {
+	var seen map[string]interface{}
+	s.jwtService.On("GenerateJWT", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			seen = claims
+			return true
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	_, err := s.builder.BuildAccessToken(context.Background(), &AccessTokenBuildContext{
+		Subject:           "app123",
+		ClientID:          "test-client",
+		SubjectAttributes: subjectAttributes,
+		OUAttributes:      ouAttributes,
+		GrantType:         string(providers.GrantTypeClientCredentials),
+		OAuthApp:          &providers.OAuthClient{ClientID: "test-client"},
+	})
+	s.Require().NoError(err)
+	return seen
+}
+
+// The organization claims win over any the subject's own attributes carried. Both channels can
+// supply them, and the token has to state the organization it was issued for rather than whichever
+// of the two merged last.
+func (s *OUAttributesTestSuite) TestTheyWinOverTheSubjectsOwn() {
+	claims := s.issue(
+		map[string]interface{}{
+			constants.ClaimOUID:   "owner-ou",
+			constants.ClaimOUName: "Owner",
+			"name":                testUserName,
+		},
+		map[string]interface{}{
+			constants.ClaimOUID:   "customer-a",
+			constants.ClaimOUName: "Customer A",
+		},
+	)
+
+	s.Equal("customer-a", claims[constants.ClaimOUID])
+	s.Equal("Customer A", claims[constants.ClaimOUName])
+	s.Equal(testUserName, claims["name"], "the subject's other attributes are left alone")
+}
+
+// A grant that resolves none leaves the subject's own organization claims exactly as they were, so
+// the grants that do not serve the /ou/{ouId} route keep answering as they always have.
+func (s *OUAttributesTestSuite) TestWithoutThemTheSubjectsOwnStand() {
+	claims := s.issue(map[string]interface{}{
+		constants.ClaimOUID:     "owner-ou",
+		constants.ClaimOUHandle: "owner",
+	}, nil)
+
+	s.Equal("owner-ou", claims[constants.ClaimOUID])
+	s.Equal("owner", claims[constants.ClaimOUHandle])
+}
+
+// A claim the resolver did not supply is not erased. An organization unit with no handle leaves the
+// subject's handle standing rather than blanking it, because the two channels are merged, not
+// swapped.
+func (s *OUAttributesTestSuite) TestOnlyTheClaimsSuppliedAreReplaced() {
+	claims := s.issue(
+		map[string]interface{}{constants.ClaimOUID: "owner-ou", constants.ClaimOUHandle: "owner"},
+		map[string]interface{}{constants.ClaimOUID: "customer-a"},
+	)
+
+	s.Equal("customer-a", claims[constants.ClaimOUID])
+	s.Equal("owner", claims[constants.ClaimOUHandle])
+}

@@ -138,6 +138,14 @@ func (s *UtilsTestSuite) TestAssembleApplication_CarriesFlowIDs() {
 	s.Equal("signout-flow", app.SignOutFlowID)
 }
 
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesThemeID() {
+	client := &providers.InboundClient{ID: "app-1", ThemeID: "theme-1"}
+
+	app := assembleApplication(client, nil)
+
+	s.Equal("theme-1", app.ThemeID)
+}
+
 func (s *UtilsTestSuite) TestAssembleApplication_CarriesEntityCategory() {
 	client := &providers.InboundClient{ID: "agent-1"}
 	entity := &providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent}

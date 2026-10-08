@@ -36,7 +36,7 @@ func (s *FederatedMappingSuite) authenticateKnown(user *OIDCUser) int {
 	s.T().Helper()
 	email := user.Sub + "@example.com"
 	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": user.Sub})
-	status, _, _ := s.authenticateDirect(mapping(fedPersonType.Name, pair("email", "email")), user)
+	status, _, _ := s.authenticateDirect(mapping(fedPersonType.Handle, pair("email", "email")), user)
 	return status
 }
 
@@ -316,7 +316,7 @@ func (s *FederatedMappingSuite) TestKeyRotationInvalidatesOldSignature() {
 func (s *FederatedMappingSuite) TestUserInfoSubMismatchSkipsMerge() {
 	defer s.mockOIDC.ClearOverrides()
 
-	userInfoOnly := mapping(fedPersonType.Name,
+	userInfoOnly := mapping(fedPersonType.Handle,
 		pair("email", "username"), pair("given_name", "firstName"), pair("locality", "city"),
 	)
 
@@ -351,7 +351,7 @@ func (s *FederatedMappingSuite) TestUserInfoFailureIsTolerated() {
 		return http.StatusInternalServerError, `{"error":"boom"}`
 	})
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"), pair("given_name", "firstName"),
 	), user)
 
@@ -368,7 +368,7 @@ func (s *FederatedMappingSuite) TestIDTokenClaimWinsOverUserInfo() {
 		return http.StatusOK, `{"sub":"` + user.Sub + `","given_name":"FromUserInfo","locale":"fr"}`
 	})
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"), pair("given_name", "firstName"),
 	), user)
 

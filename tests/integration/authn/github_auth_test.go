@@ -30,7 +30,8 @@ var githubAuthTestOU = testutils.OrganizationUnit{
 }
 
 var githubEntityType = testutils.UserType{
-	Name: "github_user",
+	Handle:      "github_user",
+	DisplayName: "Github User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -115,7 +116,7 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       githubEntityType.Name,
+		Type:       githubEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}

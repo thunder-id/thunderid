@@ -188,13 +188,13 @@ func (ts *LoginOrRegisterTestSuite) SetupSuite() {
 
 	ts.typeAName = "login-or-register-type-a"
 	ts.typeAID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.typeAName, OUID: ts.ouAID, AllowSelfRegistration: true, Schema: loginOrRegisterSchema,
+		Handle: ts.typeAName, DisplayName: "Type A", OUID: ts.ouAID, AllowSelfRegistration: true, Schema: loginOrRegisterSchema,
 	})
 	ts.Require().NoError(err, "Failed to create user type A")
 
 	ts.typeBName = "login-or-register-type-b"
 	ts.typeBID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.typeBName, OUID: ts.ouBID, AllowSelfRegistration: true, Schema: loginOrRegisterSchema,
+		Handle: ts.typeBName, DisplayName: "Type B", OUID: ts.ouBID, AllowSelfRegistration: true, Schema: loginOrRegisterSchema,
 	})
 	ts.Require().NoError(err, "Failed to create user type B")
 

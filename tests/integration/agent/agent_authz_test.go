@@ -105,8 +105,9 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 
 	// ---- 2. Create a user type in OU1 for the agent-manager ----
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: agentMgrUserType,
-		OUID: ts.agentOU1ID,
+		Handle:      agentMgrUserType,
+		DisplayName: "Authz Agent Mgr Type",
+		OUID:        ts.agentOU1ID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -125,7 +126,8 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		OUID: ts.agentOU1ID,
+		DisplayName: "Default",
+		OUID:        ts.agentOU1ID,
 		Schema: map[string]interface{}{
 			"purpose": map[string]interface{}{"type": "string"},
 		},

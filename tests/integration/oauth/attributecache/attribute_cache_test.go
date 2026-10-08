@@ -38,7 +38,8 @@ const (
 )
 
 var testUserType = testutils.UserType{
-	Name: "attr-cache-person",
+	Handle:      "attr-cache-person",
+	DisplayName: "Attr Cache Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},
@@ -145,7 +146,7 @@ func (ts *AttributeCacheTestSuite) createTestUser() string {
 	ts.Require().NoError(err, "Failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       testUserType.Name,
+		Type:       testUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	})
@@ -208,7 +209,7 @@ func (ts *AttributeCacheTestSuite) createTestApplication(authFlowID string) stri
 		"type":                      "fullstack",
 		"authFlowId":                authFlowID,
 		"isRegistrationFlowEnabled": false,
-		"allowedUserTypes":          []string{testUserType.Name},
+		"allowedUserTypes":          []string{testUserType.Handle},
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",

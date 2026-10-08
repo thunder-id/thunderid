@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -65,13 +65,13 @@ type entityTypeStoreInterface interface {
 	GetEntityTypeListCountByOUIDs(ctx context.Context, category TypeCategory, ouIDs []string) (int, error)
 	CreateEntityType(ctx context.Context, entityType EntityType) error
 	GetEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string) (EntityType, error)
-	GetEntityTypeByName(ctx context.Context, category TypeCategory, name string) (EntityType, error)
+	GetEntityTypeByHandle(ctx context.Context, category TypeCategory, handle string) (EntityType, error)
 	UpdateEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string,
 		entityType EntityType) error
 	DeleteEntityTypeByID(ctx context.Context, category TypeCategory, schemaID string) error
 	IsEntityTypeDeclarative(category TypeCategory, schemaID string) bool
-	GetDisplayAttributesByNames(ctx context.Context, category TypeCategory,
-		names []string) (map[string]string, error)
+	GetDisplayAttributesByHandles(ctx context.Context, category TypeCategory,
+		handles []string) (map[string]string, error)
 }
 
 // entityTypeStore is the default implementation of entityTypeStoreInterface.
@@ -241,7 +241,8 @@ func (s *entityTypeStore) CreateEntityType(ctx context.Context, entityType Entit
 		queryCreateEntityType,
 		entityType.ID,
 		string(entityType.Category),
-		entityType.Name,
+		entityType.Handle,
+		entityType.DisplayName,
 		entityType.OUID,
 		entityType.AllowSelfRegistration,
 		string(entityType.Schema),
@@ -275,15 +276,15 @@ func (s *entityTypeStore) GetEntityTypeByID(ctx context.Context, category TypeCa
 	return parseEntityTypeFromRow(results[0])
 }
 
-// GetEntityTypeByName retrieves an entity type by its name within a category.
-func (s *entityTypeStore) GetEntityTypeByName(ctx context.Context, category TypeCategory,
-	name string) (EntityType, error) {
+// GetEntityTypeByHandle retrieves an entity type by its handle within a category.
+func (s *entityTypeStore) GetEntityTypeByHandle(ctx context.Context, category TypeCategory,
+	handle string) (EntityType, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return EntityType{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByName, name, s.scope(ctx), string(category))
+	results, err := dbClient.QueryContext(ctx, queryGetEntityTypeByHandle, handle, s.scope(ctx), string(category))
 	if err != nil {
 		return EntityType{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -311,7 +312,7 @@ func (s *entityTypeStore) UpdateEntityTypeByID(ctx context.Context, category Typ
 	_, err = dbClient.QueryContext(
 		ctx,
 		queryUpdateEntityTypeByID,
-		entityType.Name,
+		entityType.DisplayName,
 		entityType.OUID,
 		entityType.AllowSelfRegistration,
 		string(entityType.Schema),
@@ -355,10 +356,10 @@ func (s *entityTypeStore) IsEntityTypeDeclarative(category TypeCategory, schemaI
 	return false
 }
 
-// GetDisplayAttributesByNames retrieves display attributes for a list of entity type names within a category.
-func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, category TypeCategory,
-	names []string) (map[string]string, error) {
-	if len(names) == 0 {
+// GetDisplayAttributesByHandles retrieves display attributes for a list of entity type handles within a category.
+func (s *entityTypeStore) GetDisplayAttributesByHandles(ctx context.Context, category TypeCategory,
+	handles []string) (map[string]string, error) {
+	if len(handles) == 0 {
 		return map[string]string{}, nil
 	}
 
@@ -369,10 +370,10 @@ func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, categ
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query := buildGetDisplayAttributesByNamesQuery(names)
-	args := make([]interface{}, 0, len(names)+2)
-	for _, name := range names {
-		args = append(args, name)
+	query := buildGetDisplayAttributesByHandlesQuery(handles)
+	args := make([]interface{}, 0, len(handles)+2)
+	for _, handle := range handles {
+		args = append(args, handle)
 	}
 	args = append(args, string(category), s.scope(ctx))
 
@@ -383,23 +384,23 @@ func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, categ
 
 	displayAttrs := make(map[string]string, len(results))
 	for _, row := range results {
-		name, ok := row["name"].(string)
+		handle, ok := row["handle"].(string)
 		if !ok {
-			logger.Error(ctx, "Failed to parse name from display attributes query")
+			logger.Error(ctx, "Failed to parse handle from display attributes query")
 			continue
 		}
 
 		sysAttrs, err := parseSystemAttributes(row["system_attributes"])
 		if err != nil {
 			logger.Error(ctx, "Failed to parse system attributes",
-				log.String("schemaName", name), log.Error(err))
+				log.String("handle", handle), log.Error(err))
 			continue
 		}
 
 		if sysAttrs != nil {
-			displayAttrs[name] = sysAttrs.Display
+			displayAttrs[handle] = sysAttrs.Display
 		} else {
-			displayAttrs[name] = ""
+			displayAttrs[handle] = ""
 		}
 	}
 
@@ -418,9 +419,14 @@ func parseEntityTypeFromRow(row map[string]interface{}) (EntityType, error) {
 		return EntityType{}, fmt.Errorf("failed to parse category as string")
 	}
 
-	name, ok := row["name"].(string)
+	handle, ok := row["handle"].(string)
 	if !ok {
-		return EntityType{}, fmt.Errorf("failed to parse name as string")
+		return EntityType{}, fmt.Errorf("failed to parse handle as string")
+	}
+
+	displayName, ok := row["display_name"].(string)
+	if !ok {
+		return EntityType{}, fmt.Errorf("failed to parse display_name as string")
 	}
 
 	oUID, ok := row["ou_id"].(string)
@@ -451,7 +457,8 @@ func parseEntityTypeFromRow(row map[string]interface{}) (EntityType, error) {
 	entityType := EntityType{
 		ID:                    schemaID,
 		Category:              TypeCategory(categoryStr),
-		Name:                  name,
+		Handle:                handle,
+		DisplayName:           displayName,
 		OUID:                  oUID,
 		AllowSelfRegistration: allowSelfRegistration,
 		SystemAttributes:      systemAttributes,
@@ -473,9 +480,14 @@ func parseEntityTypeListItemFromRow(row map[string]interface{}) (EntityTypeListI
 		return EntityTypeListItem{}, fmt.Errorf("failed to parse category as string")
 	}
 
-	name, ok := row["name"].(string)
+	handle, ok := row["handle"].(string)
 	if !ok {
-		return EntityTypeListItem{}, fmt.Errorf("failed to parse name as string")
+		return EntityTypeListItem{}, fmt.Errorf("failed to parse handle as string")
+	}
+
+	displayName, ok := row["display_name"].(string)
+	if !ok {
+		return EntityTypeListItem{}, fmt.Errorf("failed to parse display_name as string")
 	}
 
 	oUID, ok := row["ou_id"].(string)
@@ -496,7 +508,8 @@ func parseEntityTypeListItemFromRow(row map[string]interface{}) (EntityTypeListI
 	entityTypeListItem := EntityTypeListItem{
 		ID:                    schemaID,
 		Category:              TypeCategory(categoryStr),
-		Name:                  name,
+		Handle:                handle,
+		DisplayName:           displayName,
 		OUID:                  oUID,
 		AllowSelfRegistration: allowSelfRegistration,
 		SystemAttributes:      systemAttributes,

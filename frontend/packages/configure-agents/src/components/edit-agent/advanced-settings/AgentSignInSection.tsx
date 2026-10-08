@@ -6,7 +6,7 @@ import {deriveOAuth2Flags} from '@thunderid/configure-applications';
 import {Switch} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {DEFAULT_AGENT_TYPE_NAME, type Agent, type OAuthAgentConfig} from '../../../models/agent';
+import {DEFAULT_AGENT_TYPE_HANDLE, type Agent, type OAuthAgentConfig} from '../../../models/agent';
 
 interface AgentSignInSectionProps {
   agent: Agent;
@@ -34,7 +34,7 @@ export default function AgentSignInSection({
   const isEnabled = (editedAgent.allowedAgentTypes ?? agent.allowedAgentTypes ?? []).length > 0;
 
   const handleToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [DEFAULT_AGENT_TYPE_NAME] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
   const toggleLabel = t('agents:edit.advanced.agentSignIn.toggle.label', 'Enable Agent Sign-In');

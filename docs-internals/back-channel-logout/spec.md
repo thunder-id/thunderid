@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 1.0
+- **Version:** 0.3
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -47,7 +47,7 @@ The feature uses these existing seams without changing their contracts:
 | JWE encryption service | Encrypts the logout token for clients that negotiated ID token encryption. It gains caller-supplied protected headers, which cannot replace the computed ones (`typ`, `alg`, `enc`, `cty`, `kid`, `epk`, `iv`, `tag`, `zip`), described in [The logout token](#the-logout-token) |
 | Token configuration resolution | Resolves the issuer and signing algorithm, so a client that chose its own ID token signing algorithm gets a logout token it can verify |
 | Actor provider | Resolves a participating application's OAuth profile at delivery time |
-| Observability publisher | Publishes one event per delivery attempt. Its detached-work shape, with a derived context carrying the trace id, wait group accounting, panic recovery, and a shutdown drain, is the pattern the dispatcher follows |
+| Observability publisher | Publishes the delivery outcome events, one per participant. Its detached-work shape, with a derived context carrying the trace id, wait group accounting, panic recovery, and a shutdown drain, is the pattern the dispatcher follows |
 | Shared HTTP client | Issues the delivery request, configured with a redirect policy that refuses to follow a 3xx and, while `reject_private_addresses` is true, the SSRF-safe dialer |
 
 ```mermaid
@@ -73,7 +73,7 @@ flowchart TB
         Q["bounded queue<br/>worker pool"]
         MINT["mint logout token"]
         POST["POST logout_token<br/>timeout, no redirects, retry"]
-        AUD["observability event per attempt"]
+        AUD["observability event per participant"]
     end
 
     SS --> TL
@@ -148,7 +148,7 @@ The dispatcher is the one new runtime component. It turns a terminated session i
 | Worker pool | A fixed set of goroutines that take events off the queue, expand each into jobs, and run deliveries |
 | Job | One participant of one event: application id, session id, subject id, the attempt number, and the time the next attempt is due. The attempt number starts at 1 and goes up with each retry; once it reaches `max_attempts` the job is not retried again, and it is recorded on every outcome as `attempt_number`. The dispatcher's unit of work |
 | Retry scheduler | Holds jobs whose next attempt is not yet due and hands them back to a worker when it is. A waiting job never occupies a worker |
-| In-flight bound | A semaphore of `max_in_flight` permits, held for the duration of one HTTP attempt, shared by the whole dispatcher |
+| In-flight bound | A semaphore of `max_in_flight` permits, held for the duration of one HTTP attempt, shared by the whole dispatcher. Each relying party may hold at most a quarter of them, and at least one, so an endpoint that hangs cannot hold every permit while healthy ones wait; a job over its relying party's share waits on a timer for `retry_delay` without using an attempt or holding a worker |
 | Logout token builder and delivery client | Build the logout token ([The logout token](#the-logout-token)) and perform one attempt ([Delivery](#delivery)) |
 
 **Data flow.**
@@ -160,10 +160,11 @@ flowchart LR
     Q --> W["worker<br/>resolve each participant's profile"]
     W -->|"no URI"| SKIP["skip, no record"]
     W -->|"client gone"| CNF["record failed: client_not_found"]
+    W -->|"read error"| R
     W --> J["one job per participant"]
     J --> S["in-flight permit<br/>max_in_flight"]
-    S --> A["attempt: mint token, POST, classify"]
-    A -->|"2xx"| OK["record delivered"]
+    S --> A["attempt: resolve the profile if not yet resolved,<br/>mint token, POST, classify"]
+    A -->|"200 or 204"| OK["record delivered"]
     A -->|"retryable, attempts left"| R["retry scheduler<br/>due = now + backoff or Retry-After"]
     R -->|"due"| S
     A -->|"terminal, or attempts exhausted"| F["record failed: rejected, unreachable, server_error"]
@@ -194,14 +195,15 @@ flowchart LR
 
 | Stage | Failure | Outcome |
 |---|---|---|
-| Enqueue | Queue full | Event dropped, recorded `queue_full`, logout unaffected |
-| Resolve | Profile read error or client deleted | That participant recorded `client_not_found`; the others proceed |
+| Enqueue | Queue full | Event dropped, logout unaffected. Every participant is recorded `queue_full` without being resolved, so `client_id` is empty and participants without a URI are included |
+| Resolve | Profile read error | Retried like a transient error; terminal after `max_attempts` as `server_error` |
+| Resolve | Client deleted | That participant recorded `client_not_found`; the others proceed |
 | Resolve | No back-channel logout URI | Skipped, no record |
 | Mint | Signing or encryption error | Attempt counted as failed; retried like a transient error, then `server_error` |
 | Send | Connection error, timeout, 5xx, 429 | Retried per [Delivery](#delivery); terminal after `max_attempts` as `unreachable` or `server_error` |
 | Send | 3xx or other 4xx | Terminal immediately, `rejected` |
 | Send | Host resolves to a private address while `reject_private_addresses` is true | Terminal immediately, `private_address` |
-| Record | Observability publisher unavailable | The structured log line still carries the outcome |
+| Record | Observability publisher unavailable | A failed delivery's warning log line still carries the outcome; successful deliveries are then visible only at debug level |
 | Shutdown | Deadline reached with work pending | Pending jobs recorded `shutdown` and abandoned |
 
 ### Delivery
@@ -210,7 +212,7 @@ This section covers one delivery attempt. How attempts are scheduled, bounded, r
 
 For each event, a worker:
 
-1. Resolves each participant's OAuth profile by application id. A participant with no registered back-channel logout URI is skipped silently, and this is not an error. A participant whose client configuration has been deleted since the logout is recorded as failed with reason `client_not_found`. Resolution happens here rather than in the listener so the logout path pays no configuration-store read.
+1. Resolves each participant's OAuth profile by application id. A participant with no registered back-channel logout URI is skipped silently, and this is not an error. A participant whose client configuration has been deleted since the logout is recorded as failed with reason `client_not_found`. A failed read is not taken as a deletion: it is retried like a failed attempt. Resolution happens here rather than in the listener so the logout path pays no configuration-store read.
 2. Delivers to the remaining participants concurrently, bounded by a global in-flight limit, so a subject-wide revocation across many sessions cannot open unbounded connections.
 3. Per delivery, mints a logout token, POSTs it, and classifies the response.
 
@@ -227,12 +229,12 @@ Response classification:
 |---|---|
 | 200, 204 | Delivered |
 | Connection error, timeout, 5xx | Retryable. The next attempt waits `retry_delay` doubled per attempt. After `max_attempts`, failed with reason `unreachable` or `server_error` |
-| 429 | Retryable. A parseable `Retry-After` sets the wait, bounded by the longest wait of the backoff schedule, `retry_delay` doubled `max_attempts` minus two times; otherwise the backoff schedule applies. Section 2.5 asks the OP to delay retransmission by an appropriate amount, and `Retry-After` is the relying party stating it. The bound keeps a hostile or misconfigured value from holding a delivery for longer than ThunderID would have waited anyway |
+| 429 | Retryable. A parseable `Retry-After`, in either form RFC 9110 section 10.2.3 defines (delay-seconds or an HTTP date), sets the wait, bounded by the longest wait of the backoff schedule, `retry_delay` doubled `max_attempts` minus two times; otherwise the backoff schedule applies. Section 2.5 asks the OP to delay retransmission by an appropriate amount, and `Retry-After` is the relying party stating it. The bound keeps a hostile or misconfigured value from holding a delivery for longer than ThunderID would have waited anyway |
 | Any other 4xx, any 3xx | Failed immediately with reason `rejected`. Retrying a misconfigured or decommissioned endpoint only delays the record |
 
 A fresh token is minted per attempt, so a retry that lands after the previous token expired is still valid, a key rotation between attempts does not matter, and a relying party tracking token identifiers does not reject the retry as a replay.
 
-**Shutdown.** The dispatcher stops as part of the server's graceful shutdown. It closes intake, lets workers finish queued and in-flight deliveries, and returns when they are done or when the shutdown deadline expires. Anything abandoned at the deadline is recorded as failed with reason `shutdown`. A hard kill loses pending deliveries with no record, which is accepted: the outcome for those sessions is the behaviour that exists today, bounded by each relying party's own session lifetime.
+**Shutdown.** The dispatcher stops as part of the server's graceful shutdown. It stops accepting new events, though the intake channel itself is never closed (see Lifecycle), lets workers finish queued and in-flight deliveries, and returns when they are done or when the shutdown deadline expires. Anything abandoned at the deadline is recorded as failed with reason `shutdown`. A hard kill loses pending deliveries with no record, which is accepted: the outcome for those sessions is the behaviour that exists today, bounded by each relying party's own session lifetime.
 
 **Ordering with the post-logout redirect.** ThunderID does not wait for any notification before redirecting. This deviates from RP-Initiated Logout 1.0, whose section 2 says the initiating relying party "is to be included in these notifications before the post-logout redirection is performed" and whose section 3 says the redirection "is performed after the OP has finished notifying the RPs". Neither sentence carries an RFC 2119 keyword. The session is already terminated when the first byte is sent, so a wait would buy the user nothing, and a slow or hung initiator would hold the user on the logout page for up to one request timeout. The initiating relying party has already cleared its own session before calling the end session endpoint, so the notification it receives is confirmatory, and the browser can reach the post-logout URI before that notification is processed. Dispatch usually reaches the initiator first, but that is a race rather than a property: under a queue backlog it can lose, and a dropped event is never sent. Keycloak and Duende IdentityServer wait for the back-channel POSTs, bounded by a timeout, before the redirect reaches the user; Ory Hydra does not, and this design takes Hydra's position.
 
@@ -296,20 +298,22 @@ A dedicated validation error is raised for a rejected URI and translated in both
 
 Two boolean fields join the OIDC provider metadata: `backchannel_logout_supported` and `backchannel_logout_session_supported`. Both are always present rather than omitted when false, because the specification defines their default as false and an explicit false is the honest advertisement.
 
-Both are set from the back-channel enablement flag, inside the existing block that is conditional on logout being enabled. Session identifier issuance is unconditional, so `backchannel_logout_session_supported` is true whenever delivery is.
+Both are set from the back-channel enablement flag alone, not from whether the logout endpoint is enabled. Sessions also end without that endpoint, such as on subject revocation, so delivery and the flags depend only on the back-channel flag. Session identifier issuance is unconditional, so `backchannel_logout_session_supported` is true whenever delivery is.
 
 ### Delivery outcomes and observability
 
-Every attempt publishes one event through the existing observability publisher, the way token revocation publishes `TOKEN_REVOKED`. These are observability events: emitted best-effort to the configured subscribers, not a durable audit trail. The audit capability proposed in [#5438](https://github.com/thunder-id/thunderid/issues/5438) can take the two event types below as inputs without any change on the delivery side, since they already carry the identifiers an audit record needs and nothing they must not.
+Every participant with a registered back-channel logout URI ends in exactly one event, delivered or failed, published through the existing observability publisher the way token revocation publishes `TOKEN_REVOKED`. A termination dropped for `queue_full` or `shutdown` before it is expanded is the exception: its participants are not resolved yet, so every participant gets a failed event with an empty `client_id`, including any without a URI. These are observability events: emitted best-effort to the configured subscribers, not a durable audit trail. The audit capability proposed in [#5438](https://github.com/thunder-id/thunderid/issues/5438) can take the two event types below as inputs without any change on the delivery side, since they already carry the identifiers an audit record needs and nothing they must not.
 
 | Event | When | Data |
 |---|---|---|
-| `BACKCHANNEL_LOGOUT_DELIVERED` | 2xx received | `client_id`, `app_id`, `session_id`, `attempt_number`, `http_status`, `duration_ms` |
+| `BACKCHANNEL_LOGOUT_DELIVERED` | 200 or 204 received | `client_id`, `app_id`, `session_id`, `attempt_number`, `http_status`, `duration_ms` |
 | `BACKCHANNEL_LOGOUT_FAILED` | Terminal failure | The same, plus `error` as a reason code |
+
+`http_status` is `0` when no response was received: a connection error, a timeout, a refused private address, a failed profile read, or a drop. The failed event and the warning log line carry the same value.
 
 The reason codes are `unreachable`, `server_error`, `rejected`, `private_address`, `client_not_found`, `queue_full`, and `shutdown`.
 
-- Each attempt also writes one structured Info log line with the same fields, so the record exists without an observability sink configured.
+- A delivery that fails also writes one structured warning log line with the same fields and the cause, so a failure is on record without an observability sink configured. A termination dropped for `queue_full` or `shutdown` writes one warning for the whole termination rather than one per participant. Retries and successful deliveries are logged only at debug level, because the event already records them.
 - Nothing records the token, the URI's query string, request or response bodies, or subject attributes. The subject identifier is not among the recorded fields.
 - The session identifier is recorded deliberately. Issue #5233 asks that delivery failures be handled without exposing session information, and the reading applied here is that the opaque session identifier is what makes a failed delivery traceable to the session it belonged to, while the material worth protecting is the token, the credentials, and the user's attributes. The identifier confers nothing and no API accepts it. [threat-model.md](threat-model.md) covers the privacy consequence.
 
@@ -384,9 +388,9 @@ oauth:
     backchannel:
       enabled: true                  # kill switch; also drives the discovery flags
       token_validity_period: 120     # seconds
-      request_timeout: 5             # seconds per attempt
-      max_attempts: 3                # 1 means no retry
-      retry_delay: 2                 # seconds, doubles per attempt
+      request_timeout: 5             # seconds per attempt, at most 30
+      max_attempts: 3                # 1 means no retry, at most 10
+      retry_delay: 2                 # seconds, doubles per attempt, at most 60
       max_in_flight: 16              # concurrent deliveries across the dispatcher
       queue_size: 1024               # pending termination events before drops are recorded
       reject_private_addresses: true  # reject localhost and private IP literals; set false for internal RPs
@@ -396,14 +400,14 @@ oauth:
 |---|---|---|
 | `enabled` | `true` | Follows the existing convention that lets an explicit false in the deployment file override the default. Also drives both discovery flags |
 | `token_validity_period` | 120 | Seconds. The maximum the specification recommends |
-| `request_timeout` | 5 | Seconds, per attempt |
-| `max_attempts` | 3 | 1 disables retry |
-| `retry_delay` | 2 | Seconds, doubled per attempt |
+| `request_timeout` | 5 | Seconds, per attempt. At most 30 |
+| `max_attempts` | 3 | 1 disables retry. At most 10 |
+| `retry_delay` | 2 | Seconds, doubled per attempt. At most 60 |
 | `max_in_flight` | 16 | Concurrent deliveries across the dispatcher |
 | `queue_size` | 1024 | Pending termination events before drops are recorded |
 | `reject_private_addresses` | `true` | Rejects back-channel logout URIs naming `localhost` or a loopback, link-local, private, or unspecified IP literal, and delivery dials through the SSRF-safe dialer, so a hostname resolving to a private address is refused at connect time and recorded with a reason that says so. On by default so a deployment is safe without reading the documentation, including one that enables `oauth.dcr.insecure`. Deployments whose relying parties sit on internal networks, and local development, set it to false; the guide says so prominently. An unset key is treated as true, so a configuration that omits it still fails safe |
 
-While back-channel logout is enabled, every numeric key must be positive. The server checks this at startup and refuses to start otherwise.
+While back-channel logout is enabled, every numeric key must be positive, and `request_timeout`, `max_attempts`, and `retry_delay` must not exceed the bounds above. The server checks this at startup and refuses to start otherwise. The bounds exist because the retry wait doubles per attempt: without them, a large `max_attempts` or `retry_delay` overflows the wait to zero or less and the remaining attempts fire back to back. At the bounds the longest wait is 60 seconds doubled eight times, about 4.3 hours.
 
 Back-channel logout is enabled by default because registering a URI is itself the opt-in: delivery only happens to applications that have one, and upgrading starts no outbound traffic because no URI exists yet. Defaulting it off would hide the feature behind a second switch and advertise `backchannel_logout_supported: false` on every fresh install. The deployment flag remains the kill switch.
 
@@ -422,7 +426,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC1.3:** Given a session is terminated, when the notification is delivered, then it is sent directly from ThunderID to the endpoint with no browser interaction, and it succeeds with the user agent closed.
 - **AC1.4:** Given an administrator revokes a subject's sessions, when the revocation commits, then every participant of every terminated session is notified.
 - **AC1.5:** Given an application-native sign-out through the Flow API, when the session is terminated, then notification behaves exactly as it does for the end session endpoint.
-- **AC1.6:** Given a participating application with no registered back-channel logout URI, when notifications are delivered, then that application is skipped, and the skip is not an error and produces no failure record.
+- **AC1.6:** Given a participating application with no registered back-channel logout URI, when notifications are delivered, then that application is skipped, and the skip is not an error and produces no failure record. A termination dropped for `queue_full` or `shutdown` before it is expanded is the exception, since its participants are recorded without being resolved.
 - **AC1.7:** Given the user's logout response, when notifications are dispatched, then dispatch is asynchronous with respect to that response and the post-logout redirect is not held for it.
 - **AC1.8:** Given back-channel logout is disabled in configuration, when a session is terminated, then no notification is sent and no delivery event is recorded.
 - **AC1.9:** Given an agent that is an OAuth client whose login flow has a session step, when a person signs in through it and the session is later terminated, then the agent is a participant of that session and is notified at its registered back-channel logout URI like any application.
@@ -483,7 +487,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 
 **Acceptance criteria:**
 
-- **AC5.1:** Given logout and back-channel logout are enabled, when the OIDC discovery document is fetched, then `backchannel_logout_supported` and `backchannel_logout_session_supported` are both `true`.
+- **AC5.1:** Given back-channel logout is enabled, whether or not the logout endpoint is, when the OIDC discovery document is fetched, then `backchannel_logout_supported` and `backchannel_logout_session_supported` are both `true`.
 - **AC5.2:** Given back-channel logout is disabled, when the discovery document is fetched, then both flags are present and `false` rather than omitted.
 - **AC5.3:** Given the discovery document, when the two flags are compared with delivery behaviour, then they match what the deployment will actually do.
 
@@ -506,15 +510,15 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC6.11:** Given the listener panics, when the logout completes, then the panic is recovered and logged and the logout result is unaffected.
 - **AC6.12:** Given the terminating transaction fails, when the operation returns, then no listener call is made and no notification is sent.
 
-### R7. Every attempt is recorded
+### R7. Every delivery is recorded
 
-**Requirement:** As a security officer or an incident responder, I want to know which applications were notified and which were not, so that I can tell where a session may still be live. The record is the observability event and log line per attempt; a durable audit trail is the subject of [#5438](https://github.com/thunder-id/thunderid/issues/5438).
+**Requirement:** As a security officer or an incident responder, I want to know which applications were notified and which were not, so that I can tell where a session may still be live. The record is one observability event per participant with a registered URI (per participant, for a termination dropped before it is expanded), and a warning log line for each delivery that fails; a durable audit trail is the subject of [#5438](https://github.com/thunder-id/thunderid/issues/5438).
 
 **Acceptance criteria:**
 
 - **AC7.1:** Given a successful delivery, when the event stream is inspected, then one `BACKCHANNEL_LOGOUT_DELIVERED` event exists carrying `client_id`, `app_id`, `session_id`, `attempt_number`, `http_status`, and `duration_ms`.
 - **AC7.2:** Given a terminal failure, when the event stream is inspected, then one `BACKCHANNEL_LOGOUT_FAILED` event exists with the same fields plus a reason code.
-- **AC7.3:** Given any delivery attempt, when logs are inspected, then one structured Info line carries the same fields, so the record survives an unconfigured observability sink.
+- **AC7.3:** Given a delivery that fails, when logs are inspected, then one structured warning line carries the same fields and the cause, so the failure is on record without an observability sink. Given a successful delivery, nothing is logged at the default level.
 - **AC7.4:** Given any delivery attempt, when events and logs are inspected, then they contain no logout token, no URI query string, no request or response body, and no subject attribute.
 - **AC7.5:** Given a dropped or abandoned event, when the event stream is inspected, then it is recorded as failed with `queue_full` or `shutdown` rather than passing silently.
 
@@ -533,4 +537,6 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 
 | Version | Date | Change |
 |---|---|---|
-| 1.0 | 2026-10-01 | Initial specification, from design discussion #5258. |
+| 0.1 | 2026-10-01 | Initial specification, from design discussion #5258. |
+| 0.2 | 2026-10-02 | Aligned with the dispatcher as reviewed in #5608. |
+| 0.3 | 2026-10-05 | Delivery and the discovery flags depend only on the back-channel flag, not on the logout endpoint, as reviewed in #5630. |

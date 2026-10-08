@@ -416,6 +416,62 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Con
 	assert.Equal(suite.T(), float64(42), result["age"])
 }
 
+// A claim fills an identifying attribute the flow did not collect, but never a credential: a password
+// an external party chose is not one the End-User set.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_ExternalClaims() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: "password", Type: model.TypeString, Credential: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			categoryTypeKey: testUserType,
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", "password": "chosen-by-idp"}),
+		},
+		NodeInputs: []providers.Input{},
+	}
+
+	identifying, credentials, err := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "claimed", identifying["username"])
+	assert.Empty(suite.T(), credentials)
+}
+
+// A claim never stands in for a credential, so a password the flow has not collected is still prompted
+// even when the external identity asserts one.
+func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaimDoesNotSatisfyCredential() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", "password": "chosen-by-idp"}),
+		},
+	}
+
+	credRequired, _, ncRequired, _ := suite.executor.buildMissingInputs(ctx, []model.AttributeInfo{
+		{Attribute: "username", Type: model.TypeString, Required: true},
+		{Attribute: "password", Type: model.TypeString, Required: true, Credential: true},
+	}, map[string]providers.Input{})
+
+	assert.Empty(suite.T(), ncRequired)
+	assert.Len(suite.T(), credRequired, 1)
+	assert.Equal(suite.T(), "password", credRequired[0].Identifier)
+}
+
+// A claim named after the entity type key does not choose the type the user is created as.
+func (suite *ProvisioningExecutorTestSuite) TestGetEntityType_IgnoresExternalClaim() {
+	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+			map[string]interface{}{categoryTypeKey: "admin"}),
+	}}
+
+	assert.Equal(suite.T(), "", suite.executor.getEntityType(ctx))
+}
+
 // TestGetAttributesForProvisioning_UnparseableBooleanIsPassedThrough verifies that a value that
 // does not parse is left as-is, so schema validation reports it instead of a zero value being
 // silently substituted.
@@ -1827,7 +1883,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_UserCategory
 			name:    "SingleSelfRegistrableTypeResolves",
 			allowed: []string{testUserType},
 			entityTypes: map[string]*entitytype.EntityType{
-				testUserType: {Name: testUserType, OUID: testOUID, AllowSelfRegistration: true},
+				testUserType: {Handle: testUserType, OUID: testOUID, AllowSelfRegistration: true},
 			},
 			expected: &entityRef{entityType: testUserType, ouID: testOUID},
 		},
@@ -1835,7 +1891,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_UserCategory
 			name:    "NoSelfRegistrableType",
 			allowed: []string{testUserType},
 			entityTypes: map[string]*entitytype.EntityType{
-				testUserType: {Name: testUserType, OUID: testOUID, AllowSelfRegistration: false},
+				testUserType: {Handle: testUserType, OUID: testOUID, AllowSelfRegistration: false},
 			},
 			expected: nil,
 		},
@@ -1843,8 +1899,8 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_UserCategory
 			name:    "AmbiguousSelfRegistrableTypes",
 			allowed: []string{testUserType, "EXTERNAL"},
 			entityTypes: map[string]*entitytype.EntityType{
-				testUserType: {Name: testUserType, OUID: testOUID, AllowSelfRegistration: true},
-				"EXTERNAL":   {Name: "EXTERNAL", OUID: testOUID, AllowSelfRegistration: true},
+				testUserType: {Handle: testUserType, OUID: testOUID, AllowSelfRegistration: true},
+				"EXTERNAL":   {Handle: "EXTERNAL", OUID: testOUID, AllowSelfRegistration: true},
 			},
 			expected: nil,
 		},
@@ -1854,7 +1910,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_UserCategory
 		suite.Run(tt.name, func() {
 			suite.SetupTest()
 			for name, et := range tt.entityTypes {
-				suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything,
+				suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything,
 					entitytype.TypeCategoryUser, name).
 					Return(et, (*tidcommon.ServiceError)(nil)).Maybe()
 			}
@@ -1874,7 +1930,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_UserCategory
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_EntityTypeLookupFails() {
-	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything,
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything,
 		entitytype.TypeCategoryUser, testUserType).
 		Return(nil, &tidcommon.ServiceError{Code: "internal_error",
 			Error: tidcommon.I18nMessage{DefaultValue: "boom"}}).Once()
@@ -1901,9 +1957,9 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategor
 			InboundAuthProfile: providers.InboundAuthProfile{AllowedAgentTypes: []string{testAgentType}},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryAgent,
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent,
 		testAgentType).
-		Return(&entitytype.EntityType{Name: testAgentType, OUID: testOUID, AllowSelfRegistration: true},
+		Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID, AllowSelfRegistration: true},
 			(*tidcommon.ServiceError)(nil)).Once()
 
 	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
@@ -1923,7 +1979,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategor
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), ref, "an application admitting no agent type provisions none")
-	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByName",
+	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByHandle",
 		mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -1939,8 +1995,8 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategor
 	}
 
 	for _, name := range []string{testAgentType, "another"} {
-		suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryAgent, name).
-			Return(&entitytype.EntityType{Name: name, OUID: testOUID, AllowSelfRegistration: true},
+		suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, name).
+			Return(&entitytype.EntityType{Handle: name, OUID: testOUID, AllowSelfRegistration: true},
 				(*tidcommon.ServiceError)(nil)).Once()
 	}
 
@@ -1959,9 +2015,9 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategor
 			InboundAuthProfile: providers.InboundAuthProfile{AllowedAgentTypes: []string{testAgentType}},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryAgent,
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent,
 		testAgentType).
-		Return(&entitytype.EntityType{Name: testAgentType, OUID: testOUID, AllowSelfRegistration: false},
+		Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID, AllowSelfRegistration: false},
 			(*tidcommon.ServiceError)(nil)).Once()
 
 	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
@@ -4617,18 +4673,18 @@ func (suite *ProvisioningExecutorTestSuite) TestSelfRegistrableEntityTypes_Reads
 		entitytype.TypeCategoryUser:  testUserType,
 		entitytype.TypeCategoryAgent: testAgentType,
 	} {
-		suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, category, name).
-			Return(&entitytype.EntityType{Name: name, OUID: testOUID, AllowSelfRegistration: true},
+		suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, category, name).
+			Return(&entitytype.EntityType{Handle: name, OUID: testOUID, AllowSelfRegistration: true},
 				(*tidcommon.ServiceError)(nil)).Once()
 	}
 
 	userTypes, err := suite.executor.selfRegistrableEntityTypes(ctx, entitytype.TypeCategoryUser)
 	assert.NoError(suite.T(), err)
 	require.Len(suite.T(), userTypes, 1)
-	assert.Equal(suite.T(), testUserType, userTypes[0].Name)
+	assert.Equal(suite.T(), testUserType, userTypes[0].Handle)
 
 	agentTypes, err := suite.executor.selfRegistrableEntityTypes(ctx, entitytype.TypeCategoryAgent)
 	assert.NoError(suite.T(), err)
 	require.Len(suite.T(), agentTypes, 1)
-	assert.Equal(suite.T(), testAgentType, agentTypes[0].Name)
+	assert.Equal(suite.T(), testAgentType, agentTypes[0].Handle)
 }

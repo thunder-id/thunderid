@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent, render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
@@ -362,6 +362,47 @@ describe('CreateUserTypePage', () => {
     expect(screen.getByRole('button', {name: /Continue/i})).toBeDisabled();
   });
 
+  it('generates the handle from the name until the handle is edited', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await pickOrganizationUnit(user);
+    const handleInput = screen.getByTestId('user-type-handle-input');
+
+    await user.type(screen.getByLabelText(/User Type Name/i), 'Customer Accounts');
+    expect(handleInput).toHaveValue('customer-accounts');
+
+    await user.clear(handleInput);
+    await user.type(handleInput, 'custom_handle');
+    await user.type(screen.getByLabelText(/User Type Name/i), ' Extra');
+
+    expect(handleInput).toHaveValue('custom_handle');
+  });
+
+  it('blocks Continue and shows an error when the handle format is invalid', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await pickOrganizationUnit(user);
+    await user.type(screen.getByLabelText(/User Type Name/i), 'Employee');
+    await user.clear(screen.getByTestId('user-type-handle-input'));
+    await user.type(screen.getByTestId('user-type-handle-input'), 'employee-');
+
+    expect(screen.getByText(/Handle must start and end with a lowercase letter or number/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeDisabled();
+  });
+
+  it('blocks Continue when the handle is empty', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await pickOrganizationUnit(user);
+    await user.type(screen.getByLabelText(/User Type Name/i), 'Employee');
+    await user.clear(screen.getByTestId('user-type-handle-input'));
+
+    expect(screen.getByRole('button', {name: /Continue/i})).toBeDisabled();
+  });
+
   it('allows toggling self-registration on the Details step', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -614,7 +655,8 @@ describe('CreateUserTypePage', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        name: 'Employee',
+        handle: 'employee',
+        displayName: 'Employee',
         ouId: 'root-ou',
         schema: {
           email: {
@@ -655,7 +697,8 @@ describe('CreateUserTypePage', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        name: 'Employee',
+        handle: 'employee',
+        displayName: 'Employee',
         ouId: 'ou-123',
         allowSelfRegistration: true,
         schema: {
@@ -796,7 +839,8 @@ describe('CreateUserTypePage', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        name: 'RegexTest',
+        handle: 'regextest',
+        displayName: 'RegexTest',
         ouId: 'root-ou',
         schema: {
           code: {
@@ -832,7 +876,8 @@ describe('CreateUserTypePage', () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
-        name: 'NumberTest',
+        handle: 'numbertest',
+        displayName: 'NumberTest',
         ouId: 'root-ou',
         schema: {
           employeeId: {

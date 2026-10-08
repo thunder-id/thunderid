@@ -20,6 +20,11 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     resource_identifier: {{ $resourceIdentifier | quote }},
     {{- end }}
   },
+  // Mirrors direct_api.enabled in deployment.yaml. When false, the Console hides the Direct API
+  // endpoints.
+  direct_api: {
+    enabled: {{ .Values.configuration.directApi.enabled }},
+  },
   {{- if .Values.configuration.server.publicUrl }}
   // Defaults to the origin this app is served from. Required only when the server's
   // external URL differs.

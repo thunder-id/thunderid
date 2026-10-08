@@ -16,9 +16,9 @@ import (
 // below the flow graph: a flow author cannot omit the check by rewriting a flow definition, and no
 // executor has to opt in.
 type SubjectTypeConstraints struct {
-	// AllowedUserTypes are the user type names accepted as a subject
+	// AllowedUserTypes are the user type handles accepted as a subject
 	AllowedUserTypes []string
-	// AllowedAgentTypes are the agent type names accepted as a subject. Empty accepts no agent.
+	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent.
 	AllowedAgentTypes []string
 }
 

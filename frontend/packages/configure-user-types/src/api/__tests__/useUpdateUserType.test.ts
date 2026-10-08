@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {waitFor, act, renderHook} from '@thunderid/test-utils';
@@ -22,7 +22,8 @@ describe('useUpdateUserType', () => {
 
   const mockUserType: ApiUserType = {
     id: '123',
-    name: 'Person',
+    handle: 'person',
+    displayName: 'Person',
     ouId: 'ou-1',
     allowSelfRegistration: true,
     schema: {
@@ -34,7 +35,7 @@ describe('useUpdateUserType', () => {
   };
 
   const mockUpdateRequest: UpdateUserTypeRequest = {
-    name: 'Person',
+    displayName: 'Person',
     ouId: 'ou-1',
     allowSelfRegistration: true,
     schema: {

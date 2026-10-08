@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -179,15 +180,16 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 			PasskeyAllowedOrigins:     appRequest.PasskeyAllowedOrigins,
 			Attestation:               appRequest.Attestation,
 		},
-		Type:       appRequest.Type,
-		Template:   appRequest.Template,
-		FlowSecret: appRequest.FlowSecret,
-		URL:        appRequest.URL,
-		LogoURL:    appRequest.LogoURL,
-		TosURI:     appRequest.TosURI,
-		PolicyURI:  appRequest.PolicyURI,
-		Contacts:   appRequest.Contacts,
-		Metadata:   appRequest.Metadata,
+		Type:            appRequest.Type,
+		Template:        appRequest.Template,
+		FlowSecret:      appRequest.FlowSecret,
+		URL:             appRequest.URL,
+		LogoURL:         appRequest.LogoURL,
+		TosURI:          appRequest.TosURI,
+		PolicyURI:       appRequest.PolicyURI,
+		Contacts:        appRequest.Contacts,
+		Metadata:        appRequest.Metadata,
+		SharingPolicies: appRequest.SharingPolicies,
 	}
 	if len(appRequest.InboundAuthConfig) > 0 {
 		inboundAuthConfigDTOs := make([]providers.InboundAuthConfigWithSecret, 0)
@@ -212,6 +214,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 					RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 					DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
 					IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
+					ClientIDMetadataDocument:           config.OAuthConfig.ClientIDMetadataDocument,
 					Token:                              config.OAuthConfig.Token,
 					Scopes:                             config.OAuthConfig.Scopes,
 					UserInfo:                           config.OAuthConfig.UserInfo,
@@ -273,6 +276,50 @@ func makeAppDeclarativeConfig(appService ApplicationServiceInterface) entity.Dec
 		Directory: "applications",
 		Category:  providers.EntityCategoryApp,
 		Parser:    makeAppEntityParser(appService),
+	}
+}
+
+// makeAppSharingConfig creates the loader config the sharing framework reads an application's
+// declared policies with. It names the applications directory, because a policy is carried inside
+// the application that declares it rather than in a document of its own.
+func makeAppSharingConfig(appService ApplicationServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  ApplicationSharingType,
+		DirectoryName: "applications",
+		Parser:        makeAppSharingParser(appService),
+	}
+}
+
+// makeAppSharingParser returns a parser that reads the sharing half of one application document.
+//
+// It validates through the service because a document may name its organization unit by handle,
+// and only the service resolves that to the id a policy is declared against.
+func makeAppSharingParser(
+	appService ApplicationServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		appDTO, err := parseToApplicationDTO(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse application YAML: %w", err)
+		}
+		// Most documents declare no policy, and validating one that has nothing to declare would be
+		// a third pass for an answer already known.
+		if len(appDTO.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: appDTO.ID}, nil
+		}
+
+		validatedApp, _, svcErr := appService.ValidateApplication(
+			security.WithRuntimeContext(context.Background()), appDTO)
+		if svcErr != nil {
+			return nil, fmt.Errorf("error validating application '%s': %v", appDTO.Name, svcErr)
+		}
+
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   validatedApp.ID,
+			ResourceName: validatedApp.Name,
+			OwningOUID:   validatedApp.OUID,
+			Policies:     appDTO.SharingPolicies,
+		}, nil
 	}
 }
 

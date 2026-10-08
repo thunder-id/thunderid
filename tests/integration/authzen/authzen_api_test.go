@@ -57,8 +57,9 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: authzenUserTypeName,
-		OUID: ts.ouID,
+		Handle:      authzenUserTypeName,
+		DisplayName: "Authzen Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 		},

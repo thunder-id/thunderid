@@ -155,4 +155,19 @@ describe('getApplicationErrorMessage', () => {
       "The Sign-up Flow references a different Sign-in Flow than the one configured for this application. Update the Sign-up Flow so it calls the same Sign-in Flow, or change the application's Sign-in Flow configuration.",
     );
   });
+
+  it('names the back-channel logout URI field when the server refuses a private address', () => {
+    const error = {
+      response: {
+        data: {
+          code: 'APP-1024',
+          description: {key: 'error.applicationservice.backchannel_logout_uri_private_host_description'},
+        },
+      },
+    } as unknown as Error;
+
+    expect(getApplicationErrorMessage(error, t, 'update.error')).toContain(
+      'The server refused the back-channel logout URI',
+    );
+  });
 });

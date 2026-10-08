@@ -136,7 +136,8 @@ var acrE2ETestOU = testutils.OrganizationUnit{
 }
 
 var acrE2EUserSchema = testutils.UserType{
-	Name: "acr_e2e_test_person",
+	Handle:      "acr_e2e_test_person",
+	DisplayName: "Acr E2e Test Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -145,7 +146,7 @@ var acrE2EUserSchema = testutils.UserType{
 }
 
 var acrE2ETestUser = testutils.User{
-	Type: acrE2EUserSchema.Name,
+	Type: acrE2EUserSchema.Handle,
 	Attributes: json.RawMessage(`{
 		"username": "acre2euser",
 		"password": "testpassword",
@@ -209,7 +210,7 @@ func (ts *AcrIDTokenTestSuite) SetupSuite() {
 		ClientID:                  acrE2EClientID,
 		ClientSecret:              acrE2EClientSecret,
 		RedirectURIs:              []string{acrE2ERedirectURI},
-		AllowedUserTypes:          []string{acrE2EUserSchema.Name},
+		AllowedUserTypes:          []string{acrE2EUserSchema.Handle},
 		InboundAuthConfig: []map[string]interface{}{
 			{
 				"type": "oauth2",

@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -29,10 +29,10 @@ type groupMember struct {
 }
 
 type groupCreateRequest struct {
-	Name               string        `json:"name"`
-	Description        string        `json:"description,omitempty"`
-	OUID               string        `json:"ouId"`
-	Members            []groupMember `json:"members,omitempty"`
+	Name        string        `json:"name"`
+	Description string        `json:"description,omitempty"`
+	OUID        string        `json:"ouId"`
+	Members     []groupMember `json:"members,omitempty"`
 }
 
 type groupCreateResponse struct {
@@ -42,7 +42,8 @@ type groupCreateResponse struct {
 
 var (
 	entityType = testutils.UserType{
-		Name: "test-user-person",
+		Handle:      "test-user-person",
+		DisplayName: "Test User Person",
 		Schema: map[string]interface{}{
 			"age": map[string]interface{}{"type": "number"},
 			"roles": map[string]interface{}{
@@ -83,14 +84,14 @@ var (
 )
 
 var (
-	createdUserID            string
-	testOUID                 string
-	createdGroupID           string
-	entityTypeID             string
-	credentialEntityTypeID   string
-	credentialUserID         string
-	credentialUsername        string
-	credentialPassword       string
+	createdUserID          string
+	testOUID               string
+	createdGroupID         string
+	entityTypeID           string
+	credentialEntityTypeID string
+	credentialUserID       string
+	credentialUsername     string
+	credentialPassword     string
 )
 
 type UserAPITestSuite struct {
@@ -134,8 +135,9 @@ func (ts *UserAPITestSuite) SetupSuite() {
 	credentialPassword = "InitialP@ssw0rd!"
 
 	credentialType := testutils.UserType{
-		Name: "admin-cred-update-type",
-		OUID: testOUID,
+		Handle:      "admin-cred-update-type",
+		DisplayName: "Admin Cred Update Type",
+		OUID:        testOUID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"email":    map[string]interface{}{"type": "string", "required": true, "unique": true},
@@ -283,10 +285,10 @@ func (ts *UserAPITestSuite) TestUserListing() {
 
 	var foundCreatedUser bool
 	expectedUser := testutils.User{
-		ID:               createdUserID,
-		OUID:             testOUID,
-		Type:             testUser.Type,
-		Attributes:       testUser.Attributes,
+		ID:         createdUserID,
+		OUID:       testOUID,
+		Type:       testUser.Type,
+		Attributes: testUser.Attributes,
 	}
 	for _, user := range users {
 		if Equals(user, expectedUser) {
@@ -385,10 +387,10 @@ func (ts *UserAPITestSuite) TestUserGetByID() {
 		ts.T().Fatal("user ID is not available for retrieval")
 	}
 	expectedUser := testutils.User{
-		ID:               createdUserID,
-		OUID:             testOUID,
-		Type:             testUser.Type,
-		Attributes:       testUser.Attributes,
+		ID:         createdUserID,
+		OUID:       testOUID,
+		Type:       testUser.Type,
+		Attributes: testUser.Attributes,
 	}
 	retrieveAndValidateUserDetails(ts, expectedUser)
 }
@@ -430,10 +432,10 @@ func (ts *UserAPITestSuite) TestUserUpdate() {
 
 	// Validate the update by retrieving the user
 	retrieveAndValidateUserDetails(ts, testutils.User{
-		ID:               createdUserID,
-		OUID:             userToUpdate.OUID,
-		Type:             userToUpdate.Type,
-		Attributes:       userToUpdate.Attributes,
+		ID:         createdUserID,
+		OUID:       userToUpdate.OUID,
+		Type:       userToUpdate.Type,
+		Attributes: userToUpdate.Attributes,
 	})
 }
 

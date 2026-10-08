@@ -63,9 +63,9 @@ clientSecret: sf-test-github-secret
 redirectUri: https://localhost:8095/callback
 attributeConfiguration:
   user_type_resolution:
-    default: Person
+    default: person
   user_type_attribute_mappings:
-    - user_type: Person
+    - user_type: person
       attributes:
         - external_attribute: login
           local_attribute: username
@@ -280,7 +280,7 @@ func (s *SingleFileModeSuite) TestAttributeConfigurationLoadedFromFile() {
 	// tags while the file is parsed with the yaml ones. See G13.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	s.Require().True(ok, "expected userTypeResolution in %v", config)
-	s.Equal("Person", resolution["default"])
+	s.Equal("person", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	s.Require().True(ok, "expected accountLinking in %v", config)
@@ -291,7 +291,7 @@ func (s *SingleFileModeSuite) TestAttributeConfigurationLoadedFromFile() {
 	s.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	s.Require().True(ok)
-	s.Equal("Person", entry["userType"])
+	s.Equal("person", entry["userType"])
 	attributes, ok := entry["attributes"].([]interface{})
 	s.Require().True(ok)
 	s.Require().Len(attributes, 1)
@@ -340,7 +340,7 @@ func (s *SingleFileModeSuite) TestEmptyVersusOmittedAttributeConfigurationFromFi
 	s.Require().NoError(err, "failed to list user types")
 	for _, userType := range userTypes {
 		s.Require().True(userType.IsAttributeUnique("email"),
-			"seeding precondition: user type %q allows duplicate emails", userType.Name)
+			"seeding precondition: user type %q allows duplicate emails", userType.Handle)
 	}
 
 	s.Equal([]interface{}{"email"}, seededLinking["attributes"],
@@ -367,7 +367,7 @@ func (s *SingleFileModeSuite) TestSecretMaskingLeavesAttributeConfigurationIntac
 	// compared against what the fixture declares.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	s.Require().True(ok, "expected userTypeResolution in %v", config)
-	s.Equal("Person", resolution["default"])
+	s.Equal("person", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	s.Require().True(ok, "expected accountLinking in %v", config)
@@ -378,7 +378,7 @@ func (s *SingleFileModeSuite) TestSecretMaskingLeavesAttributeConfigurationIntac
 	s.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	s.Require().True(ok)
-	s.Equal("Person", entry["userType"])
+	s.Equal("person", entry["userType"])
 	attributes, ok := entry["attributes"].([]interface{})
 	s.Require().True(ok)
 	s.Require().Len(attributes, 1)

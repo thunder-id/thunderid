@@ -42,7 +42,7 @@ export default function SubjectMappingSection({values, onChange}: SubjectMapping
   const groups = useMemo(() => {
     const categoryResolvedGroups = state.groups.map((group) => {
       if (group.category === 'user' || group.category === 'agent') return group;
-      const matches = subjectTypes.filter((type) => type.name === group.userType);
+      const matches = subjectTypes.filter((type) => type.handle === group.userType);
       return matches.length === 1 ? {...group, category: matches[0].category} : group;
     });
     return categoryResolvedGroups.map((group) => {
@@ -53,8 +53,8 @@ export default function SubjectMappingSection({values, onChange}: SubjectMapping
           .map((other) => other.userType)
           .filter(Boolean),
       );
-      const available = subjectTypes.filter((type) => type.category === group.category && !used.has(type.name));
-      return available.length === 1 ? {...group, userType: available[0].name} : group;
+      const available = subjectTypes.filter((type) => type.category === group.category && !used.has(type.handle));
+      return available.length === 1 ? {...group, userType: available[0].handle} : group;
     });
   }, [state.groups, subjectTypes]);
 
@@ -76,7 +76,7 @@ export default function SubjectMappingSection({values, onChange}: SubjectMapping
           .map((group) => group.userType)
           .filter(Boolean),
       );
-      const available = subjectTypes.filter((type) => type.category === category && !used.has(type.name));
+      const available = subjectTypes.filter((type) => type.category === category && !used.has(type.handle));
       return {
         ...previous,
         groups: [
@@ -84,7 +84,7 @@ export default function SubjectMappingSection({values, onChange}: SubjectMapping
           {
             key: previous.seq + 1,
             category,
-            userType: available.length === 1 ? available[0].name : '',
+            userType: available.length === 1 ? available[0].handle : '',
             rows: [{key: previous.seq + 2, attribute: '', pdpAttribute: ''}],
           },
         ],

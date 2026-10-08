@@ -21,7 +21,7 @@ import {
 import {GatePreview} from '@thunderid/configure-design';
 import {useGetFlowById} from '@thunderid/configure-flows';
 import {useGetOrganizationUnit} from '@thunderid/configure-organization-units';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {DefaultTheme, type Theme, useGetTheme} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, Chip, Link, Paper, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
@@ -187,7 +187,7 @@ export default function IntegrationGuides({
 }: IntegrationGuidesProps): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('IntegrationGuides');
-  const {config, getServerUrl, getDocumentationLink} = useConfig();
+  const {config, getDocumentationLink} = useConfig();
   const {data: themeDetails} = useGetTheme(application.themeId ?? '');
   const {data: authFlowDetails} = useGetFlowById(application.authFlowId);
   const {data: registrationFlowDetails} = useGetFlowById(
@@ -317,54 +317,61 @@ export default function IntegrationGuides({
     }
   };
 
-  const serverUrl = getServerUrl();
+  // The endpoints below are for someone to copy into their own application, so they have to
+  // name the deployment that answers them rather than the one the console is configured against.
+  const runtimeUrl = useRuntimeUrl();
+  const isDirectApiEnabled = config.direct_api?.enabled !== false;
   const flowEndpoints = [
     {
       key: 'flowExecute',
       label: t('applications:edit.overview.endpoints.flowExecute', 'Flow execution endpoint'),
-      url: `${serverUrl}/flow/execute`,
+      url: `${runtimeUrl}/flow/execute`,
     },
     {
       key: 'flowMeta',
       label: t('applications:edit.overview.endpoints.flowMeta', 'Flow metadata endpoint'),
-      url: `${serverUrl}/flow/meta`,
+      url: `${runtimeUrl}/flow/meta`,
     },
-    {
-      key: 'passkeyRegisterStart',
-      label: t('applications:edit.overview.endpoints.passkeyRegisterStart', 'Passkey registration (start)'),
-      url: `${serverUrl}/register/passkey/start`,
-    },
-    {
-      key: 'passkeyRegisterFinish',
-      label: t('applications:edit.overview.endpoints.passkeyRegisterFinish', 'Passkey registration (finish)'),
-      url: `${serverUrl}/register/passkey/finish`,
-    },
+    ...(isDirectApiEnabled
+      ? [
+          {
+            key: 'passkeyRegisterStart',
+            label: t('applications:edit.overview.endpoints.passkeyRegisterStart', 'Passkey registration (start)'),
+            url: `${runtimeUrl}/register/passkey/start`,
+          },
+          {
+            key: 'passkeyRegisterFinish',
+            label: t('applications:edit.overview.endpoints.passkeyRegisterFinish', 'Passkey registration (finish)'),
+            url: `${runtimeUrl}/register/passkey/finish`,
+          },
+        ]
+      : []),
   ];
   const oauthEndpoints = [
     {
       key: 'wellknown',
       label: t('applications:edit.overview.endpoints.wellknown', 'OpenID configuration'),
-      url: `${serverUrl}/.well-known/openid-configuration`,
+      url: `${runtimeUrl}/.well-known/openid-configuration`,
     },
     {
       key: 'authorization',
       label: t('applications:edit.overview.endpoints.authorization', 'Authorization endpoint'),
-      url: `${serverUrl}/oauth2/authorize`,
+      url: `${runtimeUrl}/oauth2/authorize`,
     },
     {
       key: 'token',
       label: t('applications:edit.overview.endpoints.token', 'Token endpoint'),
-      url: `${serverUrl}/oauth2/token`,
+      url: `${runtimeUrl}/oauth2/token`,
     },
     {
       key: 'userinfo',
       label: t('applications:edit.overview.endpoints.userinfo', 'Userinfo endpoint'),
-      url: `${serverUrl}/oauth2/userinfo`,
+      url: `${runtimeUrl}/oauth2/userinfo`,
     },
     {
       key: 'jwks',
       label: t('applications:edit.overview.endpoints.jwks', 'JWKS URI'),
-      url: `${serverUrl}/oauth2/jwks`,
+      url: `${runtimeUrl}/oauth2/jwks`,
     },
   ];
   // Apps with their own backend/native runtime ("App Native", per the Flow Execution API) drive

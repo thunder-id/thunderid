@@ -23,7 +23,7 @@ import (
 // attribute mappings fedPersonType needs to provision, mirroring authzMapping's shape for the
 // rule-based mode.
 func authzDirectMapping(claim, delimiter, targetType, resourceServerID string) *testutils.AttributeConfiguration {
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: claim, Delimiter: delimiter, TargetType: targetType, ResourceServerID: resourceServerID},
@@ -136,7 +136,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_ListValuedClaimResolvesEa
 	user := s.baseUser(s.nextSubject())
 	user.Custom["names"] = []interface{}{"Federated Mapped Reader", "Federated Mapped Editors"}
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: "names", TargetType: testutils.AuthorizationTargetRole},
@@ -155,7 +155,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_DelimitedStringClaimSplit
 	user := s.baseUser(s.nextSubject())
 	user.Custom["names"] = "Federated Mapped Reader,Federated Mapped Editors"
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: "names", Delimiter: ",", TargetType: testutils.AuthorizationTargetRole},
@@ -228,7 +228,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_CombinesWithRuleBasedMapp
 	user.Custom["group_name"] = "Federated Mapped Editors"
 	user.Custom["groups"] = []interface{}{"platform-admins"}
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: "group_name", TargetType: testutils.AuthorizationTargetGroup},
@@ -253,7 +253,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_SameRoleFromBothMechanism
 	user.Custom["role_name"] = "Federated Mapped Reader"
 	user.Custom["groups"] = []interface{}{"platform-admins"}
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: "role_name", TargetType: testutils.AuthorizationTargetRole},
@@ -277,7 +277,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_SamePermissionFromBothMec
 	user.Custom["perms"] = []interface{}{"read"}
 	user.Custom["groups"] = []interface{}{"platform-admins"}
 
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Direct: []testutils.AuthorizationDirectMapping{
 			{Claim: "perms", TargetType: testutils.AuthorizationTargetPermission, ResourceServerID: s.authzResourceServerID},

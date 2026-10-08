@@ -177,6 +177,13 @@ spec:
             declarativeResourcesEnabled:
               type: boolean
               default: true
+            # Registers the Direct API authentication endpoints (/auth/**,
+            # /register/passkey/**). Set to false to remove them from the
+            # server and hide the passkey registration endpoints in the
+            # Console. AuthZEN access endpoints are not affected.
+            directApiEnabled:
+              type: boolean
+              default: true
             port:
               type: integer
               default: 8090
@@ -473,6 +480,9 @@ spec:
               auto_infer_registration: true
               store: "${parameters.runtime.stores.flow}"
 
+            direct_api:
+              enabled: ${parameters.runtime.directApiEnabled}
+
             declarative_resources:
               enabled: ${parameters.runtime.declarativeResourcesEnabled}
 
@@ -599,6 +609,9 @@ spec:
               auto_infer_registration: true
               store: "${parameters.runtime.stores.flow}"
 
+            direct_api:
+              enabled: ${parameters.runtime.directApiEnabled}
+
             declarative_resources:
               enabled: ${parameters.runtime.declarativeResourcesEnabled}
 
@@ -710,6 +723,9 @@ spec:
                 client_id: "${parameters.runtime.console.clientId}",
                 scopes: ${parameters.runtime.console.scopes},
                 resource_identifier: "${parameters.runtime.console.resourceIdentifier != '' ? parameters.runtime.console.resourceIdentifier : environmentConfigs.serverPublicUrl + '/mcp'}",
+              },
+              direct_api: {
+                enabled: ${parameters.runtime.directApiEnabled},
               },
               server: {
                 public_url: "${environmentConfigs.consolePublicUrl != '' ? environmentConfigs.consolePublicUrl : environmentConfigs.serverPublicUrl}",

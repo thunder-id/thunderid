@@ -51,7 +51,8 @@ const (
 // account-linking default for other suites; costCenter is deliberately not unique, since a linking
 // attribute that allows duplicates is what the ambiguity scenarios need in a later phase.
 var fedPersonType = testutils.UserType{
-	Name:                  "fed_person",
+	Handle:                "fed_person",
+	DisplayName:           "Fed Person",
 	AllowSelfRegistration: true,
 	Schema: map[string]interface{}{
 		"username":   map[string]interface{}{"type": "string", "required": true, "unique": true},
@@ -61,6 +62,8 @@ var fedPersonType = testutils.UserType{
 		"city":       map[string]interface{}{"type": "string"},
 		"costCenter": map[string]interface{}{"type": "string"},
 		"sub":        map[string]interface{}{"type": "string"},
+		// Optional; signs a user in before a federated sign-in in the same flow.
+		"password": map[string]interface{}{"type": "string", "credential": true},
 	},
 }
 
@@ -69,7 +72,8 @@ var fedPersonType = testutils.UserType{
 // type is never a provisioning target and deliberately does not allow self registration — that also
 // keeps the flow's user-type resolution unambiguous.
 var fedContractorType = testutils.UserType{
-	Name:                  "fed_contractor",
+	Handle:                "fed_contractor",
+	DisplayName:           "Fed Contractor",
 	AllowSelfRegistration: false,
 	Schema: map[string]interface{}{
 		"username":       map[string]interface{}{"type": "string", "required": true, "unique": true},
@@ -296,7 +300,7 @@ var fedAuthzApp = testutils.Application{
 	ClientID:         "federated_authz_mapping_test_client",
 	ClientSecret:     "federated_authz_mapping_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
 		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 	},
@@ -308,7 +312,7 @@ var fedOAuthApp = testutils.Application{
 	ClientID:         "federated_oauth_auth_test_client",
 	ClientSecret:     "federated_oauth_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
 		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 	},
@@ -320,7 +324,7 @@ var fedAuthApp = testutils.Application{
 	ClientID:         "federated_auth_test_client",
 	ClientSecret:     "federated_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
 		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 	},
@@ -332,7 +336,7 @@ var fedStrictAuthApp = testutils.Application{
 	ClientID:         "federated_strict_auth_test_client",
 	ClientSecret:     "federated_strict_auth_test_secret",
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
-	AllowedUserTypes: []string{fedPersonType.Name},
+	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
 		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 	},
@@ -345,7 +349,7 @@ var fedTestApp = testutils.Application{
 	ClientID:                  "federated_mapping_test_client",
 	ClientSecret:              "federated_mapping_test_secret",
 	RedirectURIs:              []string{"http://localhost:3000/callback"},
-	AllowedUserTypes:          []string{fedPersonType.Name},
+	AllowedUserTypes:          []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
 		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 	},
@@ -413,7 +417,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	for _, userType := range []testutils.UserType{fedPersonType, fedContractorType} {
 		userType.OUID = ouID
 		typeID, err := testutils.CreateUserType(userType)
-		s.Require().NoError(err, "failed to create user type %s", userType.Name)
+		s.Require().NoError(err, "failed to create user type %s", userType.Handle)
 		s.typeIDs = append(s.typeIDs, typeID)
 	}
 
@@ -603,8 +607,10 @@ func (s *FederatedMappingSuite) createAuthApp(
 }
 
 // createScenarioApp creates a flow and an application that runs it, for scenarios whose whole point is a
-// graph the shared flows cannot express. Both are torn down after the test.
-func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID string) string {
+// graph the shared flows cannot express. Both are torn down after the test. The assertion carries the
+// user type, the OU and any assertionAttributes.
+func (s *FederatedMappingSuite) createScenarioApp(
+	flow testutils.Flow, clientID string, assertionAttributes ...string) string {
 	s.T().Helper()
 	flowID, err := testutils.CreateFlow(flow)
 	s.Require().NoError(err, "failed to create flow %s", flow.Handle)
@@ -619,17 +625,33 @@ func (s *FederatedMappingSuite) createScenarioApp(flow testutils.Flow, clientID 
 		ClientID:           clientID,
 		ClientSecret:       clientID + "-secret",
 		RedirectURIs:       []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:   []string{fedPersonType.Name},
+		AllowedUserTypes:   []string{fedPersonType.Handle},
 		OUID:               s.ouID,
 		AuthFlowID:         flowID,
 		RegistrationFlowID: regFlowID,
 		AssertionConfig: map[string]interface{}{
-			"userAttributes": []string{"userType", "ouId"},
+			"userAttributes": append([]string{"userType", "ouId"}, assertionAttributes...),
 		},
 	})
 	s.Require().NoError(err, "failed to create the scenario application")
 	s.perTestAppIDs = append(s.perTestAppIDs, appID)
 	return appID
+}
+
+// authenticateFlow drives an authentication flow for whichever identity the mocks return for sub, and
+// returns the step the federated callback leads to.
+func (s *FederatedMappingSuite) authenticateFlow(appID, sub string) (*common.FlowStep, error) {
+	s.T().Helper()
+	s.activeSub = sub
+
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	s.Require().NoError(err, "failed to initiate the authentication flow")
+	s.Require().Equal("REDIRECTION", step.Type, "expected a redirection, got %+v", step)
+
+	code, state, err := testutils.SimulateFederatedOAuthFlow(step.Data.RedirectURL)
+	s.Require().NoError(err, "failed to simulate authorization at the identity provider")
+	return common.CompleteFlow(step.ExecutionID, map[string]string{"code": code, "state": state}, "",
+		step.ChallengeToken)
 }
 
 func (s *FederatedMappingSuite) TearDownTest() {

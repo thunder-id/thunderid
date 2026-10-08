@@ -207,7 +207,7 @@ func (o *ouExecutor) getDefaultOUID(ctx *providers.NodeContext) (string, error) 
 
 	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
 	for _, userType := range ctx.Application.AllowedUserTypes {
-		et, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
+		et, svcErr := o.entityTypeService.GetEntityTypeByHandle(ctx.Context,
 			entitytype.TypeCategoryUser, userType)
 		if svcErr != nil {
 			return "", fmt.Errorf("failed to retrieve entity type for user type %q: %s",

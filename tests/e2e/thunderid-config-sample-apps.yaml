@@ -23,7 +23,7 @@ assertion:
 loginConsent:
   validityPeriod: 0
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -105,7 +105,7 @@ assertion:
 loginConsent:
   validityPeriod: 0
 allowedUserTypes:
-  - Customer
+  - customer
 inboundAuthConfig:
   - type: oauth2
     config:

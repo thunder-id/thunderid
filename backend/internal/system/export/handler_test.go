@@ -124,6 +124,8 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_Success() {
 	// Assert response
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(suite.T(), "no-store", w.Header().Get("Cache-Control"),
+		"exported secrets must not be cached")
 
 	var response JSONExportResponse
 	err := json.Unmarshal(w.Body.Bytes(), &response)

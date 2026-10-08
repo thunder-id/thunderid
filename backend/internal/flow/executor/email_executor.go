@@ -7,28 +7,32 @@ import (
 	"errors"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/email"
+	"github.com/thunder-id/thunderid/internal/notification"
+	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/template"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // emailExecutor sends emails based on the configured email template and runtime context data.
 type emailExecutor struct {
 	providers.Executor
-	logger          *log.Logger
-	emailClient     email.EmailClientInterface
-	templateService template.TemplateServiceInterface
-	entityProvider  entityprovider.EntityProviderInterface
+	logger           *log.Logger
+	notifSenderSvc   notification.NotificationSenderServiceInterface
+	templateRenderer notificationTemplateRenderer
+	entityProvider   entityprovider.EntityProviderInterface
 }
 
 // newEmailExecutor creates a new instance of the email executor.
-func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
-	templateService template.TemplateServiceInterface,
+func newEmailExecutor(flowFactory core.FlowFactoryInterface,
+	notifSenderSvc notification.NotificationSenderServiceInterface,
+	templateRenderer notificationTemplateRenderer,
 	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
@@ -42,15 +46,20 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 			SupportedModes: []string{ExecutorModeSend},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyEmailTemplate, IsRequired: true},
+				// A node must name the provider it sends through: providers are managed through
+				// /connections/email-smtp and there is no deployment-wide default to fall back
+				// to. It is not marked required, because the shipped flows declare their email
+				// steps before any provider exists. Sending without one fails at execution.
+				{Property: propertyKeyNotificationSenderID},
 			},
 		},
 	)
 	return &emailExecutor{
-		Executor:        base,
-		logger:          logger,
-		emailClient:     emailClient,
-		templateService: templateService,
-		entityProvider:  entityProvider,
+		Executor:         base,
+		logger:           logger,
+		notifSenderSvc:   notifSenderSvc,
+		templateRenderer: templateRenderer,
+		entityProvider:   entityProvider,
 	}
 }
 
@@ -81,16 +90,12 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return execResp, nil
 	}
 
-	if e.emailClient == nil {
-		execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrEmailServiceNotConfigured
-		logger.Debug(ctx.Context, "Email client not configured")
-		return execResp, nil
+	if e.notifSenderSvc == nil {
+		return nil, errors.New("notification sender service is not configured")
 	}
 
-	if e.templateService == nil {
-		return nil, errors.New("template service is not configured")
+	if e.templateRenderer == nil {
+		return nil, errors.New("template renderer is not configured")
 	}
 
 	recipient, err := e.resolveRecipientEmail(ctx, logger)
@@ -104,7 +109,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return execResp, nil
 	}
 
-	var scenario template.ScenarioType
+	var handle string
 	if tmplProp, ok := ctx.NodeProperties[propertyKeyEmailTemplate]; ok {
 		tmplStr, ok := tmplProp.(string)
 		if !ok {
@@ -114,30 +119,46 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		if tmplStr == "" {
 			return nil, fmt.Errorf("email template property is empty in node configuration")
 		}
-		scenario = template.ScenarioType(tmplStr)
-		logger.Debug(ctx.Context, "EmailExecutor: resolved email template", log.String("scenario", tmplStr))
+		handle = tmplStr
+		logger.Debug(ctx.Context, "EmailExecutor: resolved email template", log.String("handle", handle))
 	} else {
 		return nil, fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate)
 	}
 
+	senderID, err := e.resolveSenderID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	templateData := e.resolveTemplateData(ctx)
 
-	rendered, svcErr := e.templateService.Render(ctx.Context, scenario, template.TemplateTypeEmail, templateData)
+	// Locale omitted (renderer falls back to system language); flow-injected locale is future work.
+	rendered, svcErr := e.templateRenderer.Resolve(ctx.Context, notificationtemplate.ChannelTypeEmail, handle,
+		notificationtemplate.RenderInput{
+			Data:    templateData,
+			ThemeID: ctx.Application.ThemeID,
+		})
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to render email template: %s", svcErr.Code)
 	}
 
-	emailData := email.EmailData{
+	notifSvcErr := e.notifSenderSvc.SendEmail(ctx.Context, senderID, notifcm.EmailData{
 		To:      []string{recipient},
 		Subject: rendered.Subject,
 		Body:    rendered.Body,
-		IsHTML:  rendered.IsHTML,
-	}
-
-	if err := e.emailClient.Send(ctx.Context, emailData); err != nil {
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrEmailSendFailed
-		return execResp, nil
+		IsHTML:  true,
+	})
+	if notifSvcErr != nil {
+		// A client error means the node names no usable email provider, a configuration problem
+		// the flow can surface to the caller; anything else is a server-side delivery failure.
+		if notifSvcErr.Type == tidcommon.ClientErrorType {
+			logger.Debug(ctx.Context, "Email provider not configured", log.String("senderID", senderID))
+			execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrEmailProviderNotConfigured
+			return execResp, nil
+		}
+		return nil, fmt.Errorf("email send failed: %s", notifSvcErr.Code)
 	}
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))
@@ -145,6 +166,21 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// resolveSenderID reads the notification sender from the node properties. An absent property
+// yields an empty ID, which SendEmail rejects: a node must name the provider it sends through.
+func (e *emailExecutor) resolveSenderID(ctx *providers.NodeContext) (string, error) {
+	raw, ok := ctx.NodeProperties[propertyKeyNotificationSenderID]
+	if !ok {
+		return "", nil
+	}
+	senderID, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid type for %s: expected string, got %T with value %v",
+			propertyKeyNotificationSenderID, raw, raw)
+	}
+	return senderID, nil
 }
 
 // resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.
@@ -160,6 +196,11 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 	}
 
 	if recipientEmail, ok := ctx.UserInputs[emailAttr]; ok && recipientEmail != "" {
+		return recipientEmail, nil
+	}
+
+	// External claims are only a fallback and must never take priority over runtime data or user inputs.
+	if recipientEmail, ok := core.GetExternalClaim(ctx.RuntimeData, emailAttr); ok && recipientEmail != "" {
 		return recipientEmail, nil
 	}
 
@@ -185,13 +226,24 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 }
 
 // resolveTemplateData extracts template data from RuntimeData, Context, and ForwardedData.
-func (e *emailExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
-	templateData := template.TemplateData{}
+func (e *emailExecutor) resolveTemplateData(ctx *providers.NodeContext) map[string]string {
+	templateData := map[string]string{}
 
-	if ctx.RuntimeData != nil {
-		for k, v := range ctx.RuntimeData {
-			templateData[k] = fmt.Sprintf("%v", v)
+	// Claims are added first so runtime data overrides them. External claims must never take
+	// priority over runtime data, but an empty runtime value does not hide a claim.
+	if extIdentity := core.GetExternalIdentity(ctx.RuntimeData); extIdentity != nil {
+		for k, v := range extIdentity.Claims {
+			templateData[k] = systemutils.ConvertInterfaceValueToString(v)
 		}
+	}
+	for k, v := range ctx.RuntimeData {
+		if k == common.RuntimeKeyExternalIdentity {
+			continue
+		}
+		if _, claimed := templateData[k]; claimed && v == "" {
+			continue
+		}
+		templateData[k] = v
 	}
 
 	if ctx.Application.Name != "" {

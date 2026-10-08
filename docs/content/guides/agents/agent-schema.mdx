@@ -10,6 +10,8 @@ description: The agent schema in {{ProductName}} defines the attributes every ag
 
 The agent schema defines the set of attributes every agent carries. There is one built-in schema, shared by all agents: it belongs to the single agent type, `default`, and <ProductName /> does not accept other agent types, so there is no per-agent-class schema. Each agent holds its own values for the attributes the schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
 
+The agent type has the handle `default` and the display name `Default`. The handle is the identifier that agents and applications use to refer to the agent type. It cannot be changed. The display name is free text and can be changed at any time.
+
 ## Why an agent has a schema
 
 - **Consistent metadata.** Every agent is described by the same fields, so agents are classified and governed the same way across the organization.
@@ -42,6 +44,6 @@ None are required, so an agent can set any, all, or none of them. Set the values
 ## Change the schema
 
 - **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string) or allowed values (enum), then save from the unsaved-changes bar.
-- **API:** manage the schema through the agent-type endpoints. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
+- **API:** manage the schema through the agent-type endpoints. An update must send a `displayName`. The `handle` is optional. If sent, it must be `default`, otherwise the update fails with error `USRS-1014`. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
 
 Because the schema is shared by all agents, a change to it applies to every agent at once.

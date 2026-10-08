@@ -46,8 +46,9 @@ func (ts *SCIMGroupsTestSuite) SetupSuite() {
 
 	ts.entityTypeName = "scim-it-groups-person"
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeName,
-		OUID: ouID,
+		Handle:      ts.entityTypeName,
+		DisplayName: "Entity Type",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{"type": "string", "required": true},
 		},

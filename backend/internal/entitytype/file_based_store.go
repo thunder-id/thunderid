@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -53,16 +53,16 @@ func (f *entityTypeFileBasedStore) GetEntityTypeByID(ctx context.Context, catego
 	return *schema, nil
 }
 
-// GetEntityTypeByName implements entityTypeStoreInterface.
-func (f *entityTypeFileBasedStore) GetEntityTypeByName(ctx context.Context, category TypeCategory,
-	schemaName string) (EntityType, error) {
+// GetEntityTypeByHandle implements entityTypeStoreInterface.
+func (f *entityTypeFileBasedStore) GetEntityTypeByHandle(ctx context.Context, category TypeCategory,
+	handle string) (EntityType, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return EntityType{}, ErrEntityTypeNotFound
 	}
 	for _, item := range list {
 		if schema, ok := item.Data.(*EntityType); ok {
-			if schema.Name == schemaName && schema.Category == category {
+			if schema.Handle == handle && schema.Category == category {
 				return *schema, nil
 			}
 		}
@@ -88,7 +88,8 @@ func (f *entityTypeFileBasedStore) GetEntityTypeList(
 			schemaList = append(schemaList, EntityTypeListItem{
 				ID:                    schema.ID,
 				Category:              schema.Category,
-				Name:                  schema.Name,
+				Handle:                schema.Handle,
+				DisplayName:           schema.DisplayName,
 				OUID:                  schema.OUID,
 				AllowSelfRegistration: schema.AllowSelfRegistration,
 				SystemAttributes:      schema.SystemAttributes,
@@ -97,7 +98,10 @@ func (f *entityTypeFileBasedStore) GetEntityTypeList(
 	}
 
 	sort.Slice(schemaList, func(i, j int) bool {
-		return schemaList[i].Name < schemaList[j].Name
+		if schemaList[i].DisplayName == schemaList[j].DisplayName {
+			return schemaList[i].Handle < schemaList[j].Handle
+		}
+		return schemaList[i].DisplayName < schemaList[j].DisplayName
 	})
 
 	start := offset
@@ -154,7 +158,8 @@ func (f *entityTypeFileBasedStore) GetEntityTypeListByOUIDs(
 				filtered = append(filtered, EntityTypeListItem{
 					ID:                    schema.ID,
 					Category:              schema.Category,
-					Name:                  schema.Name,
+					Handle:                schema.Handle,
+					DisplayName:           schema.DisplayName,
 					OUID:                  schema.OUID,
 					AllowSelfRegistration: schema.AllowSelfRegistration,
 					SystemAttributes:      schema.SystemAttributes,
@@ -164,7 +169,10 @@ func (f *entityTypeFileBasedStore) GetEntityTypeListByOUIDs(
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].Name < filtered[j].Name
+		if filtered[i].DisplayName == filtered[j].DisplayName {
+			return filtered[i].Handle < filtered[j].Handle
+		}
+		return filtered[i].DisplayName < filtered[j].DisplayName
 	})
 
 	start := offset
@@ -227,17 +235,17 @@ func (f *entityTypeFileBasedStore) IsEntityTypeDeclarative(category TypeCategory
 	return schema.Category == category
 }
 
-// GetDisplayAttributesByNames retrieves display attributes for a list of entity type names within a category.
-func (f *entityTypeFileBasedStore) GetDisplayAttributesByNames(
-	ctx context.Context, category TypeCategory, names []string,
+// GetDisplayAttributesByHandles retrieves display attributes for a list of entity type handles within a category.
+func (f *entityTypeFileBasedStore) GetDisplayAttributesByHandles(
+	ctx context.Context, category TypeCategory, handles []string,
 ) (map[string]string, error) {
-	if len(names) == 0 {
+	if len(handles) == 0 {
 		return map[string]string{}, nil
 	}
 
-	nameSet := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		nameSet[name] = struct{}{}
+	handleSet := make(map[string]struct{}, len(handles))
+	for _, handle := range handles {
+		handleSet[handle] = struct{}{}
 	}
 
 	list, err := f.GenericFileBasedStore.List()
@@ -245,17 +253,17 @@ func (f *entityTypeFileBasedStore) GetDisplayAttributesByNames(
 		return nil, err
 	}
 
-	displayAttrs := make(map[string]string, len(names))
+	displayAttrs := make(map[string]string, len(handles))
 	for _, item := range list {
 		if schema, ok := item.Data.(*EntityType); ok {
 			if schema.Category != category {
 				continue
 			}
-			if _, exists := nameSet[schema.Name]; exists {
+			if _, exists := handleSet[schema.Handle]; exists {
 				if schema.SystemAttributes != nil {
-					displayAttrs[schema.Name] = schema.SystemAttributes.Display
+					displayAttrs[schema.Handle] = schema.SystemAttributes.Display
 				} else {
-					displayAttrs[schema.Name] = ""
+					displayAttrs[schema.Handle] = ""
 				}
 			}
 		}

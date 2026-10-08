@@ -24,8 +24,21 @@ type sharingPolicyStoreInterface interface {
 	GetPolicy(ctx context.Context, id string) (Policy, error)
 	// GetPolicyByInitiator returns the one policy an organization unit holds for a resource.
 	GetPolicyByInitiator(ctx context.Context, rt ResourceType, resourceID, initiatingOUID string) (Policy, error)
-	// ListPoliciesForResource returns every policy recorded for one resource.
-	ListPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)
+	// ListPoliciesForResource returns one page of the policies recorded for one resource, for a
+	// management API to serve.
+	ListPoliciesForResource(
+		ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+	) ([]Policy, error)
+	// CountPoliciesForResource returns how many policies one resource has, for that listing's total.
+	CountPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) (int, error)
+	// ListAllPoliciesForResource returns every policy recorded for one resource, with no bound.
+	//
+	// Policy evaluation reads through here, and every question it asks is about the set as a whole:
+	// whether exactly one policy covers an organization unit, and what coverage looked like before
+	// and after an edit. A policy left out is not a shorter answer but a different one, quietly
+	// narrowing who can see a resource, so this read takes neither a page nor the composite store's
+	// record cap.
+	ListAllPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)
 	// ListPoliciesRelevantToChain returns the policies that could cover any organization unit in
 	// the chain. Coverage itself is decided in memory. An empty resourceID spans every resource of
 	// the type, which is what the reverse lookup needs.
@@ -182,20 +195,61 @@ func (s *sharingStore) GetPolicyByInitiator(
 	return s.hydrate(ctx, dbClient, policyFromRow(rows[0]))
 }
 
-// ListPoliciesForResource returns every policy recorded for one resource.
+// ListPoliciesForResource returns one page of the policies recorded for one resource.
 func (s *sharingStore) ListPoliciesForResource(
-	ctx context.Context, rt ResourceType, resourceID string,
+	ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
 ) ([]Policy, error) {
 	dbClient, err := s.client()
 	if err != nil {
 		return nil, err
 	}
 	rows, err := dbClient.QueryContext(ctx, queryListPoliciesForResource,
+		string(rt), resourceID, s.scope(ctx), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sharing policies: %w", err)
+	}
+	return s.hydrateAll(ctx, dbClient, rows)
+}
+
+// ListAllPoliciesForResource returns every policy recorded for one resource.
+func (s *sharingStore) ListAllPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) ([]Policy, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryListAllPoliciesForResource,
 		string(rt), resourceID, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sharing policies: %w", err)
 	}
 	return s.hydrateAll(ctx, dbClient, rows)
+}
+
+// CountPoliciesForResource returns how many policies one resource has.
+func (s *sharingStore) CountPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (int, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return 0, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryCountPoliciesForResource,
+		string(rt), resourceID, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to count sharing policies: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	// Read through ToInt64 rather than asserting int64: the drivers do not agree on the type a
+	// COUNT comes back as.
+	count, ok := utils.ToInt64(rows[0]["total"])
+	if !ok {
+		return 0, fmt.Errorf("failed to read sharing policy count from %v", rows[0]["total"])
+	}
+	return int(count), nil
 }
 
 // ListPoliciesRelevantToChain returns the policies that could cover any organization unit in the

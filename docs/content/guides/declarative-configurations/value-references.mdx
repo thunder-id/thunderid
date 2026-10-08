@@ -1,0 +1,68 @@
+---
+title: Value References
+docType: reference
+description: Name a credential or a configuration value the deployment holds instead of carrying it inline, and have the import put in the value.
+sidebar_position: 5
+---
+
+# Value References
+
+A configuration value can name something the deployment holds instead of carrying it. <ProductName />
+recognizes two prefixes, and an import replaces each with the value held under that name in the
+deployment's variable store.
+
+| Prefix | Refers to | Read back from the store |
+|---|---|---|
+| `sec:` | a secret, such as a client secret | never |
+| `var:` | an ordinary value, such as a client ID | as it is |
+
+```yaml
+resource_type: application
+name: Orders
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: var:APPLICATION_ORDERS_CLIENT_ID
+      clientSecret: sec:APPLICATION_ORDERS_CLIENT_SECRET
+```
+
+The two are independent collections, so the same name may exist in both. The prefix is what says
+which one a reference means. A value with neither prefix is not a reference and is used as it is, and
+so is a value that only contains a reference among other text: a reference is a whole value.
+
+The part after the prefix is the name the store holds the value under. It matches the name an export
+generates for that field, so configuration exported from a control plane and the values a deployment
+holds agree without a second mapping to keep in sync. See [Export Resources](../resource-export.mdx)
+for how those names are derived.
+
+## Why Reference Instead of Store
+
+A reference lets configuration move between deployments without carrying values with it. The
+configuration says which value a resource needs; the deployment says what that value is. Two
+deployments can then run the same configuration with different client IDs and secrets, and the
+configuration itself holds nothing sensitive.
+
+## How a Reference Resolves
+
+Before an imported resource is written, each reference in it is replaced with the value the
+deployment's [variable store](../../apis.mdx) holds: a `var:` reference from its variables, a `sec:`
+reference from its secrets. The resource is then written exactly as if the value had been typed in,
+so it is stored the way that field always is. A client secret is hashed, a secret property is
+encrypted, and a client ID is stored as the identifier it is looked up by.
+
+Because the value is put in when the resource is written, changing a variable or a secret later does
+not change resources already written. Import the configuration again to apply a changed value.
+
+## When a Value Is Not Held
+
+A resource that refers to a name the store does not hold is refused, and the import's result for it
+names every reference it lacked, with the code `IMP-1006`. Other resources in the same import are
+unaffected. The reference text is never written in place of the value: a client secret stored as
+`sec:NAME` would reject every authentication, for a reason that no longer mentions the name.
+
+Set the missing values in the store, then import again.
+
+## On a Control Plane
+
+A control plane keeps configuration as references and holds no values, so an import there leaves
+references as they are. They are resolved by the deployment the configuration is applied to.

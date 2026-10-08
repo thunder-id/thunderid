@@ -43,6 +43,11 @@ type fakeStore struct {
 	// capacity. That is what the database does when another registration commits in between, and it
 	// is the only way to exercise the path where the write, not the count, enforces the limit.
 	createRefuses bool
+	// defaultTakenOnce refuses the first default write, as the index does when a concurrent registration
+	// committed a default gateway first.
+	defaultTakenOnce bool
+	// defaultWriteFails fails every default write with this error, as a broken database would.
+	defaultWriteFails error
 }
 
 func (f *fakeStore) List(context.Context) ([]Gateway, error) { return f.gateways, f.err }
@@ -92,6 +97,18 @@ func (f *fakeStore) Count(context.Context) (int, error) { return len(f.gateways)
 func (f *fakeStore) Create(_ context.Context, gw *Gateway, limit int) (*Gateway, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if gw.IsDefault && f.defaultWriteFails != nil {
+		return nil, f.defaultWriteFails
+	}
+	if gw.IsDefault && f.defaultTakenOnce {
+		// Another registration became the default first: it committed a default gateway, and this write is
+		// refused by the index that keeps the default on one.
+		f.defaultTakenOnce = false
+		f.gateways = append(f.gateways, Gateway{
+			ID: "gw-raced", Name: "raced", BaseURL: "https://raced.example.test", IsDefault: true,
+		})
+		return nil, errDefaultTaken
 	}
 	if f.createRefuses || len(f.gateways) >= limit {
 		return nil, nil
@@ -162,6 +179,100 @@ func TestRegisterRecordsTheGateway(t *testing.T) {
 
 // A deployment pairs with one gateway unless it is configured otherwise, so the second
 // registration is refused rather than quietly accepted.
+// The default a registration asks for reaches the store, which is what moves it.
+func TestRegisterPassesTheDefaultToTheStore(t *testing.T) {
+	store := &fakeStore{}
+	req := validRequest("production")
+	req.IsDefault = true
+
+	registration, svcErr := newTestService(t, store).Register(context.Background(), req)
+
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if len(store.gateways) != 1 || !store.gateways[0].IsDefault {
+		t.Fatalf("the stored gateway does not carry the default: %+v", store.gateways)
+	}
+	if !registration.IsDefault {
+		t.Fatalf("the registration does not report the default: %+v", registration)
+	}
+}
+
+// The first gateway is the default without asking, and a later one does not become the default unless
+// it asks for it.
+func TestTheFirstGatewayRegisteredIsTheDefault(t *testing.T) {
+	allowSeveralGateways(t)
+	store := &fakeStore{}
+	svc := newTestService(t, store)
+
+	first, svcErr := svc.Register(context.Background(), validRequest("first"))
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if !first.IsDefault {
+		t.Fatalf("the first gateway was not the default: %+v", first)
+	}
+
+	second := validRequest("second")
+	second.BaseURL = "https://second.example.test"
+	registered, svcErr := svc.Register(context.Background(), second)
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if registered.IsDefault {
+		t.Fatalf("a later gateway became the default without asking: %+v", registered)
+	}
+}
+
+// Two first registrations made at once both try to become the default and one is refused by the index.
+// That one registers again without it rather than failing, since it never asked to be the default.
+func TestAFirstRegistrationThatLosesTheDefaultRegistersAsNonDefault(t *testing.T) {
+	allowSeveralGateways(t)
+	store := &fakeStore{defaultTakenOnce: true}
+
+	registered, svcErr := newTestService(t, store).Register(context.Background(), validRequest("second"))
+
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if registered.IsDefault {
+		t.Fatalf("the registration that lost the race still became the default: %+v", registered)
+	}
+}
+
+// A default write that fails for any reason other than losing the default is not retried. Retrying it
+// as non-default would leave the first gateway, and so the deployment, with no default gateway.
+func TestAFailedDefaultWriteIsNotRetriedAsNonDefault(t *testing.T) {
+	store := &fakeStore{defaultWriteFails: errors.New("failed to release the default gateway")}
+
+	_, svcErr := newTestService(t, store).Register(context.Background(), validRequest("first"))
+
+	if svcErr == nil || svcErr.Code != tidcommon.InternalServerError.Code {
+		t.Fatalf("expected an internal error, got %v", svcErr)
+	}
+	if len(store.gateways) != 0 {
+		t.Fatalf("the gateway was registered as non-default: %+v", store.gateways)
+	}
+}
+
+// A registration that asks to be the default and loses the race runs again and takes it over, so the
+// last one to ask is the one that holds it.
+func TestADefaultRegistrationThatLosesTheRaceTakesItOver(t *testing.T) {
+	allowSeveralGateways(t)
+	store := &fakeStore{defaultTakenOnce: true}
+	req := validRequest("second")
+	req.IsDefault = true
+
+	registered, svcErr := newTestService(t, store).Register(context.Background(), req)
+
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if !registered.IsDefault {
+		t.Fatalf("the registration that asked to be the default did not get it: %+v", registered)
+	}
+}
+
 func TestRegisterRefusesMoreGatewaysThanConfigured(t *testing.T) {
 	store := &fakeStore{}
 	svc := newTestService(t, store)

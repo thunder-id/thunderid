@@ -56,7 +56,7 @@ func gatewayDoc(t *testing.T, body string) parsedDocument {
 
 func newGatewayImportService(svc gatewayAdapter) ImportServiceInterface {
 	return newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, svc)
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, svc, nil)
 }
 
 const gatewayYAML = `

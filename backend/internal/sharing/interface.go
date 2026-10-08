@@ -9,9 +9,14 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// The interfaces below are the capabilities a resource type brings to the framework, plus the
-// downward organization unit walk the framework needs from the surrounding system. Every one of
+// The interfaces below are the capabilities a resource type brings to the framework. Every one of
 // them is implemented outside this package.
+//
+// The two organization unit capabilities the framework also needs are declared where they are
+// implemented rather than here, and they sit in different places for a reason worth recording:
+// ou.HierarchyEnumeratorInterface walks the tree downwards and belongs to the package that owns the
+// tree, while sysauthz.OUHierarchyResolver answers upward questions and lives in sysauthz because
+// sysauthz consumes it too and ou imports sysauthz.
 
 // ResourceOverlayFieldDeclaration is implemented by every resource type onboarded onto the
 // framework. It is the registration contract: the type names itself, and declares the fields a
@@ -29,18 +34,6 @@ type ResourceOverlayFieldDeclaration interface {
 type OwnerResolver interface {
 	// OwningOUID returns the organization unit that owns resourceID.
 	OwningOUID(ctx context.Context, resourceID string) (string, *tidcommon.ServiceError)
-}
-
-// OUEnumerator is the downward hierarchy capability policy deletion needs.
-//
-// A target names an anchor, not a membership list: a subtree, all-children or root target reaches
-// everything beneath it, and the blanket scopes reach the whole deployment. Cleaning up after a
-// removed policy therefore has to walk down, which the upward-only resolver cannot do.
-type OUEnumerator interface {
-	// DescendantOUIDs returns every organization unit beneath ouID, at any depth.
-	DescendantOUIDs(ctx context.Context, ouID string) ([]string, *tidcommon.ServiceError)
-	// AllOUIDs returns every organization unit in the deployment.
-	AllOUIDs(ctx context.Context) ([]string, *tidcommon.ServiceError)
 }
 
 // FieldDelimiterResolver reports the separator joining the segments of a hierarchical path.

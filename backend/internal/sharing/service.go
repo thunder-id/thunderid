@@ -18,7 +18,9 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -34,6 +36,9 @@ type SharingServiceInterface interface {
 	CreatePolicy(
 		ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
 	) (Policy, *tidcommon.ServiceError)
+	// LoadDeclarativeResources reads a resource type's declarative documents and declares the
+	// sharing policies they carry. Called once per shareable resource type, at startup.
+	LoadDeclarativeResources(ctx context.Context, cfg DeclarativeLoaderConfig) error
 	// CreateDeclarativePolicy records a policy declared by a resource file. It runs the identical
 	// validation, but the policy is held in memory and cannot later be edited through the API.
 	CreateDeclarativePolicy(
@@ -47,8 +52,13 @@ type SharingServiceInterface interface {
 
 	// GetPolicy returns one policy by id.
 	GetPolicy(ctx context.Context, policyID string) (Policy, *tidcommon.ServiceError)
-	// ListPolicies returns every policy recorded for a resource.
+	// ListPolicies returns every policy recorded for a resource, unbounded. This is the whole-set
+	// read the framework itself uses; a management API wants GetPolicyList instead.
 	ListPolicies(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, *tidcommon.ServiceError)
+	// GetPolicyList returns one page of a resource's policies, for a management API to serve.
+	GetPolicyList(
+		ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+	) (PolicyList, *tidcommon.ServiceError)
 	// ExportPolicies returns a resource's policies in an order safe to replay sequentially.
 	ExportPolicies(
 		ctx context.Context, rt ResourceType, resourceID string,
@@ -104,7 +114,7 @@ type sharingService struct {
 	ouHierarchyResolver sysauthz.OUHierarchyResolver
 	// ouEnumerator walks the tree downwards, which policy deletion needs to find the units beneath
 	// a removed target. Kept separate from the resolver above: enumeration is not an access decision.
-	ouEnumerator  OUEnumerator
+	ouEnumerator  oupkg.HierarchyEnumeratorInterface
 	transactioner providers.Transactioner
 
 	// The caches are all derived from the policy graph, so any write clears them wholesale: one
@@ -129,7 +139,7 @@ func newSharingService(
 	dbStore sharingPolicyStoreInterface,
 	fileStore *fileBasedStore,
 	ouHierarchyResolver sysauthz.OUHierarchyResolver,
-	ouEnumerator OUEnumerator,
+	ouEnumerator oupkg.HierarchyEnumeratorInterface,
 	transactioner providers.Transactioner,
 	visibilityCache cache.CacheInterface[bool],
 	overlayRuleCache cache.CacheInterface[ResolvedOverlay],
@@ -161,6 +171,13 @@ func (s *sharingService) CreatePolicy(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
 ) (Policy, *tidcommon.ServiceError) {
 	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, false)
+}
+
+// LoadDeclarativeResources reads a resource type's documents and declares the policies they carry.
+func (s *sharingService) LoadDeclarativeResources(
+	ctx context.Context, cfg DeclarativeLoaderConfig,
+) error {
+	return loadDeclarativeResources(ctx, s, s.fileStore, cfg)
 }
 
 // CreateDeclarativePolicy records a policy a resource file declares.
@@ -389,7 +406,7 @@ func (s *sharingService) buildPolicy(
 func (s *sharingService) requireEditLeavesFrontiersIntact(
 	ctx context.Context, proposed Policy,
 ) *tidcommon.ServiceError {
-	policies, err := s.store.ListPoliciesForResource(ctx, proposed.ResourceType, proposed.ResourceID)
+	policies, err := s.store.ListAllPoliciesForResource(ctx, proposed.ResourceType, proposed.ResourceID)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list policies for resource", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -951,7 +968,7 @@ func (s *sharingService) UpdatePolicy(
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Read before the write, for the same reason the delete path does: cleanup needs to know
 		// which organization units the reshares beneath this policy had reached.
-		before, err := s.store.ListPoliciesForResource(txCtx, current.ResourceType, current.ResourceID)
+		before, err := s.store.ListAllPoliciesForResource(txCtx, current.ResourceType, current.ResourceID)
 		if err != nil {
 			return err
 		}
@@ -1057,7 +1074,7 @@ func (s *sharingService) blanketRulesNarrowOnly(
 // parent to walk from. The order is shallowest initiator first, since a covering policy's initiator
 // always sits above the unit it covers, so each ceiling is rebuilt before the rules clamped to it.
 func (s *sharingService) rematerializeDependents(ctx context.Context, edited Policy) error {
-	policies, err := s.store.ListPoliciesForResource(ctx, edited.ResourceType, edited.ResourceID)
+	policies, err := s.store.ListAllPoliciesForResource(ctx, edited.ResourceType, edited.ResourceID)
 	if err != nil {
 		return err
 	}
@@ -1159,7 +1176,7 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 		// Listed before the delete, not after. PARENT_POLICY_ID cascades, so the reshares beneath
 		// this policy are gone by the time it returns, and cleanup would never learn which
 		// organization units they had reached. Those units are exactly the ones losing the resource.
-		before, err := s.store.ListPoliciesForResource(txCtx, policy.ResourceType, policy.ResourceID)
+		before, err := s.store.ListAllPoliciesForResource(txCtx, policy.ResourceType, policy.ResourceID)
 		if err != nil {
 			return err
 		}
@@ -1372,12 +1389,62 @@ func (s *sharingService) GetPolicy(ctx context.Context, policyID string) (Policy
 func (s *sharingService) ListPolicies(
 	ctx context.Context, rt ResourceType, resourceID string,
 ) ([]Policy, *tidcommon.ServiceError) {
-	stored, err := s.store.ListPoliciesForResource(ctx, rt, resourceID)
+	stored, err := s.store.ListAllPoliciesForResource(ctx, rt, resourceID)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list sharing policies", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	return stored, nil
+}
+
+// GetPolicyList returns one page of a resource's policies.
+//
+// This is the only read in the framework that may answer with part of a resource's policies. It is
+// safe here because a listing is shown to a person, whereas every evaluation read decides coverage
+// from the set as a whole and goes through ListPoliciesForResource instead.
+func (s *sharingService) GetPolicyList(
+	ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+) (PolicyList, *tidcommon.ServiceError) {
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return PolicyList{}, svcErr
+	}
+
+	total, err := s.store.CountPoliciesForResource(ctx, rt, resourceID)
+	if err != nil {
+		return PolicyList{}, s.listingError(ctx, err)
+	}
+	policies, err := s.store.ListPoliciesForResource(ctx, rt, resourceID, limit, offset)
+	if err != nil {
+		return PolicyList{}, s.listingError(ctx, err)
+	}
+
+	return PolicyList{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(policies),
+		Policies:     policies,
+	}, nil
+}
+
+// validatePaginationParams refuses a page the store should never be asked for.
+func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return &ErrorInvalidLimit
+	}
+	if offset < 0 {
+		return &ErrorInvalidOffset
+	}
+	return nil
+}
+
+// listingError separates the one failure a caller can act on, by listing a resource with fewer
+// policies, from the ones only an operator can.
+func (s *sharingService) listingError(ctx context.Context, err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrorResultLimitExceededInCompositeMode
+	}
+	s.logger.Error(ctx, "Failed to list sharing policies", log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // ExportPolicies returns a resource's policies in an order safe to replay sequentially: the policy

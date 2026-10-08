@@ -33,7 +33,7 @@ type CustomClient struct {
 }
 
 // newCustomClient creates a new instance of CustomClient.
-func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
+func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (MessageClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 
 	client := &CustomClient{}
@@ -78,7 +78,7 @@ func (c *CustomClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
+func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
 		return c.sendSMS(ctx, data)
@@ -88,7 +88,7 @@ func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, dat
 }
 
 // sendSMS sends an SMS via the custom webhook.
-func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData) error {
+func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 	logger.Debug(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
 

@@ -5,10 +5,10 @@ import {useGetApplications} from '@thunderid/configure-applications';
 import type {BasicApplication} from '@thunderid/configure-applications';
 import {useGetGroups} from '@thunderid/configure-groups';
 import type {GroupBasic} from '@thunderid/configure-groups';
-import {useGetUsers} from '@thunderid/configure-users';
+import {useGetUsers, useGetUserTypes} from '@thunderid/configure-users';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
-import {getErrorMessage} from '@thunderid/utils';
+import {getErrorMessage, getUserTypeLabel} from '@thunderid/utils';
 import {
   Dialog,
   DialogTitle,
@@ -60,6 +60,7 @@ export default function AddAssignmentDialog({
   initialTab = 0,
 }: AddAssignmentDialogProps): JSX.Element {
   const {t} = useTranslation();
+  const {data: userTypesData} = useGetUserTypes();
   const dataGridLocaleText = useDataGridLocaleText();
 
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -241,11 +242,11 @@ export default function AddAssignmentDialog({
         headerName: t('roles:assignments.dialog.columns.userType'),
         width: 150,
         renderCell: (params): JSX.Element => (
-          <Chip label={params.row.type} size="small" variant="outlined" sx={{textTransform: 'capitalize'}} />
+          <Chip label={getUserTypeLabel(userTypesData?.types ?? [], params.row.type)} size="small" variant="outlined" />
         ),
       },
     ],
-    [t],
+    [t, userTypesData],
   );
 
   const groupColumns: DataGrid.GridColDef<GroupBasic>[] = useMemo(

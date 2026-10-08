@@ -17,12 +17,19 @@ import {
 import {useMemo, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import {getTemplateScenarioLabel, getTemplateScenarioOptions} from './utils';
+import {buildTemplateLabels, buildTemplateOptions} from './utils';
+import useGetNotificationTemplates from '../../../../api/useGetNotificationTemplates';
 import type {StepData} from '../../../../models/steps';
 
 function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
   const {data: smsProviders, isLoading: isLoadingSMSProviders} = useSMSProviders();
+  const {
+    data: templates,
+    isLoading: isLoadingTemplates,
+    isSuccess: isTemplatesSuccess,
+    isError: isTemplatesError,
+  } = useGetNotificationTemplates('sms');
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
@@ -35,7 +42,14 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
 
   const smsTemplate = (properties['smsTemplate'] as string) || '';
 
-  const templateOptions = useMemo((): string[] => getTemplateScenarioOptions(smsTemplate), [smsTemplate]);
+  const templateOptions = useMemo(
+    (): string[] => buildTemplateOptions(templates, smsTemplate),
+    [templates, smsTemplate],
+  );
+
+  const labelByHandle = useMemo((): Record<string, string> => buildTemplateLabels(templates), [templates]);
+
+  const hasTemplates = (templates?.length ?? 0) > 0;
 
   return (
     <Stack gap={2}>
@@ -49,7 +63,8 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
           id="sms-template"
           options={templateOptions}
           value={smsTemplate || null}
-          getOptionLabel={(option: string) => getTemplateScenarioLabel(option, t)}
+          loading={isLoadingTemplates}
+          getOptionLabel={(option: string) => labelByHandle[option] ?? option}
           onChange={(_event: SyntheticEvent, newValue: string | null) =>
             onChange('data.properties.smsTemplate', newValue ?? '', resource)
           }
@@ -65,6 +80,12 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         />
         <FormHelperText>{t('flows:core.executions.sms.smsTemplate.hint')}</FormHelperText>
       </div>
+
+      {isTemplatesError && <Alert severity="error">{t('flows:core.executions.sms.smsTemplate.loadError')}</Alert>}
+
+      {isTemplatesSuccess && !hasTemplates && (
+        <Alert severity="warning">{t('flows:core.executions.sms.smsTemplate.noTemplates')}</Alert>
+      )}
 
       <div>
         <FormLabel htmlFor="sms-sender-select">{t('flows:core.executions.smsOtp.sender.label')}</FormLabel>

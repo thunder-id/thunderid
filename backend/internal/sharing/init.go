@@ -4,6 +4,7 @@
 package sharing
 
 import (
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -18,7 +19,7 @@ import (
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	ouHierarchyResolver sysauthz.OUHierarchyResolver,
-	ouEnumerator OUEnumerator,
+	ouEnumerator oupkg.HierarchyEnumeratorInterface,
 	allowChildOUCrossTreeSharing bool,
 ) (SharingServiceInterface, error) {
 	dbStore, transactioner, err := newSharingStore()

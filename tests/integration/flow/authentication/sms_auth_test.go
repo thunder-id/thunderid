@@ -73,7 +73,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -176,7 +176,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -243,7 +243,8 @@ var (
 	}
 
 	smsAuthEntityType = testutils.UserType{
-		Name: "sms_auth_user",
+		Handle:      "sms_auth_user",
+		DisplayName: "Sms Auth User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -268,7 +269,7 @@ var (
 	}
 
 	testUserWithMobile = testutils.User{
-		Type: smsAuthEntityType.Name,
+		Type: smsAuthEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "smsuser",
 			"password": "testpassword",
@@ -535,7 +536,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		smsAuthTestAppID,
-		smsAuthEntityType.Name,
+		smsAuthEntityType.Handle,
 		smsAuthTestOU.ID,
 		smsAuthTestOU.Name,
 		smsAuthTestOU.Handle,
@@ -638,7 +639,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		smsAuthTestAppID,
-		smsAuthEntityType.Name,
+		smsAuthEntityType.Handle,
 		smsAuthTestOU.ID,
 		smsAuthTestOU.Name,
 		smsAuthTestOU.Handle,
@@ -814,7 +815,7 @@ func buildOTPPropertiesFlow(name, handle string, otpProperties map[string]interf
 			{
 				"id":         "sms_send",
 				"type":       "TASK_EXECUTION",
-				"properties": map[string]interface{}{"senderId": smsAuthTestSenderID, "smsTemplate": "OTP"},
+				"properties": map[string]interface{}{"senderId": smsAuthTestSenderID, "smsTemplate": "otp"},
 				"executor":   map[string]interface{}{"name": "SMSExecutor"},
 				"onSuccess":  "prompt_otp",
 			},
@@ -1029,7 +1030,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		smsAuthTestAppID,
-		smsAuthEntityType.Name,
+		smsAuthEntityType.Handle,
 		smsAuthTestOU.ID,
 		smsAuthTestOU.Name,
 		smsAuthTestOU.Handle,

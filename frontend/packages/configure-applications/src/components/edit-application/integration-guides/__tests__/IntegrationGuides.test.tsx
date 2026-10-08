@@ -9,7 +9,11 @@ import type {OAuth2Config} from '../../../../models/oauth';
 import IntegrationGuides from '../IntegrationGuides';
 
 const mockGetServerUrl = vi.fn(() => 'https://localhost:8090');
+const mockGetRuntimeUrl = vi.fn(() => 'https://localhost:8090');
 const mockGetDocumentationLink = vi.fn((key: string) => documentationLinks[key]);
+const mockConfig: {brand: {product_name: string}; direct_api?: {enabled?: boolean}} = {
+  brand: {product_name: 'ThunderID'},
+};
 
 const documentationLinks: Record<string, string> = {
   'applications.templates.react.docs':
@@ -32,10 +36,12 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: () => ({
-      config: {brand: {product_name: 'ThunderID'}},
+      config: mockConfig,
       getServerUrl: mockGetServerUrl,
       getDocumentationLink: mockGetDocumentationLink,
     }),
+    // With no gateway registered the runtime URL is the server URL, which is what most tests assert.
+    useRuntimeUrl: () => mockGetRuntimeUrl(),
   };
 });
 
@@ -98,6 +104,8 @@ describe('IntegrationGuides', () => {
   beforeEach(() => {
     vi.useFakeTimers({shouldAdvanceTime: true});
     mockUseGetOrganizationUnit.mockReset().mockReturnValue({data: undefined});
+    delete mockConfig.direct_api;
+    mockGetRuntimeUrl.mockReset().mockReturnValue('https://localhost:8090');
     mockWriteText.mockReset().mockResolvedValue(undefined);
     mockGetDocumentationLink.mockImplementation((key: string) => documentationLinks[key]);
     mockFetch.mockReset().mockImplementation((url: string) =>
@@ -254,6 +262,19 @@ describe('IntegrationGuides', () => {
     expect(screen.getByText('https://localhost:8090/oauth2/jwks')).toBeInTheDocument();
   });
 
+  // The endpoints are for someone to copy into their own application, so they name the gateway that
+  // answers them, not the server the console talks to.
+  it('renders the OIDC endpoints from the runtime gateway URL rather than the server URL', () => {
+    mockGetRuntimeUrl.mockReturnValue('https://gateway.example.com');
+
+    renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
+
+    expect(screen.getByText('https://gateway.example.com/.well-known/openid-configuration')).toBeInTheDocument();
+    expect(screen.getByText('https://gateway.example.com/oauth2/authorize')).toBeInTheDocument();
+    expect(screen.getByText('https://gateway.example.com/oauth2/token')).toBeInTheDocument();
+    expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+  });
+
   it('navigates to the Flows and Customization tabs via the sign-in preview links', () => {
     const onGoToFlows = vi.fn();
     const onGoToCustomization = vi.fn();
@@ -326,6 +347,17 @@ describe('IntegrationGuides', () => {
       expect(screen.getByText('https://localhost:8090/register/passkey/finish')).toBeInTheDocument();
       expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
       expect(screen.queryByText('https://localhost:8090/oauth2/token')).not.toBeInTheDocument();
+    });
+
+    it('hides the passkey registration endpoints when the Direct API is disabled', () => {
+      mockConfig.direct_api = {enabled: false};
+
+      renderWithProviders(<IntegrationGuides application={mobileApplication} oauth2Config={oauth2Config} />);
+
+      expect(screen.getByText('https://localhost:8090/flow/execute')).toBeInTheDocument();
+      expect(screen.getByText('https://localhost:8090/flow/meta')).toBeInTheDocument();
+      expect(screen.queryByText('https://localhost:8090/register/passkey/start')).not.toBeInTheDocument();
+      expect(screen.queryByText('https://localhost:8090/register/passkey/finish')).not.toBeInTheDocument();
     });
 
     it('shows the standard OAuth2/OIDC endpoints (not App Native ones) for a pure browser SPA', () => {

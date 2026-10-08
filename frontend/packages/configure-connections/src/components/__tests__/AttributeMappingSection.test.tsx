@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent, render, screen, within} from '@testing-library/react';
@@ -28,7 +28,9 @@ vi.mock('@thunderid/components', () => ({
   ),
 }));
 
-let userTypes: {id: string; name: string}[] = [{id: 'u1', name: 'Person'}];
+let userTypes: {id: string; handle: string; displayName: string}[] = [
+  {id: 'u1', handle: 'person', displayName: 'Person'},
+];
 
 vi.mock('@thunderid/configure-user-types', () => ({
   useGetUserTypes: () => ({data: {types: userTypes}}),
@@ -39,13 +41,13 @@ describe('AttributeMappingSection', () => {
   const onChange = vi.fn();
   beforeEach(() => {
     vi.clearAllMocks();
-    userTypes = [{id: 'u1', name: 'Person'}];
+    userTypes = [{id: 'u1', handle: 'person', displayName: 'Person'}];
   });
 
   it('renders both sections when more than one user type exists', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     expect(screen.getByTestId('attribute-mapping-section')).toBeInTheDocument();
@@ -101,8 +103,8 @@ describe('AttributeMappingSection', () => {
 
   it('pre-enables the value mapping toggle and shows existing entries on edit prefill', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const initial: AttributeConfiguration = {
       userTypeResolution: {default: 'Person', externalAttribute: 'user_type', valueMapping: {staff: 'Employee'}},
@@ -115,8 +117,8 @@ describe('AttributeMappingSection', () => {
 
   it('reports invalid when a mapping group has content but no user type', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     // A second, unused user type exists, so "Add user type" is offered.
@@ -130,8 +132,8 @@ describe('AttributeMappingSection', () => {
 
   it('excludes a user type already picked by another mapping group from the options', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     render(<AttributeMappingSection onChange={onChange} />);
     fireEvent.click(screen.getByTestId('attribute-mapping-add-user-type'));
@@ -161,8 +163,8 @@ describe('AttributeMappingSection', () => {
 
   it('reveals the external attribute field when the toggle is turned on, seeding a value-mapping row only once its own toggle is enabled', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));
@@ -184,8 +186,8 @@ describe('AttributeMappingSection', () => {
 
   it('is valid with an external attribute and default set but no value mappings configured', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));
@@ -198,7 +200,7 @@ describe('AttributeMappingSection', () => {
 
     // Value Mapping toggle stays off — every identity resolves to Person until mappings are added.
     expect(onChange).toHaveBeenLastCalledWith(
-      {userTypeResolution: {default: 'Person', externalAttribute: 'user_type'}},
+      {userTypeResolution: {default: 'person', externalAttribute: 'user_type'}},
       true,
     );
   });
@@ -242,8 +244,8 @@ describe('AttributeMappingSection', () => {
 
   it('hides delete for an empty value-mapping row until it has content', () => {
     userTypes = [
-      {id: 'u1', name: 'Person'},
-      {id: 'u2', name: 'Employee'},
+      {id: 'u1', handle: 'person', displayName: 'Person'},
+      {id: 'u2', handle: 'employee', displayName: 'Employee'},
     ];
     const {container} = render(<AttributeMappingSection onChange={onChange} />);
     const resolution = within(screen.getByLabelText(RESOLUTION_TITLE));

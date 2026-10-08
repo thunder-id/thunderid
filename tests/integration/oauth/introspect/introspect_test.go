@@ -70,7 +70,8 @@ const (
 )
 
 var testUserType = testutils.UserType{
-	Name: "introspect-person",
+	Handle:      "introspect-person",
+	DisplayName: "Introspect Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},
@@ -226,7 +227,7 @@ func (ts *IntrospectionTestSuite) createTestUser() string {
 	ts.Require().NoError(err, "failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       testUserType.Name,
+		Type:       testUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	})
@@ -356,7 +357,7 @@ func (ts *IntrospectionTestSuite) createApp(name, clientID, clientSecret, authMe
 	}
 	if authFlowID != "" {
 		app["authFlowId"] = authFlowID
-		app["allowedUserTypes"] = []string{testUserType.Name}
+		app["allowedUserTypes"] = []string{testUserType.Handle}
 	}
 
 	jsonData, err := json.Marshal(app)

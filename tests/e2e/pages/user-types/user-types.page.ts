@@ -19,7 +19,8 @@
  * @example
  * const userTypesPage = new UserTypesPage(page, baseUrl);
  * await userTypesPage.openCreateWizard();
- * await userTypesPage.fillName('zz_e2e_user_type_1');
+ * await userTypesPage.fillName('ZZ E2E User Type 1');
+ * await userTypesPage.fillHandle('zz-e2e-user-type-1');
  * await userTypesPage.continueTo('properties');
  * await userTypesPage.addLibraryProperty('Email');
  * await userTypesPage.submit();
@@ -45,6 +46,7 @@ export class UserTypesPage extends BasePage {
 
   // Wizard locators
   readonly nameInput: Locator;
+  readonly handleInput: Locator;
   readonly attributeLibrary: Locator;
   readonly continueButton: Locator;
   readonly submitButton: Locator;
@@ -60,6 +62,7 @@ export class UserTypesPage extends BasePage {
     );
 
     this.nameInput = page.locator('[data-testid="user-type-name-input"]');
+    this.handleInput = page.locator('[data-testid="user-type-handle-input"]');
 
     // The attribute library panel. Each row's add button carries the attribute's display
     // name as its aria-label, so one scoped click seeds that schema property.
@@ -123,6 +126,12 @@ export class UserTypesPage extends BasePage {
   async fillName(name: string) {
     await this.nameInput.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.nameInput.fill(name);
+  }
+
+  /** Overwrite the handle on step 1, which is auto-generated from the name until edited */
+  async fillHandle(handle: string) {
+    await this.handleInput.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.handleInput.fill(handle);
   }
 
   /**

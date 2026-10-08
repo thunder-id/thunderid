@@ -188,7 +188,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 describe('ViewAgentTypePage', () => {
   const baseAgentType: ApiAgentType = {
     id: 'schema-1',
-    name: 'default',
+    handle: 'default',
+    displayName: 'Default',
     ouId: 'ou-1',
     schema: {
       email: {type: 'string', required: true, unique: true},
@@ -362,12 +363,14 @@ describe('ViewAgentTypePage', () => {
           expect.objectContaining({
             agentTypeId: 'schema-1',
             data: expect.objectContaining({
-              name: 'default',
+              displayName: 'Default',
               ouId: 'ou-1',
             }) as Record<string, unknown>,
           }),
         );
       });
+      const [{data: sentData}] = mockMutateAsync.mock.calls[0] as [{data: Record<string, unknown>}];
+      expect(sentData).not.toHaveProperty('handle');
     });
 
     it('warns before saving a breaking schema change and can be cancelled', async () => {

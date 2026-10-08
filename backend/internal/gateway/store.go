@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -128,6 +129,60 @@ func (s *store) Count(ctx context.Context) (int, error) {
 }
 
 func (s *store) Create(ctx context.Context, gw *Gateway, limit int) (*Gateway, error) {
+	if !gw.IsDefault {
+		return s.insert(ctx, gw, limit)
+	}
+
+	// A gateway claiming the default takes it from whichever one holds it. Both writes go in one
+	// transaction, so a refused insert leaves the default where it was rather than on nothing.
+	transactioner, err := s.dbProvider.GetConfigDBTransactioner()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database transactioner: %w", err)
+	}
+	var created *Gateway
+	err = transactioner.Transact(ctx, func(txCtx context.Context) error {
+		// Each step runs only if the one before it succeeded; the first failure rolls back both.
+		dbClient, err := s.dbProvider.GetConfigDBClient()
+		if err == nil {
+			_, err = dbClient.ExecuteContext(txCtx, queryClearDefaultGateway, s.deploymentID)
+		}
+		if err == nil {
+			created, err = s.insert(txCtx, gw, limit)
+		}
+		// No row means the limit refused it. Rolling back keeps the default on the gateway that held it.
+		if err == nil && created == nil {
+			err = errLimitRefused
+		}
+		return err
+	})
+	if errors.Is(err, errLimitRefused) {
+		return nil, nil
+	}
+	if dbprovider.IsUniqueIndexViolation(err, defaultIndexName, "GATEWAY.DEPLOYMENT_ID") {
+		return nil, fmt.Errorf("%w: %w", errDefaultTaken, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to register the default gateway: %w", err)
+	}
+	return created, nil
+}
+
+// errDefaultTaken reports that another registration took the default while this one was
+// writing, so the index that keeps the default on one gateway refused it. It is the one failure a
+// registration may repeat: every other failure is returned as it is.
+var errDefaultTaken = errors.New("another gateway took the default")
+
+// defaultIndexName is the partial unique index that keeps the default on one gateway. SQLite
+// reports a violation of it by its one column, GATEWAY.DEPLOYMENT_ID; the table's other unique
+// constraints pair that column with NAME or BASE_URL.
+const defaultIndexName = "idx_gateway_default_deployment"
+
+// errLimitRefused rolls back a default registration the capacity check refused. It never leaves the
+// store: Create reports that case as a nil gateway, as it does for any other refused insert.
+var errLimitRefused = errors.New("the gateway limit refused the registration")
+
+// insert writes one gateway row unless the deployment already holds limit of them.
+func (s *store) insert(ctx context.Context, gw *Gateway, limit int) (*Gateway, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
@@ -135,7 +190,7 @@ func (s *store) Create(ctx context.Context, gw *Gateway, limit int) (*Gateway, e
 	// The statement returns the row it wrote, so a caller never reads back what it just inserted and
 	// cannot fail once the write is committed. No row means the capacity check refused it.
 	rows, err := dbClient.QueryContext(ctx, queryInsertGateway,
-		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate,
+		gw.ID, gw.Name, gw.BaseURL, gw.Key, gw.CACertificate, gw.IsDefault,
 		s.deploymentID, s.deploymentID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register the gateway: %w", err)
@@ -179,6 +234,8 @@ func gatewayFromRow(row map[string]interface{}) (*Gateway, error) {
 		BaseURL:       asString(row["base_url"]),
 		Key:           asString(row["management_key"]),
 		CACertificate: asString(row["ca_certificate"]),
+
+		IsDefault: asBool(row["is_default"]),
 	}
 	if gw.ID == "" {
 		return nil, fmt.Errorf("a gateway row carries no id")
@@ -186,6 +243,13 @@ func gatewayFromRow(row map[string]interface{}) (*Gateway, error) {
 	gw.CreatedAt = asTime(row["created_at"])
 	gw.UpdatedAt = asTime(row["updated_at"])
 	return gw, nil
+}
+
+// asBool reads a flag stored as a boolean by PostgreSQL and as an integer by SQLite.
+func asBool(v interface{}) bool {
+	flag, _ := v.(bool)
+	number, _ := v.(int64)
+	return flag || number != 0
 }
 
 func asString(v interface{}) string {

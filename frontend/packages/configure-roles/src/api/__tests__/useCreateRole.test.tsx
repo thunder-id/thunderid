@@ -123,9 +123,10 @@ describe('useCreateRole', () => {
   });
 
   it('should set pending state during creation', async () => {
+    let resolveRequest: () => void;
     mockHttpRequest.mockReturnValue(
       new Promise((resolve) => {
-        setTimeout(() => resolve({data: mockCreatedRole}), 100);
+        resolveRequest = () => resolve({data: mockCreatedRole});
       }),
     );
 
@@ -137,12 +138,11 @@ describe('useCreateRole', () => {
       expect(result.current.isPending).toBe(true);
     });
 
-    await waitFor(
-      () => {
-        expect(result.current.isSuccess).toBe(true);
-      },
-      {timeout: 200},
-    );
+    resolveRequest!();
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
 
     expect(result.current.isPending).toBe(false);
   });

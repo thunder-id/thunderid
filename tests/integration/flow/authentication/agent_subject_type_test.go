@@ -64,8 +64,9 @@ func (ts *AgentSubjectTypeTestSuite) SetupSuite() {
 	// agent_username is unique so the credentials node can identify the agent by it, and password
 	// is a credential so it is stored hashed and verified at authentication.
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: agentSubjectAgentType,
-		OUID: ts.ouID,
+		Handle:      agentSubjectAgentType,
+		DisplayName: "Default",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"agent_username": map[string]interface{}{
 				"type":     "string",

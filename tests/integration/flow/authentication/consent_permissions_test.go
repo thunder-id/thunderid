@@ -37,7 +37,8 @@ var consentPermsOU = testutils.OrganizationUnit{
 }
 
 var consentPermsUserType = testutils.UserType{
-	Name: "consent-perms-person",
+	Handle:      "consent-perms-person",
+	DisplayName: "Consent Perms Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},
@@ -258,7 +259,7 @@ func (ts *ConsentPermissionsTestSuite) SetupSuite() {
 		Description:      "Application for the consent permission claim tests",
 		OUID:             ts.ouID,
 		AuthFlowID:       authzFlowID,
-		AllowedUserTypes: []string{consentPermsUserType.Name},
+		AllowedUserTypes: []string{consentPermsUserType.Handle},
 		Embedded:         true,
 	})
 	ts.Require().NoError(err, "Failed to create the consent permissions application")
@@ -272,7 +273,7 @@ func (ts *ConsentPermissionsTestSuite) SetupSuite() {
 		Description:      "Application for the consent without authorization test",
 		OUID:             ts.ouID,
 		AuthFlowID:       noAuthzFlowID,
-		AllowedUserTypes: []string{consentPermsUserType.Name},
+		AllowedUserTypes: []string{consentPermsUserType.Handle},
 		Embedded:         true,
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"email", "given_name", "family_name"},
@@ -387,7 +388,7 @@ func (ts *ConsentPermissionsTestSuite) createUser(username string) string {
 	ts.Require().NoError(err, "Failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       consentPermsUserType.Name,
+		Type:       consentPermsUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: json.RawMessage(attributes),
 	})

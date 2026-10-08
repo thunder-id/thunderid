@@ -3,14 +3,15 @@ CREATE TABLE "ENTITY_TYPES" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
     ID          VARCHAR(36) NOT NULL,
     CATEGORY    VARCHAR(50) NOT NULL,
-    NAME        VARCHAR(100) NOT NULL,
+    HANDLE      VARCHAR(100) NOT NULL,
+    DISPLAY_NAME VARCHAR(100) NOT NULL,
     OU_ID       VARCHAR(36) NOT NULL,
     ALLOW_SELF_REGISTRATION BOOLEAN DEFAULT FALSE NOT NULL,
     SCHEMA_DEF  JSONB NOT NULL,
     SYSTEM_ATTRIBUTES JSONB,
     CREATED_AT  TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT  TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (NAME, CATEGORY, DEPLOYMENT_ID),
+    UNIQUE (HANDLE, CATEGORY, DEPLOYMENT_ID),
     PRIMARY KEY (DEPLOYMENT_ID, ID)
 );
 
@@ -189,7 +190,7 @@ CREATE TABLE "CERTIFICATE" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL,
     REF_TYPE VARCHAR(20) NOT NULL,
-    REF_ID VARCHAR(36) NOT NULL,
+    REF_ID VARCHAR(2048) NOT NULL,
     TYPE VARCHAR(20) NOT NULL,
     VALUE TEXT NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -435,11 +436,48 @@ CREATE TABLE "GATEWAY" (
     BASE_URL TEXT NOT NULL,
     MANAGEMENT_KEY TEXT NOT NULL,
     CA_CERTIFICATE TEXT,
+    -- The default gateway, whose URL the console shows for an application's runtime endpoints. At
+    -- most one per deployment, which the index below enforces.
+    IS_DEFAULT BOOLEAN NOT NULL DEFAULT FALSE,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (NAME, DEPLOYMENT_ID),
     -- One gateway registers once, and its address is what says which one it is.
     UNIQUE (BASE_URL, DEPLOYMENT_ID)
+);
+
+-- At most one gateway of a deployment is the default. A partial index rather than a table
+-- constraint, because the rule is about the rows that are the default, not about the column.
+CREATE UNIQUE INDEX idx_gateway_default_deployment
+    ON "GATEWAY" (DEPLOYMENT_ID)
+    WHERE IS_DEFAULT = TRUE;
+
+-- A captured state of this deployment's configuration, named by a hash of what it captured and
+-- ordered per deployment. It is what is applied to a gateway. Its values, when the export carried
+-- any, are held encrypted as one secret.
+CREATE TABLE "CONFIGURATION_VERSION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    SEQ INTEGER NOT NULL,
+    HASH VARCHAR(64) NOT NULL,
+    NAME VARCHAR(255),
+    RESOURCES TEXT NOT NULL,
+    VARIABLES TEXT,
+    NOTE TEXT,
+    CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (DEPLOYMENT_ID, SEQ),
+    UNIQUE (DEPLOYMENT_ID, HASH)
+);
+
+-- The configuration version each gateway holds, and the one it held before, which is what a revert
+-- returns it to. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+CREATE TABLE "GATEWAY_APPLIED_VERSION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    APPLIED_SEQ INTEGER NOT NULL,
+    PREVIOUS_SEQ INTEGER,
+    APPLIED_AT TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (GATEWAY_ID, DEPLOYMENT_ID)
 );
 
 -- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
@@ -530,4 +568,23 @@ CREATE TABLE "RESOURCE_OVERLAY_VALUE" (
     CREATED_AT    TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT    TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (DEPLOYMENT_ID, RESOURCE_TYPE, RESOURCE_ID, OU_ID, FIELD_KEY)
+);
+
+-- Table to store notification templates. Content is a single JSON document so a new channel can
+-- introduce its own content fields without a schema migration; the per-channel shape is validated at
+-- the service layer. HANDLE is the immutable, unique reference for a template within a channel and is
+-- unique per channel within a deployment; DISPLAY_NAME is the human-readable label.
+CREATE TABLE "NOTIFICATION_TEMPLATE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID            VARCHAR(36)  NOT NULL,
+    CHANNEL       VARCHAR(16)  NOT NULL,
+    HANDLE        VARCHAR(255) NOT NULL,
+    DISPLAY_NAME  VARCHAR(255) NOT NULL,
+    DESCRIPTION   VARCHAR(512),
+    CONTENT       JSONB        NOT NULL,
+    DESIGN        JSONB        NOT NULL DEFAULT '{}',
+    CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, ID),
+    UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)
 );

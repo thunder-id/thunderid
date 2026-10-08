@@ -38,8 +38,8 @@ type sessionStore interface {
 	GetByCheckpoint(ctx context.Context, sessionID, checkpointID string) (*SessionContext, error)
 	// Delete removes all of a session's checkpoint contexts.
 	Delete(ctx context.Context, sessionID string) error
-	// DeleteSession removes the session row itself.
-	DeleteSession(ctx context.Context, sessionID string) error
+	// DeleteSession removes the session row itself and reports whether a row was removed.
+	DeleteSession(ctx context.Context, sessionID string) (bool, error)
 
 	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT)
 	// when the application has already joined the session.

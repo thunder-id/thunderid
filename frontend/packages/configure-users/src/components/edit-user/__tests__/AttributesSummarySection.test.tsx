@@ -22,19 +22,20 @@ describe('AttributesSummarySection', () => {
   const baseUser: User = {
     id: 'user-1',
     ouId: 'ou-1',
-    type: 'Employee',
+    type: 'employee',
     attributes: {email: 'a@b.com', count: 5, isAdmin: true, tags: ['a', 'b']},
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseGetUserTypes.mockReturnValue({
-      data: {types: [{id: 'schema-1', name: 'Employee', ouId: 'ou-1'}]},
+      data: {types: [{id: 'schema-1', handle: 'employee', displayName: 'Employee', ouId: 'ou-1'}]},
     });
     mockUseGetUserType.mockReturnValue({
       data: {
         id: 'schema-1',
-        name: 'Employee',
+        handle: 'employee',
+        displayName: 'Employee',
         schema: {email: {type: 'string', required: true}, count: {type: 'number'}},
       },
       isLoading: false,
@@ -77,7 +78,8 @@ describe('AttributesSummarySection', () => {
     mockUseGetUserType.mockReturnValue({
       data: {
         id: 'schema-1',
-        name: 'Employee',
+        handle: 'employee',
+        displayName: 'Employee',
         schema: {email: {type: 'string', displayName: 'Email Address'}},
       },
       isLoading: false,

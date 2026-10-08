@@ -445,9 +445,22 @@ func mapFlowErrorToCIBAError(failureCode string) *CIBAError {
 
 // validateIDTokenHint decodes and validates the id_token_hint, returning the subject claim on success.
 func (s *cibaService) validateIDTokenHint(ctx context.Context, idTokenHint string) (string, *CIBAError) {
+	// A hint must carry the generic JWT type ID tokens use, which keeps out access, refresh and logout tokens.
+	header, err := jwt.DecodeJWTHeader(idTokenHint)
+	if err != nil {
+		return "", &CIBAError{Code: oauth2const.ErrorInvalidRequest, Message: "id_token_hint is not a valid JWT"}
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return "", &CIBAError{Code: oauth2const.ErrorInvalidRequest, Message: "id_token_hint is not an ID token"}
+	}
 	payload, err := jwt.DecodeJWTPayload(idTokenHint)
 	if err != nil {
 		return "", &CIBAError{Code: oauth2const.ErrorInvalidRequest, Message: "id_token_hint is not a valid JWT"}
+	}
+	// Refresh tokens minted before rt+jwt share the generic type with ID tokens; this claim marks them.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
+	if _, isRefreshToken := payload[oauth2const.ClaimAccessTokenSubject]; isRefreshToken {
+		return "", &CIBAError{Code: oauth2const.ErrorInvalidRequest, Message: "id_token_hint is not an ID token"}
 	}
 
 	configuredIssuer := s.cfg.JWT.Issuer

@@ -126,44 +126,6 @@ export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;
 export const PASSKEY_MODES_WITH_RELYING_PARTY = ['challenge', 'register_start'] as const;
 
 /**
- * Template scenarios the Email and SMS executors can render.
- * The values mirror the supported scenarios in backend/internal/system/template/model.go —
- * the backend rejects anything outside this set, so the pickers offer no other value.
- */
-export const TEMPLATE_SCENARIOS = [
-  {
-    value: 'USER_INVITE',
-    translationKey: 'flows:core.executions.templateScenarios.userInvite',
-    displayLabel: 'User Invite',
-  },
-  {
-    value: 'MAGIC_LINK',
-    translationKey: 'flows:core.executions.templateScenarios.magicLink',
-    displayLabel: 'Magic Link',
-  },
-  {
-    value: 'SELF_REGISTRATION',
-    translationKey: 'flows:core.executions.templateScenarios.selfRegistration',
-    displayLabel: 'Self Registration',
-  },
-  {
-    value: 'OTP',
-    translationKey: 'flows:core.executions.templateScenarios.otp',
-    displayLabel: 'OTP Verification',
-  },
-  {
-    value: 'PASSWORD_RECOVERY',
-    translationKey: 'flows:core.executions.templateScenarios.passwordRecovery',
-    displayLabel: 'Password Recovery',
-  },
-  {
-    value: 'CIBA_NOTIFICATION',
-    translationKey: 'flows:core.executions.templateScenarios.cibaNotification',
-    displayLabel: 'CIBA Notification',
-  },
-] as const;
-
-/**
  * Available input types for executor input configuration.
  * These correspond to the backend input type constants defined in common/constants.go.
  */

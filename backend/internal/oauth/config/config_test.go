@@ -123,3 +123,22 @@ func (s *OAuthConfigTestSuite) TestApplyOIDCDefaults_PreservesConfiguredAllowedL
 	s.Equal([]string{"code"}, oauth.AllowedResponseTypes)
 	s.Equal([]string{"client_secret_post"}, oauth.AllowedAuthMethods)
 }
+
+// The organization-unit-qualified endpoints are a server setting, and route registration reads it
+// from the OAuth configuration, so it has to survive the journey between the two. Losing it here
+// would leave a deployment that turned the endpoints on with no route and nothing to say why.
+func (s *OAuthConfigTestSuite) TestOUQualifiedEndpointsSettingIsCarriedThrough() {
+	for _, enabled := range []bool{true, false} {
+		config.ResetServerRuntime()
+		s.Require().NoError(config.InitializeServerRuntime("/tmp/test-oauth-config", &config.Config{
+			Server: engineconfig.ServerConfig{
+				Identifier:                 "dep-1",
+				Hostname:                   "thunder.io",
+				Port:                       443,
+				EnableOUQualifiedEndpoints: enabled,
+			},
+		}))
+
+		s.Equal(enabled, FromServerRuntime().EnableOUQualifiedEndpoints)
+	}
+}

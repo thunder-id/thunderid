@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -188,7 +188,8 @@ var (
 	}
 
 	httpRequestTestEntityType = testutils.UserType{
-		Name: "http_request_test_person",
+		Handle:      "http_request_test_person",
+		DisplayName: "Http Request Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

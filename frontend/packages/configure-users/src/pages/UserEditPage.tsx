@@ -95,7 +95,7 @@ export default function UserEditPage() {
   const {data: user, isLoading: isUserLoading, error: userError, refetch} = useGetUser(userId);
   const updateUserMutation = useUpdateUser();
 
-  // Get all schemas to find the schema ID from the schema name
+  // Get all schemas to find the schema ID from the schema handle
   const {
     data: userTypeList,
     isLoading: isUserTypeListLoading,
@@ -103,8 +103,8 @@ export default function UserEditPage() {
     refetch: refetchUserTypeList,
   } = useGetUserTypes();
 
-  // Find the schema ID based on the user's type (which is the schema name)
-  const matchedSchema = userTypeList?.types?.find((s) => s.name === user?.type);
+  // Find the schema ID based on the user's type (which is the schema handle)
+  const matchedSchema = userTypeList?.types?.find((s) => s.handle === user?.type);
 
   const schemaId = matchedSchema?.id;
 
@@ -455,7 +455,7 @@ export default function UserEditPage() {
         </PageTitle.Header>
         <PageTitle.SubHeader>
           <Stack direction="row" alignItems="center" spacing={1}>
-            <Chip label={user.type} size="small" sx={{px: 0.5}} />
+            <Chip label={matchedSchema?.displayName ?? user.type} size="small" sx={{px: 0.5}} />
           </Stack>
         </PageTitle.SubHeader>
       </PageTitle>

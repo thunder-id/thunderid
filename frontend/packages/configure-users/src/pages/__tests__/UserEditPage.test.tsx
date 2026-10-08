@@ -176,7 +176,7 @@ describe('UserEditPage', () => {
   const mockUserData: User = {
     id: 'user123',
     ouId: 'test-ou',
-    type: 'Employee',
+    type: 'employee',
     attributes: {
       username: 'john_doe',
       email: 'john@example.com',
@@ -189,12 +189,13 @@ describe('UserEditPage', () => {
     totalResults: 1,
     startIndex: 1,
     count: 1,
-    types: [{id: 'employee', name: 'Employee', ouId: 'test-ou'}],
+    types: [{id: 'employee', handle: 'employee', displayName: 'Employee', ouId: 'test-ou'}],
   };
 
   const mockSchemaData: ApiUserType = {
     id: 'employee',
-    name: 'Employee',
+    handle: 'employee',
+    displayName: 'Employee',
     schema: {
       username: {type: 'string', required: true},
       email: {type: 'string', required: true},
@@ -599,7 +600,7 @@ describe('UserEditPage', () => {
           userId: 'user123',
           data: {
             ouId: 'test-ou',
-            type: 'Employee',
+            type: 'employee',
             attributes: {department: 'sales'},
           },
         });
@@ -624,7 +625,7 @@ describe('UserEditPage', () => {
       await waitFor(() => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userId: 'user123',
-          data: {ouId: 'test-ou', type: 'Employee', attributes: {}},
+          data: {ouId: 'test-ou', type: 'employee', attributes: {}},
         });
       });
     });
@@ -647,7 +648,7 @@ describe('UserEditPage', () => {
       await waitFor(() => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userId: 'user123',
-          data: {ouId: 'test-ou', type: 'Employee', attributes: {department: 'sales'}},
+          data: {ouId: 'test-ou', type: 'employee', attributes: {department: 'sales'}},
         });
       });
     });
@@ -678,7 +679,7 @@ describe('UserEditPage', () => {
           userId: 'user123',
           data: {
             ouId: 'sub-ou',
-            type: 'Employee',
+            type: 'employee',
             attributes: {department: 'sales'},
           },
         });
@@ -705,7 +706,7 @@ describe('UserEditPage', () => {
           userId: 'user123',
           data: {
             ouId: 'test-ou',
-            type: 'Employee',
+            type: 'employee',
             attributes: {department: 'sales'},
           },
         });
@@ -808,7 +809,8 @@ describe('UserEditPage', () => {
   describe('Credentials tab', () => {
     const schemaWithCredentials: ApiUserType = {
       id: 'employee',
-      name: 'Employee',
+      handle: 'employee',
+      displayName: 'Employee',
       schema: {
         username: {type: 'string', required: true},
         password: {type: 'string', required: true, credential: true},

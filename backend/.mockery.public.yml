@@ -63,6 +63,14 @@ packages:
       pkgname: certmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/cimd:
+    config:
+      all: true
+      dir: tests/mocks/cimdmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: cimdmock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/jose/jwt:
     config:
       all: true
@@ -324,6 +332,15 @@ packages:
       pkgname: httpmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth:
+    interfaces:
+      Session:
+        config:
+          dir: tests/mocks/outboundauth/smtpauthmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: smtpauthmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/agent:
     config:
       dir: tests/mocks/agentmock
@@ -362,6 +379,7 @@ packages:
     # method takes the unexported ouFlowResolver interface, which cannot be referenced
     # from this external mock package.
     interfaces:
+      HierarchyEnumeratorInterface:
       OUUserResolver:
       OUGroupResolver:
       OURoleResolver:
@@ -663,6 +681,15 @@ packages:
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/sharing:
+    config:
+      dir: tests/mocks/sharingmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sharingmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      SharingServiceInterface:
+
   github.com/thunder-id/thunderid/internal/system/sysauthz:
     config:
       dir: tests/mocks/sysauthzmock
@@ -690,14 +717,6 @@ packages:
       pkgname: attributecachemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/system/email:
-    config:
-      all: true
-      dir: tests/mocks/emailmock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: emailmock
-      filename: "{{.InterfaceName}}_mock.go"
-
   github.com/thunder-id/thunderid/internal/system/template:
     config:
       all: true
@@ -705,6 +724,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: templatemock
       filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/system/resourcedependency:
+    interfaces:
+      Registry:
+        config:
+          dir: tests/mocks/resourcedependencymock
+          structname: 'RegistryMock'
+          pkgname: resourcedependencymock
+          filename: "Registry_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/transaction:
     config:

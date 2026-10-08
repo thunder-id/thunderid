@@ -1,7 +1,7 @@
 ---
 title: MCP Server
 docType: guide
-description: Connect MCP clients to the ThunderID MCP server using OAuth sign-in, with a step-by-step MCP Inspector walkthrough.
+description: Connect Claude Code and Codex to the {{ProductName}} MCP server using OAuth sign-in. Test and debug connections with MCP Inspector.
 sidebar_position: 3
 persona: iam
 hide_table_of_contents: false
@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 
 # <ProductName /> MCP Server
 
-<ProductName /> provides a Model Context Protocol (MCP) server that lets AI assistants and MCP clients manage applications, authentication flows, users, and themes directly.
+Connect your AI coding assistant to the <ProductName /> Model Context Protocol (MCP) server to manage applications and authentication flows, inspect themes, and generate React integration code.
 
 ## Overview
 
@@ -32,15 +32,226 @@ Access requires the `system` scope, and permissions come from the signed-in user
 
 - <ProductName /> server running (default: `https://localhost:8090`)
 - Access to the <ProductName /> Console with an administrator account
-- Node.js and npm installed (to run MCP Inspector via `npx`)
-- Claude Code CLI installed (only for the Claude Code option)
+- Your selected agent client installed: Claude Code or [Codex CLI](https://developers.openai.com/codex/cli/)
 
 ## Setup
 
-Pick your MCP client below. MCP Inspector and Claude Code work with a local <ProductName /> instance today, and guides for more clients are on the way.
+Select your agent client below to connect it to a local <ProductName /> instance. After connecting, ask the agent to list your applications or integrate authentication into your project.
 
 <Tabs>
-<TabItem value="mcp-inspector" label="MCP Inspector" default>
+<TabItem value="claude-code" label="Claude Code" default>
+
+For this local setup, Claude Code uses Dynamic Client Registration to register its own OAuth client. You do not need to create an application in the Console.
+
+<Stepper stepNode="h3" as="h3">
+
+### Enable Dynamic Client Registration
+
+Claude Code also supports a pre-registered OAuth client through `--client-id`. To enable Dynamic Client Registration for this walkthrough, add the following to `deployment.yaml` in your <ProductName /> distribution:
+
+```yaml
+oauth:
+  dcr:
+    insecure: true
+```
+
+:::warning
+This setting is for local development only. It lets any client register with <ProductName /> without authentication. Do not enable it in production.
+:::
+
+Restart <ProductName /> after saving the file.
+
+### Trust the Certificate for Claude Code
+
+Claude Code runs on Node.js. Point it at the <ProductName /> self-signed certificate so TLS connections to `https://localhost:8090` are trusted, without adding anything to your system trust store:
+
+```bash
+export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert
+```
+
+`<THUNDERID_HOME>` is the directory of your <ProductName /> distribution. The certificate generated during setup includes subject alternative names for `localhost` and `127.0.0.1`, so modern TLS clients accept it once it is trusted. Run the export in the same terminal session you launch `claude` from.
+
+### Add the MCP Server to Claude Code
+
+```bash
+claude mcp add --transport http thunderid-mcp https://localhost:8090/mcp
+```
+
+Verify it was added:
+
+```bash
+claude mcp list
+```
+
+You should see `thunderid-mcp` in the list.
+
+### Authenticate with <ProductName />
+
+1. Start Claude Code from the same terminal where you exported `NODE_EXTRA_CA_CERTS`:
+   ```bash
+   claude
+   ```
+2. Run `/mcp` inside the Claude Code prompt.
+3. Select `thunderid-mcp` and choose the authenticate option.
+4. A browser tab opens with the <ProductName /> sign-in page. Sign in with your administrator account.
+5. Review and approve the requested permissions on the consent screen.
+
+Claude Code obtains and refreshes tokens automatically from here on. It discovers the required `system` scope from the server's metadata, so there is nothing else to configure.
+
+### Verify Claude Code Access
+
+Ask Claude Code to use a tool, for example:
+
+> "List the applications registered in <ProductName />"
+
+Claude Code calls the matching tool and returns the list of registered applications. To remove the server later, run `claude mcp remove "thunderid-mcp" -s local`.
+
+</Stepper>
+
+</TabItem>
+<TabItem value="codex" label="Codex">
+
+Codex CLI connects to the MCP server over OAuth using Dynamic Client Registration. It registers its own OAuth client, so you do not need to create an application in the Console for this local setup.
+
+<Stepper stepNode="h3" as="h3">
+
+### Enable Dynamic Client Registration for Codex
+
+Add the following to `deployment.yaml` in your <ProductName /> distribution:
+
+```yaml
+oauth:
+  dcr:
+    insecure: true
+```
+
+:::warning
+Use this setting only for local development. It permits client registration without authentication. Do not enable it in production.
+:::
+
+Restart <ProductName /> after saving the file.
+
+### Trust the Certificate for Codex
+
+For a local instance with a self-signed certificate, point Codex at the certificate:
+
+```bash
+export CODEX_CA_CERTIFICATE=<THUNDERID_HOME>/config/certs/server.cert
+```
+
+Replace `<THUNDERID_HOME>` with the absolute path to your <ProductName /> distribution. Run the remaining Codex commands from this terminal so they use the same certificate.
+
+### Add the MCP Server to Codex
+
+```bash
+codex mcp add thunderid-mcp --url https://localhost:8090/mcp
+```
+
+If Codex starts OAuth sign-in during this command, complete it with your administrator account. If it does not, run the command in the next step.
+
+### Authenticate Codex with <ProductName />
+
+If the previous step completed sign-in, continue to [Verify Codex Access](#verify-codex-access). Otherwise, run:
+
+```bash
+codex mcp login thunderid-mcp --scopes system
+```
+
+Open the authorization URL printed by Codex in your browser. Sign in with your administrator account. If a consent screen appears, review the permissions before approving them.
+
+Codex prints `Successfully logged in to MCP server 'thunderid-mcp'.` after sign-in. It stores the OAuth credentials and refreshes access tokens for subsequent connections.
+
+### Verify Codex Access
+
+Check the server configuration:
+
+```bash
+codex mcp list
+```
+
+Start a new Codex session from the same terminal:
+
+```bash
+codex
+```
+
+Run `/mcp` to inspect the connected server and its tools. Ask Codex:
+
+> "Use the thunderid-mcp server to list the applications registered in <ProductName />."
+
+Codex calls `thunderid_list_applications` and returns your registered applications. You can then ask it to integrate authentication into your project using the [example prompts](#what-you-can-do) below.
+
+To delete the local server configuration later, run `codex mcp remove thunderid-mcp`.
+
+</Stepper>
+
+</TabItem>
+<TabItem value="claude-desktop" label="Claude Desktop">
+
+:::note Coming soon
+A step-by-step guide for connecting Claude Desktop to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today with an application registered for that client and its redirect URI.
+:::
+
+</TabItem>
+<TabItem value="github-copilot" label="GitHub Copilot">
+
+:::note Coming soon
+A step-by-step guide for connecting GitHub Copilot to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today with an application registered for that client and its redirect URI.
+:::
+
+</TabItem>
+</Tabs>
+
+## What You Can Do
+
+After connecting, ask your agent to use the <ProductName /> MCP server for tasks such as creating an application, inspecting an authentication flow, or generating SDK integration code. The agent discovers the available tools automatically.
+
+| Toolset | Description |
+|---------|-------------|
+| `applications` | Create, configure, and manage OAuth applications with pre-built templates for SPA, Mobile, Server, and M2M |
+| `flows` | Design and modify authentication and registration flows |
+| `themes` | Browse and inspect login page themes, colors, and typography |
+| `organization_units` | List organization units |
+| `user_types` | List user types and self-registration settings |
+| `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
+
+**Example prompts:**
+
+- "Create a new single-page application for my React project"
+- "Show me the current authentication flow"
+- "Add a second factor step to the default login flow"
+- "What colors and typography does the default theme use?"
+- "Integrate authentication with <ProductName /> for this application"
+
+## Use Cases
+
+### Scaffold a React App with Login
+
+Ask the assistant to create a new React application with authentication wired up end-to-end:
+
+> "Create a new React application with authentication using <ProductName />"
+
+The assistant scaffolds a React project using Vite, installs the <ProductName /> React SDK, and wires up the auth provider with the correct `clientId` and server URL from the application registered in <ProductName />. By the end you have a running app with a working sign-in button backed by <ProductName />.
+
+To add authentication to an existing React application instead:
+
+> "Integrate authentication with <ProductName /> for this application"
+
+The assistant installs the SDK, configures the auth provider, and adds sign-in and sign-out components without scaffolding a new project.
+
+### Add Signup to a React App
+
+After integrating login, add a registration page:
+
+> "Integrate a signup page in the application and enable signup"
+
+The assistant enables self-registration on your <ProductName /> application and generates a signup page wired to the registration flow. New users can register directly from your application and appear in the <ProductName /> Console under **User Management**.
+
+## Test and Debug with MCP Inspector
+
+Use MCP Inspector to list tools, call them manually, and inspect responses when testing the <ProductName /> MCP server or diagnosing a connection problem. To use these tools through an AI agent, follow [Setup](#setup).
+
+Install Node.js and npm before running MCP Inspector.
 
 <Stepper stepNode="h3" as="h3">
 
@@ -48,7 +259,7 @@ Pick your MCP client below. MCP Inspector and Claude Code work with a local <Pro
 
 In the <ProductName /> Console, register an application for MCP Inspector.
 
-1. Go to **Applications** and click **Add Application**.
+1. In the Console, navigate to **Applications**. Click **Add Application**.
 2. Select **MCP Client**.
 3. Enter a name (for example, `MCP Inspector`).
 4. If prompted, select an organization unit.
@@ -99,150 +310,18 @@ The Inspector UI opens at `http://localhost:6274`.
 5. Set **Scope** to `system`.
 6. Click **Connect**.
 7. A browser tab opens with the <ProductName /> sign-in page. Sign in with your administrator account.
-8. Review and approve the requested permissions on the consent screen.
+8. If a consent screen appears, review the requested permissions. Approve them to continue.
 9. You are redirected back to MCP Inspector, now connected. Tokens are obtained and refreshed automatically from here on.
 
 ### Verify the Connection
 
 1. In MCP Inspector, open the **Tools** tab and click **List Tools**.
-2. Select a tool such as `list_applications` and run it.
+2. Select a tool such as `thunderid_list_applications`. Run it.
 3. The response lists the applications registered in <ProductName />, including the MCP Inspector application you just created.
 
 If the connection fails, see the [Troubleshooting](#troubleshooting) section below.
 
 </Stepper>
-
-</TabItem>
-<TabItem value="claude-code" label="Claude Code">
-
-Claude Code connects to the MCP server over OAuth using Dynamic Client Registration. It registers its own OAuth client automatically, so you do not create an application in the Console for it.
-
-<Stepper stepNode="h4" as="h4">
-
-#### Enable Dynamic Client Registration
-
-Claude Code registers its own OAuth client through Dynamic Client Registration and cannot use a pre-registered client ID, so enable it for local development. Add the following to `deployment.yaml` in your <ProductName /> distribution:
-
-```yaml
-oauth:
-  dcr:
-    insecure: true
-```
-
-:::warning
-This setting is for local development only. It lets any client register with <ProductName /> without authentication. Do not enable it in production.
-:::
-
-Restart <ProductName /> after saving the file.
-
-#### Trust the Certificate for Claude Code
-
-Claude Code runs on Node.js. Point it at the <ProductName /> self-signed certificate so TLS connections to `https://localhost:8090` are trusted, without adding anything to your system trust store:
-
-```bash
-export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert
-```
-
-`<THUNDERID_HOME>` is the directory of your <ProductName /> distribution. The certificate generated during setup includes subject alternative names for `localhost` and `127.0.0.1`, so modern TLS clients accept it once it is trusted. Run the export in the same terminal session you launch `claude` from.
-
-#### Add the MCP Server to Claude Code
-
-```bash
-claude mcp add --transport http thunderid-mcp https://localhost:8090/mcp
-```
-
-Verify it was added:
-
-```bash
-claude mcp list
-```
-
-You should see `thunderid-mcp` in the list.
-
-#### Authenticate with <ProductName />
-
-1. Start Claude Code from the same terminal where you exported `NODE_EXTRA_CA_CERTS`:
-   ```bash
-   claude
-   ```
-2. Run `/mcp` inside the Claude Code prompt.
-3. Select `thunderid-mcp` and choose the authenticate option.
-4. A browser tab opens with the <ProductName /> sign-in page. Sign in with your administrator account.
-5. Review and approve the requested permissions on the consent screen.
-
-Claude Code obtains and refreshes tokens automatically from here on. It discovers the required `system` scope from the server's metadata, so there is nothing else to configure.
-
-#### Verify Claude Code Access
-
-Ask Claude Code to use a tool, for example:
-
-> "List the applications registered in <ProductName />"
-
-Claude Code calls the matching tool and returns the list of registered applications. To remove the server later, run `claude mcp remove "thunderid-mcp" -s local`.
-
-</Stepper>
-
-</TabItem>
-<TabItem value="claude-desktop" label="Claude Desktop">
-
-:::note Coming soon
-A step-by-step guide for connecting Claude Desktop to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today using the same application registered in the MCP Inspector guide above.
-:::
-
-</TabItem>
-<TabItem value="github-copilot" label="GitHub Copilot">
-
-:::note Coming soon
-A step-by-step guide for connecting GitHub Copilot to the <ProductName /> MCP server is on the way. Any MCP client that supports the MCP Authorization Specification with OAuth can connect today using the same application registered in the MCP Inspector guide above.
-:::
-
-</TabItem>
-</Tabs>
-
-## What You Can Do
-
-Once connected, your AI assistant can work with <ProductName /> resources directly. MCP clients discover the available tools automatically, you just describe what you need in natural language.
-
-| Toolset | Description |
-|---------|-------------|
-| `applications` | Create, configure, and manage OAuth applications with pre-built templates for SPA, Mobile, Server, and M2M |
-| `flows` | Design and modify authentication and registration flows |
-| `themes` | Browse and inspect login page themes, colors, and typography |
-| `organization_units` | List organization units |
-| `user_types` | List user types and self-registration settings |
-| `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
-
-**Example prompts:**
-
-- "Create a new single-page application for my React project"
-- "Show me the current authentication flow"
-- "Add a second factor step to the default login flow"
-- "What colors and typography does the default theme use?"
-- "Integrate authentication with <ProductName /> for this application"
-
-## Use Cases
-
-### Scaffold a React App with Login
-
-Ask the assistant to create a new React application with authentication wired up end-to-end:
-
-> "Create a new React application with authentication using <ProductName />"
-
-The assistant scaffolds a React project using Vite, installs the <ProductName /> React SDK, and wires up the auth provider with the correct `clientId` and server URL from the application registered in <ProductName />. By the end you have a running app with a working sign-in button backed by <ProductName />.
-
-To add authentication to an existing React application instead:
-
-> "Integrate authentication with <ProductName /> for this application"
-
-The assistant installs the SDK, configures the auth provider, and adds sign-in and sign-out components without scaffolding a new project.
-
-### Add Signup to a React App
-
-After integrating login, add a registration page:
-
-> "Integrate a signup page in the application and enable signup"
-
-The assistant enables self-registration on your <ProductName /> application and generates a signup page wired to the registration flow. New users can register directly from your application and appear in the <ProductName /> Console under **User Management**.
 
 ## Troubleshooting
 
@@ -255,29 +334,32 @@ The Inspector origin is missing from the CORS configuration.
 
 ### Certificate or TLS errors
 
-`NODE_EXTRA_CA_CERTS` was not set in the terminal that launched Inspector, or it points to the wrong path.
+Set the certificate variable for the client you are using:
 
-1. Export it again in the same terminal: `export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert`.
-2. Relaunch MCP Inspector from that terminal.
+- Codex: `export CODEX_CA_CERTIFICATE=<THUNDERID_HOME>/config/certs/server.cert`
+- Claude Code or MCP Inspector: `export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert`
 
-### Claude Code cannot authenticate or reports it does not support dynamic client registration
+Replace `<THUNDERID_HOME>` with your distribution path. Confirm the certificate file exists, then restart your client from the same terminal.
 
-Dynamic Client Registration is not enabled.
+### Codex or Claude Code cannot register an OAuth client
 
-1. Set `oauth.dcr.insecure: true` in `deployment.yaml` (local development only) and restart <ProductName />.
-2. Confirm `NODE_EXTRA_CA_CERTS` is exported in the same terminal that launched `claude`.
+Client registration is disabled or requires authentication.
 
-### Claude Code authentication fails with "An application with the same name already exists"
+1. For the local setup above, set `oauth.dcr.insecure: true` in `deployment.yaml`.
+2. Restart <ProductName />.
+3. Confirm the [certificate variable](#certificate-or-tls-errors) is set for your client.
 
-Claude Code registers its OAuth client through Dynamic Client Registration each time it authenticates. If a previous registration already created an application with the same name, the new registration is rejected.
+### OAuth client registration fails with "An application with the same name already exists"
 
-1. In the <ProductName /> Console, go to **Applications**.
-2. Find the application named **Claude Code (thunderid-mcp)** (or similar) from the previous session and delete it.
-3. Re-authenticate from Claude Code by running `/mcp` and selecting the authenticate option.
+A new Dynamic Client Registration request can conflict with an application created during an earlier sign-in. <ProductName /> rejects duplicate application names.
+
+1. In the <ProductName /> Console, navigate to **Applications**.
+2. Identify the application from your previous client registration, such as **Codex** or **Claude Code (thunderid-mcp)**. Delete it only if you no longer need that registration.
+3. Retry sign-in with `codex mcp login thunderid-mcp --scopes system`, or authenticate Claude Code from `/mcp`.
 
 ### Redirect URI error during sign-in
 
-The redirect URI on the application does not exactly match `http://localhost:6274/oauth/callback`.
+For MCP Inspector, the redirect URI on the application must match `http://localhost:6274/oauth/callback`. Other clients use their own redirect URIs. The Codex setup above registers its redirect URI automatically.
 
 1. Edit the application in the Console.
 2. Correct the redirect URI under **Redirect URIs** and save.
@@ -287,7 +369,7 @@ The redirect URI on the application does not exactly match `http://localhost:627
 The signed-in user lacks administrator permissions, or the scope was not set to `system`.
 
 1. Sign in with an administrator account.
-2. Confirm the **Scope** field in MCP Inspector is set to `system`.
+2. For Codex, run `codex mcp login thunderid-mcp --scopes system` to sign in again with the required scope. For MCP Inspector, set **Scope** to `system`.
 
 ### MCP server not responding
 
@@ -299,9 +381,10 @@ curl -k https://localhost:8090/mcp
 
 A `401 Unauthorized` response with a `WWW-Authenticate` header confirms the endpoint is up and secured. Any other error indicates the server is not running or the URL is incorrect.
 
-## Related Documentation
+## Related Guides
 
 - [API Reference](../../apis) - Application and Flow Management REST APIs
 - [React SDK](../../sdks-and-tools/react/overview) - <ProductName /> React SDK documentation
 - [Securing MCP](../../use-cases/ai-agents/mcp-authorization/overview) - governing MCP clients and protecting MCP servers with <ProductName />
+- [Codex MCP configuration](https://developers.openai.com/codex/mcp/) - Codex client configuration and OAuth commands
 - [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) - MCP auth protocol details

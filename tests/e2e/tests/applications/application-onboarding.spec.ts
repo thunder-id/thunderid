@@ -105,7 +105,7 @@ test.describe("Application Onboarding", () => {
 
       await test.step("Verify only Person was granted via the application detail API", async () => {
         const app = await applicationsApi.get(createdAppId);
-        expect(app.allowedUserTypes).toEqual(["Person"]);
+        expect(app.allowedUserTypes).toEqual(["person"]);
         console.log("Application restricted to Person user type, correct");
       });
 

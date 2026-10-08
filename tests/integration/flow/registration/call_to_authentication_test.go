@@ -41,8 +41,9 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userType := testutils.UserType{
-		Name: "call-auth-user-type",
-		OUID: ts.ouID,
+		Handle:      "call-auth-user-type",
+		DisplayName: "Call Auth User Type",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -64,7 +65,7 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 
 	// Pre-create a user to authenticate against in the happy-path test
 	user := testutils.User{
-		Type: userType.Name,
+		Type: userType.Handle,
 		OUID: ts.ouID,
 		Attributes: []byte(`{
 			"username": "call_auth_existing_user",
@@ -198,7 +199,7 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 				"executor": map[string]interface{}{
 					"name": "UserTypeResolver",
 				},
-				"onSuccess":    "prompt_credentials",
+				"onSuccess": "prompt_credentials",
 			},
 			{
 				"id":   "prompt_credentials",
@@ -262,7 +263,7 @@ func (ts *CallToAuthenticationFlowTestSuite) SetupSuite() {
 		ClientID:                  "call_to_auth_reg_test_client",
 		ClientSecret:              "call_to_auth_reg_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{userType.Name},
+		AllowedUserTypes:          []string{userType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId"},
 		},

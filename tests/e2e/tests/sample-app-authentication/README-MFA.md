@@ -495,7 +495,7 @@ USER_RESPONSE=$(curl --location 'https://localhost:8090/users' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Bearer $ADMIN_TOKEN' \
 --data-raw '{
-  "type": "Person",
+  "type": "person",
   "organizationUnit": "6d7029a6-1092-4f3e-ab54-a14662ac7045",
   "attributes": {
     "username": "e2e-test-user",

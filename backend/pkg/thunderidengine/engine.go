@@ -199,13 +199,18 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 
 	oauthConfig := oauthconfig.Config{
-		DeploymentID:           engineCtx.serverConfig.Identifier,
-		RuntimeTransientDBType: engineCtx.runtimeTransientDBType,
-		BaseURL:                config.GetServerURL(&engineCtx.serverConfig),
-		JWT:                    engineCtx.jwtConfig,
-		OAuth:                  engineCtx.oauthConfig,
-		GateClient:             engineCtx.gateClientConfig,
+		DeploymentID:               engineCtx.serverConfig.Identifier,
+		RuntimeTransientDBType:     engineCtx.runtimeTransientDBType,
+		BaseURL:                    config.GetServerURL(&engineCtx.serverConfig),
+		JWT:                        engineCtx.jwtConfig,
+		OAuth:                      engineCtx.oauthConfig,
+		GateClient:                 engineCtx.gateClientConfig,
+		EnableOUQualifiedEndpoints: engineCtx.serverConfig.EnableOUQualifiedEndpoints,
 	}
+	// With no SSO session store there is no session termination to deliver, so back-channel logout is
+	// off: no dispatcher is built and discovery does not advertise it.
+	backchannelOff := false
+	oauthConfig.OAuth.Logout.Backchannel.Enabled = &backchannelOff
 
 	engineCtx.dpopVerifier = dpop.Initialize(oauthConfig, jti.Initialize(engineCtx.runtimeStoreProvider),
 		engineCtx.runtimeCryptoSvc)
@@ -229,7 +234,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
 	// scopeless requests do not need resource-server binding.
-	_, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
+	_, _, err = oauth.Initialize(mux, engineCtx.actorProvider, authnProviderManager, engineCtx.jwtService,
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,

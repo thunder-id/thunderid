@@ -21,6 +21,10 @@ const (
 
 	// MaxIndexedAttributesCount is the maximum number of indexed attributes allowed.
 	MaxIndexedAttributesCount = 20
+
+	// maxIndexedValuesPerAttribute is the maximum number of values an entity may index under one
+	// attribute name. It keeps a full identifier insert within the database bind parameter limits.
+	maxIndexedValuesPerAttribute = 100
 )
 
 var (
@@ -117,16 +121,6 @@ var (
 		ID:    "ASQ-ENTITY_MGT-17",
 		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
-	// QueryDeleteAttributeIdentifiersByEntity is the query to delete only attribute-sourced identifiers for an entity.
-	QueryDeleteAttributeIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-18",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'attribute'`,
-	}
-	// QueryDeleteSystemIdentifiersByEntity is the query to delete only system-sourced identifiers for an entity.
-	QueryDeleteSystemIdentifiersByEntity = model.DBQuery{
-		ID:    "ASQ-ENTITY_MGT-19",
-		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2 AND SOURCE = 'system'`,
-	}
 )
 
 // appendOUIDsINClause appends an "AND OU_ID IN (...)" condition to a query for the given OU IDs.
@@ -170,14 +164,16 @@ func appendOUIDsINClause(
 
 // buildEntityCountQueryByOUIDs constructs a count query scoped to a list of organization unit IDs.
 func buildEntityCountQueryByOUIDs(
-	category string, ouIDs []string, filters map[string]interface{}, deploymentID string,
+	category string, ouIDs []string, filters map[string]interface{}, indexedAttrs map[string]bool,
+	deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-20"
 	baseQuery := `SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1`
 	args := []interface{}{category}
 
 	if len(filters) > 0 {
-		fq, filterArgs, err := buildFilterQueryWithOffset(queryID, baseQuery, filters, len(args))
+		fq, filterArgs, err := buildFilterQueryWithOffset(
+			queryID, baseQuery, filters, indexedAttrs, len(args))
 		if err != nil {
 			return model.DBQuery{}, nil, err
 		}
@@ -201,7 +197,8 @@ func buildEntityCountQueryByOUIDs(
 
 // buildEntityListQueryByOUIDs constructs a paginated list query scoped to a list of organization unit IDs.
 func buildEntityListQueryByOUIDs(
-	category string, ouIDs []string, filters map[string]interface{}, limit, offset int, deploymentID string,
+	category string, ouIDs []string, filters map[string]interface{}, indexedAttrs map[string]bool,
+	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	queryID := "ASQ-ENTITY_MGT-21"
 	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES ` +
@@ -210,7 +207,8 @@ func buildEntityListQueryByOUIDs(
 	var query model.DBQuery
 
 	if len(filters) > 0 {
-		fq, filterArgs, err := buildFilterQueryWithOffset(queryID, baseQuery, filters, len(args))
+		fq, filterArgs, err := buildFilterQueryWithOffset(
+			queryID, baseQuery, filters, indexedAttrs, len(args))
 		if err != nil {
 			return model.DBQuery{}, nil, err
 		}
@@ -381,7 +379,8 @@ func buildBulkEntityExistsQueryInOUs(
 
 // buildEntityListQuery constructs a query to get entities with optional filtering.
 func buildEntityListQuery(
-	category string, filters map[string]interface{}, limit, offset int, deploymentID string,
+	category string, filters map[string]interface{}, indexedAttrs map[string]bool,
+	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-25"
@@ -396,7 +395,8 @@ func buildEntityListQuery(
 			baseWithCategory = baseQuery + " WHERE 1=1"
 			args = []interface{}{}
 		}
-		fq, fArgs, err := buildFilterQueryWithOffset(queryID, baseWithCategory, filters, len(args))
+		fq, fArgs, err := buildFilterQueryWithOffset(
+			queryID, baseWithCategory, filters, indexedAttrs, len(args))
 		if err != nil {
 			return model.DBQuery{}, nil, err
 		}
@@ -432,7 +432,7 @@ func buildEntityListQuery(
 
 // buildEntityCountQuery constructs a query to count entities with optional filtering.
 func buildEntityCountQuery(
-	category string, filters map[string]interface{}, deploymentID string,
+	category string, filters map[string]interface{}, indexedAttrs map[string]bool, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	baseQuery := `SELECT COUNT(*) as total FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-26"
@@ -440,7 +440,8 @@ func buildEntityCountQuery(
 	if len(filters) > 0 {
 		baseWithCategory := baseQuery + " WHERE CATEGORY = $1"
 		args := []interface{}{category}
-		fq, fArgs, err := buildFilterQueryWithOffset(queryID, baseWithCategory, filters, len(args))
+		fq, fArgs, err := buildFilterQueryWithOffset(
+			queryID, baseWithCategory, filters, indexedAttrs, len(args))
 		if err != nil {
 			return model.DBQuery{}, nil, err
 		}
@@ -634,10 +635,17 @@ func buildPaginatedQuery(baseQuery string, paramCount int, placeholder string) (
 	return "", fmt.Errorf("unsupported placeholder: %s", placeholder)
 }
 
+// identifierExistsCondition matches an entity holding an indexed schema attribute value. The key is
+// validated before it is formatted in, and the value placeholder is supplied per dialect.
+const identifierExistsCondition = `EXISTS (SELECT 1 FROM "ENTITY_IDENTIFIER" ei ` +
+	`WHERE ei.ENTITY_ID = "ENTITY".ID AND ei.DEPLOYMENT_ID = "ENTITY".DEPLOYMENT_ID ` +
+	`AND ei.SOURCE = 'attribute' AND ei.NAME = '%s' AND ei.VALUE = %s)`
+
 // buildFilterQueryWithOffset constructs a filter query where parameter numbering starts at the given offset.
 // This is used when the base query already has parameters (e.g., CATEGORY = $1).
 func buildFilterQueryWithOffset(
-	queryID string, baseQuery string, filters map[string]interface{}, paramOffset int,
+	queryID string, baseQuery string, filters map[string]interface{}, indexedAttrs map[string]bool,
+	paramOffset int,
 ) (model.DBQuery, []interface{}, error) {
 	columnName := AttributesColumn
 
@@ -655,10 +663,25 @@ func buildFilterQueryWithOffset(
 	postgresQuery := baseQuery
 	sqliteQuery := strings.Replace(baseQuery, "$1", "?", 1)
 
-	for i, key := range keys {
-		postgresQuery += utils.BuildPostgresJSONCondition(columnName, key, paramOffset+i+1)
-		sqliteQuery += utils.BuildSQLiteJSONCondition(columnName, key)
-		args = append(args, filters[key])
+	for _, key := range keys {
+		if !indexedAttrs[key] {
+			postgresQuery += utils.BuildPostgresJSONCondition(columnName, key, paramOffset+len(args)+1)
+			sqliteQuery += utils.BuildSQLiteJSONCondition(columnName, key)
+			args = append(args, filters[key])
+			continue
+		}
+
+		// An indexed attribute has one identifier row per list item, so the identifier table matches
+		// a value inside a list, which the JSON comparison of the whole value cannot. The JSON
+		// comparison stays for entities written before the attribute was indexed.
+		pgJSON := strings.TrimPrefix(
+			utils.BuildPostgresJSONCondition(columnName, key, paramOffset+len(args)+1), " AND ")
+		sqJSON := strings.TrimPrefix(utils.BuildSQLiteJSONCondition(columnName, key), " AND ")
+		pgExists := fmt.Sprintf(identifierExistsCondition, key, fmt.Sprintf("$%d", paramOffset+len(args)+2))
+		sqExists := fmt.Sprintf(identifierExistsCondition, key, "?")
+		postgresQuery += fmt.Sprintf(" AND (%s OR %s)", pgJSON, pgExists)
+		sqliteQuery += fmt.Sprintf(" AND (%s OR %s)", sqJSON, sqExists)
+		args = append(args, filters[key], fmt.Sprintf("%v", filters[key]))
 	}
 
 	resultQuery := model.DBQuery{

@@ -110,7 +110,7 @@ func (s *FederatedMappingSuite) postJSON(path string, body interface{}) (int, []
 func (s *FederatedMappingSuite) createLocalUser(attributes map[string]interface{}) string {
 	s.T().Helper()
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       fedPersonType.Name,
+		Type:       fedPersonType.Handle,
 		OUID:       s.ouID,
 		Attributes: mustJSON(attributes),
 	})
@@ -121,7 +121,7 @@ func (s *FederatedMappingSuite) createLocalUser(attributes map[string]interface{
 
 // linkOn builds a configuration that maps the claims a scenario needs and links on the named attributes.
 func linkOn(attributes []string, pairs ...testutils.AttributeMapping) *testutils.AttributeConfiguration {
-	config := mapping(fedPersonType.Name, pairs...)
+	config := mapping(fedPersonType.Handle, pairs...)
 	config.AccountLinking = &testutils.AccountLinking{Attributes: attributes}
 	return config
 }
@@ -253,7 +253,7 @@ func (s *FederatedMappingSuite) TestWithoutLinkingOnlySubResolves() {
 	})
 
 	user := s.baseUser(sub)
-	status, response, _ := s.authenticateDirect(mapping(fedPersonType.Name, pair("email", "email")), user)
+	status, response, _ := s.authenticateDirect(mapping(fedPersonType.Handle, pair("email", "email")), user)
 
 	s.Require().Equal(http.StatusOK, status)
 	s.Equal(existingID, response.ID, "the subject alone should resolve the user")

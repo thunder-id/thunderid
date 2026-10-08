@@ -100,9 +100,17 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 						"id": "schema-1",
 					},
 					{
+						// Invalid row missing the display name
+						"id":       "schema-3",
+						"category": "user",
+						"handle":   "schema-3",
+						"ou_id":    "ou-1",
+					},
+					{
 						"id":                      "schema-2",
 						"category":                "user",
-						"name":                    "Schema 2",
+						"handle":                  "schema-2",
+						"display_name":            "Schema 2",
 						"ou_id":                   "ou-1",
 						"allow_self_registration": true,
 					},
@@ -117,7 +125,8 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 				{
 					ID:                    "schema-2",
 					Category:              TypeCategoryUser,
-					Name:                  "Schema 2",
+					Handle:                "schema-2",
+					DisplayName:           "Schema 2",
 					OUID:                  "ou-1",
 					AllowSelfRegistration: true,
 				},
@@ -136,7 +145,8 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 					{
 						"id":                      "schema-1",
 						"category":                "user",
-						"name":                    "Schema 1",
+						"handle":                  "schema-1",
+						"display_name":            "Schema 1",
 						"ou_id":                   "ou-1",
 						"allow_self_registration": false,
 					},
@@ -151,7 +161,8 @@ func (suite *StoreTestSuite) TestGetEntityTypeListByOUIDs() {
 				{
 					ID:                    "schema-1",
 					Category:              TypeCategoryUser,
-					Name:                  "Schema 1",
+					Handle:                "schema-1",
+					DisplayName:           "Schema 1",
 					OUID:                  "ou-1",
 					AllowSelfRegistration: false,
 				},

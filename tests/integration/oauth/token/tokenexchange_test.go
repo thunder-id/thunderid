@@ -43,7 +43,8 @@ type TokenExchangeTestSuite struct {
 
 var (
 	testUserType = testutils.UserType{
-		Name: "token-test-person",
+		Handle:      "token-test-person",
+		DisplayName: "Token Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

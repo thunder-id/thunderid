@@ -10,14 +10,19 @@ import EditTokenSettings from '../EditTokenSettings';
 // Stable mock references, created via vi.hoisted so the hoisted vi.mock factories can use them.
 // New identities on every render would re-fire the schema-fetch effect in a loop.
 const {mockHttp, mockGetServerUrl, mockLogger} = vi.hoisted(() => ({
-  mockHttp: {request: vi.fn().mockResolvedValue({data: {id: 'schema-1', name: 'default', schema: {}}})},
+  mockHttp: {
+    request: vi.fn().mockResolvedValue({data: {id: 'schema-1', handle: 'default', displayName: 'Default', schema: {}}}),
+  },
   mockGetServerUrl: vi.fn().mockReturnValue('https://api.example.com'),
   mockLogger: {error: vi.fn(), info: vi.fn(), debug: vi.fn()},
 }));
 
 vi.mock('@thunderid/configure-user-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-user-types')>()),
-  useGetUserTypes: () => ({data: {types: [{id: 'schema-1', name: 'default'}]}, isLoading: false}),
+  useGetUserTypes: () => ({
+    data: {types: [{id: 'schema-1', handle: 'default', displayName: 'Default'}]},
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@thunderid/react', async (importOriginal) => ({

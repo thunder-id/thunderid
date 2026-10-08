@@ -1,9 +1,10 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {useLogger} from '@thunderid/logger/react';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {
   Typography,
   Stack,
@@ -140,7 +141,8 @@ type FormData = z.infer<typeof formSchema>;
  */
 export interface UserType {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   allowSelfRegistration: boolean;
 }
@@ -239,7 +241,7 @@ export interface ConfigureDetailsProps {
  * @param props.onCallbackUrlChange - Callback for callback URL changes
  * @param props.onReadyChange - Callback for step readiness changes
  * @param props.userTypes - Available user types for selection
- * @param props.selectedUserTypes - Currently selected user type names
+ * @param props.selectedUserTypes - Currently selected user type handles
  * @param props.onUserTypesChange - Callback for user type selection changes
  *
  * @returns JSX element displaying the appropriate configuration interface
@@ -260,8 +262,8 @@ export interface ConfigureDetailsProps {
  *       onHostingUrlChange={setHostingUrl}
  *       onCallbackUrlChange={setCallbackUrl}
  *       onReadyChange={setIsReady}
- *       userTypes={[{id: '1', name: 'Customer'}, {id: '2', name: 'Employee'}]}
- *       selectedUserTypes={['Customer']}
+ *       userTypes={[{id: '1', handle: 'customer', displayName: 'Customer'}, {id: '2', handle: 'employee', displayName: 'Employee'}]}
+ *       selectedUserTypes={['customer']}
  *       onUserTypesChange={(types) => console.log('Selected types:', types)}
  *     />
  *   );
@@ -528,7 +530,8 @@ export default function ConfigureDetails({
             <Autocomplete
               multiple
               id="user-types-select"
-              options={userTypes.map((ut) => ut.name)}
+              options={userTypes.map((ut) => ut.handle)}
+              getOptionLabel={(option: string) => getUserTypeLabel(userTypes, option)}
               value={selectedUserTypes}
               onChange={(_event, newValue) => {
                 if (onUserTypesChange) {
@@ -544,7 +547,7 @@ export default function ConfigureDetails({
               )}
               renderTags={(value: string[], getTagProps) =>
                 value.map((option: string, index: number) => (
-                  <Chip {...getTagProps({index})} key={option} label={option} />
+                  <Chip {...getTagProps({index})} key={option} label={getUserTypeLabel(userTypes, option)} />
                 ))
               }
             />

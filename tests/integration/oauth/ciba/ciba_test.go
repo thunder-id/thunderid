@@ -129,8 +129,9 @@ func (ts *CIBATestSuite) SetupSuite() {
 	// User type + user. mobile_number is the recipient the SMS executor resolves from the
 	// identified user; username/password back the credential confirmation step.
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "ciba-test-person",
-		OUID: ts.ouID,
+		Handle:      "ciba-test-person",
+		DisplayName: "Ciba Test Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username":      map[string]interface{}{"type": "string"},
 			"password":      map[string]interface{}{"type": "string", "credential": true},
@@ -1004,7 +1005,7 @@ func cibaAuthFlowNodes(loginHintAttribute, senderID string, withAuthzCheck bool)
 			"type": "TASK_EXECUTION",
 			"properties": map[string]interface{}{
 				"senderId":    senderID,
-				"smsTemplate": "CIBA_NOTIFICATION",
+				"smsTemplate": "ciba-notification",
 			},
 			"executor": map[string]interface{}{
 				"name": "SMSExecutor",

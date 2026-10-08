@@ -158,7 +158,7 @@ paths:
                       location: "https://localhost:8090/scim/v2/Schemas/urn:ietf:params:scim:schemas:core:2.0:User"
                   - schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
                     id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
-                    name: "employee"
+                    name: "Employee"
                     description: "ThunderID extension schema for the \"employee\" user type"
                     attributes:
                       - name: "department"
@@ -211,7 +211,7 @@ paths:
       description: |
         Returns a specific SCIM schema by its URN. Requires authentication to ensure tenant isolation.
 
-        The core `urn:ietf:params:scim:schemas:core:2.0:User` and `urn:ietf:params:scim:schemas:core:2.0:Group` URNs are always available. A ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) is available for each registered user type. The `urn:thunderid:params:scim:schemas:` prefix is the default and can be changed with `scim.urn_prefix` in `deployment.yaml`.
+        The core `urn:ietf:params:scim:schemas:core:2.0:User` and `urn:ietf:params:scim:schemas:core:2.0:Group` URNs are always available. A ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userTypeHandle>:2.0:User`) is available for each registered user type. The `urn:thunderid:params:scim:schemas:` prefix is the default and can be changed with `scim.urn_prefix` in `deployment.yaml`.
       parameters:
         - name: id
           in: path
@@ -230,7 +230,7 @@ paths:
               example:
                 schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
                 id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
-                name: "employee"
+                name: "Employee"
                 description: "ThunderID extension schema for the \"employee\" user type"
                 attributes:
                   - name: "username"
@@ -592,7 +592,7 @@ paths:
         - SCIM Users
       summary: Create User
       description: |
-        Creates a new user. The request body must include the SCIM Core User schema URN (`urn:ietf:params:scim:schemas:core:2.0:User`) whenever core attributes (`userName`, `name`, `emails`, etc.) are present, and exactly one ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) identifying the target user type (RFC 7644 §3.3).
+        Creates a new user. The request body must include the SCIM Core User schema URN (`urn:ietf:params:scim:schemas:core:2.0:User`) whenever core attributes (`userName`, `name`, `emails`, etc.) are present, and exactly one ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userTypeHandle>:2.0:User`) identifying the target user type (RFC 7644 §3.3).
 
         If exactly one user type is configured on the server, the extension URN and its object may be omitted and only core attributes supplied; the sole configured user type is used by default.
 

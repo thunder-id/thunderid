@@ -270,6 +270,18 @@ jobs:
           path: target/dist/*.zip
           if-no-files-found: error
 
+      - name: 🔨 Build Control Plane with Coverage Instrumentation
+        run: |
+          set -e
+          ENABLE_COVERAGE=true ./build.sh build_cp_backend $(go env GOOS) $(go env GOARCH)
+
+      - name: 📦 Upload Control Plane Binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: control-plane-binary
+          path: target/out/.build/thunderid-cp
+          if-no-files-found: error
+
   test-backend-unit:
     name: 🧪 Backend Unit Tests
     needs: [preflight]
@@ -966,21 +978,73 @@ jobs:
       #     name: Backend-combined Coverage (${{ matrix.database }})
       #     fail_ci_if_error: false
 
+  test-integration-cp:
+    name: 🧪 Integration Tests (control plane)
+    # The Control Plane binary in the distribution the build job packages, with a Data Plane (the
+    # all-in-one server) beside it and the suites in tests/integration/controlplane. Its coverage joins the all-in-one server's in the integration
+    # patch coverage check, which is how code only a Control Plane runs gets measured at all.
+    needs: [build]
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd backend
+          go mod download
+          cd ../tests/integration
+          go mod download
+
+      - name: 📥 Download Built Distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: product-distribution
+          path: target/dist/
+
+      - name: 📥 Download Control Plane Binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: control-plane-binary
+          path: target/out/.build/
+
+      - name: 🧪 Run Control Plane Integration Tests
+        run: |
+          set -e
+          # An artifact does not keep the executable bit.
+          chmod +x target/out/.build/thunderid-cp
+          make test_integration_cp
+
+      - name: 📦 Archive Integration Coverage Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-coverage-control-plane
+          path: target/coverage_integration.out
+          if-no-files-found: error
+
   backend-integration-patch-coverage:
     name: 🛡️ Backend Integration Patch Coverage
     # Measures only what the integration suite executed. The combined
     # 🛡️ Patch Coverage Gate pools backend unit, backend integration, and both
     # frontend reports into one percentage, so a changed backend line covered
-    # only by a unit test satisfies it. This job loads the three
-    # integration-coverage-* artifacts and nothing else, which is the whole
-    # reason it exists separately rather than as another threshold on that gate.
+    # only by a unit test satisfies it. This job loads the integration-coverage-*
+    # artifacts, one per database the all-in-one server is tested against and one
+    # for the Control Plane, and nothing else, which is the whole reason it exists
+    # separately rather than as another threshold on that gate.
     #
-    # Gated like the other checks: it needs only build and test-integration, so
-    # unlike the combined gate it does not wait on the frontend or unit jobs, and
-    # it is skipped when those two did not succeed rather than reporting on data
+    # Gated like the other checks: it needs only build and the integration jobs,
+    # so unlike the combined gate it does not wait on the frontend or unit jobs,
+    # and it is skipped when those did not succeed rather than reporting on data
     # it does not have.
-    needs: [build, test-integration]
-    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' }}
+    needs: [build, test-integration, test-integration-cp]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-integration-cp.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1005,14 +1069,15 @@ jobs:
 
   test-integration-status:
     name: ✅ Integration Tests Status
-    needs: [test-integration]
+    needs: [test-integration, test-integration-cp]
     if: ${{ always() && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check integration test results
         run: |
-          if [[ "${{ needs.test-integration.result }}" == "failure" || "${{ needs.test-integration.result }}" == "cancelled" ]]; then
+          if [[ "${{ needs.test-integration.result }}" == "failure" || "${{ needs.test-integration.result }}" == "cancelled" ||
+                "${{ needs.test-integration-cp.result }}" == "failure" || "${{ needs.test-integration-cp.result }}" == "cancelled" ]]; then
             echo "❌ Integration tests failed or were cancelled"
             exit 1
           fi

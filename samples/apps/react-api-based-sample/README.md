@@ -17,7 +17,7 @@ This sample application demonstrates how to integrate authentication into a Reac
 - A running server instance (default: `https://localhost:8090`)
 - Server configured with appropriate CORS settings
 - SSL certificates (`server.key` and `server.cert`) in the project root
-- The "Customer" user type created in ThunderID
+- The `customer` user type created in ThunderID
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ cp ../../target/out/.cert/server.cert .
 
 ### 3. Set Up Sample Resources
 
-The sample ships with a `thunderid-config/` directory containing the `Customer` user type definition required for sign-up and sign-in.
+The sample ships with a `thunderid-config/` directory containing the `customer` user type definition required for sign-up and sign-in.
 
 Import `thunderid-config/thunderid-config.yaml` via the ThunderID Console ([https://localhost:8090/console](https://localhost:8090/console)):
 - **First-time login**: a welcome screen appears with an **Open** button to upload the YAML file directly.
@@ -133,7 +133,7 @@ This sample interacts with the following APIs:
 ### Sign Up Flow
 1. User fills in the registration form (username, name, email, password)
 2. Application fetches the default organization unit ID
-3. Sends a POST request to `/users` with user attributes and type "Customer"
+3. Sends a POST request to `/users` with user attributes and type `customer`
 4. On success, displays confirmation message
 
 ### Sign in Flow
@@ -157,7 +157,7 @@ This sample interacts with the following APIs:
 - Check the CORS configuration in the server-config `cors` section
 
 **Issue**: "User type not found" error during sign-up
-- Import `thunderid-config/thunderid-config.yaml` via the ThunderID Console (see "Set Up Sample Resources" above) to create the "Customer" user type
+- Import `thunderid-config/thunderid-config.yaml` via the ThunderID Console (see "Set Up Sample Resources" above) to create the `customer` user type
 
 **Issue**: Sign-up fails with authentication/authorization errors
 - Drive sign-up through an unauthenticated self-registration flow rather than the management `/users` API (the server always enforces security)

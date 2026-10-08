@@ -30,7 +30,7 @@ export default function AgentAccessTokenSection({
   const {t} = useTranslation();
 
   const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent.type);
+  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent.type);
   const {data: schemaDetails, isLoading} = useGetAgentType(matchedSchema?.id);
 
   const schemaAttributes = schemaDetails?.schema

@@ -10,7 +10,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -129,7 +128,9 @@ func (e *openid4vpVerifier) poll(
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOpenID4VPExpired
 	case openid4vp.StatusCompleted:
-		e.authenticate(ctx, rs, execResp, logger)
+		if err := e.authenticate(ctx, rs, execResp, logger); err != nil {
+			return nil, err
+		}
 		if execResp.Status == providers.ExecFailure {
 			return execResp, nil
 		}
@@ -162,12 +163,12 @@ func (e *openid4vpVerifier) poll(
 func (e *openid4vpVerifier) authenticate(
 	ctx *providers.NodeContext, rs *openid4vp.RequestState,
 	execResp *providers.ExecutorResponse, logger *log.Logger,
-) {
+) error {
 	if rs.Result == nil {
 		logger.Error(ctx.Context, "OpenID4VP completed state has no result")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOpenID4VPVerificationFailed
-		return
+		return nil
 	}
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypeOpenID4VP: &authncommon.OpenID4VPCredential{
@@ -184,14 +185,15 @@ func (e *openid4vpVerifier) authenticate(
 			log.String("errorCode", svcErr.Code))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOpenID4VPVerificationFailed
-		return
+		return nil
 	}
 
-	for key, value := range authenticatedClaims {
-		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	if err := setExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+		return err
 	}
 
 	if ctx.FlowType == providers.FlowTypeAuthentication && isAuthenticationWithoutLocalUserAllowed(ctx) {
 		execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 	}
+	return nil
 }

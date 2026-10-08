@@ -50,7 +50,8 @@ var attrReleaseOU = testutils.OrganizationUnit{
 }
 
 var attrReleaseUserType = testutils.UserType{
-	Name: "attr-release-person",
+	Handle:      "attr-release-person",
+	DisplayName: "Attr Release Person",
 	Schema: map[string]interface{}{
 		"username":    map[string]interface{}{"type": "string"},
 		"password":    map[string]interface{}{"type": "string", "credential": true},
@@ -190,7 +191,7 @@ func (ts *AttributeReleaseBranchTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       attrReleaseUserType.Name,
+		Type:       attrReleaseUserType.Handle,
 		OUID:       ts.ouID,
 		Attributes: json.RawMessage(attributes),
 	})

@@ -5,12 +5,14 @@ package inboundclient
 
 import (
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	dre "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -28,13 +30,17 @@ func Initialize(
 	entityType entitytype.EntityTypeServiceInterface,
 	cryptoProvider providers.RuntimeCryptoProvider,
 	jweService jwe.JWEServiceInterface,
+	cimdService cimd.CIMDServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, err
 	}
 	return newInboundClientService(store, transactioner, certService, entityProvider,
-		themeMgt, layoutMgt, flowMgt, entityType, cryptoProvider, jweService), nil
+		themeMgt, layoutMgt, flowMgt, entityType, cryptoProvider, jweService, cimdService,
+		sharingService, sharedTypes), nil
 }
 
 // initializeStore always creates a composite store (DB + in-memory file store).

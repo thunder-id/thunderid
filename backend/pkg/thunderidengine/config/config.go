@@ -152,12 +152,13 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname       string         `yaml:"hostname"   json:"hostname"`
-	Port           int            `yaml:"port"       json:"port"`
-	HTTPOnly       bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL      string         `yaml:"public_url" json:"public_url"`
-	Identifier     string         `yaml:"identifier" json:"identifier"`
-	SecurityConfig SecurityConfig `yaml:"security"   json:"security"`
+	Hostname                   string         `yaml:"hostname"   json:"hostname"`
+	Port                       int            `yaml:"port"       json:"port"`
+	HTTPOnly                   bool           `yaml:"http_only"  json:"http_only"`
+	PublicURL                  string         `yaml:"public_url" json:"public_url"`
+	Identifier                 string         `yaml:"identifier" json:"identifier"`
+	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
+	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
 }
 
 // GateClientConfig holds the client configuration details.
@@ -241,6 +242,17 @@ func (c DCRConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
 }
 
+// CIMDConfig holds the OAuth Client ID Metadata Document configuration.
+type CIMDConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled returns whether CIMD is enabled, defaulting to false if unset
+// (an explicit default lives in default.json).
+func (c CIMDConfig) IsEnabled() bool {
+	return c.Enabled != nil && *c.Enabled
+}
+
 // PARConfig holds the Pushed Authorization Request (RFC 9126) configuration.
 type PARConfig struct {
 	RequirePAR bool  `yaml:"require_par" json:"require_par"`
@@ -261,16 +273,26 @@ type CIBAConfig struct {
 	IDTokenHintMaxAgeDays int `yaml:"id_token_hint_max_age_days" json:"id_token_hint_max_age_days"`
 }
 
+// ClientAssertionConfig holds the private_key_jwt client assertion validation policy.
+type ClientAssertionConfig struct {
+	// MaxLifetime caps how far (seconds) 'exp' may exceed 'iat' (or now, if 'iat' is absent).
+	MaxLifetime int64 `yaml:"max_lifetime" json:"max_lifetime"`
+	// MaxIatAge caps how far (seconds) 'iat' may be in the past, when present.
+	MaxIatAge int64 `yaml:"max_iat_age" json:"max_iat_age"`
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken         RefreshTokenConfig         `yaml:"refresh_token"               json:"refresh_token"`
 	AuthorizationCode    AuthorizationCodeConfig    `yaml:"authorization_code"          json:"authorization_code"`
 	AuthorizationRequest AuthorizationRequestConfig `yaml:"authorization_request"       json:"authorization_request"`
 	DCR                  DCRConfig                  `yaml:"dcr"                         json:"dcr"`
+	CIMD                 CIMDConfig                 `yaml:"cimd"                        json:"cimd"`
 	PAR                  PARConfig                  `yaml:"par"                         json:"par"`
 	DPoP                 DPoPConfig                 `yaml:"dpop"                        json:"dpop"`
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`
 	CIBA                 CIBAConfig                 `yaml:"ciba"                        json:"ciba"`
+	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
 	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
@@ -337,12 +359,13 @@ type BackchannelLogoutConfig struct {
 	Enabled *bool `yaml:"enabled" json:"enabled"`
 	// TokenValidityPeriod is the lifetime of a logout token.
 	TokenValidityPeriod int64 `yaml:"token_validity_period" json:"token_validity_period"`
-	// RequestTimeout bounds one delivery attempt to a relying party.
+	// RequestTimeout bounds one delivery attempt to a relying party, in seconds; at most 30.
 	RequestTimeout int64 `yaml:"request_timeout" json:"request_timeout"`
-	// MaxAttempts is the number of delivery attempts per relying party; 1 means no retry.
+	// MaxAttempts is the number of delivery attempts per relying party; 1 means no retry. At most 10.
 	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
-	// RetryDelay is the wait before the second attempt; it doubles on every further attempt. A
-	// Retry-After returned on 429 is honored up to the longest wait of that schedule.
+	// RetryDelay is the wait before the second attempt, in seconds; it doubles on every further
+	// attempt. At most 60. A Retry-After returned on 429 is honored up to the longest wait of that
+	// schedule.
 	RetryDelay int64 `yaml:"retry_delay" json:"retry_delay"`
 	// MaxInFlight caps concurrent deliveries across the whole dispatcher.
 	MaxInFlight int `yaml:"max_in_flight" json:"max_in_flight"`

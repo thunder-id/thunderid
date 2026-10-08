@@ -325,7 +325,8 @@ const RESOURCE_VIEWS: ResourceView[] = [
     icon: UserRoundCog,
     getLabel: (t) => t('configureExport.labels.userTypes'),
     getKey: (item, idx) => item.handle ?? item.name ?? `schema-${idx}`,
-    getName: (item, t, idx) => item.name ?? item.handle ?? t('summary.fallback.schema', {index: idx + 1}),
+    getName: (item, t, idx) =>
+      item.displayName ?? item.name ?? item.handle ?? t('summary.fallback.schema', {index: idx + 1}),
     renderChip: (item, t) =>
       item.allow_self_registration ? (
         <Chip
@@ -343,7 +344,8 @@ const RESOURCE_VIEWS: ResourceView[] = [
     icon: Bot,
     getLabel: (t) => t('configureExport.labels.agentTypes'),
     getKey: (item, idx) => item.handle ?? item.name ?? `agent-type-${idx}`,
-    getName: (item, t, idx) => item.name ?? item.handle ?? t('summary.fallback.agentType', {index: idx + 1}),
+    getName: (item, t, idx) =>
+      item.displayName ?? item.name ?? item.handle ?? t('summary.fallback.agentType', {index: idx + 1}),
     renderChip: (item, t) =>
       item.allow_self_registration ? (
         <Chip

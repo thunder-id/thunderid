@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {getErrorMessage} from '@thunderid/utils';
+import getBackchannelLogoutUriServerError from './getBackchannelLogoutUriServerError';
 
 // Applications now show every mutation failure inline (see frontend/AGENTS.md's Error Display
 // section) instead of duplicating it as a toast. The rest of the console still has this
@@ -90,6 +91,11 @@ export default function getApplicationErrorMessage(
   fallbackKey: string,
   fallbackDefaultValue?: string,
 ): string {
+  const backchannelLogoutUriError = getBackchannelLogoutUriServerError(error, t);
+  if (backchannelLogoutUriError) {
+    return backchannelLogoutUriError;
+  }
+
   const apiError = (error as {response?: {data?: FlowMismatchApiError}}).response?.data;
 
   if (apiError?.code === FLOW_MISMATCH_ERROR_CODE) {

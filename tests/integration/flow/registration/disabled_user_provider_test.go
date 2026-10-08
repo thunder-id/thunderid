@@ -27,7 +27,8 @@ var (
 	}
 
 	disabledProviderUserType = testutils.UserType{
-		Name: "disabled-provider-user-type",
+		Handle:      "disabled-provider-user-type",
+		DisplayName: "Disabled Provider User Type",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -90,7 +91,7 @@ func (ts *DisabledUserProviderTestSuite) SetupSuite() {
 		ClientID:                  "disabled_user_provider_client",
 		ClientSecret:              "disabled_user_provider_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{disabledProviderUserType.Name},
+		AllowedUserTypes:          []string{disabledProviderUserType.Handle},
 	})
 	ts.Require().NoError(err, "failed to create the application")
 	ts.appID = appID
@@ -178,7 +179,7 @@ func (ts *DisabledUserProviderTestSuite) TestRegistrationFlowIsRejectedWhenProvi
 func (ts *DisabledUserProviderTestSuite) TestUserManagementAPIStillWorksWhenProviderIsDisabled() {
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID:       ts.ouID,
-		Type:       disabledProviderUserType.Name,
+		Type:       disabledProviderUserType.Handle,
 		Attributes: []byte(`{"username":"disabled.api.user","email":"disabled.api.user@example.com"}`),
 	})
 	ts.Require().NoError(err, "the user management API must remain available")

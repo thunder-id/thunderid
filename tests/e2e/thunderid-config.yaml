@@ -17,7 +17,7 @@ authFlowHandle: default-flow
 # The admin user is bootstrap-provisioned as Person (see backend/cmd/server/bootstrap), which is
 # also what this file can rely on existing before any sample-app config is imported.
 allowedUserTypes:
-  - Person
+  - person
 # Token exchange only. The assertion this app is issued names this app in its `aud` claim, and the
 # subject-token validator requires the exchanging client to be that same app, so the OAuth profile
 # has to live here rather than on a separate client. Test-only credentials.

@@ -205,6 +205,7 @@ type clientAssertionOptions struct {
 	jti       string
 	omitJTI   bool
 	exp       int64
+	omitExp   bool
 	iat       int64
 	kid       string
 	alg       string
@@ -234,8 +235,10 @@ func createClientAssertion(opts clientAssertionOptions) string {
 		"sub": opts.sub,
 		"aud": opts.aud,
 		"iss": opts.sub,
-		"exp": exp,
 		"iat": iat,
+	}
+	if !opts.omitExp {
+		payload["exp"] = exp
 	}
 	if !opts.omitJTI {
 		jti := opts.jti
@@ -583,6 +586,51 @@ func (ts *PrivateKeyJWTTestSuite) TestExpiredAssertion() {
 	defer resp.Body.Close()
 
 	ts.assertTokenError(resp, http.StatusUnauthorized, "invalid_client")
+}
+
+// Assertions violating the configured iat/exp policy (max_lifetime of 300s, max_iat_age of 60s) are rejected.
+func (ts *PrivateKeyJWTTestSuite) TestAssertionTimestampPolicyViolations() {
+	now := time.Now().Unix()
+	cases := []struct {
+		name    string
+		iat     int64
+		exp     int64
+		omitExp bool
+	}{
+		{name: "IatInFuture", iat: now + 3600, exp: now + 3700},
+		{name: "IatTooOld", iat: now - 3600, exp: now + 60},
+		{name: "LifetimeExceedsMax", exp: now + 3600},
+		{name: "MissingExp", omitExp: true},
+	}
+
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			assertion := createClientAssertion(clientAssertionOptions{
+				sub:     pkjRSAClientID,
+				aud:     pkjIssuer,
+				kid:     pkjRSAKid,
+				alg:     "RS256",
+				key:     ts.rsaKey.Private,
+				iat:     tc.iat,
+				exp:     tc.exp,
+				omitExp: tc.omitExp,
+			})
+
+			req, err := makeTokenRequest(map[string]string{
+				"grant_type":            "client_credentials",
+				"resource":              pkjResourceIdentifier,
+				"client_assertion_type": clientAssertionTypeJWTBearer,
+				"client_assertion":      assertion,
+			})
+			ts.Require().NoError(err)
+
+			resp, err := ts.rawClient.Do(req)
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+
+			ts.assertTokenError(resp, http.StatusUnauthorized, "invalid_client")
+		})
+	}
 }
 
 func (ts *PrivateKeyJWTTestSuite) TestWrongAudience() {
