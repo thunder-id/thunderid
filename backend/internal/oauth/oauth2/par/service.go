@@ -28,15 +28,6 @@ func IsPARRequestURI(requestURI string) bool {
 	return strings.HasPrefix(requestURI, requestURIPrefix)
 }
 
-// sensitiveParParams is the deny-list of PAR body parameters that must not be persisted into
-// InitiatorRequest.QueryParams, since they carry client credentials and the PAR store is a
-// plaintext runtime cache.
-var sensitiveParParams = map[string]bool{
-	oauth2const.RequestParamClientSecret:        true,
-	oauth2const.RequestParamClientAssertion:     true,
-	oauth2const.RequestParamClientAssertionType: true,
-}
-
 // PARServiceInterface defines the interface for the PAR service.
 type PARServiceInterface interface {
 	HandlePushedAuthorizationRequest(
@@ -157,9 +148,12 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		IDTokenHint:         params[oauth2const.RequestParamIDTokenHint],
 	}
 
+	// Drop client-credential parameters before persisting: the PAR store is a plaintext runtime
+	// cache, and these must not surface through InitiatorRequest.QueryParams. Shared with the
+	// authorize/CIBA capture paths so the deny-list cannot drift between them.
 	initiatorQueryParams := make(map[string][]string, len(params)+1)
 	for k, v := range params {
-		if sensitiveParParams[k] {
+		if oauth2utils.SensitiveQueryParams[k] {
 			continue
 		}
 		initiatorQueryParams[k] = []string{v}

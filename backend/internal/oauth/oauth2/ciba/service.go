@@ -180,7 +180,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		},
 		InitiatorRequest: &providers.InitiatorRequest{
 			Headers:     utils.FilterSensitiveHeaders(request.Headers),
-			QueryParams: request.QueryParams,
+			QueryParams: oauth2utils.FilterSensitiveQueryParams(request.QueryParams),
 		},
 	})
 	if flowErr != nil {

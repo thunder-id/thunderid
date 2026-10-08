@@ -114,7 +114,8 @@ func (s *logoutService) InitiateSignOutFlow(
 	// id_token_hint is used by the OAuth layer to resolve the target client; the sign-out flow
 	// itself never consumes it. Strip it from the forwarded initiator request so we don't persist a
 	// JWT with user identity claims into the flow context store.
-	forwardedQueryParams := filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint)
+	forwardedQueryParams := oauth2utils.FilterSensitiveQueryParams(
+		filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint))
 
 	initContext := &flowexec.FlowInitContext{
 		ApplicationID: resolution.AppID,

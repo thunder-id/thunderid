@@ -41,6 +41,9 @@ type frame struct {
 type EngineContext struct {
 	Context          context.Context
 	initiatorRequest *providers.InitiatorRequest
+	// currentRequest carries the HTTP request driving the current flow step. It is transient:
+	// supplied on each execution from the request context and never persisted with the flow context.
+	currentRequest *providers.InitiatorRequest
 
 	ExecutionID    string
 	FlowType       providers.FlowType
@@ -101,6 +104,16 @@ func (ec *EngineContext) GetInitiatorRequest() *providers.InitiatorRequest {
 // SetInitiatorRequest sets the original HTTP request that triggered the flow.
 func (ec *EngineContext) SetInitiatorRequest(req *providers.InitiatorRequest) {
 	ec.initiatorRequest = req
+}
+
+// GetCurrentRequest returns the HTTP request that drives the current flow step.
+func (ec *EngineContext) GetCurrentRequest() *providers.InitiatorRequest {
+	return ec.currentRequest
+}
+
+// SetCurrentRequest sets the HTTP request that drives the current flow step.
+func (ec *EngineContext) SetCurrentRequest(req *providers.InitiatorRequest) {
+	ec.currentRequest = req
 }
 
 // mergeRuntimeData merges the given data into RuntimeData.

@@ -122,6 +122,56 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholdersInConfig() {
 	assert.Equal(suite.T(), "test@example.com", receivedBody["email"])
 }
 
+func (suite *HTTPRequestExecutorTestSuite) TestResolveRequestPlaceholdersInConfig() {
+	var receivedURL string
+	var receivedHeaders http.Header
+	var receivedBody map[string]interface{}
+
+	suite.mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedURL = r.URL.RequestURI()
+		receivedHeaders = r.Header
+		err := json.NewDecoder(r.Body).Decode(&receivedBody)
+		if err != nil {
+			receivedBody = nil
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		NodeProperties: map[string]interface{}{
+			"url":    suite.mockServer.URL + "/collect?src={{request(query.utm_source)}}",
+			"method": "POST",
+			"headers": map[string]interface{}{
+				"X-Forwarded-Agent": "{{request(header.User-Agent)}}",
+				"X-Step-Agent":      "{{request(flow.header.User-Agent)}}",
+			},
+			"body": map[string]interface{}{
+				"host":   "{{request(header.Host)}}",
+				"source": "{{request(init.query.utm_source)}}",
+			},
+		},
+	}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers:     map[string][]string{"User-Agent": {"init-agent"}, "Host": {"id.example.com"}},
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+	ctx.SetCurrentRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"User-Agent": {"step-agent"}},
+	})
+
+	execResp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
+
+	assert.Equal(suite.T(), "/collect?src=newsletter", receivedURL)
+	assert.Equal(suite.T(), "init-agent", receivedHeaders.Get("X-Forwarded-Agent"))
+	assert.Equal(suite.T(), "step-agent", receivedHeaders.Get("X-Step-Agent"))
+	assert.Equal(suite.T(), "id.example.com", receivedBody["host"])
+	assert.Equal(suite.T(), "newsletter", receivedBody["source"])
+}
+
 func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderUserIDSpecialHandling() {
 	var receivedBody map[string]interface{}
 
