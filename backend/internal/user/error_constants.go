@@ -141,6 +141,20 @@ var (
 			DefaultValue: "At least one identifying attribute must be provided",
 		},
 	}
+	// ErrorInvalidCurrentPassword is returned when the authenticated user's supplied current
+	// password does not match the stored credential.
+	ErrorInvalidCurrentPassword = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_password",
+			DefaultValue: "Invalid current password",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_password_description",
+			DefaultValue: "The provided current password is incorrect",
+		},
+	}
 	// ErrorMissingCredentials is the error returned when credentials are missing.
 	ErrorMissingCredentials = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
