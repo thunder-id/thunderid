@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -698,7 +699,8 @@ type Config struct {
 	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
-	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
+	TLS                  TLSConfig                         `yaml:"tls" json:"tls"`
+	CORS                 cors.OriginConfig                 `yaml:"cors"                  json:"cors"`
 	Database             DatabaseConfig                    `yaml:"database"              json:"database"`
 	Cache                engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`
 	JWT                  engineconfig.JWTConfig            `yaml:"jwt"                   json:"jwt"`

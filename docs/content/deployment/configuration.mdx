@@ -906,14 +906,21 @@ authn_provider:
 
 ## CORS Configuration
 
-Controls which browser origins may call the <ProductName /> API. Origins are stored in the server-config `cors` section, not in `deployment.yaml`. No origins are allowed by default.
+Controls which browser origins may call the <ProductName /> API. Origins live in the server-config `cors` section, which you can seed from `deployment.yaml`, a declarative resource file, or the runtime API. No origins are allowed by default.
 
 | Field | Description |
 |-------|-------------|
 | `allowedOrigins` | List of allowed origins. Each entry is a literal origin (for example `https://app.example.com`) or a regex object (`{ regex: "^https://...$" }`) matched against the request `Origin` header. The literal `"*"` is rejected, and `"null"` matches the CORS null origin. Any origin not in the list is rejected. |
 
-Add origins in either of these ways:
+Add origins in any of these ways:
 
+- **Deployment configuration** - set `cors.allowedOrigins` in `deployment.yaml` (note the camelCase key), then restart:
+  ```yaml
+  cors:
+    allowedOrigins:
+      - "https://app.example.com"
+      - regex: '^https://[a-z0-9-]+\.staging\.example\.com(:[0-9]+)?$'
+  ```
 - **Declarative** - create `config/resources/server_configs/cors.yaml`, then restart:
   ```yaml
   name: cors
@@ -929,6 +936,13 @@ Add origins in either of these ways:
 
   { "allowedOrigins": ["https://app.example.com"] }
   ```
+
+How the `deployment.yaml` origins are applied depends on the server-config store mode:
+
+- **Declarative and composite modes** - the origins are loaded into the read-only layer. If `config/resources/server_configs/cors.yaml` also defines the `cors` section, the server fails to start. Define the section in one place only.
+- **Mutable mode** - the origins are merged into the writable database layer on every startup, together with origins added through `PUT /server-config/cors`.
+
+Because mutable mode merges the `deployment.yaml` origins again on each startup, removing an origin from `deployment.yaml` does not remove it from the database. To remove a persisted origin, delete it from `deployment.yaml`, then send the remaining origins to `PUT /server-config/cors`, which replaces the stored list.
 
 Literal origins are matched after the request `Origin` is normalized. Scheme and host are case-insensitive, a trailing host dot is ignored, and IPv6 hosts use bracket form. Internationalized domain names are compared in ASCII form. Ports must match exactly, so list each port separately. Methods, headers, credentials, and the preflight cache TTL are fixed per route in code; only the origin list is configurable.
 

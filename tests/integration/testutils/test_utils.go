@@ -6,6 +6,7 @@ package testutils
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -904,6 +905,48 @@ func RestartServer() error {
 		return fmt.Errorf("server did not become ready after restart: %w", err)
 	}
 
+	return nil
+}
+
+// RestartServerExpectingStartupFailure stops the current server, starts a new one with the current
+// configuration, and waits for it to exit with a non-zero status, as it does when startup rejects the
+// configuration. It returns an error if the server exits cleanly or is still running after timeout.
+func RestartServerExpectingStartupFailure(timeout time.Duration) error {
+	ensureInitialized()
+	log.Println("Restarting server, expecting startup failure...")
+
+	StopServer()
+	time.Sleep(3 * time.Second)
+
+	if err := StartServer(serverPort, zipFilePattern); err != nil {
+		return fmt.Errorf("failed to restart server: %v", err)
+	}
+
+	cmd := serverCmd
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	var exitErr error
+	select {
+	case exitErr = <-done:
+	case <-time.After(timeout):
+		_ = cmd.Process.Kill()
+		<-done
+		exitErr = fmt.Errorf("server still running after %s, expected startup failure", timeout)
+	}
+	serverCmd = nil
+	serverPid = 0
+	removePidFile()
+
+	if exitErr == nil {
+		return fmt.Errorf("server exited cleanly, expected startup failure")
+	}
+	var processExitErr *exec.ExitError
+	if !errors.As(exitErr, &processExitErr) {
+		return exitErr
+	}
 	return nil
 }
 
