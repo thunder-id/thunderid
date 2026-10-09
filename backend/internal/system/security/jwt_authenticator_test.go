@@ -1128,3 +1128,26 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenTypeNotRe
 	assert.NotNil(suite.T(), authCtx)
 	mockJWT.AssertExpectations(suite.T())
 }
+
+func (suite *JWTAuthenticatorTestSuite) TestRevocationAudience_ReadsBothEncodings() {
+	const audience = "https://api.dmv.ca.gov"
+
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAudience: audience}, false),
+		"a string audience must be read")
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAudience: []interface{}{audience}}, false),
+		"an array audience must be read the same way")
+	assert.Empty(suite.T(), revocationAudience(map[string]interface{}{}, false))
+}
+
+func (suite *JWTAuthenticatorTestSuite) TestRevocationAudience_ReadsRefreshTokenAudience() {
+	const audience = "https://api.dmv.ca.gov"
+
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAccessTokenAudience: []interface{}{audience}}, true))
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAccessTokenAudience: audience}, true))
+	assert.Empty(suite.T(), revocationAudience(map[string]interface{}{claimAudience: audience}, true),
+		"a refresh token's own aud is the issuer and must not be used")
+}

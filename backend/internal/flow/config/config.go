@@ -39,6 +39,13 @@ type FlowSectionConfig struct {
 	ApplicationDeletionFlow FlowTypeConfig `json:"applicationDeletionFlow"`
 	SecretRegenerationFlow  FlowTypeConfig `json:"secretRegenerationFlow"`
 	AgentOnboardingFlow     FlowTypeConfig `json:"agentOnboardingFlow"`
+
+	RoleAssignmentRemovalFlow  FlowTypeConfig `json:"roleAssignmentRemovalFlow"`
+	RoleDeletionFlow           FlowTypeConfig `json:"roleDeletionFlow"`
+	RolePermissionRemovalFlow  FlowTypeConfig `json:"rolePermissionRemovalFlow"`
+	GroupDeletionFlow          FlowTypeConfig `json:"groupDeletionFlow"`
+	GroupMembershipRemovalFlow FlowTypeConfig `json:"groupMembershipRemovalFlow"`
+	ActionDeletionFlow         FlowTypeConfig `json:"actionDeletionFlow"`
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.

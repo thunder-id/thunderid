@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package resource implements the resource management service.
@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -91,6 +92,9 @@ type ResourceServiceInterface interface {
 	) (*providers.Action, *tidcommon.ServiceError)
 	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
 		id string) *tidcommon.ServiceError
+	// ValidateDeleteAction reports whether the action may be deleted and returns the scope it retires.
+	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
+		id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *tidcommon.ServiceError)
@@ -1270,6 +1274,39 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	return nil
+}
+
+// ValidateDeleteAction runs DeleteAction's checks and returns the action's scope, revoked deployment-wide.
+func (rs *resourceService) ValidateDeleteAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if id == "" || resourceServerID == "" {
+		return nil, &ErrorMissingID
+	}
+	if resourceID != nil && *resourceID == "" {
+		return nil, &ErrorMissingID
+	}
+	if rs.IsResourceServerDeclarative(resourceServerID) {
+		return nil, ErrorImmutableAction.WithParams(map[string]string{"id": id})
+	}
+
+	resourceServer, svcErr := rs.GetResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	action, svcErr := rs.GetAction(ctx, resourceServerID, resourceID, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Without an audience no token can carry the scope, so there is nothing to revoke.
+	if resourceServer == nil || resourceServer.Identifier == "" || action == nil || action.Permission == "" {
+		return &revocation.AccessRevocationTarget{}, nil
+	}
+	return &revocation.AccessRevocationTarget{
+		Scopes: []revocation.AudienceScope{{Audience: resourceServer.Identifier, Scope: action.Permission}},
+	}, nil
 }
 
 // ValidatePermissions checks if permissions exist for a given resource server.

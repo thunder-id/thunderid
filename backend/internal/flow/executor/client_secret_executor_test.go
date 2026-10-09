@@ -81,12 +81,12 @@ func (s *ClientSecretExecutorTestSuite) TestSecretRegenerationFlow() {
 	s.Equal(providers.ExecComplete, pre.Status)
 
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
-	revoker.EXPECT().RevokeByCriteria(mock.Anything, mock.MatchedBy(
-		func(value revocation.CriteriaRevocation) bool {
-			return value.Mode == revocation.ModeBeforeAction &&
-				value.Reason == revocation.ReasonApplicationSecretRegenerated &&
-				!value.Cutoff.IsZero() &&
-				value.TTL.Seconds() == 86400
+	revoker.EXPECT().RevokeCriteriaBatch(mock.Anything, mock.MatchedBy(
+		func(batch []revocation.CriteriaRevocation) bool {
+			return len(batch) == 1 && batch[0].Mode == revocation.ModeBeforeAction &&
+				batch[0].Reason == revocation.ReasonApplicationSecretRegenerated &&
+				!batch[0].Cutoff.IsZero() &&
+				batch[0].TTL.Seconds() == 86400
 		})).Return(nil)
 	_, err = newCriteriaRevocationExecutor(s.factory, revoker).Execute(
 		s.nodeContext(nil, pre.SharedRuntimeData))

@@ -9,6 +9,7 @@ package revocation
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -21,16 +22,28 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// defaultMaxEntriesPerChange applies when oauth.revocation.criteria.max_entries_per_change is unset.
+const defaultMaxEntriesPerChange = 10000
+
 // Initialize constructs the shared revocation read and write services.
 func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
 	tokenFamilyRevocationTTL time.Duration,
 	revokeTokenFamilyOnExplicit bool,
-) (EnforcementServiceInterface, RevocationServiceInterface) {
+	maxCriteriaPerChange int,
+) (EnforcementServiceInterface, RevocationServiceInterface, error) {
+	if maxCriteriaPerChange < 0 {
+		return nil, nil, fmt.Errorf(
+			"oauth.revocation.criteria.max_entries_per_change must not be negative, got %d", maxCriteriaPerChange)
+	}
+	if maxCriteriaPerChange == 0 {
+		maxCriteriaPerChange = defaultMaxEntriesPerChange
+	}
 	store := newRevocationStore()
 	return newEnforcementService(observabilitySvc, store), newRevocationService(
-		jwtService, store, tokenFamilyRevocationTTL, revokeTokenFamilyOnExplicit, observabilitySvc)
+		jwtService, store, tokenFamilyRevocationTTL, revokeTokenFamilyOnExplicit, observabilitySvc,
+		maxCriteriaPerChange), nil
 }
 
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service.

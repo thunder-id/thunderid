@@ -53,11 +53,16 @@ const (
 	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
 	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
 	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
+	ExecutorNamePostRevocation               = executormeta.ExecutorNamePostRevocation
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
 	ExecutorNameUserDelete                   = executormeta.ExecutorNameUserDelete
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
 	ExecutorNameApplicationDelete            = executormeta.ExecutorNameApplicationDelete
 	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
+	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
+	ExecutorNameRole                         = executormeta.ExecutorNameRole
+	ExecutorNameGroup                        = executormeta.ExecutorNameGroup
+	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
 )
@@ -70,6 +75,17 @@ const (
 	ExecutorModeIdentify   = executormeta.ExecutorModeIdentify
 	ExecutorModeResolve    = executormeta.ExecutorModeResolve
 	ExecutorModeCheckState = executormeta.ExecutorModeCheckState
+
+	ExecutorModeRoleAssignmentRemoval = executormeta.ExecutorModeRoleAssignmentRemoval
+	ExecutorModeRoleDeletion          = executormeta.ExecutorModeRoleDeletion
+	ExecutorModeRolePermissionRemoval = executormeta.ExecutorModeRolePermissionRemoval
+	ExecutorModeGroupDeletion         = executormeta.ExecutorModeGroupDeletion
+	ExecutorModeGroupMemberRemoval    = executormeta.ExecutorModeGroupMemberRemoval
+	ExecutorModeActionDeletion        = executormeta.ExecutorModeActionDeletion
+	ExecutorModeDelete                = executormeta.ExecutorModeDelete
+	ExecutorModeRemoveAssignment      = executormeta.ExecutorModeRemoveAssignment
+	ExecutorModeRemovePermissions     = executormeta.ExecutorModeRemovePermissions
+	ExecutorModeRemoveMember          = executormeta.ExecutorModeRemoveMember
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node provisions into when its
@@ -103,6 +119,15 @@ const (
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
 	revocationInputApplication = "targetApplicationId"
+
+	revocationInputRole           = "targetRoleId"
+	revocationInputAssignee       = "targetAssigneeId"
+	revocationInputGroup          = "targetGroupId"
+	revocationInputMember         = "targetMemberId"
+	revocationInputPermissions    = "targetPermissions"
+	revocationInputResourceServer = "targetResourceServerId"
+	revocationInputResource       = "targetResourceId"
+	revocationInputAction         = "targetActionId"
 
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"

@@ -29,4 +29,8 @@ type revokedSnapshot struct {
 	// AppKeys holds revoked OAuth client entries, written when an application is deleted or its
 	// client secret regenerated.
 	AppKeys []revokedEntry
+	// EntityScopes holds revoked per-principal scope entries, keyed by digest.
+	EntityScopes []revokedEntry
+	// Scopes holds revoked deployment-wide scope entries, keyed by digest.
+	Scopes []revokedEntry
 }

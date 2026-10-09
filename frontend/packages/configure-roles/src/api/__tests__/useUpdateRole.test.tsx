@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {waitFor, renderHook} from '@thunderid/test-utils';
-import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
+import {AdministrationFlowConfigKey, AdministrationFlowInput} from '@thunderid/utils';
+import {describe, it, expect, beforeEach, afterEach, vi, type Mock} from 'vitest';
 import RoleQueryKeys from '../../constants/role-query-keys';
 import type {UpdateRoleRequest} from '../../models/requests';
 import type {Role} from '../../models/role';
@@ -79,6 +80,11 @@ describe('useUpdateRole', () => {
     vi.clearAllMocks();
   });
 
+  // Nothing is removed, so the update takes the native path these tests cover.
+  const queueUnchangedPermissionsRead = (permissions: Role['permissions'] = mockUpdatedRole.permissions): void => {
+    mockHttpRequest.mockResolvedValueOnce({data: {...mockUpdatedRole, permissions}});
+  };
+
   it('should initialize with idle state', () => {
     const {result} = renderHook(() => useUpdateRole());
 
@@ -93,6 +99,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should successfully update a role', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -111,6 +118,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should make correct API call with role ID in URL', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -179,6 +187,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should invalidate ROLE cache for specific roleId on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -201,6 +210,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should invalidate ROLES list cache on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -223,6 +233,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should show success toast on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -253,6 +264,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should send JSON-stringified data in request body', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -265,15 +277,19 @@ describe('useUpdateRole', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
+    // calls[0] reads the current role.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const callArgs = mockHttpRequest.mock.calls[0][0];
+    const callArgs = mockHttpRequest.mock.calls[1][0];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(callArgs.data).toEqual(mockUpdateRequest);
   });
 
   it('should clear error state on successful retry', async () => {
     const apiError = new Error('Temporary error');
-    mockHttpRequest.mockRejectedValueOnce(apiError).mockResolvedValueOnce({data: mockUpdatedRole});
+    queueUnchangedPermissionsRead();
+    mockHttpRequest.mockRejectedValueOnce(apiError);
+    queueUnchangedPermissionsRead();
+    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedRole});
 
     const {result} = renderHook(() => useUpdateRole());
 
@@ -300,6 +316,7 @@ describe('useUpdateRole', () => {
       ouId: 'ou-1',
       permissions: [{resourceServerId: 'rs-1', permissions: ['read']}],
     };
+    queueUnchangedPermissionsRead(responseRole.permissions);
     mockHttpRequest.mockResolvedValueOnce({data: responseRole});
 
     const {result, queryClient} = renderHook(() => useUpdateRole());
@@ -332,5 +349,210 @@ describe('useUpdateRole', () => {
 
     expect(result.current).toBeDefined();
     expect(ROLE_MUTATION_KEY).toEqual(['update-role']);
+  });
+
+  describe('when the edit removes a permission', () => {
+    const storedRole: Role = {
+      id: 'role-1',
+      name: 'Original Role',
+      description: 'Original description',
+      ouId: 'ou-1',
+      permissions: [{resourceServerId: 'rs-1', permissions: ['read', 'write']}],
+    };
+    const reducedPermissions: Role['permissions'] = [{resourceServerId: 'rs-1', permissions: ['read']}];
+
+    interface RequestConfig {
+      url: string;
+      method: string;
+      data?: UpdateRoleRequest;
+    }
+
+    interface RouteOptions {
+      flowConfigured?: boolean;
+      put?: (body: UpdateRoleRequest) => Promise<unknown>;
+      execute?: () => Promise<unknown>;
+    }
+
+    const routeRequests = ({
+      flowConfigured = true,
+      put = (body) => Promise.resolve({data: {...storedRole, ...body}}),
+      execute = () => Promise.resolve({data: {flowStatus: 'COMPLETE'}}),
+    }: RouteOptions = {}): void => {
+      (mockHttpRequest as Mock<(config: RequestConfig) => Promise<unknown>>).mockImplementation((config) => {
+        if (config.url.endsWith('/roles/role-1') && config.method === 'GET') {
+          return Promise.resolve({data: storedRole});
+        }
+        if (config.url.endsWith('/roles/role-1') && config.method === 'PUT') {
+          return put(config.data!);
+        }
+        if (config.url.endsWith('/server-config/flow')) {
+          return Promise.resolve({
+            data: {
+              merged: flowConfigured
+                ? {[AdministrationFlowConfigKey.ROLE_PERMISSION_REMOVAL]: {defaultHandle: 'drop-permissions'}}
+                : {},
+            },
+          });
+        }
+        if (config.url.includes('/flows?')) {
+          return Promise.resolve({
+            data: {flows: [{id: 'flow-1', handle: 'drop-permissions', flowType: 'ADMINISTRATION'}]},
+          });
+        }
+        if (config.url.endsWith('/flow/execute')) {
+          return execute();
+        }
+
+        return Promise.reject(new Error(`unexpected request ${config.method} ${config.url}`));
+      });
+    };
+
+    const requests = (): RequestConfig[] => mockHttpRequest.mock.calls.map(([config]: [RequestConfig]) => config);
+    const puts = () => requests().filter((config) => config.method === 'PUT');
+    const executions = () => requests().filter((config) => config.url.endsWith('/flow/execute'));
+
+    it('should run only the flow when nothing but the permissions changed', async () => {
+      routeRequests();
+      const {result} = renderHook(() => useUpdateRole());
+
+      result.current.mutate({
+        roleId: 'role-1',
+        data: {
+          name: storedRole.name,
+          description: storedRole.description,
+          ouId: 'ou-1',
+          permissions: reducedPermissions,
+        },
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(puts()).toHaveLength(0);
+      expect(executions()).toHaveLength(1);
+      expect(executions()[0].data).toEqual({
+        flowId: 'flow-1',
+        inputs: {
+          [AdministrationFlowInput.PERMISSIONS]: JSON.stringify(reducedPermissions),
+          [AdministrationFlowInput.ROLE]: 'role-1',
+        },
+      });
+      expect(result.current.data).toEqual({...storedRole, permissions: reducedPermissions});
+    });
+
+    it('should report a flow failure without writing the role when only the permissions changed', async () => {
+      routeRequests({execute: () => Promise.resolve({data: {flowStatus: 'ERROR', error: {}}})});
+      const {result} = renderHook(() => useUpdateRole());
+
+      result.current.mutate({
+        roleId: 'role-1',
+        data: {
+          name: storedRole.name,
+          description: storedRole.description,
+          ouId: 'ou-1',
+          permissions: reducedPermissions,
+        },
+      });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(puts()).toHaveLength(0);
+    });
+
+    it('should write the other fields with the existing permissions before running the flow', async () => {
+      routeRequests();
+      const {result} = renderHook(() => useUpdateRole());
+
+      result.current.mutate({
+        roleId: 'role-1',
+        data: {name: 'Renamed Role', description: 'New description', ouId: 'ou-1', permissions: reducedPermissions},
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(puts()).toHaveLength(1);
+      expect(puts()[0].data).toEqual({
+        name: 'Renamed Role',
+        description: 'New description',
+        ouId: 'ou-1',
+        permissions: storedRole.permissions,
+      });
+      expect(executions()).toHaveLength(1);
+      const putIndex = requests().findIndex((config) => config.method === 'PUT');
+      const executeIndex = requests().findIndex((config) => config.url.endsWith('/flow/execute'));
+      expect(putIndex).toBeLessThan(executeIndex);
+      expect(result.current.data).toEqual({
+        ...storedRole,
+        name: 'Renamed Role',
+        description: 'New description',
+        permissions: reducedPermissions,
+      });
+    });
+
+    it('should not run the flow when writing the other fields fails', async () => {
+      const apiError = new Error('Role name already exists');
+      routeRequests({put: () => Promise.reject(apiError)});
+      const {result} = renderHook(() => useUpdateRole());
+
+      result.current.mutate({
+        roleId: 'role-1',
+        data: {name: 'Taken Name', description: storedRole.description, ouId: 'ou-1', permissions: reducedPermissions},
+      });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(result.current.error).toEqual(apiError);
+      expect(executions()).toHaveLength(0);
+    });
+
+    it('should report a flow failure after the other fields were written with the existing permissions', async () => {
+      routeRequests({execute: () => Promise.resolve({data: {flowStatus: 'ERROR', error: {}}})});
+      const {result} = renderHook(() => useUpdateRole());
+
+      result.current.mutate({
+        roleId: 'role-1',
+        data: {
+          name: 'Renamed Role',
+          description: storedRole.description,
+          ouId: 'ou-1',
+          permissions: reducedPermissions,
+        },
+      });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(puts()).toHaveLength(1);
+      expect(puts()[0].data?.permissions).toEqual(storedRole.permissions);
+    });
+
+    it('should update the role natively in a single write when no flow is configured', async () => {
+      routeRequests({flowConfigured: false});
+      const {result} = renderHook(() => useUpdateRole());
+      const data: UpdateRoleRequest = {
+        name: 'Renamed Role',
+        description: storedRole.description,
+        ouId: 'ou-1',
+        permissions: reducedPermissions,
+      };
+
+      result.current.mutate({roleId: 'role-1', data});
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(puts()).toHaveLength(1);
+      expect(puts()[0].data).toEqual(data);
+      expect(executions()).toHaveLength(0);
+    });
   });
 });

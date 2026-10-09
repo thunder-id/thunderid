@@ -375,8 +375,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	flowConfig := flowconfig.FromServerRuntime()
 	tokenFamilyRevocationTTL := time.Duration(runtime.Config.OAuth.RefreshToken.ValidityPeriod) * time.Second
-	revocationEnforcer, revocationSvc := revocation.Initialize(jwtService, observabilitySvc,
-		tokenFamilyRevocationTTL, runtime.Config.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
+	revocationEnforcer, revocationSvc, err := revocation.Initialize(jwtService, observabilitySvc,
+		tokenFamilyRevocationTTL, runtime.Config.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled(),
+		runtime.Config.OAuth.Revocation.Criteria.MaxEntriesPerChange)
+	fatalOnError(ctx, logger, err, "Failed to initialize revocation service")
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
@@ -413,6 +415,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ResourceService:       resourceServerProvider,
 			UserService:           userService,
 			CriteriaRevoker:       revocationSvc,
+			ResourceMgtService:    resourceService,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

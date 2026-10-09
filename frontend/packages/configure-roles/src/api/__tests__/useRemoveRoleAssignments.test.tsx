@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {waitFor, renderHook} from '@thunderid/test-utils';
-import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
+import {AdministrationFlowConfigKey, AdministrationFlowInput} from '@thunderid/utils';
+import {describe, it, expect, beforeEach, afterEach, vi, type Mock} from 'vitest';
 import RoleQueryKeys from '../../constants/role-query-keys';
 import useRemoveRoleAssignments from '../useRemoveRoleAssignments';
 
@@ -69,7 +70,7 @@ describe('useRemoveRoleAssignments', () => {
 
     result.current.mutate({
       roleId: 'role-1',
-      assignments: [{id: 'user-1', type: 'user'}],
+      assignment: {id: 'user-1', type: 'user'},
     });
 
     await waitFor(() => {
@@ -83,11 +84,11 @@ describe('useRemoveRoleAssignments', () => {
   it('should make correct API call', async () => {
     mockHttpRequest.mockResolvedValueOnce(undefined);
 
-    const assignments = [{id: 'user-1', type: 'user' as const}];
+    const assignment = {id: 'user-1', type: 'user' as const};
 
     const {result} = renderHook(() => useRemoveRoleAssignments());
 
-    result.current.mutate({roleId: 'role-1', assignments});
+    result.current.mutate({roleId: 'role-1', assignment});
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -98,7 +99,7 @@ describe('useRemoveRoleAssignments', () => {
         url: 'https://api.test.com/roles/role-1/assignments/remove',
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        data: {assignments},
+        data: {assignments: [assignment]},
       }),
     );
   });
@@ -112,7 +113,7 @@ describe('useRemoveRoleAssignments', () => {
 
     result.current.mutate({
       roleId: 'role-1',
-      assignments: [{id: 'user-1', type: 'user'}],
+      assignment: {id: 'user-1', type: 'user'},
     });
 
     await waitFor(() => {
@@ -133,7 +134,7 @@ describe('useRemoveRoleAssignments', () => {
 
     result.current.mutate({
       roleId: 'role-1',
-      assignments: [{id: 'user-1', type: 'user'}],
+      assignment: {id: 'user-1', type: 'user'},
     });
 
     await waitFor(() => {
@@ -150,7 +151,7 @@ describe('useRemoveRoleAssignments', () => {
 
     result.current.mutate({
       roleId: 'role-1',
-      assignments: [{id: 'user-1', type: 'user'}],
+      assignment: {id: 'user-1', type: 'user'},
     });
 
     await waitFor(() => {
@@ -168,7 +169,7 @@ describe('useRemoveRoleAssignments', () => {
 
     result.current.mutate({
       roleId: 'role-1',
-      assignments: [{id: 'user-1', type: 'user'}],
+      assignment: {id: 'user-1', type: 'user'},
     });
 
     await waitFor(() => {
@@ -177,5 +178,68 @@ describe('useRemoveRoleAssignments', () => {
 
     expect(result.current.error).toEqual(apiError);
     expect(result.current.isPending).toBe(false);
+  });
+
+  describe('when an assignment removal flow is configured', () => {
+    const routeRequests = (execute: () => Promise<unknown>): void => {
+      (mockHttpRequest as Mock<(config: {url: string}) => Promise<unknown>>).mockImplementation((config) => {
+        if (config.url.endsWith('/server-config/flow')) {
+          return Promise.resolve({
+            data: {merged: {[AdministrationFlowConfigKey.ROLE_ASSIGNMENT_REMOVAL]: {defaultHandle: 'unassign'}}},
+          });
+        }
+        if (config.url.includes('/flows?')) {
+          return Promise.resolve({data: {flows: [{id: 'flow-1', handle: 'unassign', flowType: 'ADMINISTRATION'}]}});
+        }
+        if (config.url.endsWith('/flow/execute')) {
+          return execute();
+        }
+
+        return Promise.reject(new Error(`unexpected request ${config.url}`));
+      });
+    };
+
+    const requestedUrls = (): string[] => mockHttpRequest.mock.calls.map(([config]: [{url: string}]) => config.url);
+
+    it('should remove the assignment through one flow execution and never call the native endpoint', async () => {
+      routeRequests(() => Promise.resolve({data: {flowStatus: 'COMPLETE'}}));
+      const {result} = renderHook(() => useRemoveRoleAssignments());
+
+      result.current.mutate({roleId: 'role-1', assignment: {id: 'user-1', type: 'user'}});
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      const urls = requestedUrls();
+      expect(urls.filter((url) => url.endsWith('/server-config/flow'))).toHaveLength(1);
+      expect(urls.filter((url) => url.endsWith('/flow/execute'))).toHaveLength(1);
+      expect(urls.some((url) => url.endsWith('/assignments/remove'))).toBe(false);
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://api.test.com/flow/execute',
+          data: {
+            flowId: 'flow-1',
+            inputs: expect.objectContaining({
+              [AdministrationFlowInput.ROLE]: 'role-1',
+              [AdministrationFlowInput.ASSIGNEE]: 'user-1',
+            }) as unknown,
+          },
+        }),
+      );
+    });
+
+    it('should report a flow refusal without falling back to the native endpoint', async () => {
+      routeRequests(() => Promise.resolve({data: {flowStatus: 'ERROR', error: {}}}));
+      const {result} = renderHook(() => useRemoveRoleAssignments());
+
+      result.current.mutate({roleId: 'role-1', assignment: {id: 'user-1', type: 'user'}});
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(requestedUrls().some((url) => url.endsWith('/assignments/remove'))).toBe(false);
+    });
   });
 });

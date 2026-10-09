@@ -3862,3 +3862,76 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_Undecodable
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "failed to decode token")
 }
+
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_ScopeCriteriaAreKeyedByAudience() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"aud":       "https://api.dmv.ca.gov",
+		"client_id": "ca-dmv-online",
+		"scope":     "openid license",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue("user-123", "https://api.dmv.ca.gov", "license"),
+	})
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeScope,
+		Value: revocation.ScopeCriterionValue("https://api.dmv.ca.gov", "license"),
+	})
+	assert.NotContains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue("user-123", "https://api.dmv.oh.gov", "license"),
+	}, "the same scope on another resource server must not be matched")
+}
+
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_ScopeCriteriaSurviveAnArrayAudience() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"aud":       []interface{}{"https://api.dmv.ca.gov"},
+		"client_id": "ca-dmv-online",
+		"scope":     "openid license",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue("user-123", "https://api.dmv.ca.gov", "license"),
+	}, "an array-encoded audience must key the same criterion a string-encoded one does")
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeScope,
+		Value: revocation.ScopeCriterionValue("https://api.dmv.ca.gov", "license"),
+	})
+}
+
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenUsesAccessTokenAudience() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":              "ca-dmv-online",
+		"access_token_sub": "user-123",
+		"aud":              "https://localhost:8090",
+		"access_token_aud": []interface{}{"https://api.dmv.ca.gov"},
+		"scope":            "license",
+		"iat":              float64(1_700_000_000),
+	}, "rt-jti", "rt-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue("user-123", "https://api.dmv.ca.gov", "license"),
+	})
+}
+
+// A scopeless or OIDC-only token is not bound to a resource server.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_NoScopeCriteriaWithoutScopes() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"aud":       "ca-dmv-online",
+		"client_id": "ca-dmv-online",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+
+	for _, criterion := range identity.Criteria {
+		assert.NotEqual(suite.T(), revocation.CriterionTypeEntityScope, criterion.Type)
+		assert.NotEqual(suite.T(), revocation.CriterionTypeScope, criterion.Type)
+	}
+}

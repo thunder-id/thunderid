@@ -191,8 +191,16 @@ describe('steps models', () => {
       expect(ExecutionTypes.OwnerResolver).toBe('OwnerResolver');
     });
 
-    it('should have exactly 32 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(32);
+    it('should have the administration flow types', () => {
+      expect(ExecutionTypes.AccessChangeValidator).toBe('AccessChangeValidator');
+      expect(ExecutionTypes.RoleExecutor).toBe('RoleExecutor');
+      expect(ExecutionTypes.GroupExecutor).toBe('GroupExecutor');
+      expect(ExecutionTypes.ActionDeletion).toBe('ActionDeletionExecutor');
+      expect(ExecutionTypes.PostRevocation).toBe('PostRevocationExecutor');
+    });
+
+    it('should have exactly 37 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(37);
     });
   });
 

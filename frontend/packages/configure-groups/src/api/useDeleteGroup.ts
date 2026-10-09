@@ -4,8 +4,10 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
+import {deleteGroupViaFlow} from '../utils/groupAdministrationFlow';
 
 /**
  * Custom React hook to delete a group.
@@ -22,6 +24,11 @@ export default function useDeleteGroup(): UseMutationResult<void, Error, string>
   return useMutation<void, Error, string>({
     mutationFn: async (groupId: string): Promise<void> => {
       const serverUrl: string = getServerUrl();
+
+      // The native endpoint below revokes nothing, so it is reached only when no flow is configured.
+      if (await deleteGroupViaFlow(http as unknown as HttpLike, serverUrl, groupId)) {
+        return;
+      }
       await http.request({
         url: `${serverUrl}/groups/${groupId}`,
         method: 'DELETE',

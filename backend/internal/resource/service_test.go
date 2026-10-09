@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -19,6 +19,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -5355,6 +5356,97 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError()
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// ValidateDeleteAction Tests
+
+// validateDeleteActionFixture stubs a mutable resource server with the given audience and one action.
+func (suite *ResourceServiceTestSuite) validateDeleteActionFixture(identifier string, resID *string) {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{ID: "rs-123", Identifier: identifier}, nil)
+	if resID != nil {
+		suite.mockStore.On("GetResource", mock.Anything, *resID, "rs-123").Return(providers.Resource{}, nil)
+	}
+	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", resID).
+		Return(providers.Action{ID: "action-123", Permission: "license:issue"}, nil)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_PairsThePermissionWithTheAudience() {
+	resID := testResourceID
+	suite.validateDeleteActionFixture("https://api.dmv.ca.gov", &resID)
+
+	target, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", &resID, "action-123")
+
+	suite.Require().Nil(err)
+	suite.Equal([]revocation.AudienceScope{{Audience: "https://api.dmv.ca.gov", Scope: "license:issue"}},
+		target.Scopes)
+	suite.Empty(target.EntityIDs, "a retired scope is revoked deployment-wide, naming no principals")
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_AcceptsAnActionWithNoResource() {
+	suite.validateDeleteActionFixture("https://api.dmv.ca.gov", nil)
+
+	target, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Require().Nil(err)
+	suite.Len(target.Scopes, 1)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_ResourceServerWithoutIdentifier() {
+	suite.validateDeleteActionFixture("", nil)
+
+	target, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Require().Nil(err)
+	suite.Empty(target.Scopes)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RefusesDeclarativeResourceServer() {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(true)
+
+	_, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorImmutableAction.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_MissingID() {
+	_, err := suite.service.ValidateDeleteAction(context.Background(), "", nil, "action-123")
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorMissingID.Code, err.Code)
+
+	_, err = suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "")
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorMissingID.Code, err.Code)
+
+	_, err = suite.service.ValidateDeleteAction(context.Background(), "rs-123", &testEmptyResourceID, "action-123")
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorMissingID.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_CarriesTheLookupRefusal() {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	_, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_ActionNotFound() {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(providers.ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(providers.Action{}, errActionNotFound)
+
+	_, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorActionNotFound.Code, err.Code)
 }
 
 func TestResourceServerYAML_OUHandleParsed(t *testing.T) {

@@ -56,6 +56,8 @@ type RefreshTokenRevokerInterface interface {
 type CriteriaRevokerInterface interface {
 	// RevokeByCriteria records an idempotent many-token revocation.
 	RevokeByCriteria(ctx context.Context, revocation CriteriaRevocation) error
+	// RevokeCriteriaBatch records a set of idempotent many-token revocations.
+	RevokeCriteriaBatch(ctx context.Context, revocations []CriteriaRevocation) error
 
 	// RevokeTokenFamily records a terminal revocation of the token family identified by tokenFamilyID, so
 	// every access and refresh token carrying that tfid is rejected. An empty tokenFamilyID is a
@@ -75,7 +77,9 @@ type revocationService struct {
 	tokenFamilyLifetime time.Duration
 	revokeTokenFamily   bool
 	observabilitySvc    providers.ObservabilityProvider
-	logger              *log.Logger
+	// maxCriteriaPerChange bounds one RevokeCriteriaBatch call.
+	maxCriteriaPerChange int
+	logger               *log.Logger
 }
 
 // newRevocationService creates a new revocationService (internal use). It returns
@@ -91,17 +95,19 @@ func newRevocationService(
 	tokenFamilyLifetime time.Duration,
 	revokeTokenFamily bool,
 	observabilitySvc providers.ObservabilityProvider,
+	maxCriteriaPerChange int,
 ) RevocationServiceInterface {
 	if tokenFamilyLifetime <= 0 {
 		tokenFamilyLifetime = defaultTokenFamilyRevocationTTL
 	}
 	return &revocationService{
-		jwtService:          jwtService,
-		store:               store,
-		tokenFamilyLifetime: tokenFamilyLifetime,
-		revokeTokenFamily:   revokeTokenFamily,
-		observabilitySvc:    observabilitySvc,
-		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
+		jwtService:           jwtService,
+		store:                store,
+		tokenFamilyLifetime:  tokenFamilyLifetime,
+		revokeTokenFamily:    revokeTokenFamily,
+		observabilitySvc:     observabilitySvc,
+		maxCriteriaPerChange: maxCriteriaPerChange,
+		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
 	}
 }
 
@@ -211,37 +217,14 @@ func (s *revocationService) RevokeTokenFamily(ctx context.Context, tokenFamilyID
 
 // RevokeByCriteria records a validated many-token revocation in the criteria deny list.
 func (s *revocationService) RevokeByCriteria(ctx context.Context, revocation CriteriaRevocation) error {
-	if revocation.Criterion.Value == "" {
+	row, err := s.validatedCriterionRow(revocation, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if row == nil {
 		return nil
 	}
-	if !isSupportedCriterionType(revocation.Criterion.Type) {
-		return fmt.Errorf("unsupported revocation criterion type: %q", revocation.Criterion.Type)
-	}
-	if revocation.Mode != RevocationModeAll && revocation.Mode != RevocationModeBeforeAction {
-		return fmt.Errorf("unsupported revocation mode: %q", revocation.Mode)
-	}
-	if revocation.Mode == RevocationModeBeforeAction && revocation.Cutoff.IsZero() {
-		return fmt.Errorf("cutoff is required for %s", RevocationModeBeforeAction)
-	}
-	if (revocation.Mode == RevocationModeBeforeAction) != isBoundaryReason(revocation.Reason) {
-		return fmt.Errorf("revocation mode %q does not match reason %q", revocation.Mode, revocation.Reason)
-	}
-	if revocation.Mode == RevocationModeAll {
-		revocation.Cutoff = time.Time{}
-	}
-
-	now := time.Now().UTC()
-	revokedAt := now
-	if revocation.Mode == RevocationModeBeforeAction {
-		revokedAt = revocation.Cutoff.UTC()
-	}
-	if err := s.store.insertCriterion(ctx, revocationCriterion{
-		Type:       revocation.Criterion.Type,
-		Value:      revocation.Criterion.Value,
-		Reason:     revocation.Reason,
-		RevokedAt:  revokedAt,
-		ExpiryTime: now.Add(s.resolveCriterionLifetime(revocation.TTL)),
-	}); err != nil {
+	if err := s.store.insertCriterion(ctx, *row); err != nil {
 		return fmt.Errorf("failed to revoke tokens by criteria: %w", err)
 	}
 
@@ -249,6 +232,74 @@ func (s *revocationService) RevokeByCriteria(ctx context.Context, revocation Cri
 		log.String("criterionType", string(revocation.Criterion.Type)),
 		log.String("reason", string(revocation.Reason)))
 	return nil
+}
+
+// RevokeCriteriaBatch validates every revocation before writing any of them.
+func (s *revocationService) RevokeCriteriaBatch(ctx context.Context, revocations []CriteriaRevocation) error {
+	if len(revocations) == 0 {
+		return nil
+	}
+	if len(revocations) > s.maxCriteriaPerChange {
+		return &sharedrevocation.CriteriaLimitExceededError{
+			Criteria: len(revocations),
+			Max:      s.maxCriteriaPerChange,
+		}
+	}
+	now := time.Now().UTC()
+	rows := make([]revocationCriterion, 0, len(revocations))
+	for _, revocation := range revocations {
+		row, err := s.validatedCriterionRow(revocation, now)
+		if err != nil {
+			return err
+		}
+		if row != nil {
+			rows = append(rows, *row)
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := s.store.insertCriteria(ctx, rows); err != nil {
+		return fmt.Errorf("failed to revoke tokens by criteria: %w", err)
+	}
+
+	s.logger.Debug(ctx, "Revoked tokens by criteria batch", log.Int("count", len(rows)))
+	return nil
+}
+
+func (s *revocationService) validatedCriterionRow(revocation CriteriaRevocation, now time.Time) (
+	*revocationCriterion, error) {
+	if revocation.Criterion.Value == "" {
+		return nil, nil
+	}
+	if !isSupportedCriterionType(revocation.Criterion.Type) {
+		return nil, fmt.Errorf("unsupported revocation criterion type: %q", revocation.Criterion.Type)
+	}
+	if revocation.Mode != RevocationModeAll && revocation.Mode != RevocationModeBeforeAction {
+		return nil, fmt.Errorf("unsupported revocation mode: %q", revocation.Mode)
+	}
+	if revocation.Mode == RevocationModeBeforeAction && revocation.Cutoff.IsZero() {
+		return nil, fmt.Errorf("cutoff is required for %s", RevocationModeBeforeAction)
+	}
+	if (revocation.Mode == RevocationModeBeforeAction) != isBoundaryReason(revocation.Reason) {
+		return nil, fmt.Errorf("revocation mode %q does not match reason %q", revocation.Mode, revocation.Reason)
+	}
+
+	cutoff := revocation.Cutoff
+	if revocation.Mode == RevocationModeAll {
+		cutoff = time.Time{}
+	}
+	revokedAt := now
+	if revocation.Mode == RevocationModeBeforeAction {
+		revokedAt = cutoff.UTC()
+	}
+	return &revocationCriterion{
+		Type:       revocation.Criterion.Type,
+		Value:      revocation.Criterion.Value,
+		Reason:     revocation.Reason,
+		RevokedAt:  revokedAt,
+		ExpiryTime: now.Add(s.resolveCriterionLifetime(revocation.TTL)),
+	}, nil
 }
 
 // resolveCriterionLifetime returns how long a criteria deny-list row must survive. The configured
@@ -265,7 +316,8 @@ func isSupportedCriterionType(criterionType CriterionType) bool {
 	switch criterionType {
 	case CriterionTypeTokenFamily, CriterionTypeSubject, CriterionTypeApplicationID,
 		CriterionTypeApplicationKey, CriterionTypeOrganizationUnit, CriterionTypeRole,
-		CriterionTypeGroup, CriterionTypeConsent, CriterionTypeCredentialVersion:
+		CriterionTypeGroup, CriterionTypeConsent, CriterionTypeCredentialVersion,
+		CriterionTypeEntityScope, CriterionTypeScope:
 		return true
 	default:
 		return false

@@ -57,7 +57,7 @@ export default function EditAssignmentsSettings({
   const handleRemoveAssignment = useCallback(
     (assignmentToRemove: RoleAssignment) => {
       removeRoleAssignments.mutate(
-        {roleId, assignments: [{id: assignmentToRemove.id, type: assignmentToRemove.type}]},
+        {roleId, assignment: {id: assignmentToRemove.id, type: assignmentToRemove.type}},
         {
           onSuccess: () => {
             setError(null);

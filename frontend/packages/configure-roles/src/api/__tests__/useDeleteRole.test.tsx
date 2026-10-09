@@ -265,15 +265,16 @@ describe('useDeleteRole', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+    expect(mockHttpRequest).toHaveBeenCalledTimes(4);
+    // Calls 1 and 3 read the flow configuration; the deletions are calls 2 and 4.
     expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      1,
+      2,
       expect.objectContaining({
         url: 'https://api.test.com/roles/role-1',
       }),
     );
     expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      2,
+      4,
       expect.objectContaining({
         url: 'https://api.test.com/roles/role-2',
       }),
@@ -319,7 +320,8 @@ describe('useDeleteRole', () => {
     });
 
     expect(result.current.error).toBeNull();
-    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+    // The failed attempt and the retry each read the flow configuration first.
+    expect(mockHttpRequest).toHaveBeenCalledTimes(3);
   });
 
   it('should use mutateAsync for promise-based deletion', async () => {

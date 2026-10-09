@@ -95,6 +95,63 @@ func (_c *RevocationServiceInterfaceMock_RevokeByCriteria_Call) RunAndReturn(run
 	return _c
 }
 
+// RevokeCriteriaBatch provides a mock function for the type RevocationServiceInterfaceMock
+func (_mock *RevocationServiceInterfaceMock) RevokeCriteriaBatch(ctx context.Context, revocations []CriteriaRevocation) error {
+	ret := _mock.Called(ctx, revocations)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeCriteriaBatch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []CriteriaRevocation) error); ok {
+		r0 = returnFunc(ctx, revocations)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeCriteriaBatch'
+type RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call struct {
+	*mock.Call
+}
+
+// RevokeCriteriaBatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - revocations []CriteriaRevocation
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeCriteriaBatch(ctx interface{}, revocations interface{}) *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call {
+	return &RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call{Call: _e.mock.On("RevokeCriteriaBatch", ctx, revocations)}
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call) Run(run func(ctx context.Context, revocations []CriteriaRevocation)) *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []CriteriaRevocation
+		if args[1] != nil {
+			arg1 = args[1].([]CriteriaRevocation)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call) Return(err error) *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call) RunAndReturn(run func(ctx context.Context, revocations []CriteriaRevocation) error) *RevocationServiceInterfaceMock_RevokeCriteriaBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RevokeRefreshToken provides a mock function for the type RevocationServiceInterfaceMock
 func (_mock *RevocationServiceInterfaceMock) RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error {
 	ret := _mock.Called(ctx, jti, expiryTime)

@@ -50,8 +50,10 @@ func (suite *InitTestSuite) TearDownTest() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	enforcementService, revocationService := Initialize(
-		suite.mockJWTService, nil, time.Hour, true)
+	enforcementService, revocationService, err := Initialize(
+		suite.mockJWTService, nil, time.Hour, true, 10)
+
+	assert.NoError(suite.T(), err)
 
 	assert.NotNil(suite.T(), enforcementService)
 	assert.Implements(suite.T(), (*EnforcementServiceInterface)(nil), enforcementService)
@@ -67,7 +69,8 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 			RevocationEndpoint: "https://localhost:8090/oauth2/revoke",
 		})
 	mux := http.NewServeMux()
-	_, revocationService := Initialize(suite.mockJWTService, nil, time.Hour, true)
+	_, revocationService, err := Initialize(suite.mockJWTService, nil, time.Hour, true, 10)
+	assert.NoError(suite.T(), err)
 
 	RegisterRoutes(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, revocationService, nil,
 		engineconfig.ClientAssertionConfig{}, 0)
@@ -78,4 +81,21 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/revoke"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/revoke")
+}
+
+func (suite *InitTestSuite) TestInitialize_RejectsNegativeMaxEntriesPerChange() {
+	enforcementService, revocationService, err := Initialize(suite.mockJWTService, nil, time.Hour, true, -1)
+
+	assert.ErrorContains(suite.T(), err, "oauth.revocation.criteria.max_entries_per_change")
+	assert.Nil(suite.T(), enforcementService)
+	assert.Nil(suite.T(), revocationService)
+}
+
+func (suite *InitTestSuite) TestInitialize_UnsetMaxEntriesPerChangeUsesTheDefault() {
+	_, writeService, err := Initialize(suite.mockJWTService, nil, time.Hour, true, 0)
+
+	suite.Require().NoError(err)
+	svc, ok := writeService.(*revocationService)
+	suite.Require().True(ok)
+	assert.Equal(suite.T(), defaultMaxEntriesPerChange, svc.maxCriteriaPerChange)
 }

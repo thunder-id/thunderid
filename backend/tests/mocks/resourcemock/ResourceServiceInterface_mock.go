@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1556,6 +1557,88 @@ func (_c *ResourceServiceInterfaceMock_UpdateResourceServer_Call) Return(resourc
 }
 
 func (_c *ResourceServiceInterfaceMock_UpdateResourceServer_Call) RunAndReturn(run func(ctx context.Context, id string, rs providers.ResourceServer) (*providers.ResourceServer, *common.ServiceError)) *ResourceServiceInterfaceMock_UpdateResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateDeleteAction provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, resourceID, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateDeleteAction")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, resourceID, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, resourceServerID, resourceID, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, resourceID, id)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_ValidateDeleteAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateDeleteAction'
+type ResourceServiceInterfaceMock_ValidateDeleteAction_Call struct {
+	*mock.Call
+}
+
+// ValidateDeleteAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - resourceID *string
+//   - id string
+func (_e *ResourceServiceInterfaceMock_Expecter) ValidateDeleteAction(ctx interface{}, resourceServerID interface{}, resourceID interface{}, id interface{}) *ResourceServiceInterfaceMock_ValidateDeleteAction_Call {
+	return &ResourceServiceInterfaceMock_ValidateDeleteAction_Call{Call: _e.mock.On("ValidateDeleteAction", ctx, resourceServerID, resourceID, id)}
+}
+
+func (_c *ResourceServiceInterfaceMock_ValidateDeleteAction_Call) Run(run func(ctx context.Context, resourceServerID string, resourceID *string, id string)) *ResourceServiceInterfaceMock_ValidateDeleteAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *string
+		if args[2] != nil {
+			arg2 = args[2].(*string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ValidateDeleteAction_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_ValidateDeleteAction_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ValidateDeleteAction_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, resourceID *string, id string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *ResourceServiceInterfaceMock_ValidateDeleteAction_Call {
 	_c.Call.Return(run)
 	return _c
 }

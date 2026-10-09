@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package common
@@ -189,6 +189,59 @@ func CompleteFlow(executionId string, inputs map[string]string, action string, c
 	}
 
 	return &flowStep, nil
+}
+
+// ExecuteAdministrationFlow starts an administration flow, optionally as the admin.
+func ExecuteAdministrationFlow(flowID string, inputs map[string]string, authenticated bool) (
+	*AdministrationFlowResult, error) {
+	reqBody, err := json.Marshal(map[string]interface{}{"flowId": flowID, "inputs": inputs})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", testServerURL+"/flow/execute", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create flow request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	if authenticated {
+		token, err := testutils.GetAccessToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to obtain admin access token: %w", err)
+		}
+		// The shared clients treat /flow/execute as public and skip token injection.
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send flow request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	result := &AdministrationFlowResult{StatusCode: resp.StatusCode}
+	if resp.StatusCode == http.StatusOK {
+		var flowStep FlowStep
+		if err := json.Unmarshal(body, &flowStep); err != nil {
+			return nil, fmt.Errorf("failed to parse response body %s: %w", string(body), err)
+		}
+		result.Step = &flowStep
+		return result, nil
+	}
+
+	var errorResponse ErrorResponse
+	if err := json.Unmarshal(body, &errorResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse error response body %s: %w", string(body), err)
+	}
+	result.Error = &errorResponse
+	return result, nil
 }
 
 // CompleteAuthFlowWithError completes the authentication flow and expects an error response

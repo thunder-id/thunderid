@@ -12,4 +12,7 @@ import "context"
 // writes through, so a caller need not depend on the OAuth revocation implementation.
 type CriteriaRevoker interface {
 	RevokeByCriteria(ctx context.Context, revocation CriteriaRevocation) error
+	// RevokeCriteriaBatch records a set of criteria revocations in as few round trips as possible. A set
+	// over the configured cap returns *CriteriaLimitExceededError and writes nothing.
+	RevokeCriteriaBatch(ctx context.Context, revocations []CriteriaRevocation) error
 }

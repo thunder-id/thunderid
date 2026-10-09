@@ -215,6 +215,33 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameOwnerResolver: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "REGISTRATION"},
 	},
+	ExecutorNamePostRevocation: {
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNameAccessChangeValidator: {
+		SupportedModes: []string{
+			ExecutorModeActionDeletion,
+			ExecutorModeGroupDeletion,
+			ExecutorModeGroupMemberRemoval,
+			ExecutorModeRoleAssignmentRemoval,
+			ExecutorModeRoleDeletion,
+			ExecutorModeRolePermissionRemoval,
+		},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNameRole: {
+		SupportedModes: []string{
+			ExecutorModeDelete, ExecutorModeRemoveAssignment, ExecutorModeRemovePermissions,
+		},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNameGroup: {
+		SupportedModes:     []string{ExecutorModeDelete, ExecutorModeRemoveMember},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNameActionDeletion: {
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
 }
 
 // Names returns the names of every executor in the catalog, sorted.

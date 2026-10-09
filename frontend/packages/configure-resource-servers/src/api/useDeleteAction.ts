@@ -4,7 +4,9 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
+import {deleteActionViaFlow} from '../utils/actionAdministrationFlow';
 
 export default function useDeleteAction(
   resourceServerId: string,
@@ -17,6 +19,11 @@ export default function useDeleteAction(
   return useMutation<void, Error, string>({
     mutationFn: async (actionId: string): Promise<void> => {
       const serverUrl = getServerUrl();
+
+      // The native endpoint below revokes nothing, so it is reached only when no flow is configured.
+      if (await deleteActionViaFlow(http as unknown as HttpLike, serverUrl, resourceServerId, actionId, resourceId)) {
+        return;
+      }
       const url = resourceId
         ? `${serverUrl}/resource-servers/${resourceServerId}/resources/${resourceId}/actions/${actionId}`
         : `${serverUrl}/resource-servers/${resourceServerId}/actions/${actionId}`;

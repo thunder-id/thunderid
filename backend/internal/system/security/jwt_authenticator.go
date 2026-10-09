@@ -41,6 +41,12 @@ const (
 
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
+
+	// claimAudience names the resource server an access token is bound to.
+	claimAudience = "aud"
+
+	// claimAccessTokenAudience carries the audience on a refresh token.
+	claimAccessTokenAudience = "access_token_aud"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -136,6 +142,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 		} else if accessTokenSubject != "" {
 			securityCtx.revocationAppKey = subject
 		}
+		securityCtx.revocationAudience = revocationAudience(attributes, accessTokenSubject != "")
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 		}
@@ -153,6 +160,27 @@ func AuthenticateBearerToken(
 	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
 ) (*SecurityContext, error) {
 	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+}
+
+func revocationAudience(attributes map[string]interface{}, isRefreshToken bool) string {
+	if isRefreshToken {
+		return firstAudience(attributes[claimAccessTokenAudience])
+	}
+	return firstAudience(attributes[claimAudience])
+}
+
+func firstAudience(claim interface{}) string {
+	switch value := claim.(type) {
+	case string:
+		return value
+	case []interface{}:
+		for _, entry := range value {
+			if audience, ok := entry.(string); ok && audience != "" {
+				return audience
+			}
+		}
+	}
+	return ""
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against

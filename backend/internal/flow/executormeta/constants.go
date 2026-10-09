@@ -44,11 +44,16 @@ const (
 	ExecutorNameOTPExecutor                  = "OTPExecutor"
 	ExecutorNamePreDelete                    = "PreDeleteExecutor"
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
+	ExecutorNamePostRevocation               = "PostRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
 	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
+	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"
+	ExecutorNameRole                         = "RoleExecutor"
+	ExecutorNameGroup                        = "GroupExecutor"
+	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
 )
 
 // Executor mode constants
@@ -59,4 +64,15 @@ const (
 	ExecutorModeIdentify   = "identify"
 	ExecutorModeResolve    = "resolve"
 	ExecutorModeCheckState = "check_state"
+
+	ExecutorModeRoleAssignmentRemoval = "role_assignment_removal"
+	ExecutorModeRoleDeletion          = "role_deletion"
+	ExecutorModeRolePermissionRemoval = "role_permission_removal"
+	ExecutorModeGroupDeletion         = "group_deletion"
+	ExecutorModeGroupMemberRemoval    = "group_member_removal"
+	ExecutorModeActionDeletion        = "action_deletion"
+	ExecutorModeDelete                = "delete"
+	ExecutorModeRemoveAssignment      = "remove_assignment"
+	ExecutorModeRemovePermissions     = "remove_permissions"
+	ExecutorModeRemoveMember          = "remove_member"
 )

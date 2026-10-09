@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -559,6 +560,82 @@ func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) Return(serv
 }
 
 func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) RunAndReturn(run func(ctx context.Context, id string, assignments []role.RoleAssignment) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateRemoveAssignment provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) ValidateRemoveAssignment(ctx context.Context, id string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, assigneeID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateRemoveAssignment")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, assigneeID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, id, assigneeID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, assigneeID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateRemoveAssignment'
+type RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call struct {
+	*mock.Call
+}
+
+// ValidateRemoveAssignment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - assigneeID string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) ValidateRemoveAssignment(ctx interface{}, id interface{}, assigneeID interface{}) *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call {
+	return &RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call{Call: _e.mock.On("ValidateRemoveAssignment", ctx, id, assigneeID)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call) Run(run func(ctx context.Context, id string, assigneeID string)) *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call) RunAndReturn(run func(ctx context.Context, id string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *RoleAssignmentServiceInterfaceMock_ValidateRemoveAssignment_Call {
 	_c.Call.Return(run)
 	return _c
 }

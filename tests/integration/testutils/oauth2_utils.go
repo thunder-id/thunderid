@@ -441,6 +441,100 @@ func requestToken(clientID, clientSecret, code, redirectURI, grantType string, t
 	return result, nil
 }
 
+// RequestClientCredentialsToken requests a client_credentials token for the scope and RFC 8707 resource.
+func RequestClientCredentialsToken(clientID, clientSecret, scope, resource string) (*TokenHTTPResult, error) {
+	tokenData := url.Values{}
+	tokenData.Set("grant_type", "client_credentials")
+	if scope != "" {
+		tokenData.Set("scope", scope)
+	}
+	if resource != "" {
+		tokenData.Set("resource", resource)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/oauth2/token", bytes.NewBufferString(tokenData.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	result := &TokenHTTPResult{
+		StatusCode: resp.StatusCode,
+		Body:       body,
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		var tokenResponse TokenResponse
+		if err := json.Unmarshal(body, &tokenResponse); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal token response: %w", err)
+		}
+		result.Token = &tokenResponse
+	}
+
+	return result, nil
+}
+
+// IntrospectToken reports whether the introspection endpoint considers the token active.
+func IntrospectToken(token, clientID, clientSecret string) (bool, error) {
+	introspectData := url.Values{}
+	introspectData.Set("token", token)
+
+	req, err := http.NewRequest("POST", TestServerURL+"/oauth2/introspect",
+		bytes.NewBufferString(introspectData.Encode()))
+	if err != nil {
+		return false, fmt.Errorf("failed to create introspection request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to send introspection request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("introspection returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Active bool `json:"active"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false, fmt.Errorf("failed to unmarshal introspection response %s: %w", string(body), err)
+	}
+
+	return result.Active, nil
+}
+
 // ExtractAuthorizationCode extracts the authorization code from the redirect URI
 func ExtractAuthorizationCode(redirectURI string) (string, error) {
 	parsedURL, err := url.Parse(redirectURI)

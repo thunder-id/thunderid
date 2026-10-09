@@ -113,6 +113,11 @@ export const ExecutionTypes = {
   ApplicationActionValidator: 'ApplicationActionValidator',
   ApplicationDelete: 'ApplicationDeleteExecutor',
   ClientSecret: 'ClientSecretExecutor',
+  PostRevocation: 'PostRevocationExecutor',
+  AccessChangeValidator: 'AccessChangeValidator',
+  RoleExecutor: 'RoleExecutor',
+  GroupExecutor: 'GroupExecutor',
+  ActionDeletion: 'ActionDeletionExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
 } as const;

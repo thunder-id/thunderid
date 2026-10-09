@@ -256,6 +256,7 @@ const (
 	ClaimCHash    string = "c_hash"
 	ClaimAuthTime string = "auth_time"
 	ClaimACR      string = "acr"
+	ClaimScope    string = "scope"
 )
 
 // Custom JWT claim names.
@@ -275,6 +276,8 @@ const (
 	ClaimAuthorizationRequestID string = "authorization_request_id"
 	ClaimClientID               string = "client_id"
 	ClaimAccessTokenSubject     string = "access_token_sub"
+	// ClaimAccessTokenAudience carries the audience of a refresh token's access tokens.
+	ClaimAccessTokenAudience string = "access_token_aud"
 	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
 	// principal from a local one.

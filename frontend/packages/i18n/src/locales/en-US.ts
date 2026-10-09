@@ -3827,6 +3827,37 @@ const translations = {
     'core.executions.preDelete.description':
       'Validate the target of an administrative operation and plan the revocation carried out by the executors that follow.',
 
+    // Access change validator executor modes
+    'core.executions.accessChangeValidator.mode.roleAssignmentRemoval': 'Validate and Plan Assignment Removal',
+    'core.executions.accessChangeValidator.mode.roleDeletion': 'Validate and Plan Role Deletion',
+    'core.executions.accessChangeValidator.mode.rolePermissionRemoval': 'Validate and Plan Permission Change',
+    'core.executions.accessChangeValidator.mode.groupDeletion': 'Validate and Plan Group Deletion',
+    'core.executions.accessChangeValidator.mode.groupMemberRemoval': 'Validate and Plan Membership Removal',
+    'core.executions.accessChangeValidator.mode.actionDeletion': 'Validate and Plan Action Deletion',
+    'core.executions.accessChangeValidator.mode.label': 'Mode',
+    'core.executions.accessChangeValidator.mode.placeholder': 'Select a mode',
+    'core.executions.accessChangeValidator.description':
+      'Validate an access change and plan the revocation of the scopes it takes away, carried out by the executors that follow.',
+
+    // Role executor modes
+    'core.executions.roleExecutor.mode.removeAssignment': 'Remove Role Assignment',
+    'core.executions.roleExecutor.mode.delete': 'Delete Role',
+    'core.executions.roleExecutor.mode.removePermissions': 'Change Role Permissions',
+    'core.executions.roleExecutor.mode.label': 'Mode',
+    'core.executions.roleExecutor.mode.placeholder': 'Select a mode',
+    'core.executions.roleExecutor.mode.hint':
+      'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
+    'core.executions.roleExecutor.description': 'Apply the role change named by the trusted revocation plan.',
+
+    // Group executor modes
+    'core.executions.groupExecutor.mode.delete': 'Delete Group',
+    'core.executions.groupExecutor.mode.removeMember': 'Remove Group Member',
+    'core.executions.groupExecutor.mode.label': 'Mode',
+    'core.executions.groupExecutor.mode.placeholder': 'Select a mode',
+    'core.executions.groupExecutor.mode.hint':
+      'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
+    'core.executions.groupExecutor.description': 'Apply the group change named by the trusted revocation plan.',
+
     // Passkey executor modes
     'core.executions.passkey.mode.challenge': 'Challenge',
     'core.executions.passkey.mode.verify': 'Verify',

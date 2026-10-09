@@ -4,22 +4,26 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {Member} from '../models/group';
+import {removeGroupMemberViaFlow} from '../utils/groupAdministrationFlow';
 
 /**
  * Variables for the remove group members mutation.
+ *
+ * One member per call: a loop of flow executions could not be rolled back if one failed.
  */
 export interface RemoveGroupMembersVariables {
   groupId: string;
-  members: Member[];
+  member: Member;
 }
 
 /**
- * Custom React hook to remove members from an existing group.
+ * Custom React hook to remove a member from an existing group.
  *
- * @returns TanStack Query mutation object for removing group members
+ * @returns TanStack Query mutation object for removing a group member
  */
 export default function useRemoveGroupMembers(): UseMutationResult<void, Error, RemoveGroupMembersVariables> {
   const {http} = useThunderID();
@@ -29,15 +33,19 @@ export default function useRemoveGroupMembers(): UseMutationResult<void, Error, 
   const {showToast} = useToast();
 
   return useMutation<void, Error, RemoveGroupMembersVariables>({
-    mutationFn: async ({groupId, members}: RemoveGroupMembersVariables): Promise<void> => {
+    mutationFn: async ({groupId, member}: RemoveGroupMembersVariables): Promise<void> => {
       const serverUrl: string = getServerUrl();
+
+      if (await removeGroupMemberViaFlow(http as unknown as HttpLike, serverUrl, groupId, member.id)) {
+        return;
+      }
       await http.request({
         url: `${serverUrl}/groups/${groupId}/members/remove`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        data: {members},
+        data: {members: [member]},
       } as unknown as Parameters<typeof http.request>[0]);
     },
     onSuccess: (_data, {groupId}) => {

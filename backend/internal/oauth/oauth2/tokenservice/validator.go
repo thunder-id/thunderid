@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -172,7 +173,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 
 	// Extract claims
 	sub, _ := extractStringClaim(claims, "access_token_sub")
-	audiences := extractStringSliceClaim(claims, "access_token_aud")
+	audiences := extractStringSliceClaim(claims, constants.ClaimAccessTokenAudience)
 	grantType, _ := extractStringClaim(claims, "grant_type")
 	iat, _ := extractInt64Claim(claims, "iat")
 	exp, _ := extractInt64Claim(claims, "exp")
@@ -784,7 +785,7 @@ func (tv *tokenValidator) validateOAuth2RefreshClaims(typ string, claims map[str
 		return "", fmt.Errorf("missing or invalid 'access_token_sub' claim: %w", err)
 	}
 
-	if auds := extractStringSliceClaim(claims, "access_token_aud"); len(auds) == 0 {
+	if auds := extractStringSliceClaim(claims, constants.ClaimAccessTokenAudience); len(auds) == 0 {
 		return "", fmt.Errorf("missing or invalid 'access_token_aud' claim")
 	}
 
@@ -831,12 +832,12 @@ func (tv *tokenValidator) ensureNotRevoked(ctx context.Context,
 
 // revocationIdentity extracts the trusted token attributes used by criteria enforcement.
 //
-// Only the dimensions a writer actually records are enforced here: the token family, the subject, and
-// the OAuth client the artifact was issued to. The remaining criterion types the revocation service
-// accepts have no writer yet, and adding them speculatively would widen the deny-list query on every
-// token validation for rows that cannot exist. Extend this alongside the write path, not ahead of it,
-// and keep it in step with the Resource Server cache so both enforcement points cover the same
-// dimensions.
+// Only the dimensions a writer actually records are enforced here: the token family, the subject, the
+// OAuth client the artifact was issued to, and the scopes it carries. The remaining criterion types
+// the revocation service accepts have no writer yet, and adding them speculatively would widen the
+// deny-list query on every token validation for rows that cannot exist. Extend this alongside the
+// write path, not ahead of it, and keep it in step with the Resource Server cache so both enforcement
+// points cover the same dimensions.
 func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string) revocation.RevocationIdentity {
 	criteria := make([]revocation.Criterion, 0, 3)
 	if tokenFamilyID != "" {
@@ -856,12 +857,56 @@ func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string
 		criteria = append(criteria,
 			revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: clientKey})
 	}
+	criteria = append(criteria, scopeCriteria(claims, subject, isRefreshToken)...)
 
 	var establishedAt time.Time
 	if issuedAt, ok := claims[constants.ClaimIat].(float64); ok {
 		establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 	}
 	return revocation.RevocationIdentity{JTI: jti, EstablishedAt: establishedAt, Criteria: criteria}
+}
+
+func scopeCriteria(claims map[string]interface{}, subject string,
+	isRefreshToken bool) []revocation.Criterion {
+	audience := revocationAudience(claims, isRefreshToken)
+	if audience == "" {
+		return nil
+	}
+	rawScope, _ := extractStringClaim(claims, constants.ClaimScope)
+	scopes := strings.Fields(rawScope)
+	if len(scopes) == 0 {
+		return nil
+	}
+
+	criteria := make([]revocation.Criterion, 0, 2*len(scopes))
+	for _, scope := range scopes {
+		if subject != "" {
+			criteria = append(criteria, revocation.Criterion{
+				Type:  revocation.CriterionTypeEntityScope,
+				Value: revocation.EntityScopeCriterionValue(subject, audience, scope),
+			})
+		}
+		criteria = append(criteria, revocation.Criterion{
+			Type:  revocation.CriterionTypeScope,
+			Value: revocation.ScopeCriterionValue(audience, scope),
+		})
+	}
+	return criteria
+}
+
+// revocationAudience returns the resource server the artifact is bound to, from aud or access_token_aud.
+func revocationAudience(claims map[string]interface{}, isRefreshToken bool) string {
+	if isRefreshToken {
+		if auds := extractStringSliceClaim(claims, constants.ClaimAccessTokenAudience); len(auds) > 0 {
+			return auds[0]
+		}
+		return ""
+	}
+	auds, err := extractAudiences(claims)
+	if err != nil || len(auds) == 0 {
+		return ""
+	}
+	return auds[0]
 }
 
 // revocationClientKey returns the OAuth client the artifact was issued to, the value the app.key

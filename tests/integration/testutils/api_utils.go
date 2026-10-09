@@ -1665,6 +1665,16 @@ func CreateAction(resourceServerID string, action Action) (string, error) {
 	return createAction(resourceServerID, action)
 }
 
+// CreateResourceAction creates an action nested under a resource and returns the action ID.
+func CreateResourceAction(resourceServerID, resourceID string, action Action) (string, error) {
+	return createActionUnderResource(resourceServerID, resourceID, action)
+}
+
+// DeleteResourceAction deletes an action nested under a resource.
+func DeleteResourceAction(resourceServerID, resourceID, actionID string) error {
+	return deleteActionAtResource(resourceServerID, resourceID, actionID)
+}
+
 // GetActionsByResourceServer returns the IDs of the actions defined on a resource server.
 func GetActionsByResourceServer(resourceServerID string) ([]string, error) {
 	client := GetHTTPClient()

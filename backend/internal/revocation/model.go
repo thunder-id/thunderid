@@ -25,7 +25,9 @@ const (
 	ReasonApplicationDeleted           Reason = "application_deleted"
 	ReasonApplicationSecretRegenerated Reason = "application_secret_regenerated"
 	ReasonRoleAssignmentRemoved        Reason = "role_assignment_removed"
+	ReasonRolePermissionRemoved        Reason = "role_permission_removed"
 	ReasonRoleDeleted                  Reason = "role_deleted"
+	ReasonActionDeleted                Reason = "action_deleted"
 	ReasonGroupMembershipRemoved       Reason = "group_membership_removed"
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
@@ -47,6 +49,10 @@ const (
 	CriterionTypeRole             CriterionType = "role.id"
 	CriterionTypeGroup            CriterionType = "group.id"
 	CriterionTypeConsent          CriterionType = "consent.id"
+	// CriterionTypeEntityScope names the per-principal scope dimension.
+	CriterionTypeEntityScope CriterionType = "entity.scope"
+	// CriterionTypeScope names the deployment-wide scope dimension.
+	CriterionTypeScope CriterionType = "scope"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
 	// marker, not a credential.
 	CriterionTypeCredentialVersion CriterionType = "credential.version" // #nosec G101 -- dimension name, not a secret
@@ -94,6 +100,9 @@ type CriteriaRevocation struct {
 var boundaryReasons = []Reason{
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
+	ReasonRolePermissionRemoved,
+	ReasonRoleDeleted,
+	ReasonActionDeleted,
 	ReasonGroupMembershipRemoved,
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
@@ -108,4 +117,20 @@ func BoundaryReasons() []Reason {
 // IsBoundaryReason reports whether the reason affects only artifacts established before the action.
 func IsBoundaryReason(reason Reason) bool {
 	return slices.Contains(boundaryReasons, reason)
+}
+
+// AccessRevocationTarget names the principals that lose which scopes in an authorization change.
+type AccessRevocationTarget struct {
+	// EntityIDs are the principals losing the scopes, with groups expanded to their members.
+	EntityIDs []string
+	Scopes    []AudienceScope
+	// AssigneeType is the public type of the principal leaving a role or group, when the change names one.
+	AssigneeType string
+}
+
+// AudienceScope pairs a permission with the resource server audience that gives it meaning.
+type AudienceScope struct {
+	// Audience is the resource server identifier.
+	Audience string
+	Scope    string
 }

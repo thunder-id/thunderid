@@ -250,7 +250,7 @@ describe('EditAssignmentsSettings', () => {
 
       expect(mockRemoveMutate).toHaveBeenCalledTimes(1);
       expect(mockRemoveMutate).toHaveBeenCalledWith(
-        {roleId: 'role-1', assignments: [{id: 'user-1', type: 'user'}]},
+        {roleId: 'role-1', assignment: {id: 'user-1', type: 'user'}},
         expect.any(Object),
       );
     });

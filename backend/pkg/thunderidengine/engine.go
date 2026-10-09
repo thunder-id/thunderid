@@ -215,9 +215,13 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.dpopVerifier = dpop.Initialize(oauthConfig, jti.Initialize(engineCtx.runtimeStoreProvider),
 		engineCtx.runtimeCryptoSvc)
 	tokenFamilyRevocationTTL := time.Duration(engineCtx.oauthConfig.RefreshToken.ValidityPeriod) * time.Second
-	revocationEnforcer, revocationService := revocation.Initialize(engineCtx.jwtService,
+	revocationEnforcer, revocationService, err := revocation.Initialize(engineCtx.jwtService,
 		engineCtx.observabilitySvc, tokenFamilyRevocationTTL,
-		engineCtx.oauthConfig.Revocation.TokenFamily.OnExplicitRevokeEnabled())
+		engineCtx.oauthConfig.Revocation.TokenFamily.OnExplicitRevokeEnabled(),
+		engineCtx.oauthConfig.Revocation.Criteria.MaxEntriesPerChange)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize revocation service", log.Error(err))
+	}
 
 	// CORS origins come from the engine's static OriginConfig; unlike the full server there is no
 	// server-config store to back a dynamic matcher. An empty config leaves CORS disabled (matcher

@@ -205,7 +205,7 @@ describe('EditMembersSettings', () => {
     await user.click(screen.getByTestId('remove-member-btn'));
 
     expect(mockRemoveMutate).toHaveBeenCalledWith(
-      {groupId: 'g1', members: [{id: 'u1', type: 'user'}]},
+      {groupId: 'g1', member: {id: 'u1', type: 'user'}},
       expect.objectContaining({onSuccess: expect.any(Function) as unknown, onError: expect.any(Function) as unknown}),
     );
   });

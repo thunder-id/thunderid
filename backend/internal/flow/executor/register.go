@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -184,6 +185,7 @@ type ExecutorDependencies struct {
 	ResourceService       providers.ResourceServerProvider
 	UserService           user.UserServiceInterface
 	CriteriaRevoker       revocation.CriteriaRevoker
+	ResourceMgtService    resource.ResourceServiceInterface
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -320,6 +322,27 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameCriteriaRevocation,
 				newCriteriaRevocationExecutor(deps.FlowFactory, deps.CriteriaRevoker))
 		},
+		ExecutorNamePostRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePostRevocation,
+				newPostRevocationExecutor(deps.FlowFactory, deps.CriteriaRevoker))
+		},
+		ExecutorNameAccessChangeValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAccessChangeValidator,
+				newAccessChangeValidator(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService,
+					deps.ResourceMgtService))
+		},
+		ExecutorNameRole: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameRole,
+				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService))
+		},
+		ExecutorNameGroup: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameGroup,
+				newGroupExecutor(deps.FlowFactory, deps.GroupService))
+		},
+		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameActionDeletion,
+				newActionDeletionExecutor(deps.FlowFactory, deps.ResourceMgtService))
+		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
 				newSessionRevocationExecutor(deps.FlowFactory, deps.SessionService))
@@ -439,4 +462,34 @@ type applicationAdminProvider interface {
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
 		string, *tidcommon.ServiceError)
+}
+
+type roleAdminProvider interface {
+	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
+	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []role.ResourcePermissions) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)
+	UpdateRoleWithPermissions(ctx context.Context, id string, role role.RoleUpdateDetail) (
+		*role.RoleWithPermissions, *tidcommon.ServiceError)
+	ValidateGroupMembershipChange(ctx context.Context, groupID, memberID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+}
+
+type roleAssignmentAdminProvider interface {
+	ValidateRemoveAssignment(ctx context.Context, id, assigneeID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	RemoveAssignments(ctx context.Context, id string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+}
+
+type groupAdminProvider interface {
+	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
+	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
+		*group.Group, *tidcommon.ServiceError)
+}
+
+type resourceAdminProvider interface {
+	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 }

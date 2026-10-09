@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package role provides role management functionality.
@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -16,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -36,6 +38,14 @@ type RoleServiceInterface interface {
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
+	// ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
+	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ValidateUpdateRolePermissions reports whether the permissions may be replaced and what that revokes.
+	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []ResourcePermissions) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// ValidateGroupMembershipChange validates a member's removal, or the group's deletion when memberID is empty.
+	ValidateGroupMembershipChange(ctx context.Context, groupID, memberID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	GetAuthorizedPermissionsByResourceServer(
 		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
@@ -451,6 +461,85 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 	return nil
 }
 
+func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	return rs.roleAccessChangeTarget(ctx, id)
+}
+
+// ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
+func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
+	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	target, svcErr := rs.roleAccessChangeTarget(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.validatePermissions(ctx, permissions); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.authzService.CanGrantPermissions(ctx, toPermissionSet(permissions)); svcErr != nil {
+		return nil, svcErr
+	}
+	return target, nil
+}
+
+// ValidateGroupMembershipChange runs the checks the group service runs for the change.
+func (rs *roleService) ValidateGroupMembershipChange(ctx context.Context, groupID, memberID string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if groupID == "" {
+		return nil, &group.ErrorMissingGroupID
+	}
+
+	targetGroup, svcErr := rs.groupService.GetGroup(ctx, groupID, false)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if targetGroup.IsReadOnly {
+		return nil, &group.ErrorImmutableGroup
+	}
+	action := security.ActionUpdateGroup
+	if memberID == "" {
+		action = security.ActionDeleteGroup
+	}
+	if svcErr := rs.checkGroupAccess(ctx, action, targetGroup); svcErr != nil {
+		return nil, svcErr
+	}
+	if memberID != "" {
+		if svcErr := rs.authzService.CanGrantMembership(
+			ctx, sysauthz.PrincipalTypeGroup, groupID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
+	scopes, svcErr := rs.groupScopes(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	if memberID == "" {
+		entityIDs, svcErr := groupMemberIDs(ctx, rs.groupService, groupID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		return &revocation.AccessRevocationTarget{EntityIDs: entityIDs, Scopes: scopes}, nil
+	}
+
+	// A removal of a non-member changes nothing, so it must not revoke anything.
+	member, svcErr := rs.directMember(ctx, groupID, memberID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if member == nil {
+		return nil, &group.ErrorInvalidMemberID
+	}
+	entityIDs, svcErr := expandPrincipal(ctx, rs.groupService, memberID, member.Type == group.MemberTypeGroup)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{
+		EntityIDs: entityIDs, Scopes: scopes, AssigneeType: string(member.Type),
+	}, nil
+}
+
 // GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
 // based on roles, scoped to a resource server when provided.
 func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
@@ -721,6 +810,132 @@ func (rs *roleService) validatePermissions(
 		}
 	}
 
+	return nil
+}
+
+// roleAccessChangeTarget revokes the role's whole scope set rather than a delta, which could under-revoke.
+func (rs *roleService) roleAccessChangeTarget(ctx context.Context, id string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	isDeclarative, svcErr := rs.IsRoleDeclarative(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if isDeclarative {
+		return nil, &ErrorImmutableRole
+	}
+
+	scopes, svcErr := resolveScopes(ctx, rs.resourceService, role.Permissions)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	entityIDs, svcErr := rs.roleAssigneeIDs(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &revocation.AccessRevocationTarget{EntityIDs: entityIDs, Scopes: scopes}, nil
+}
+
+func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ResultLimitExceededInCompositeMode
+		}
+		logger.Error(ctx, "Failed to get role assignments count", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	entityIDs := []string{}
+	seen := map[string]struct{}{}
+	for offset := 0; offset < total; offset += assignmentPageSize {
+		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, assignmentPageSize, offset)
+		if err != nil {
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return nil, &ResultLimitExceededInCompositeMode
+			}
+			logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, assignment := range assignments {
+			members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID,
+				assignment.Type == AssigneeTypeGroup)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+			for _, entityID := range members {
+				if _, ok := seen[entityID]; ok {
+					continue
+				}
+				seen[entityID] = struct{}{}
+				entityIDs = append(entityIDs, entityID)
+			}
+		}
+	}
+	return entityIDs, nil
+}
+
+// groupScopes returns the scopes membership of the group conveys, including through its ancestors.
+func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
+	[]revocation.AudienceScope, *tidcommon.ServiceError) {
+	ancestors, svcErr := rs.groupService.GetTransitiveAncestorGroups(ctx, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	permissionSet, svcErr := rs.GetAllPermissions(ctx, "", append([]string{groupID}, ancestors...))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	resourceServerIDs := make([]string, 0, len(permissionSet))
+	for resourceServerID := range permissionSet {
+		resourceServerIDs = append(resourceServerIDs, resourceServerID)
+	}
+	sort.Strings(resourceServerIDs)
+
+	permissions := make([]ResourcePermissions, 0, len(resourceServerIDs))
+	for _, resourceServerID := range resourceServerIDs {
+		permissions = append(permissions, ResourcePermissions{
+			ResourceServerID: resourceServerID,
+			Permissions:      permissionSet[resourceServerID],
+		})
+	}
+	return resolveScopes(ctx, rs.resourceService, permissions)
+}
+
+func (rs *roleService) directMember(ctx context.Context, groupID, memberID string) (
+	*group.Member, *tidcommon.ServiceError) {
+	members, svcErr := groupMembers(ctx, rs.groupService, groupID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	for i := range members {
+		if members[i].ID == memberID {
+			return &members[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// checkGroupAccess makes the access check the group service makes before acting on the group.
+func (rs *roleService) checkGroupAccess(ctx context.Context, action security.Action,
+	targetGroup *group.Group) *tidcommon.ServiceError {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup,
+		OUID:         targetGroup.OUID,
+		ResourceID:   targetGroup.ID,
+	})
+	if svcErr != nil {
+		return svcErr
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
 	return nil
 }
 

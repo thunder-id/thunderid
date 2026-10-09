@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -222,6 +222,45 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.roleservice.result_limit_exceeded_in_composite_mode_description",
 			DefaultValue: "The total number of records exceeds the maximum limit in composite mode",
+		},
+	}
+	// ErrorMissingAssigneeID is the error returned when an assignee ID is required but absent.
+	ErrorMissingAssigneeID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.missing_assignee_id",
+			DefaultValue: "Invalid request format",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.missing_assignee_id_description",
+			DefaultValue: "Assignee ID is required",
+		},
+	}
+	// ErrorRoleAssignmentNotFound is the error returned when the assignee does not hold the role.
+	ErrorRoleAssignmentNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found",
+			DefaultValue: "Role assignment not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found_description",
+			DefaultValue: "The assignee does not hold this role",
+		},
+	}
+	// ErrorGroupNestingTooDeep is the error returned when group members are nested beyond the supported depth.
+	ErrorGroupNestingTooDeep = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.group_nesting_too_deep",
+			DefaultValue: "Group nesting is too deep",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.group_nesting_too_deep_description",
+			DefaultValue: "The group's members are nested more than {{max}} levels deep, which cannot be expanded",
 		},
 	}
 )

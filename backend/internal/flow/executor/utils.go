@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -56,6 +57,11 @@ type revocationPlan struct {
 	// application revocation is keyed by the OAuth client id while the delete and the session detachment
 	// need the application id, so the two travel separately rather than one being re-derived.
 	TargetID string `json:"targetId,omitempty"`
+	// AssigneeID is the principal losing a role or leaving a group, when the action names one.
+	AssigneeID   string `json:"assigneeId,omitempty"`
+	AssigneeType string `json:"assigneeType,omitempty"`
+	// ActionArgs carries further acting-node arguments, keyed by the flow input they came from.
+	ActionArgs map[string]string `json:"actionArgs,omitempty"`
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
@@ -349,4 +355,46 @@ func validateFederatedIdentifierConsistency(ctx *providers.NodeContext, idpID st
 	}
 
 	return true
+}
+
+func textInput(identifier string) providers.Input {
+	return providers.Input{Identifier: identifier, Type: providers.InputTypeText, Required: true}
+}
+
+// decodeRolePermissions treats an empty value as a role that grants nothing.
+func decodeRolePermissions(encoded string) ([]role.ResourcePermissions, error) {
+	permissions := []role.ResourcePermissions{}
+	if encoded == "" {
+		return permissions, nil
+	}
+	if err := json.Unmarshal([]byte(encoded), &permissions); err != nil {
+		return nil, fmt.Errorf("failed to decode role permissions: %w", err)
+	}
+	if permissions == nil {
+		permissions = []role.ResourcePermissions{}
+	}
+	return permissions, nil
+}
+
+// optionalID returns nil for an absent identifier, the form the resource service reads as unscoped.
+func optionalID(id string) *string {
+	if id == "" {
+		return nil
+	}
+	return &id
+}
+
+func revocationPlanFor(data map[string]string, want revocation.Reason) (revocationPlan, error) {
+	plan, err := decodeRevocationPlan(data)
+	if err != nil {
+		return revocationPlan{}, err
+	}
+	if plan.Reason != want {
+		return revocationPlan{}, fmt.Errorf("trusted revocation plan was produced for %q, not %q",
+			plan.Reason, want)
+	}
+	if plan.TargetID == "" {
+		return revocationPlan{}, errors.New("trusted revocation plan has no target")
+	}
+	return plan, nil
 }

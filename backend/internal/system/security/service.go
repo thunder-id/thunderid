@@ -26,6 +26,9 @@ type RevocationIdentity struct {
 	TokenFamilyID string
 	Subject       string
 	AppKey        string
+	// Audience is the resource server the token is bound to.
+	Audience      string
+	Scopes        []string
 	EstablishedAt time.Time
 }
 
@@ -113,16 +116,10 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 		ctx = withSecurityContext(ctx, securityCtx)
 
 		// Reject the request when the presented token has been revoked. This runs after successful
-		// authentication and is format-agnostic: it enforces on the token's jti and its token family
-		// id. A revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
-		// disclose that the token was specifically revoked.
-		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, RevocationIdentity{
-			JTI:           securityCtx.revocationID,
-			TokenFamilyID: securityCtx.tokenFamilyID,
-			Subject:       securityCtx.revocationSubject,
-			AppKey:        securityCtx.revocationAppKey,
-			EstablishedAt: securityCtx.establishedAt,
-		}); err != nil {
+		// authentication and is format-agnostic: it enforces on every revocation dimension the token
+		// carries. A revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does
+		// not disclose that the token was specifically revoked.
+		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationIdentity()); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)
 		}
 	}

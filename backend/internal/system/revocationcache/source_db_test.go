@@ -67,6 +67,12 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 			{"criterion_value": "client-2", "reason": "application_deleted",
 				"revoked_at": revokedAt, "expiry_time": expiry},
 		}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
 
 	snapshot, err := suite.source.Snapshot(context.Background())
 
@@ -104,6 +110,12 @@ func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
 		Return([]map[string]interface{}{}, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
 		criterionTypeAppKey, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotBoundedCriteria,
+		criterionTypeScope, mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
 
 	snapshot, err := suite.source.Snapshot(context.Background())

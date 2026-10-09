@@ -54,7 +54,7 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
       removeGroupMembers.mutate(
         {
           groupId: group.id,
-          members: [{id: memberToRemove.id, type: memberToRemove.type}],
+          member: {id: memberToRemove.id, type: memberToRemove.type},
         },
         {
           onSuccess: () => {
