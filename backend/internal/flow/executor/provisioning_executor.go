@@ -77,6 +77,7 @@ func newProvisioningExecutor(
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyProvisioningMode},
+				{Property: propertyKeyDelegated},
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
@@ -637,10 +638,16 @@ func (p *provisioningExecutor) buildMissingInputs(
 			}
 			// An attribute restricted to a fixed set is offered as a choice rather than as free
 			// text. A prompt node declaring the field itself is enriched with these options by
-			// identifier, so the permitted values need not be repeated in the flow.
+			// identifier, so the permitted values need not be repeated in the flow. A field the
+			// prompt does not declare is rendered from a generated component, and clients attach
+			// the options to a select by matching the input's ref to the component id, so the ref
+			// is set to the identifier.
 			if len(attr.Enum) > 0 {
 				input.Type = providers.InputTypeSelect
 				input.Options = attr.Enum
+				if input.Ref == "" {
+					input.Ref = attr.Attribute
+				}
 			}
 			input.Required = effectiveRequired
 			if effectiveRequired {
@@ -847,6 +854,12 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryAgent)
 	}
 
+	delegated, flagErr := agentDelegation(nodeCtx)
+	if flagErr != nil {
+		logger.Debug(nodeCtx.Context, "Delegation could not be read", log.String("key", delegatedKey))
+		return nil, flagErr
+	}
+
 	agent := &providers.Agent{
 		OUID:        targetRef.ouID,
 		Type:        targetRef.entityType,
@@ -856,21 +869,24 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 		Owner:       nodeCtx.RuntimeData[ownerIDKey],
 		Attributes:  attributesJSON,
 	}
-	// Redirect URIs are the only OAuth value a caller may supply, and are attached only when
-	// collected so the provider applies its default otherwise.
-	if uris := splitTrimmed(collectedValue(nodeCtx, redirectURIsKey)); len(uris) > 0 {
-		agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
-			{
-				Type:        providers.OAuthInboundAuthType,
-				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: uris},
-			},
+	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
+	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
+	// on its own behalf. Redirect URIs are the only OAuth value a caller may supply, and are attached
+	// only when collected so the provider applies its default otherwise. The service validates all
+	// three.
+	if delegated {
+		if uris := splitTrimmed(collectedValue(nodeCtx, redirectURIsKey)); len(uris) > 0 {
+			agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
+				{
+					Type:        providers.OAuthInboundAuthType,
+					OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: uris},
+				},
+			}
 		}
-	}
-
-	delegated, flagErr := collectedFlag(nodeCtx, delegatedKey)
-	if flagErr != nil {
-		logger.Debug(nodeCtx.Context, "Delegation flag could not be read", log.String("key", delegatedKey))
-		return nil, flagErr
+		agent.AuthFlowID = collectedValue(nodeCtx, authFlowIDKey)
+		if handle := collectedValue(nodeCtx, allowedUserTypesKey); handle != "" {
+			agent.AllowedUserTypes = []string{handle}
+		}
 	}
 
 	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent, delegated)
@@ -885,22 +901,32 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	return createdAgent, nil
 }
 
-// collectedFlag reads a boolean the flow collected. Values arrive as strings and are parsed the
-// way a boolean schema attribute is, accepting the casings and 1/0 forms a hand-authored flow may
-// carry. An absent value is false; one that cannot be read is an error rather than a silent false,
-// which would provision the entity in the shape the caller did not ask for.
-func collectedFlag(ctx *providers.NodeContext, key string) (bool, *tidcommon.ServiceError) {
-	raw := collectedValue(ctx, key)
-	if raw == "" {
-		return false, nil
+// agentDelegation resolves whether the agent acts on behalf of a signed-in user. The first value
+// that is not empty wins: what an executor resolved, what the caller submitted, the node's
+// delegated property, then false. Collected values arrive as strings and are parsed the way a
+// boolean schema attribute is, accepting the casings and 1/0 forms a hand-authored flow may carry.
+// A value that cannot be read is an error rather than a silent false, which would provision the
+// agent in the shape the caller did not ask for.
+func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError) {
+	if raw := collectedValue(ctx, delegatedKey); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return false, errInvalidFlagValueFor(delegatedKey)
+		}
+
+		return parsed, nil
 	}
 
-	parsed, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, errInvalidFlagValueFor(key)
+	if property, ok := ctx.NodeProperties[propertyKeyDelegated]; ok && property != nil {
+		fallback, isBool := property.(bool)
+		if !isBool {
+			return false, errInvalidFlagValueFor(propertyKeyDelegated)
+		}
+
+		return fallback, nil
 	}
 
-	return parsed, nil
+	return false, nil
 }
 
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved

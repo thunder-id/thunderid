@@ -1090,6 +1090,15 @@ const translations = {
       'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
     'onboarding.selectPlaceholder': 'Select an option',
+    'onboarding.authFlow.loading': 'Loading login flows...',
+    'onboarding.authFlow.error': 'Login flows could not be loaded.',
+    'onboarding.authFlow.empty': 'No login flows are available.',
+    'onboarding.userType.loading': 'Loading user types...',
+    'onboarding.userType.error': 'User types could not be loaded.',
+    'onboarding.userType.empty': 'No user types are available.',
+    'onboarding.user.loading': 'Loading users...',
+    'onboarding.user.error': 'Users could not be loaded.',
+    'onboarding.user.empty': 'No users are available.',
     'onboarding.addAnother': 'Add Another Agent',
 
     // Client secret (creation)
@@ -3887,6 +3896,9 @@ const translations = {
 
     // Provisioning executor
     'core.executions.provisioning.description': 'Configure the provisioning executor settings.',
+    'core.executions.provisioning.delegated.label': 'Delegated mode',
+    'core.executions.provisioning.delegated.hint':
+      'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
     'core.executions.provisioning.includeOptional.label': 'Allow Optional Non-Credential Attributes',
     'core.executions.provisioning.includeOptional.hint':
       'Prompt for optional non-credential attributes during dynamic input collection.',

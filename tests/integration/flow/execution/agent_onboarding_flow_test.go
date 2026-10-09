@@ -28,7 +28,13 @@ const (
 	agentOwnerInput         = "owner"
 	agentDelegatedInput     = "delegated"
 	agentRedirectURIsInput  = "redirectUris"
+	agentAuthFlowIDInput    = "authFlowId"
+	agentUserTypesInput     = "allowedUserTypes"
 )
+
+// The handle of the authentication flow the bootstrap seeds, which a delegated agent signs users in
+// through.
+const seededAuthFlowHandle = "default-flow"
 
 // The user type the bootstrap seeds, whose schema requires a unique username and email.
 const seededUserTypeName = "person"
@@ -61,6 +67,8 @@ type AgentOnboardingFlowTestSuite struct {
 	delegatedAgent  string
 	ownerCheckAgent string
 	ownerUserID     string
+	authFlowID      string
+	multiURIAgent   string
 }
 
 func TestAgentOnboardingFlowTestSuite(t *testing.T) {
@@ -72,11 +80,16 @@ func (ts *AgentOnboardingFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to resolve the shipped agent onboarding flow")
 	ts.Require().NotEmpty(flowID, "The shipped agent onboarding flow must be present")
 	ts.flowID = flowID
+
+	authFlowID, err := testutils.GetFlowIDByHandle(seededAuthFlowHandle, "AUTHENTICATION")
+	ts.Require().NoError(err, "Failed to resolve the seeded authentication flow")
+	ts.Require().NotEmpty(authFlowID, "The seeded authentication flow must be present")
+	ts.authFlowID = authFlowID
 }
 
 func (ts *AgentOnboardingFlowTestSuite) TearDownSuite() {
 	for _, agentID := range []string{ts.createdAgent, ts.bareAgent, ts.takenNameAgent, ts.secondAgent,
-		ts.ownedAgent, ts.delegatedAgent, ts.ownerCheckAgent} {
+		ts.ownedAgent, ts.delegatedAgent, ts.ownerCheckAgent, ts.multiURIAgent} {
 		if agentID == "" {
 			continue
 		}
@@ -410,8 +423,9 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegationRequir
 
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus,
 		"delegation without a callback pauses rather than completing: %s", string(body))
-	ts.Contains(inputIdentifiers(step), agentRedirectURIsInput,
-		"the callback is asked for: %s", string(body))
+	for _, input := range []string{agentRedirectURIsInput, agentAuthFlowIDInput, agentUserTypesInput} {
+		ts.Contains(inputIdentifiers(step), input, "%s is asked for: %s", input, string(body))
+	}
 }
 
 // Given the callback, the agent is provisioned as a delegated client: it keeps the URI it was
@@ -421,7 +435,12 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 
 	ts.delegatedAgent = ts.runToCompletion(
 		common.GenerateUniqueUsername("integration_agent_delegated"), "",
-		map[string]string{agentDelegatedInput: "true", agentRedirectURIsInput: callback})
+		map[string]string{
+			agentDelegatedInput:    "true",
+			agentRedirectURIsInput: callback,
+			agentAuthFlowIDInput:   ts.authFlowID,
+			agentUserTypesInput:    seededUserTypeName,
+		})
 
 	agent, err := testutils.GetAgent(ts.delegatedAgent)
 	ts.Require().NoError(err, "Failed to read the provisioned agent")
@@ -432,4 +451,46 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 	ts.Contains(oauth.RedirectURIs, callback, "the callback the caller gave is the one stored")
 	ts.Contains(oauth.GrantTypes, "authorization_code", "delegation adds the authorization code grant")
 	ts.True(oauth.PKCERequired, "a delegated agent requires PKCE")
+	ts.Equal(ts.authFlowID, agent.AuthFlowID, "the chosen login flow is the one stored")
+	ts.Equal([]string{seededUserTypeName}, agent.AllowedUserTypes, "the chosen user type is the one stored")
+}
+
+// Callback URIs arrive as one comma-separated value and are stored as separate redirect URIs.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKeepsEveryCommaSeparatedRedirectURI() {
+	const first, second = "https://agent.example.com/callback", "https://agent.example.com/other"
+
+	ts.multiURIAgent = ts.runToCompletion(
+		common.GenerateUniqueUsername("integration_agent_multi_uri"), "",
+		map[string]string{
+			agentDelegatedInput:    "true",
+			agentRedirectURIsInput: first + ", " + second,
+			agentAuthFlowIDInput:   ts.authFlowID,
+			agentUserTypesInput:    seededUserTypeName,
+		})
+
+	agent, err := testutils.GetAgent(ts.multiURIAgent)
+	ts.Require().NoError(err, "Failed to read the provisioned agent")
+	ts.Require().NotEmpty(agent.InboundAuthConfig)
+	ts.Require().NotNil(agent.InboundAuthConfig[0].Config)
+	ts.ElementsMatch([]string{first, second}, agent.InboundAuthConfig[0].Config.RedirectURIs)
+}
+
+// A login flow that does not exist is refused by the agent service. The run stays open and reports
+// the error instead of ending.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknownLoginFlow() {
+	_, step, _ := ts.step("", "", "", nil)
+	executionID := step.ExecutionID
+	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
+	_, step, _ = ts.step(executionID, step.ChallengeToken, agentNameAction,
+		map[string]string{agentNameInput: common.GenerateUniqueUsername("integration_agent_bad_flow")})
+	_, step, body := ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
+		agentDelegatedInput:    "true",
+		agentRedirectURIsInput: "https://agent.example.com/callback",
+		agentAuthFlowIDInput:   "00000000-0000-0000-0000-000000000000",
+		agentUserTypesInput:    seededUserTypeName,
+	})
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run continues: %s", string(body))
+	ts.Require().NotNil(step.Error, "the rejection is reported: %s", string(body))
+	ts.Equal("AGT-1028", step.Error.Code)
 }

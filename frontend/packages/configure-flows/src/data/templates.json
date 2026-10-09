@@ -88,25 +88,25 @@
   {
     "resourceType": "TEMPLATE",
     "category": "ADMINISTRATION",
-    "type": "AGENT_ONBOARDING",
+    "type": "AGENT_ONBOARDING_OWN_IDENTITY",
     "flowType": "ADMINISTRATION",
     "display": {
-      "label": "Agent Onboarding Flow",
-      "description": "Choose an owner, name the agent, collect its details, then create it and show its credentials",
+      "label": "Agent Onboarding Flow (Own Identity)",
+      "description": "Create an agent that acts using its own identity",
       "image": "assets/images/icons/robot.svg",
       "showOnResourcePanel": true
     },
     "config": {
-      "name": "Agent Onboarding Flow",
-      "handle": "agent-onboarding-flow",
+      "name": "Agent Onboarding Flow (Own Identity)",
+      "handle": "own-identity-agent-onboarding-flow",
       "nodes": [
         {
           "id": "start",
           "layout": {
-            "position": {"x": 100, "y": 200},
+            "position": {"x": 62, "y": 1131},
             "size": {
               "height": 34,
-              "width": 101
+              "width": 61
             }
           },
           "onSuccess": "permission_validator",
@@ -118,10 +118,10 @@
           },
           "id": "permission_validator",
           "layout": {
-            "position": {"x": 300, "y": 175},
+            "position": {"x": 283, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 268
             }
           },
           "onSuccess": "agent_type_resolution",
@@ -133,10 +133,10 @@
           },
           "id": "agent_type_resolution",
           "layout": {
-            "position": {"x": 580, "y": 175},
+            "position": {"x": 803, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 278
             }
           },
           "onIncomplete": "prompt_agent_type",
@@ -149,9 +149,9 @@
         {
           "id": "prompt_agent_type",
           "layout": {
-            "position": {"x": 580, "y": -320},
+            "position": {"x": 1328, "y": 289},
             "size": {
-              "height": 480,
+              "height": 680,
               "width": 350
             }
           },
@@ -219,10 +219,10 @@
           },
           "id": "ou_selection",
           "layout": {
-            "position": {"x": 860, "y": 175},
+            "position": {"x": 1417, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 217
             }
           },
           "onIncomplete": "prompt_ou_selection",
@@ -235,9 +235,9 @@
         {
           "id": "prompt_ou_selection",
           "layout": {
-            "position": {"x": 860, "y": -320},
+            "position": {"x": 1947, "y": 1306},
             "size": {
-              "height": 525,
+              "height": 652,
               "width": 350
             }
           },
@@ -303,10 +303,10 @@
           },
           "id": "owner_resolution",
           "layout": {
-            "position": {"x": 1140, "y": 175},
+            "position": {"x": 2015, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 247
             }
           },
           "onIncomplete": "prompt_owner",
@@ -316,9 +316,9 @@
         {
           "id": "prompt_owner",
           "layout": {
-            "position": {"x": 1140, "y": -320},
+            "position": {"x": 2506, "y": 122},
             "size": {
-              "height": 480,
+              "height": 597,
               "width": 350
             }
           },
@@ -382,9 +382,9 @@
         {
           "id": "prompt_agent_name",
           "layout": {
-            "position": {"x": 1460, "y": 100},
+            "position": {"x": 2506, "y": 819},
             "size": {
-              "height": 410,
+              "height": 657,
               "width": 350
             }
           },
@@ -430,7 +430,7 @@
           "prompts": [
             {
               "action": {
-                "nextNode": "provisioning",
+                "nextNode": "prompt_agent_details",
                 "ref": "action_agent_name"
               },
               "inputs": [
@@ -448,9 +448,9 @@
         {
           "id": "prompt_agent_details",
           "layout": {
-            "position": {"x": 1810, "y": 60},
+            "position": {"x": 3070, "y": 711},
             "size": {
-              "height": 566,
+              "height": 874,
               "width": 350
             }
           },
@@ -475,7 +475,7 @@
                   {
                     "id": "input_agent_model_provider",
                     "label": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}",
-                    "options": [],
+                    "options": ["openai", "anthropic", "gemini", "mistral", "custom"],
                     "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}",
                     "ref": "modelProvider",
                     "required": false,
@@ -492,7 +492,16 @@
                   {
                     "id": "input_agent_function",
                     "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
-                    "options": [],
+                    "options": [
+                      "task-automation",
+                      "rag-retrieval",
+                      "code-gen",
+                      "data-analysis",
+                      "orchestrator",
+                      "sub-agent",
+                      "assistant",
+                      "custom"
+                    ],
                     "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
                     "ref": "function",
                     "required": false,
@@ -547,10 +556,10 @@
           },
           "id": "agent_attribute_uniqueness",
           "layout": {
-            "position": {"x": 2180, "y": 175},
+            "position": {"x": 3580, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 312
             }
           },
           "onIncomplete": "prompt_agent_details",
@@ -566,16 +575,17 @@
           },
           "id": "provisioning",
           "layout": {
-            "position": {"x": 2460, "y": 175},
+            "position": {"x": 4052, "y": 1089},
             "size": {
-              "height": 113,
-              "width": 206
+              "height": 117,
+              "width": 216
             }
           },
           "onFailure": "prompt_agent_name",
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "agent_credentials",
           "properties": {
+            "delegated": false,
             "includeOptional": true,
             "mode": "agent"
           },
@@ -584,9 +594,9 @@
         {
           "id": "agent_credentials",
           "layout": {
-            "position": {"x": 2740, "y": 60},
+            "position": {"x": 4428, "y": 882},
             "size": {
-              "height": 520,
+              "height": 532,
               "width": 350
             }
           },
@@ -635,10 +645,1469 @@
         {
           "id": "end",
           "layout": {
-            "position": {"x": 3090, "y": 200},
+            "position": {"x": 4938, "y": 1131},
             "size": {
               "height": 34,
-              "width": 85
+              "width": 45
+            }
+          },
+          "type": "END"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "ADMINISTRATION",
+    "type": "AGENT_ONBOARDING_OBO",
+    "flowType": "ADMINISTRATION",
+    "display": {
+      "label": "Agent Onboarding Flow (On Behalf of a User)",
+      "description": "Create an agent that acts on behalf of a signed-in user",
+      "image": "assets/images/icons/robot.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Agent Onboarding Flow (On Behalf of a User)",
+      "handle": "obo-agent-onboarding-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "layout": {
+            "position": {"x": 62, "y": 1863},
+            "size": {
+              "height": 34,
+              "width": 61
+            }
+          },
+          "onSuccess": "permission_validator",
+          "type": "START"
+        },
+        {
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "id": "permission_validator",
+          "layout": {
+            "position": {"x": 203, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 268
+            }
+          },
+          "onSuccess": "agent_type_resolution",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "executor": {
+            "name": "AgentTypeResolver"
+          },
+          "id": "agent_type_resolution",
+          "layout": {
+            "position": {"x": 496, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 278
+            }
+          },
+          "onIncomplete": "prompt_agent_type",
+          "onSuccess": "ou_selection",
+          "properties": {
+            "allowedAgentTypes": ["default"]
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_agent_type",
+          "layout": {
+            "position": {"x": 987, "y": 2013},
+            "size": {
+              "height": 680,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_type",
+                "label": "{{ t(agentOnboarding:forms.agent_type.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_type",
+                "label": "{{ t(agentOnboarding:forms.agent_type.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "agenttype_input",
+                    "label": "{{ t(agentOnboarding:forms.agent_type.fields.type.label) }}",
+                    "options": [],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_type.fields.type.placeholder) }}",
+                    "ref": "agentType",
+                    "required": true,
+                    "type": "SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_type",
+                    "label": "{{ t(agentOnboarding:forms.agent_type.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_type",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "agent_type_resolution",
+                "ref": "action_agent_type"
+              },
+              "inputs": [
+                {
+                  "identifier": "agentType",
+                  "ref": "agenttype_input",
+                  "required": true,
+                  "type": "SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "OUResolverExecutor"
+          },
+          "id": "ou_selection",
+          "layout": {
+            "position": {"x": 1189, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 217
+            }
+          },
+          "onIncomplete": "prompt_ou_selection",
+          "onSuccess": "owner_resolution",
+          "properties": {
+            "resolveFrom": "prompt"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_ou_selection",
+          "layout": {
+            "position": {"x": 1627, "y": 122},
+            "size": {
+              "height": 652,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_ou_selection",
+                "label": "{{ t(agentOnboarding:forms.ou_selection.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_ou_selection",
+                "label": "{{ t(agentOnboarding:forms.ou_selection.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "ou_selection_input",
+                    "label": "{{ t(agentOnboarding:forms.ou_selection.fields.ou.label) }}",
+                    "ref": "ouId",
+                    "required": true,
+                    "type": "OU_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_ou_selection",
+                    "label": "{{ t(agentOnboarding:forms.ou_selection.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_ou_selection",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "ou_selection",
+                "ref": "action_ou_selection"
+              },
+              "inputs": [
+                {
+                  "identifier": "ouId",
+                  "ref": "ou_selection_input",
+                  "required": true,
+                  "type": "OU_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "OwnerResolver"
+          },
+          "id": "owner_resolution",
+          "layout": {
+            "position": {"x": 1828, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 247
+            }
+          },
+          "onIncomplete": "prompt_owner",
+          "onSuccess": "prompt_agent_name",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_owner",
+          "layout": {
+            "position": {"x": 2156, "y": 894},
+            "size": {
+              "height": 597,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "owner_input",
+                    "label": "{{ t(agentOnboarding:forms.owner.fields.owner.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.owner.fields.owner.placeholder) }}",
+                    "ref": "owner",
+                    "required": false,
+                    "type": "USER_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_owner",
+                    "label": "{{ t(agentOnboarding:forms.owner.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_owner",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "owner_resolution",
+                "ref": "action_agent_owner"
+              },
+              "inputs": [
+                {
+                  "identifier": "owner",
+                  "ref": "owner_input",
+                  "required": false,
+                  "type": "USER_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_obo_details",
+          "layout": {
+            "position": {"x": 3470, "y": 1456},
+            "size": {
+              "height": 848,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_obo_details",
+                "label": "{{ t(agentOnboarding:forms.obo_details.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_obo_details",
+                "label": "{{ t(agentOnboarding:forms.obo_details.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.obo_details.fields.redirect_uris.hint) }}",
+                    "id": "input_obo_redirect_uris",
+                    "label": "{{ t(agentOnboarding:forms.obo_details.fields.redirect_uris.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.obo_details.fields.redirect_uris.placeholder) }}",
+                    "ref": "redirectUris",
+                    "required": true,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.obo_details.fields.auth_flow.hint) }}",
+                    "id": "input_obo_auth_flow",
+                    "label": "{{ t(agentOnboarding:forms.obo_details.fields.auth_flow.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.obo_details.fields.auth_flow.placeholder) }}",
+                    "ref": "authFlowId",
+                    "required": true,
+                    "type": "AUTH_FLOW_SELECT"
+                  },
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.obo_details.fields.user_type.hint) }}",
+                    "id": "input_obo_user_type",
+                    "label": "{{ t(agentOnboarding:forms.obo_details.fields.user_type.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.obo_details.fields.user_type.placeholder) }}",
+                    "ref": "allowedUserTypes",
+                    "required": true,
+                    "type": "USER_TYPE_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_obo_details",
+                    "label": "{{ t(agentOnboarding:forms.obo_details.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_obo_details",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_obo_details"
+              },
+              "inputs": [
+                {
+                  "identifier": "redirectUris",
+                  "ref": "input_obo_redirect_uris",
+                  "required": true,
+                  "type": "TEXT_INPUT"
+                },
+                {
+                  "identifier": "authFlowId",
+                  "ref": "input_obo_auth_flow",
+                  "required": true,
+                  "type": "AUTH_FLOW_SELECT"
+                },
+                {
+                  "identifier": "allowedUserTypes",
+                  "ref": "input_obo_user_type",
+                  "required": true,
+                  "type": "USER_TYPE_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_name",
+          "layout": {
+            "position": {"x": 2156, "y": 1551},
+            "size": {
+              "height": 657,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.fields.name.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_name.fields.name.placeholder) }}",
+                    "ref": "name",
+                    "required": true,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_name",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "prompt_agent_details",
+                "ref": "action_agent_name"
+              },
+              "inputs": [
+                {
+                  "identifier": "name",
+                  "ref": "input_agent_name",
+                  "required": true,
+                  "type": "TEXT_INPUT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_details",
+          "layout": {
+            "position": {"x": 2685, "y": 1443},
+            "size": {
+              "height": 874,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_model_provider",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}",
+                    "options": ["openai", "anthropic", "gemini", "mistral", "custom"],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}",
+                    "ref": "modelProvider",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "id": "input_agent_model",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
+                    "ref": "model",
+                    "required": false,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "id": "input_agent_function",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
+                    "options": [
+                      "task-automation",
+                      "rag-retrieval",
+                      "code-gen",
+                      "data-analysis",
+                      "orchestrator",
+                      "sub-agent",
+                      "assistant",
+                      "custom"
+                    ],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
+                    "ref": "function",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_details",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_details",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "agent_attribute_uniqueness",
+                "ref": "action_agent_details"
+              },
+              "inputs": [
+                {
+                  "identifier": "modelProvider",
+                  "ref": "input_agent_model_provider",
+                  "required": false,
+                  "type": "SELECT"
+                },
+                {
+                  "identifier": "model",
+                  "ref": "input_agent_model",
+                  "required": false,
+                  "type": "TEXT_INPUT"
+                },
+                {
+                  "identifier": "function",
+                  "ref": "input_agent_function",
+                  "required": false,
+                  "type": "SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "AttributeUniquenessValidator"
+          },
+          "id": "agent_attribute_uniqueness",
+          "layout": {
+            "position": {"x": 3115, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 312
+            }
+          },
+          "onIncomplete": "prompt_agent_details",
+          "onSuccess": "prompt_obo_details",
+          "properties": {
+            "mode": "agent"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "id": "provisioning",
+          "layout": {
+            "position": {"x": 3900, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 216
+            }
+          },
+          "onFailure": "prompt_agent_name",
+          "onIncomplete": "prompt_missing_inputs",
+          "onSuccess": "agent_credentials",
+          "properties": {
+            "delegated": true,
+            "includeOptional": true,
+            "mode": "agent"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_missing_inputs",
+          "layout": {
+            "position": {"x": 4160, "y": 805},
+            "size": {
+              "height": 749,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_missing_inputs",
+                "label": "{{ t(agentOnboarding:forms.missing_inputs.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_missing_inputs",
+                "label": "{{ t(agentOnboarding:forms.missing_inputs.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "dynamic_inputs",
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_missing_inputs",
+                    "label": "{{ t(agentOnboarding:forms.missing_inputs.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_missing_inputs",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_missing_inputs"
+              },
+              "inputs": []
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "agent_credentials",
+          "layout": {
+            "position": {"x": 4160, "y": 1614},
+            "size": {
+              "height": 532,
+              "width": 350
+            }
+          },
+          "message": "Agent created successfully",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "color": "SUCCESS",
+                "id": "agent_credentials_heading",
+                "label": "{{ t(agentOnboarding:forms.credentials.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "agent_credentials_message",
+                "label": "{{ t(agentOnboarding:forms.credentials.message) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "id": "agent_credentials_agent_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.agent_id_label) }}",
+                "source": "agentId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_id_label) }}",
+                "source": "clientId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_secret",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_secret_label) }}",
+                "masked": true,
+                "source": "clientSecret",
+                "type": "COPYABLE_TEXT"
+              }
+            ]
+          },
+          "next": "end",
+          "type": "PROMPT"
+        },
+        {
+          "id": "end",
+          "layout": {
+            "position": {"x": 4680, "y": 1863},
+            "size": {
+              "height": 34,
+              "width": 45
+            }
+          },
+          "type": "END"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "ADMINISTRATION",
+    "type": "AGENT_ONBOARDING_GENERIC",
+    "flowType": "ADMINISTRATION",
+    "display": {
+      "label": "Agent Onboarding Flow (Choose Mode)",
+      "description": "Let the administrator choose whether the agent acts using its own identity or on behalf of a signed-in user",
+      "image": "assets/images/icons/robot.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Agent Onboarding Flow (Choose Mode)",
+      "handle": "generic-agent-onboarding-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "layout": {
+            "position": {"x": 62, "y": 1863},
+            "size": {
+              "height": 34,
+              "width": 61
+            }
+          },
+          "onSuccess": "permission_validator",
+          "type": "START"
+        },
+        {
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "id": "permission_validator",
+          "layout": {
+            "position": {"x": 203, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 268
+            }
+          },
+          "onSuccess": "agent_type_resolution",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "executor": {
+            "name": "AgentTypeResolver"
+          },
+          "id": "agent_type_resolution",
+          "layout": {
+            "position": {"x": 496, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 278
+            }
+          },
+          "onIncomplete": "prompt_agent_type",
+          "onSuccess": "ou_selection",
+          "properties": {
+            "allowedAgentTypes": ["default"]
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_agent_type",
+          "layout": {
+            "position": {"x": 987, "y": 2013},
+            "size": {
+              "height": 680,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_type",
+                "label": "{{ t(agentOnboarding:forms.agent_type.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_type",
+                "label": "{{ t(agentOnboarding:forms.agent_type.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "agenttype_input",
+                    "label": "{{ t(agentOnboarding:forms.agent_type.fields.type.label) }}",
+                    "options": [],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_type.fields.type.placeholder) }}",
+                    "ref": "agentType",
+                    "required": true,
+                    "type": "SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_type",
+                    "label": "{{ t(agentOnboarding:forms.agent_type.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_type",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "agent_type_resolution",
+                "ref": "action_agent_type"
+              },
+              "inputs": [
+                {
+                  "identifier": "agentType",
+                  "ref": "agenttype_input",
+                  "required": true,
+                  "type": "SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "OUResolverExecutor"
+          },
+          "id": "ou_selection",
+          "layout": {
+            "position": {"x": 1189, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 217
+            }
+          },
+          "onIncomplete": "prompt_ou_selection",
+          "onSuccess": "owner_resolution",
+          "properties": {
+            "resolveFrom": "prompt"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_ou_selection",
+          "layout": {
+            "position": {"x": 1627, "y": 122},
+            "size": {
+              "height": 652,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_ou_selection",
+                "label": "{{ t(agentOnboarding:forms.ou_selection.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_ou_selection",
+                "label": "{{ t(agentOnboarding:forms.ou_selection.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "ou_selection_input",
+                    "label": "{{ t(agentOnboarding:forms.ou_selection.fields.ou.label) }}",
+                    "ref": "ouId",
+                    "required": true,
+                    "type": "OU_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_ou_selection",
+                    "label": "{{ t(agentOnboarding:forms.ou_selection.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_ou_selection",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "ou_selection",
+                "ref": "action_ou_selection"
+              },
+              "inputs": [
+                {
+                  "identifier": "ouId",
+                  "ref": "ou_selection_input",
+                  "required": true,
+                  "type": "OU_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "OwnerResolver"
+          },
+          "id": "owner_resolution",
+          "layout": {
+            "position": {"x": 1828, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 247
+            }
+          },
+          "onIncomplete": "prompt_owner",
+          "onSuccess": "prompt_agent_name",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_owner",
+          "layout": {
+            "position": {"x": 2156, "y": 894},
+            "size": {
+              "height": 597,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "owner_input",
+                    "label": "{{ t(agentOnboarding:forms.owner.fields.owner.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.owner.fields.owner.placeholder) }}",
+                    "ref": "owner",
+                    "required": false,
+                    "type": "USER_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_owner",
+                    "label": "{{ t(agentOnboarding:forms.owner.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_owner",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "owner_resolution",
+                "ref": "action_agent_owner"
+              },
+              "inputs": [
+                {
+                  "identifier": "owner",
+                  "ref": "owner_input",
+                  "required": false,
+                  "type": "USER_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_delegation",
+          "layout": {
+            "position": {"x": 3470, "y": 1450},
+            "size": {
+              "height": 859,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_delegation",
+                "label": "{{ t(agentOnboarding:forms.delegation.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_delegation",
+                "label": "{{ t(agentOnboarding:forms.delegation.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_delegation_delegated",
+                    "label": "{{ t(agentOnboarding:forms.delegation.fields.delegated.label) }}",
+                    "ref": "delegated",
+                    "required": false,
+                    "type": "BOOLEAN_INPUT"
+                  },
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.delegation.fields.redirect_uris.hint) }}",
+                    "id": "input_delegation_redirect_uris",
+                    "label": "{{ t(agentOnboarding:forms.delegation.fields.redirect_uris.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.delegation.fields.redirect_uris.placeholder) }}",
+                    "ref": "redirectUris",
+                    "required": false,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.delegation.fields.auth_flow.hint) }}",
+                    "id": "input_delegation_auth_flow",
+                    "label": "{{ t(agentOnboarding:forms.delegation.fields.auth_flow.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.delegation.fields.auth_flow.placeholder) }}",
+                    "ref": "authFlowId",
+                    "required": false,
+                    "type": "AUTH_FLOW_SELECT"
+                  },
+                  {
+                    "hint": "{{ t(agentOnboarding:forms.delegation.fields.user_type.hint) }}",
+                    "id": "input_delegation_user_type",
+                    "label": "{{ t(agentOnboarding:forms.delegation.fields.user_type.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.delegation.fields.user_type.placeholder) }}",
+                    "ref": "allowedUserTypes",
+                    "required": false,
+                    "type": "USER_TYPE_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_delegation",
+                    "label": "{{ t(agentOnboarding:forms.delegation.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_delegation",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_agent_delegation"
+              },
+              "inputs": [
+                {
+                  "identifier": "delegated",
+                  "ref": "input_delegation_delegated",
+                  "required": false,
+                  "type": "BOOLEAN_INPUT"
+                },
+                {
+                  "identifier": "redirectUris",
+                  "ref": "input_delegation_redirect_uris",
+                  "required": false,
+                  "type": "TEXT_INPUT"
+                },
+                {
+                  "identifier": "authFlowId",
+                  "ref": "input_delegation_auth_flow",
+                  "required": false,
+                  "type": "AUTH_FLOW_SELECT"
+                },
+                {
+                  "identifier": "allowedUserTypes",
+                  "ref": "input_delegation_user_type",
+                  "required": false,
+                  "type": "USER_TYPE_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_name",
+          "layout": {
+            "position": {"x": 2156, "y": 1551},
+            "size": {
+              "height": 657,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.fields.name.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_name.fields.name.placeholder) }}",
+                    "ref": "name",
+                    "required": true,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_name",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "prompt_agent_details",
+                "ref": "action_agent_name"
+              },
+              "inputs": [
+                {
+                  "identifier": "name",
+                  "ref": "input_agent_name",
+                  "required": true,
+                  "type": "TEXT_INPUT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_details",
+          "layout": {
+            "position": {"x": 2685, "y": 1443},
+            "size": {
+              "height": 874,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_model_provider",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}",
+                    "options": ["openai", "anthropic", "gemini", "mistral", "custom"],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}",
+                    "ref": "modelProvider",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "id": "input_agent_model",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
+                    "ref": "model",
+                    "required": false,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "id": "input_agent_function",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
+                    "options": [
+                      "task-automation",
+                      "rag-retrieval",
+                      "code-gen",
+                      "data-analysis",
+                      "orchestrator",
+                      "sub-agent",
+                      "assistant",
+                      "custom"
+                    ],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
+                    "ref": "function",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_details",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_details",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "agent_attribute_uniqueness",
+                "ref": "action_agent_details"
+              },
+              "inputs": [
+                {
+                  "identifier": "modelProvider",
+                  "ref": "input_agent_model_provider",
+                  "required": false,
+                  "type": "SELECT"
+                },
+                {
+                  "identifier": "model",
+                  "ref": "input_agent_model",
+                  "required": false,
+                  "type": "TEXT_INPUT"
+                },
+                {
+                  "identifier": "function",
+                  "ref": "input_agent_function",
+                  "required": false,
+                  "type": "SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "AttributeUniquenessValidator"
+          },
+          "id": "agent_attribute_uniqueness",
+          "layout": {
+            "position": {"x": 3115, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 312
+            }
+          },
+          "onIncomplete": "prompt_agent_details",
+          "onSuccess": "prompt_agent_delegation",
+          "properties": {
+            "mode": "agent"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "id": "provisioning",
+          "layout": {
+            "position": {"x": 3900, "y": 1856},
+            "size": {
+              "height": 117,
+              "width": 216
+            }
+          },
+          "onFailure": "prompt_agent_name",
+          "onIncomplete": "prompt_missing_inputs",
+          "onSuccess": "agent_credentials",
+          "properties": {
+            "delegated": false,
+            "includeOptional": true,
+            "mode": "agent"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_missing_inputs",
+          "layout": {
+            "position": {"x": 4160, "y": 805},
+            "size": {
+              "height": 749,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_missing_inputs",
+                "label": "{{ t(agentOnboarding:forms.missing_inputs.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_missing_inputs",
+                "label": "{{ t(agentOnboarding:forms.missing_inputs.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "dynamic_inputs",
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_missing_inputs",
+                    "label": "{{ t(agentOnboarding:forms.missing_inputs.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_missing_inputs",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_missing_inputs"
+              },
+              "inputs": []
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "agent_credentials",
+          "layout": {
+            "position": {"x": 4160, "y": 1614},
+            "size": {
+              "height": 532,
+              "width": 350
+            }
+          },
+          "message": "Agent created successfully",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "color": "SUCCESS",
+                "id": "agent_credentials_heading",
+                "label": "{{ t(agentOnboarding:forms.credentials.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "agent_credentials_message",
+                "label": "{{ t(agentOnboarding:forms.credentials.message) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "id": "agent_credentials_agent_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.agent_id_label) }}",
+                "source": "agentId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_id_label) }}",
+                "source": "clientId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_secret",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_secret_label) }}",
+                "masked": true,
+                "source": "clientSecret",
+                "type": "COPYABLE_TEXT"
+              }
+            ]
+          },
+          "next": "end",
+          "type": "PROMPT"
+        },
+        {
+          "id": "end",
+          "layout": {
+            "position": {"x": 4680, "y": 1863},
+            "size": {
+              "height": 34,
+              "width": 45
             }
           },
           "type": "END"

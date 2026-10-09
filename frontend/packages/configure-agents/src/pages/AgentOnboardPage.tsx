@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQuery} from '@tanstack/react-query';
-import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import {FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
+import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useFlowTextResolver, useGetUsers} from '@thunderid/configure-users';
 import {useConfig} from '@thunderid/contexts';
 import {CopyableTextAdapter, type FlowComponent} from '@thunderid/design';
@@ -25,6 +27,7 @@ import {
   CircularProgress,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   IconButton,
   InputAdornment,
@@ -51,6 +54,7 @@ type FlowSubComponent = EmbeddedFlowComponent & {
   variant?: string;
   required?: boolean;
   placeholder?: string;
+  hint?: string;
   options?: unknown[];
   masked?: boolean;
   source?: string;
@@ -167,6 +171,152 @@ function SecretField({id, label, value}: SecretFieldProps): JSX.Element {
   );
 }
 
+interface ChoiceSelectProps {
+  id: string;
+  label: string;
+  placeholder: string;
+  hint?: string;
+  required: boolean;
+  value: string;
+  choices: {value: string; label: string}[];
+  isLoading: boolean;
+  loadingText: string;
+  error?: Error | null;
+  errorFallbackKey: string;
+  errorFallbackDefault: string;
+  onRetry: () => void;
+  emptyText: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Picker over choices the client loaded itself. Loading and an empty list each say so beside the
+ * field instead of leaving a dropdown that silently has nothing in it. A failed read is shown with
+ * a retry in place of the dropdown, as the organization unit picker does.
+ */
+function ChoiceSelect({
+  id,
+  label,
+  placeholder,
+  hint = undefined,
+  required,
+  value,
+  choices,
+  isLoading,
+  loadingText,
+  error = null,
+  errorFallbackKey,
+  errorFallbackDefault,
+  onRetry,
+  emptyText,
+  onChange,
+}: ChoiceSelectProps): JSX.Element {
+  const {t} = useTranslation();
+  // QueryErrorNotice forwards an explicit `ns:` prefix unchanged and prefixes a bare key with the
+  // namespace, per getErrorMessage's namespace-resolution contract.
+  const tForErrors = useCallback(
+    (key: string, options?: Record<string, unknown>): string => t(key.includes(':') ? key : `agents:${key}`, options),
+    [t],
+  );
+
+  if (error) {
+    return (
+      <FormControl fullWidth>
+        <FormLabel htmlFor={id}>{label}</FormLabel>
+        <QueryErrorNotice
+          error={error}
+          t={tForErrors}
+          variant="inline"
+          fallbackKey={errorFallbackKey}
+          fallbackDefaultValue={errorFallbackDefault}
+          onRetry={onRetry}
+        />
+      </FormControl>
+    );
+  }
+
+  let helperText = hint;
+  if (isLoading) helperText = loadingText;
+  else if (choices.length === 0) helperText = emptyText;
+
+  return (
+    <FormControl fullWidth required={required}>
+      <FormLabel htmlFor={id}>{label}</FormLabel>
+      <Select
+        id={id}
+        value={value}
+        size="small"
+        displayEmpty
+        required={required}
+        disabled={isLoading}
+        onChange={(e) => onChange(String(e.target.value))}
+      >
+        <MenuItem value="">{isLoading ? loadingText : placeholder}</MenuItem>
+        {choices.map((choice) => (
+          <MenuItem key={choice.value} value={choice.value}>
+            {choice.label}
+          </MenuItem>
+        ))}
+      </Select>
+      {helperText && <FormHelperText>{helperText}</FormHelperText>}
+    </FormControl>
+  );
+}
+
+type ChoicePickerProps = Pick<
+  ChoiceSelectProps,
+  'id' | 'label' | 'placeholder' | 'hint' | 'required' | 'value' | 'onChange'
+>;
+
+/**
+ * Picker for an AUTH_FLOW_SELECT input. The flow sends no candidates, so the authentication flows
+ * are listed here, as the application wizard lists them; the row shown is the flow's name while the
+ * value submitted is its id.
+ */
+function AuthFlowSelect(props: ChoicePickerProps): JSX.Element {
+  const {t} = useTranslation();
+  const {data, isLoading, error, refetch} = useGetFlows({flowType: FlowType.AUTHENTICATION, limit: 100});
+
+  return (
+    <ChoiceSelect
+      {...props}
+      choices={(data?.flows ?? []).map((flow) => ({value: flow.id, label: flow.name}))}
+      isLoading={isLoading}
+      loadingText={t('agents:onboarding.authFlow.loading', 'Loading login flows...')}
+      error={error}
+      errorFallbackKey="agents:onboarding.authFlow.error"
+      errorFallbackDefault="Login flows could not be loaded."
+      onRetry={() => void refetch()}
+      emptyText={t('agents:onboarding.authFlow.empty', 'No login flows are available.')}
+    />
+  );
+}
+
+/**
+ * Picker for a USER_TYPE_SELECT input. The user types are listed here, as the application wizard
+ * lists them, and shown by handle, the same values the user type resolver offers. The value
+ * submitted is the handle.
+ */
+function UserTypeSelect(props: ChoicePickerProps): JSX.Element {
+  const {t} = useTranslation();
+  const {data, isLoading, error, refetch} = useGetUserTypes({limit: 100});
+  const types = data?.types ?? [];
+
+  return (
+    <ChoiceSelect
+      {...props}
+      choices={types.map((type) => ({value: type.handle, label: type.handle}))}
+      isLoading={isLoading}
+      loadingText={t('agents:onboarding.userType.loading', 'Loading user types...')}
+      error={error}
+      errorFallbackKey="agents:onboarding.userType.error"
+      errorFallbackDefault="User types could not be loaded."
+      onRetry={() => void refetch()}
+      emptyText={t('agents:onboarding.userType.empty', 'No user types are available.')}
+    />
+  );
+}
+
 interface UserSelectProps {
   id: string;
   label: string;
@@ -182,7 +332,8 @@ interface UserSelectProps {
  * fetched here; the row shown is the user's display value while the value submitted is their id.
  */
 function UserSelect({id, label, placeholder, required, value, defaultUserId, onChange}: UserSelectProps): JSX.Element {
-  const {data} = useGetUsers({limit: 100, offset: 0});
+  const {t} = useTranslation();
+  const {data, isLoading, error, refetch} = useGetUsers({limit: 100, offset: 0});
   const users = data?.users ?? [];
 
   // Default to the current user once we have one and nothing is selected. The server would resolve
@@ -194,23 +345,58 @@ function UserSelect({id, label, placeholder, required, value, defaultUserId, onC
   }, [value, defaultUserId, onChange]);
 
   return (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <Select
-        id={id}
-        value={value}
-        size="small"
-        displayEmpty
-        required={required}
-        onChange={(e) => onChange(String(e.target.value))}
-      >
-        <MenuItem value="">{placeholder}</MenuItem>
-        {users.map((user) => (
-          <MenuItem key={user.id} value={user.id}>
-            {userLabel(user)}
-          </MenuItem>
-        ))}
-      </Select>
+    <ChoiceSelect
+      id={id}
+      label={label}
+      placeholder={placeholder}
+      required={required}
+      value={value}
+      choices={users.map((user) => ({value: user.id, label: userLabel(user)}))}
+      isLoading={isLoading}
+      loadingText={t('agents:onboarding.user.loading', 'Loading users...')}
+      error={error}
+      errorFallbackKey="agents:onboarding.user.error"
+      errorFallbackDefault="Users could not be loaded."
+      onRetry={() => void refetch()}
+      emptyText={t('agents:onboarding.user.empty', 'No users are available.')}
+      onChange={onChange}
+    />
+  );
+}
+
+interface BooleanFieldProps {
+  id: string;
+  label: string;
+  required: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Checkbox for a BOOLEAN_INPUT. An unchecked box is an answer, so it is submitted as "false" from
+ * the moment it renders instead of being left out. A flow whose provisioning node defaults the
+ * choice to true would otherwise read the missing value as consent.
+ */
+function BooleanField({id, label, required, value, onChange}: BooleanFieldProps): JSX.Element {
+  useEffect(() => {
+    if (value === '') {
+      onChange('false');
+    }
+  }, [value, onChange]);
+
+  return (
+    <FormControl required={required}>
+      <FormControlLabel
+        control={
+          <Checkbox
+            id={id}
+            size="small"
+            checked={value === 'true'}
+            onChange={(e) => onChange(String(e.target.checked))}
+          />
+        }
+        label={label}
+      />
     </FormControl>
   );
 }
@@ -265,6 +451,12 @@ function AgentOnboardStep({
   const placeholderOf = (component: FlowSubComponent, fallback: string): string =>
     component.placeholder ? (resolve(component.placeholder) ?? fallback) : fallback;
 
+  // A hint says why a field is asked for, so it is shown whether or not the field has a value. The
+  // resolved text is shown as it is: a second pass through t() would read a colon in the prose as a
+  // namespace separator and cut the hint short.
+  const hintOf = (component: FlowSubComponent): string | undefined =>
+    component.hint ? (resolve(component.hint) ?? component.hint) : undefined;
+
   // A step cannot be submitted while it is missing something it asked for. Without this the
   // action posts, the engine refuses it, and the screen simply does not move.
   const isIncomplete = requiredRefs(components as FlowSubComponent[]).some(
@@ -315,6 +507,7 @@ function AgentOnboardStep({
             size="small"
             required={required}
             placeholder={placeholderOf(component, '')}
+            helperText={hintOf(component)}
             onChange={(e) => handleInputChange(ref, e.target.value)}
           />
         </FormControl>
@@ -350,6 +543,25 @@ function AgentOnboardStep({
             })}
           </Select>
         </FormControl>
+      );
+    }
+
+    if (component.type === 'AUTH_FLOW_SELECT' || component.type === 'USER_TYPE_SELECT') {
+      if (!ref) return null;
+
+      const Picker = component.type === 'AUTH_FLOW_SELECT' ? AuthFlowSelect : UserTypeSelect;
+
+      return (
+        <Picker
+          key={key}
+          id={ref}
+          label={text(component)}
+          placeholder={placeholderOf(component, t('agents:onboarding.selectPlaceholder'))}
+          hint={hintOf(component)}
+          required={required}
+          value={value}
+          onChange={(selected) => handleInputChange(ref, selected)}
+        />
       );
     }
 
@@ -389,19 +601,14 @@ function AgentOnboardStep({
       if (!ref) return null;
 
       return (
-        <FormControl key={key} required={required}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                id={ref}
-                size="small"
-                checked={value === 'true'}
-                onChange={(e) => handleInputChange(ref, String(e.target.checked))}
-              />
-            }
-            label={text(component)}
-          />
-        </FormControl>
+        <BooleanField
+          key={key}
+          id={ref}
+          label={text(component)}
+          required={required}
+          value={value}
+          onChange={(checked) => handleInputChange(ref, checked)}
+        />
       );
     }
 

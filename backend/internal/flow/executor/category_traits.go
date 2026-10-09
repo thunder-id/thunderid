@@ -50,7 +50,9 @@ var categoryTraitsByCategory = map[entitytype.TypeCategory]categoryTraits{
 		applicationAllowedTypes: func(ctx *providers.NodeContext) []string {
 			return ctx.Application.AllowedAgentTypes
 		},
-		recordFields:        []string{nameKey, ownerIDKey, delegatedKey, redirectURIsKey},
+		recordFields: []string{
+			nameKey, ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey,
+		},
 		missingRecordFields: missingAgentRecordFields,
 	},
 }
@@ -67,26 +69,44 @@ func traitsFor(category entitytype.TypeCategory) categoryTraits {
 
 // missingAgentRecordFields returns the record fields an agent still has to collect.
 func missingAgentRecordFields(ctx *providers.NodeContext) []providers.Input {
-	missing := make([]providers.Input, 0, 2)
+	missing := make([]providers.Input, 0, 4)
 
 	if collectedValue(ctx, nameKey) == "" {
-		missing = append(missing, requiredTextInput(nameKey))
+		missing = append(missing, requiredInput(nameKey, providers.InputTypeText))
 	}
-	// Delegation is what makes a redirect URI necessary. A value that cannot be read is reported
-	// when the entity is created, so it is treated as absent here.
-	delegated, _ := collectedFlag(ctx, delegatedKey)
-	if delegated && collectedValue(ctx, redirectURIsKey) == "" {
-		missing = append(missing, requiredTextInput(redirectURIsKey))
+	// Delegation is what makes a callback, a login flow and a user type necessary. A value that
+	// cannot be read is reported when the entity is created, so it is treated as absent here.
+	if delegated, _ := agentDelegation(ctx); delegated {
+		for _, field := range []struct{ key, inputType string }{
+			{redirectURIsKey, providers.InputTypeText},
+			{authFlowIDKey, providers.InputTypeAuthFlowSelect},
+			{allowedUserTypesKey, providers.InputTypeUserTypeSelect},
+		} {
+			if !hasCollectedOnBehalfOfValue(ctx, field.key) {
+				missing = append(missing, requiredInput(field.key, field.inputType))
+			}
+		}
 	}
 
 	return missing
 }
 
-// requiredTextInput describes a text field the flow must collect.
-func requiredTextInput(identifier string) providers.Input {
+// hasCollectedOnBehalfOfValue reports whether the flow collected a usable value for an on-behalf-of
+// input. A list of separators alone, such as " , ", carries no redirect URI, so it counts as absent.
+func hasCollectedOnBehalfOfValue(ctx *providers.NodeContext, key string) bool {
+	value := collectedValue(ctx, key)
+	if key == redirectURIsKey {
+		return len(splitTrimmed(value)) > 0
+	}
+
+	return value != ""
+}
+
+// requiredInput describes a field of the given input type that the flow must collect.
+func requiredInput(identifier, inputType string) providers.Input {
 	return providers.Input{
 		Identifier: identifier,
-		Type:       providers.InputTypeText,
+		Type:       inputType,
 		Required:   true,
 	}
 }

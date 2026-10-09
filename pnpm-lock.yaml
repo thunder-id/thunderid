@@ -1285,6 +1285,9 @@ importers:
       '@thunderid/configure-applications':
         specifier: workspace:^
         version: link:../configure-applications
+      '@thunderid/configure-flows':
+        specifier: workspace:^
+        version: link:../configure-flows
       '@thunderid/configure-organization-units':
         specifier: workspace:^
         version: link:../configure-organization-units

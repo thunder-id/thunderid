@@ -18,10 +18,23 @@ interface CapturedFlowProps {
   onInitialize: (payload: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** What the two listing hooks hand back: the state of the query the picker reads. */
+interface ListingQuery {
+  data?: unknown;
+  error?: Error | null;
+  isLoading?: boolean;
+  refetch?: () => unknown;
+}
+
 // Shared across the module mocks below. vi.mock is hoisted above the imports, so anything its
 // factories touch has to be hoisted with it.
 const h = vi.hoisted(() => ({
   flowProps: {current: null as CapturedFlowProps | null},
+  flowsQuery: {current: {} as ListingQuery},
+  refetch: vi.fn<() => unknown>(),
+  useGetFlows: vi.fn<(params: unknown) => ListingQuery>(),
+  userTypesQuery: {current: {} as ListingQuery},
+  useGetUserTypes: vi.fn<(params: unknown) => ListingQuery>(),
   http: {request: vi.fn<(config: unknown) => Promise<{data: unknown}>>()},
   logger: {debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn()},
   navigate: vi.fn(),
@@ -31,6 +44,7 @@ const h = vi.hoisted(() => ({
   signedInUser: {current: null as {id?: string} | null},
   handleInputChange: vi.fn<(ref: string, value: string) => void>(),
   users: {current: [] as {id: string; display?: string; attributes?: Record<string, unknown>}[]},
+  usersState: {error: null as Error | null, isLoading: false},
   step: {
     additionalData: {} as Record<string, unknown>,
     components: [] as Record<string, unknown>[],
@@ -68,10 +82,27 @@ vi.mock('../../utils/resolveAgentOnboardingFlow', async (importOriginal) => ({
   default: h.resolve,
 }));
 
+// The pickers read their candidates through the same hooks the application wizard uses. Both
+// packages are replaced outright: importing either barrel pulls in the whole flow builder and the
+// user type screens, which need far more of react-i18next than the mock below provides.
+vi.mock('@thunderid/configure-flows', () => ({
+  FlowType: {AUTHENTICATION: 'AUTHENTICATION'},
+  useGetFlows: h.useGetFlows,
+}));
+
+vi.mock('@thunderid/configure-user-types', () => ({
+  useGetUserTypes: h.useGetUserTypes,
+}));
+
 vi.mock('@thunderid/configure-users', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-users')>()),
   useFlowTextResolver: () => (text?: string) => text,
-  useGetUsers: () => ({data: {users: h.users.current}}),
+  useGetUsers: () => ({
+    data: {users: h.users.current},
+    error: h.usersState.error,
+    isLoading: h.usersState.isLoading,
+    refetch: h.refetch,
+  }),
 }));
 
 // The OU picker fetches its own tree; the page only has to hand it the value and the change handler.
@@ -121,6 +152,10 @@ vi.mock('react-i18next', () => ({
         'agents:onboarding.errors.unavailable.description': 'The agent onboarding flow could not be loaded.',
         'agents:onboarding.errors.unavailable.title': 'Onboarding unavailable',
         'agents:onboarding.addAnother': 'Add Another Agent',
+        'agents:onboarding.authFlow.error': 'Login flows could not be loaded.',
+        'agents:onboarding.user.error': 'Users could not be loaded.',
+        'agents:onboarding.userType.error': 'User types could not be loaded.',
+        'common:actions.refresh': 'Refresh',
         'agents:onboarding.selectPlaceholder': 'Select an option',
       };
       const translated = translations[key];
@@ -170,6 +205,12 @@ describe('AgentOnboardPage', () => {
     h.step.additionalData = {};
     h.step.values = {};
     h.users.current = [];
+    h.usersState.error = null;
+    h.usersState.isLoading = false;
+    h.flowsQuery.current = {data: {flows: []}, error: null, isLoading: false, refetch: h.refetch};
+    h.userTypesQuery.current = {data: {types: []}, error: null, isLoading: false, refetch: h.refetch};
+    h.useGetFlows.mockImplementation(() => h.flowsQuery.current);
+    h.useGetUserTypes.mockImplementation(() => h.userTypesQuery.current);
     h.resetFlow.mockClear();
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
     h.http.request.mockResolvedValue({data: {flowStatus: 'INCOMPLETE'}});
@@ -354,6 +395,33 @@ describe('AgentOnboardPage', () => {
       expect(options.map((option) => option.textContent)).toEqual(['Select an option', 'grace@example.com', 'user-3']);
     });
 
+    it('should say so while the users are loading', async () => {
+      h.usersState.isLoading = true;
+      givenStep([{id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}]);
+
+      render(<AgentOnboardPage />);
+
+      // Shown in the closed select and again beside it, so more than one element carries the text.
+      expect((await screen.findAllByText('Loading users...')).length).toBeGreaterThan(0);
+      expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    // Same as the login flow and user type pickers: a failed read replaces the dropdown with an
+    // error and a refresh button instead of leaving an empty list with no explanation.
+    it('should offer a retry when the users cannot be listed', async () => {
+      h.usersState.error = new Error('listing failed');
+      givenStep([{id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}]);
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByText('Users could not be loaded.')).toBeInTheDocument();
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', {name: 'Refresh'}));
+
+      expect(h.refetch).toHaveBeenCalledTimes(1);
+    });
+
     // SELECT options arrive either as {value, label} pairs or as bare values that double as labels.
     it('should offer the options a select carries, in either shape', async () => {
       givenStep([
@@ -398,6 +466,175 @@ describe('AgentOnboardPage', () => {
       expect(picker).toHaveAttribute('data-root-ou-id', 'ou-root-1');
       await userEvent.click(picker);
       expect(h.handleInputChange).toHaveBeenCalledWith('ouId', 'ou-child-1');
+    });
+
+    // AUTH_FLOW_SELECT is the same contract again: the page lists the authentication flows, shows
+    // each by name, and submits the id.
+    describe('on-behalf-of selections', () => {
+      const authFlowInput = {id: 'auth_flow_input', label: 'Login flow', ref: 'authFlowId', type: 'AUTH_FLOW_SELECT'};
+      const userTypeInput = {
+        id: 'user_type_input',
+        label: 'User type',
+        ref: 'allowedUserTypes',
+        type: 'USER_TYPE_SELECT',
+      };
+
+      /** Sets what the two listing hooks report: the entries, a failed read, or a read still in flight. */
+      const givenListings = (listings: {
+        flows?: unknown[];
+        types?: unknown[];
+        fail?: boolean;
+        loading?: boolean;
+      }): void => {
+        const state = {
+          error: listings.fail ? new Error('listing failed') : null,
+          isLoading: Boolean(listings.loading),
+          refetch: h.refetch,
+        };
+        h.flowsQuery.current = {...state, data: listings.fail ? undefined : {flows: listings.flows ?? []}};
+        h.userTypesQuery.current = {...state, data: listings.fail ? undefined : {types: listings.types ?? []}};
+      };
+
+      it('should offer authentication flows by name and submit the id', async () => {
+        givenListings({
+          flows: [
+            {id: 'flow-1', name: 'Basic Login'},
+            {id: 'flow-2', name: 'Login With Passkey'},
+          ],
+        });
+        givenStep([authFlowInput]);
+
+        render(<AgentOnboardPage />);
+
+        await userEvent.click(await screen.findByRole('combobox'));
+        const options = await screen.findAllByRole('option');
+
+        expect(options.map((option) => option.textContent)).toEqual([
+          'Select an option',
+          'Basic Login',
+          'Login With Passkey',
+        ]);
+        expect(options[2]).toHaveAttribute('data-value', 'flow-2');
+
+        expect(h.useGetFlows).toHaveBeenCalledWith({flowType: 'AUTHENTICATION', limit: 100});
+
+        await userEvent.click(options[1]);
+
+        expect(h.handleInputChange).toHaveBeenCalledWith('authFlowId', 'flow-1');
+      });
+
+      // The user type resolver offers handles, so this picker shows the same values.
+      it('should offer user types by handle and submit the handle', async () => {
+        givenListings({types: [{handle: 'employee'}, {handle: 'customer'}]});
+        givenStep([userTypeInput]);
+
+        render(<AgentOnboardPage />);
+
+        await userEvent.click(await screen.findByRole('combobox'));
+        const options = await screen.findAllByRole('option');
+
+        expect(options.map((option) => option.textContent)).toEqual(['Select an option', 'employee', 'customer']);
+        expect(options[1]).toHaveAttribute('data-value', 'employee');
+
+        await userEvent.click(options[2]);
+
+        expect(h.handleInputChange).toHaveBeenCalledWith('allowedUserTypes', 'customer');
+
+        expect(h.useGetUserTypes).toHaveBeenCalledWith({limit: 100});
+      });
+
+      // A failed read replaces the dropdown with an error and a refresh button, as the organization
+      // unit picker does, so a transient failure can be retried without reloading the page.
+      it('should offer a retry when the flows cannot be listed', async () => {
+        givenListings({fail: true});
+        givenStep([authFlowInput]);
+
+        render(<AgentOnboardPage />);
+
+        expect(await screen.findByText('Login flows could not be loaded.')).toBeInTheDocument();
+        expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', {name: 'Refresh'}));
+
+        expect(h.refetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should offer a retry when the user types cannot be listed', async () => {
+        givenListings({fail: true});
+        givenStep([userTypeInput]);
+
+        render(<AgentOnboardPage />);
+
+        expect(await screen.findByText('User types could not be loaded.')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', {name: 'Refresh'}));
+
+        expect(h.refetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should say so while the user types are loading', async () => {
+        givenListings({loading: true});
+        givenStep([userTypeInput]);
+
+        render(<AgentOnboardPage />);
+
+        // Shown in the closed select and again beside it, so more than one element carries the text.
+        expect((await screen.findAllByText('Loading user types...')).length).toBeGreaterThan(0);
+        expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+      });
+
+      it('should say so when there are no user types', async () => {
+        givenListings({types: []});
+        givenStep([userTypeInput]);
+
+        render(<AgentOnboardPage />);
+
+        expect(await screen.findByText('No user types are available.')).toBeInTheDocument();
+      });
+    });
+
+    // An unchecked box is an answer. Leaving it out would let a node that defaults to delegation
+    // read the missing value as a yes.
+    it('should submit an untouched checkbox as false', async () => {
+      givenStep([
+        {id: 'delegated_input', label: 'Delegated', ref: 'delegated', required: false, type: 'BOOLEAN_INPUT'},
+      ]);
+
+      render(<AgentOnboardPage />);
+
+      await screen.findByText('Delegated');
+
+      expect(h.handleInputChange).toHaveBeenCalledWith('delegated', 'false');
+    });
+
+    it('should not overwrite a checkbox that already has a value', async () => {
+      givenStep(
+        [{id: 'delegated_input', label: 'Delegated', ref: 'delegated', required: false, type: 'BOOLEAN_INPUT'}],
+        {},
+        {delegated: 'true'},
+      );
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('checkbox')).toBeChecked();
+      expect(h.handleInputChange).not.toHaveBeenCalled();
+    });
+
+    // A hint says why a field is asked for, so a text field shows it as helper text.
+    it('should show a text field hint beside the field', async () => {
+      givenStep([
+        {
+          hint: 'Separate several URIs with commas.',
+          id: 'redirect_input',
+          label: 'Redirect URIs',
+          ref: 'redirectUris',
+          type: 'TEXT_INPUT',
+        },
+      ]);
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByText('Separate several URIs with commas.')).toBeInTheDocument();
     });
   });
 

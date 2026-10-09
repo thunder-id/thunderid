@@ -52,6 +52,27 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         {t('flows:core.executions.provisioning.description')}
       </Typography>
 
+      {properties['mode'] === 'agent' && (
+        <>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={properties['delegated'] === true}
+                onChange={(e) => handleBooleanPropertyChange('delegated', e.target.checked)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.provisioning.delegated.label', 'Delegated mode')}
+          />
+          <FormHelperText>
+            {t(
+              'flows:core.executions.provisioning.delegated.hint',
+              'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
+            )}
+          </FormHelperText>
+        </>
+      )}
+
       <FormControlLabel
         control={
           <Checkbox

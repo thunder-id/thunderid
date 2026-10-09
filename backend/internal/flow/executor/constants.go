@@ -131,6 +131,10 @@ const (
 	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the
 	// only part of an agent's OAuth configuration a flow supplies; the provider derives the rest.
 	redirectURIsKey = "redirectUris"
+	// authFlowIDKey carries the authentication flow a delegated agent's users sign in through.
+	authFlowIDKey = "authFlowId"
+	// allowedUserTypesKey carries the one user type handle a delegated agent's users may belong to.
+	allowedUserTypesKey = "allowedUserTypes"
 
 	// agentAttributeConflictCode is the agent service's unique-attribute clash code. It is repeated
 	// here rather than referenced from internal/agent: that package reaches the flow executor through
@@ -154,8 +158,12 @@ const (
 	// propertyKeyProvisioningMode names the entity category a provisioning node provisions into.
 	// The value is the category name; absent or empty means the default category.
 	propertyKeyProvisioningMode = "mode"
-	propertyKeyRequiredScopes   = "requiredScopes"
-	propertyKeyEmailTemplate    = "emailTemplate"
+	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the
+	// flow does not collect the choice itself. A value the flow collects takes precedence. It applies
+	// to the agent category only.
+	propertyKeyDelegated      = "delegated"
+	propertyKeyRequiredScopes = "requiredScopes"
+	propertyKeyEmailTemplate  = "emailTemplate"
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"

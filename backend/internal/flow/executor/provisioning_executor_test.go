@@ -1475,11 +1475,127 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_EnumAttributeI
 	suite.Equal(providers.InputTypeSelect, enumInput.Type)
 	suite.Equal([]string{"openai", "anthropic", "gemini"}, enumInput.Options,
 		"options must keep the order the schema declared them in")
+	suite.Equal("modelProvider", enumInput.Ref,
+		"an undeclared select needs its ref set so clients can attach the options to the generated component")
 
 	plainInput, ok := byID["model"]
 	suite.Require().True(ok)
 	suite.NotEqual(providers.InputTypeSelect, plainInput.Type, "an unconstrained attribute stays free text")
 	suite.Empty(plainInput.Options)
+	suite.Empty(plainInput.Ref)
+
+	forwarded, ok := execResp.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
+	suite.Require().True(ok)
+	var forwardedEnum *providers.Input
+	for i := range forwarded {
+		if forwarded[i].Identifier == "modelProvider" {
+			forwardedEnum = &forwarded[i]
+		}
+	}
+	suite.Require().NotNil(forwardedEnum, "the enum attribute must reach the prompt through forwarded data")
+	suite.Equal(providers.InputTypeSelect, forwardedEnum.Type)
+	suite.Equal([]string{"openai", "anthropic", "gemini"}, forwardedEnum.Options)
+}
+
+// inputByIdentifier returns the requested input with the given identifier, failing the test when
+// the executor did not request it.
+func inputByIdentifier(
+	suite *ProvisioningExecutorTestSuite, inputs []providers.Input, identifier string,
+) providers.Input {
+	for _, input := range inputs {
+		if input.Identifier == identifier {
+			return input
+		}
+	}
+	suite.FailNow("input was not requested", identifier)
+	return providers.Input{}
+}
+
+// The enum handling is shared with the user category, so a missing user attribute that the schema
+// restricts is offered as a select with its ref set too.
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_EnumAttributeIsOfferedAsSelect_ForUsers() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "tier", Required: true, Type: "string", Enum: []string{"free", "pro"}},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{categoryTypeKey: testUserType},
+		NodeInputs:  []providers.Input{},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.False(suite.executor.HasRequiredInputs(ctx, execResp))
+
+	input := inputByIdentifier(suite, execResp.Inputs, "tier")
+	suite.Equal(providers.InputTypeSelect, input.Type)
+	suite.Equal([]string{"free", "pro"}, input.Options)
+	suite.True(input.Required)
+	suite.Equal("tier", input.Ref)
+}
+
+// A required enum attribute is a select as well, and is requested ahead of the optional ones.
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredEnumAttributeIsOfferedAsSelect() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "function", Required: true, Type: "string", Enum: []string{"support", "research"}},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+		},
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		NodeInputs:  []providers.Input{},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.False(suite.executor.HasRequiredInputs(ctx, execResp))
+
+	input := inputByIdentifier(suite, execResp.Inputs, "function")
+	suite.Equal(providers.InputTypeSelect, input.Type)
+	suite.Equal([]string{"support", "research"}, input.Options)
+	suite.True(input.Required)
+	suite.Equal("function", input.Ref)
+}
+
+// A field the node declares keeps the ref the flow gave it, and still takes its options from the
+// schema, so the flow need not repeat the permitted values.
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_DeclaredEnumAttributeKeepsItsRef() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "function", Required: false, Type: "string", Enum: []string{"support", "research"}},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+		},
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		NodeInputs: []providers.Input{
+			{Identifier: "function", Ref: "input_function", Type: providers.InputTypeText},
+		},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	suite.False(suite.executor.HasRequiredInputs(ctx, execResp))
+
+	input := inputByIdentifier(suite, execResp.Inputs, "function")
+	suite.Equal(providers.InputTypeSelect, input.Type)
+	suite.Equal([]string{"support", "research"}, input.Options)
+	suite.Equal("input_function", input.Ref)
 }
 
 // A user carries no record fields of its own, so empty attribute maps really do mean nothing was
@@ -1542,21 +1658,18 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Assign
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Redirect URIs are the one part of an agent's OAuth configuration a flow supplies. They are
-// attached only when collected, so an absent value leaves the inbound auth config unset and the
-// provider free to apply its own default rather than receiving an empty list to interpret.
+// Redirect URIs arrive as one comma-separated value and belong to a delegated agent, whose other
+// on-behalf-of inputs are supplied here so the table stays about how the value is split.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RedirectURIsInput() {
 	tests := []struct {
 		name     string
 		input    string
 		expected []string
 	}{
-		{name: "AbsentLeavesTheConfigUnset", input: "", expected: nil},
 		{name: "SingleURIIsForwarded", input: "https://a.example.com/cb",
 			expected: []string{"https://a.example.com/cb"}},
 		{name: "SeveralURIsAreSplitAndTrimmed", input: " https://a.example.com/cb , https://b.example.com/cb ",
 			expected: []string{"https://a.example.com/cb", "https://b.example.com/cb"}},
-		{name: "SeparatorsOnlyLeaveTheConfigUnset", input: " , ", expected: nil},
 	}
 
 	for _, tt := range tests {
@@ -1573,17 +1686,16 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 				}).
 				Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
 
-			userInputs := map[string]string{"model": "claude", nameKey: "support-bot"}
-			if tt.input != "" {
-				userInputs[redirectURIsKey] = tt.input
-			}
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-123",
 				FlowType:    providers.FlowTypeAdministration,
 				NodeProperties: map[string]interface{}{
 					propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 				},
-				UserInputs:  userInputs,
+				UserInputs: map[string]string{
+					"model": "claude", nameKey: "support-bot", delegatedKey: dataValueTrue,
+					redirectURIsKey: tt.input, authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
+				},
 				RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 				NodeInputs:  []providers.Input{},
 			}
@@ -1592,11 +1704,6 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 
 			assert.NoError(suite.T(), err)
 			require.NotNil(suite.T(), received)
-			if tt.expected == nil {
-				assert.Empty(suite.T(), received.InboundAuthConfig,
-					"the provider decides the configuration when the flow supplied no URIs")
-				return
-			}
 			require.Len(suite.T(), received.InboundAuthConfig, 1)
 			require.NotNil(suite.T(), received.InboundAuthConfig[0].OAuthConfig)
 			assert.Equal(suite.T(), tt.expected, received.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
@@ -1604,6 +1711,36 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 			assert.Empty(suite.T(), received.InboundAuthConfig[0].OAuthConfig.GrantTypes)
 		})
 	}
+}
+
+// A list of separators carries no redirect URI, so with delegation on it is requested again rather
+// than reaching the service as an agent with no callback.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_SeparatorsOnlyIsNotARedirectURI() {
+	suite.expectSchemaForAgentProvisioning()
+
+	execResp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+		},
+		UserInputs: map[string]string{
+			"model": "claude", nameKey: "support-bot", delegatedKey: dataValueTrue,
+			redirectURIsKey: " , ", authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
+		},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+	})
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), execResp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status)
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, input := range execResp.Inputs {
+		identifiers = append(identifiers, input.Identifier)
+	}
+	assert.Equal(suite.T(), []string{redirectURIsKey}, identifiers)
+	suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+		mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A value that is not a boolean is refused rather than read as false. Silently provisioning an
@@ -1638,10 +1775,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 		mock.Anything, mock.Anything, mock.Anything)
 }
 
-// A delegated agent needs somewhere to send the user back to, so the redirect URI stops being
-// optional the moment the flow reports delegation. It is asked for rather than defaulted, and the
-// agent is not created until it arrives.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatedRequiresRedirectURI() {
+// A delegated agent needs somewhere to send the user back to, a login flow to sign them in through,
+// and a user type that may do so, so all three stop being optional the moment the flow reports
+// delegation. They are asked for rather than defaulted, each as the input type that lets the client
+// offer a real choice, and the agent is not created until they arrive.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatedRequestsTheOnBehalfOfInputs() {
 	suite.expectSchemaForAgentProvisioning()
 
 	ctx := &providers.NodeContext{
@@ -1660,11 +1798,21 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	require.NotNil(suite.T(), execResp)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status)
 
-	identifiers := make([]string, 0, len(execResp.Inputs))
-	for _, input := range execResp.Inputs {
-		identifiers = append(identifiers, input.Identifier)
+	expected := map[string]string{
+		redirectURIsKey:     providers.InputTypeText,
+		authFlowIDKey:       providers.InputTypeAuthFlowSelect,
+		allowedUserTypesKey: providers.InputTypeUserTypeSelect,
 	}
-	assert.Contains(suite.T(), identifiers, redirectURIsKey)
+	requested := make(map[string]providers.Input, len(execResp.Inputs))
+	for _, input := range execResp.Inputs {
+		requested[input.Identifier] = input
+	}
+	for key, inputType := range expected {
+		input, ok := requested[key]
+		require.True(suite.T(), ok, "%s is asked for", key)
+		assert.Equal(suite.T(), inputType, input.Type)
+		assert.True(suite.T(), input.Required)
+	}
 
 	// Forwarded so the prompt node renders it alongside whatever else is outstanding.
 	forwarded, ok := execResp.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
@@ -1673,7 +1821,38 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	for _, input := range forwarded {
 		forwardedIdentifiers = append(forwardedIdentifiers, input.Identifier)
 	}
-	assert.Contains(suite.T(), forwardedIdentifiers, redirectURIsKey)
+	for key := range expected {
+		assert.Contains(suite.T(), forwardedIdentifiers, key)
+	}
+}
+
+// What the flow already holds is not asked for again.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegatedAsksOnlyForWhatIsMissing() {
+	suite.expectSchemaForAgentProvisioning()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+		},
+		UserInputs: map[string]string{
+			"model": "claude", nameKey: "support-bot", delegatedKey: dataValueTrue,
+			redirectURIsKey: "https://example.com/cb", authFlowIDKey: "login-flow-1",
+		},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+	}
+
+	execResp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), execResp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status)
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, input := range execResp.Inputs {
+		identifiers = append(identifiers, input.Identifier)
+	}
+	assert.Equal(suite.T(), []string{allowedUserTypesKey}, identifiers)
 }
 
 // Without delegation the redirect URI stays optional, so its absence must not hold up the create.
@@ -1700,10 +1879,166 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 	suite.mockAgentMgtProvider.AssertExpectations(suite.T())
 }
 
+// An agent that acts on its own behalf neither asks for the on-behalf-of inputs nor carries any that
+// the flow collected before the choice changed.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NotDelegatedIgnoresOnBehalfOfInputs() {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	var received *providers.Agent
+	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything, false).
+		Run(func(args mock.Arguments) { received = args.Get(1).(*providers.Agent) }).
+		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+		},
+		UserInputs: map[string]string{
+			"model": "claude", nameKey: "support-bot", delegatedKey: dataValueFalse,
+			redirectURIsKey: "https://a.example.com/cb", authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
+		},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+	}
+
+	_, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), received)
+	assert.Empty(suite.T(), received.AuthFlowID)
+	assert.Empty(suite.T(), received.AllowedUserTypes)
+	assert.Empty(suite.T(), received.InboundAuthConfig, "the callback belongs to a delegated agent only")
+}
+
+// The mode comes from the first value that is not empty: what an executor resolved, what the
+// caller submitted, the node's delegated property, then false. An explicit false therefore beats
+// a property that says true.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_DelegationPrecedence() {
+	tests := []struct {
+		name     string
+		runtime  string
+		input    string
+		property interface{}
+		expected bool
+	}{
+		{name: "NothingSetIsNotDelegated", expected: false},
+		{name: "PropertyTrueDelegates", property: true, expected: true},
+		{name: "PropertyFalseDoesNot", property: false, expected: false},
+		{name: "InputFalseBeatsPropertyTrue", input: dataValueFalse, property: true, expected: false},
+		{name: "InputTrueBeatsPropertyFalse", input: dataValueTrue, property: false, expected: true},
+		{name: "EmptyInputFallsThroughToProperty", input: "", property: true, expected: true},
+		{name: "RuntimeBeatsInput", runtime: dataValueFalse, input: dataValueTrue, expected: false},
+		{name: "RuntimeBeatsProperty", runtime: dataValueTrue, property: false, expected: true},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			suite.expectSchemaForAgentProvisioning()
+			suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+				entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+			var receivedDelegated bool
+			suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything, mock.Anything).
+				Run(func(args mock.Arguments) { receivedDelegated = args.Get(2).(bool) }).
+				Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
+
+			properties := map[string]interface{}{
+				propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+			}
+			if tt.property != nil {
+				properties[propertyKeyDelegated] = tt.property
+			}
+			// The on-behalf-of inputs are always supplied so the table stays about the mode.
+			userInputs := map[string]string{
+				"model": "claude", nameKey: "support-bot", redirectURIsKey: "https://example.com/cb",
+				authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
+			}
+			if tt.input != "" {
+				userInputs[delegatedKey] = tt.input
+			}
+			runtime := map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType}
+			if tt.runtime != "" {
+				runtime[delegatedKey] = tt.runtime
+			}
+
+			_, err := suite.executor.Execute(&providers.NodeContext{
+				ExecutionID:    "flow-123",
+				FlowType:       providers.FlowTypeAdministration,
+				NodeProperties: properties,
+				UserInputs:     userInputs,
+				RuntimeData:    runtime,
+			})
+
+			assert.NoError(suite.T(), err)
+			suite.mockAgentMgtProvider.AssertNumberOfCalls(suite.T(), "CreateAgent", 1)
+			assert.Equal(suite.T(), tt.expected, receivedDelegated)
+		})
+	}
+}
+
+// Delegation from the node property alone asks for the on-behalf-of inputs just as a submitted
+// value does, since the flow never gets the chance to ask for the choice.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_PropertyDelegationRequestsTheInputs() {
+	suite.expectSchemaForAgentProvisioning()
+
+	execResp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+			propertyKeyDelegated:        true,
+		},
+		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot"},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+	})
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), execResp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status)
+	identifiers := make([]string, 0, len(execResp.Inputs))
+	for _, input := range execResp.Inputs {
+		identifiers = append(identifiers, input.Identifier)
+	}
+	assert.ElementsMatch(suite.T(), []string{redirectURIsKey, authFlowIDKey, allowedUserTypesKey}, identifiers)
+}
+
+// A property that is not a boolean is refused rather than read as a mode.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_RejectsANonBooleanDelegatedProperty() {
+	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	execResp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAdministration,
+		NodeProperties: map[string]interface{}{
+			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
+			propertyKeyDelegated:        "yes",
+		},
+		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot"},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+	})
+
+	assert.NoError(suite.T(), err)
+	require.NotNil(suite.T(), execResp)
+	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
+	require.NotNil(suite.T(), execResp.Error)
+	assert.Equal(suite.T(), ErrInvalidFlagValue.Code, execResp.Error.Code)
+	assert.Equal(suite.T(), propertyKeyDelegated, execResp.Error.Error.Params["attribute"])
+	suite.mockAgentMgtProvider.AssertNotCalled(suite.T(), "CreateAgent",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
 // Record fields are what provisioning reads off the entity rather than out of its schema, so a
 // flow that collected only one of them still has something to provision.
 func (suite *ProvisioningExecutorTestSuite) TestHasRecordValues() {
-	for _, key := range []string{nameKey, ownerIDKey, delegatedKey, redirectURIsKey} {
+	for _, key := range []string{
+		nameKey, ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey,
+	} {
 		suite.Run(key, func() {
 			ctx := &providers.NodeContext{UserInputs: map[string]string{key: "value"}}
 
@@ -1753,10 +2088,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 				}).
 				Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
 
-			// Delegation requires a redirect URI, so it is always supplied here and the table
-			// stays about how the flag itself is parsed.
+			// Delegation requires a redirect URI, a login flow and a user type, so they are always
+			// supplied here and the table stays about how the flag itself is parsed.
 			userInputs := map[string]string{
 				"model": "claude", nameKey: "support-bot", redirectURIsKey: "https://example.com/cb",
+				authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
 			}
 			if tt.delegated != "" {
 				userInputs[delegatedKey] = tt.delegated
@@ -1779,6 +2115,13 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 			assert.Equal(suite.T(), tt.expected, receivedDelegated)
 			// The flag steers the agent's auth shape; it is not one of its attributes.
 			assert.JSONEq(suite.T(), `{"model":"claude"}`, string(received.Attributes))
+			if tt.expected {
+				assert.Equal(suite.T(), "login-flow-1", received.AuthFlowID)
+				assert.Equal(suite.T(), []string{"employee"}, received.AllowedUserTypes)
+			} else {
+				assert.Empty(suite.T(), received.AuthFlowID)
+				assert.Empty(suite.T(), received.AllowedUserTypes)
+			}
 		})
 	}
 }

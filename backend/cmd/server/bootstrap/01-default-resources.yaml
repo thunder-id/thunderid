@@ -2166,11 +2166,11 @@ nodes:
   onSuccess: permission_validator
   layout:
     size:
-      width: 101
+      width: 61
       height: 34
     position:
-      x: 100
-      y: 200
+      x: 62
+      y: 1131
 - id: permission_validator
   type: TASK_EXECUTION
   executor:
@@ -2178,11 +2178,11 @@ nodes:
   onSuccess: agent_type_resolution
   layout:
     size:
-      width: 206
-      height: 113
+      width: 268
+      height: 117
     position:
-      x: 300
-      y: 175
+      x: 283
+      y: 1089
 - id: agent_type_resolution
   type: TASK_EXECUTION
   properties:
@@ -2194,11 +2194,11 @@ nodes:
   onIncomplete: prompt_agent_type
   layout:
     size:
-      width: 206
-      height: 113
+      width: 278
+      height: 117
     position:
-      x: 440
-      y: 175
+      x: 803
+      y: 1089
 - id: prompt_agent_type
   type: PROMPT
   meta:
@@ -2240,10 +2240,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 680
     position:
-      x: 440
-      y: -320
+      x: 1328
+      y: 289
 - id: ou_selection
   type: TASK_EXECUTION
   properties:
@@ -2254,11 +2254,11 @@ nodes:
   onIncomplete: prompt_ou_selection
   layout:
     size:
-      width: 206
-      height: 113
+      width: 217
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 1417
+      y: 1089
 - id: prompt_ou_selection
   type: PROMPT
   meta:
@@ -2298,10 +2298,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 525
+      height: 652
     position:
-      x: 580
-      y: -320
+      x: 1947
+      y: 1306
 - id: owner_resolution
   type: TASK_EXECUTION
   executor:
@@ -2310,11 +2310,11 @@ nodes:
   onIncomplete: prompt_owner
   layout:
     size:
-      width: 206
-      height: 113
+      width: 247
+      height: 117
     position:
-      x: 580
-      y: 175
+      x: 2015
+      y: 1089
 - id: prompt_owner
   type: PROMPT
   meta:
@@ -2355,10 +2355,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 480
+      height: 597
     position:
-      x: 580
-      y: -320
+      x: 2506
+      y: 122
 - id: prompt_agent_name
   type: PROMPT
   meta:
@@ -2395,14 +2395,14 @@ nodes:
       required: true
     action:
       ref: action_agent_name
-      nextNode: provisioning
+      nextNode: prompt_agent_details
   layout:
     size:
       width: 350
-      height: 410
+      height: 657
     position:
-      x: 900
-      y: 100
+      x: 2506
+      y: 819
 - id: prompt_agent_details
   type: PROMPT
   meta:
@@ -2426,7 +2426,12 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
         required: false
-        options: []
+        options:
+        - openai
+        - anthropic
+        - gemini
+        - mistral
+        - custom
       - id: input_agent_model
         ref: model
         type: TEXT_INPUT
@@ -2439,7 +2444,15 @@ nodes:
         label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
         placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
         required: false
-        options: []
+        options:
+        - task-automation
+        - rag-retrieval
+        - code-gen
+        - data-analysis
+        - orchestrator
+        - sub-agent
+        - assistant
+        - custom
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
@@ -2465,10 +2478,10 @@ nodes:
   layout:
     size:
       width: 350
-      height: 566
+      height: 874
     position:
-      x: 1250
-      y: 60
+      x: 3070
+      y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
   properties:
@@ -2479,15 +2492,16 @@ nodes:
   onIncomplete: prompt_agent_details
   layout:
     size:
-      width: 206
-      height: 113
+      width: 312
+      height: 117
     position:
-      x: 1480
-      y: 175
+      x: 3580
+      y: 1089
 - id: provisioning
   type: TASK_EXECUTION
   properties:
     mode: agent
+    delegated: false
     includeOptional: true
   executor:
     name: ProvisioningExecutor
@@ -2496,11 +2510,11 @@ nodes:
   onFailure: prompt_agent_name
   layout:
     size:
-      width: 206
-      height: 113
+      width: 216
+      height: 117
     position:
-      x: 1620
-      y: 175
+      x: 4052
+      y: 1089
 - id: agent_credentials
   type: PROMPT
   meta:
@@ -2534,19 +2548,19 @@ nodes:
   layout:
     size:
       width: 350
-      height: 520
+      height: 532
     position:
-      x: 1900
-      y: 60
+      x: 4428
+      y: 882
 - id: end
   type: END
   layout:
     size:
-      width: 85
+      width: 45
       height: 34
     position:
-      x: 2250
-      y: 200
+      x: 4938
+      y: 1131
 ---
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
@@ -5754,6 +5768,34 @@ translations:
     forms.owner.fields.owner.label: Owner
     forms.owner.fields.owner.placeholder: Select a user
     forms.owner.actions.next.label: Continue
+    forms.obo_details.title: Details for acting on behalf of a user
+    forms.obo_details.subtitle: Provide the redirect URIs, login flow, and user type for an agent that acts on behalf of a signed-in user.
+    forms.obo_details.fields.redirect_uris.label: Authorized redirect URIs
+    forms.obo_details.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.obo_details.fields.redirect_uris.hint: The callbacks users return to after signing in. Enter several separated by commas.
+    forms.obo_details.fields.auth_flow.label: Login flow
+    forms.obo_details.fields.auth_flow.placeholder: Select a login flow
+    forms.obo_details.fields.auth_flow.hint: The login flow that signs users in to this agent.
+    forms.obo_details.fields.user_type.label: User type
+    forms.obo_details.fields.user_type.placeholder: Select a user type
+    forms.obo_details.fields.user_type.hint: The user type that may sign in through this agent.
+    forms.obo_details.actions.next.label: Continue
+    forms.delegation.title: Agent mode
+    forms.delegation.subtitle: Choose how this agent acts. It can use its own identity or act on behalf of a signed-in user.
+    forms.delegation.fields.delegated.label: Act on behalf of a signed-in user
+    forms.delegation.fields.redirect_uris.label: Authorized redirect URIs
+    forms.delegation.fields.redirect_uris.placeholder: https://example.com/callback, https://app.example.com/callback
+    forms.delegation.fields.redirect_uris.hint: Used when the agent acts on behalf of a signed-in user. The callbacks users return to after signing in. Enter several separated by commas.
+    forms.delegation.fields.auth_flow.label: Login flow
+    forms.delegation.fields.auth_flow.placeholder: Select a login flow
+    forms.delegation.fields.auth_flow.hint: Used when the agent acts on behalf of a signed-in user. The login flow that signs users in to this agent.
+    forms.delegation.fields.user_type.label: User type
+    forms.delegation.fields.user_type.placeholder: Select a user type
+    forms.delegation.fields.user_type.hint: Used when the agent acts on behalf of a signed-in user. The user type that may sign in through this agent.
+    forms.delegation.actions.next.label: Continue
+    forms.missing_inputs.title: Complete the agent details
+    forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
+    forms.missing_inputs.actions.next.label: Continue
     forms.agent_name.title: Name Your Agent
     forms.agent_name.subtitle: Give the agent a name you will recognize later.
     forms.agent_name.fields.name.label: Name

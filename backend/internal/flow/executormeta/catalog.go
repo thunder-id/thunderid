@@ -167,6 +167,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "mode"},
+			{Property: "delegated"},
 			{Property: "includeOptional"},
 			{Property: "includeOptionalCredentials"},
 			{Property: "maxPerPrompt"},
