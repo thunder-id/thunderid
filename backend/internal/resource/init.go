@@ -4,11 +4,13 @@
 package resource
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -21,6 +23,7 @@ func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -28,16 +31,27 @@ func Initialize(
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
-	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService)
+	resourceService, err := newResourceService(
+		ouService, resourceStore, transactioner, authZENPDPService, sharingService)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Registered before declarative resources load, because loading seeds the sharing policies those
+	// files declare and the framework refuses a type it does not know.
+	sharingService.RegisterResourceType(newResourceServerSharingDeclaration(resourceService))
 
 	// Load declarative resources if applicable (declarative or composite mode)
 	storeMode := getResourceStoreMode()
 	if storeMode == serverconst.StoreModeDeclarative || storeMode == serverconst.StoreModeComposite {
 		if err := loadDeclarativeResources(resourceStore, resourceService); err != nil {
 			return nil, nil, fmt.Errorf("failed to load declarative resources: %w", err)
+		}
+		// Loaded after the resource servers themselves, because declaring a policy validates the
+		// permissions it names against the server that defines them.
+		if err := sharingService.LoadDeclarativeResources(
+			context.Background(), makeResourceServerSharingConfig(resourceService)); err != nil {
+			return nil, nil, err
 		}
 	}
 

@@ -159,7 +159,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil,
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -201,7 +201,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil)
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -4877,7 +4877,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner, nil,
+				mockOU, mockStore, mockTransactioner, nil, nil,
 			)
 			suite.Require().NoError(err)
 

@@ -183,7 +183,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService)
+	// Initialized ahead of the shareable resource types, which register with it as they initialize
+	// and declare the sharing policies their resource files carry.
+	sharingService, err := sharing.Initialize(cacheManager, ouHierarchyResolver, ouEnumerator,
+		runtime.Config.ResourceSharing.AllowChildOUCrossTreeSharing)
+	fatalOnError(ctx, logger, err, "Failed to initialize SharingService")
+
+	resourceService, resourceExporter, err := resource.Initialize(
+		mux, ouService, authZENPDPService, sharingService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -284,10 +291,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux)
 	fatalOnError(ctx, logger, err, "Failed to initialize LayoutMgtService")
 	exporters = append(exporters, layoutExporter)
-
-	sharingService, err := sharing.Initialize(cacheManager, ouHierarchyResolver, ouEnumerator,
-		runtime.Config.ResourceSharing.AllowChildOUCrossTreeSharing)
-	fatalOnError(ctx, logger, err, "Failed to initialize SharingService")
 
 	cimdService := cimd.Initialize(mux)
 	inboundClientService, err := inboundclient.Initialize(

@@ -2650,16 +2650,16 @@ func (s *ServiceTestSuite) TestResolveOverlayRulesStillServesTheCacheToNonOwners
 	s.Equal(setsAfterFirst, overlay.sets, "the second read was served from the cache")
 }
 
-// A reshare that carries no overlay rules must come out of re-materialization untouched. Rewriting
+// A reshare whose rules come out of re-materialization unchanged must be left untouched. Rewriting
 // it would bump a version nothing changed, and the next concurrent editor holding a current read of
-// that reshare would fail on a mismatch it had no part in.
-func (s *ServiceTestSuite) TestRematerializeLeavesARuleLessReshareAlone() {
+// that reshare would fail on a mismatch it had no part in. The reshare names no rules of its own, so
+// all it carries is what it inherited from its initiator, which an edit that changes nothing keeps.
+func (s *ServiceTestSuite) TestRematerializeLeavesAnUnchangedReshareAlone() {
 	owner := s.share(map[string]OverlayRule{"assignments": {Editable: true}})
 
 	reshare, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
 		PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeChild, OUID: childOU}}})
 	s.Require().Nil(svcErr)
-	s.Require().Empty(reshare.Rules, "this reshare carries no overlay rules at all")
 	versionBefore := s.store.policies[reshare.ID].Version
 
 	// Edit the owner's policy, which re-materializes every reshare of the resource.
@@ -2681,6 +2681,67 @@ func (s *ServiceTestSuite) TestRematerializeLeavesARuleLessReshareAlone() {
 
 	s.Equal(versionBefore, s.store.policies[reshare.ID].Version,
 		"a reshare with nothing to rebuild must not be rewritten")
+}
+
+// A reshare target that names no rule for a field still hands on no more than its initiator holds.
+// Left to the type's default, a pinned field with no value would read as the owner's whole value,
+// undoing every restriction the owner placed above the reshare.
+func (s *ServiceTestSuite) TestAReshareNamingNoRuleCannotWidenWhatItsInitiatorHolds() {
+	s.share(map[string]OverlayRule{"permissions": {Value: members("billing")}})
+
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+	s.Require().Nil(svcErr)
+
+	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), testType, testResource, childOU)
+	s.Require().Nil(svcErr)
+	s.Require().True(resolved.Visible)
+	rule := resolved.Rules["permissions"]
+	s.Require().NotNil(rule.Value, "the target must not fall back to the unbounded default")
+	s.Equal([]string{"billing"}, *rule.Value)
+	s.Equal(SourcePolicy, resolved.Sources["permissions"])
+}
+
+// The inherited bound is stored like any other rule, so it follows the initiator's own rule when an
+// ancestor edits it, in either direction.
+func (s *ServiceTestSuite) TestAnInheritedBoundFollowsTheAncestor() {
+	owner := s.share(map[string]OverlayRule{"permissions": {Value: members("billing")}})
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+	s.Require().Nil(svcErr)
+
+	_, svcErr = s.svc.UpdatePolicy(context.Background(), owner.ID, PolicyRequest{
+		Targets: []TargetRequest{{
+			Scope: ScopeRoot, OUID: rootOU,
+			OverlayRules: map[string]OverlayRule{"permissions": {Value: members("billing", "reports")}},
+		}},
+		Version: owner.Version,
+	})
+	s.Require().Nil(svcErr)
+
+	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), testType, testResource, childOU)
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(resolved.Rules["permissions"].Value)
+	s.ElementsMatch([]string{"billing", "reports"}, *resolved.Rules["permissions"].Value)
+}
+
+// A rule the reshare target does name is narrowed as before; inheritance only fills in what it left
+// out.
+func (s *ServiceTestSuite) TestAReshareNamingARuleKeepsItsOwnNarrowing() {
+	s.share(map[string]OverlayRule{"permissions": {Value: members("billing", "reports")}})
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{
+			InitiatingOUID: rootOU,
+			Targets: []TargetRequest{{
+				Scope: ScopeChild, OUID: childOU,
+				OverlayRules: map[string]OverlayRule{"permissions": {Value: members("reports")}},
+			}},
+		})
+	s.Require().Nil(svcErr)
+
+	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), testType, testResource, childOU)
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"reports"}, *resolved.Rules["permissions"].Value)
 }
 
 // An exclusion names an organization unit the way a target does, and only means something inside
@@ -2907,6 +2968,84 @@ func (s *ServiceTestSuite) TestAFailedMemberCheckIsNotReportedAsARefusal() {
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 	s.NotEqual(ErrorMemberNotVisible.Code, svcErr.Code)
+}
+
+// ruleValidatingDeclaration is a resource type that refuses every rule with the error it is given,
+// and refuses every member too, so a test can tell which of the two checks answered.
+type ruleValidatingDeclaration struct {
+	memberValidatingDeclaration
+	refusal *tidcommon.ServiceError
+	seen    []OverlayRule
+}
+
+func (d *ruleValidatingDeclaration) ValidateOverlayRule(
+	_ context.Context, _, _ string, rule OverlayRule,
+) *tidcommon.ServiceError {
+	d.seen = append(d.seen, rule)
+	return d.refusal
+}
+
+// createWithRuleValidator creates a policy carrying one rule against a type that refuses it.
+func (s *ServiceTestSuite) createWithRuleValidator(
+	decl *ruleValidatingDeclaration, rule OverlayRule,
+) *tidcommon.ServiceError {
+	hierarchy, enumerator := testResolver(s.T())
+	svc := newSharingService(mustMockStore(s.T()), newFileBasedStore(), hierarchy, enumerator,
+		inlineTx(s.T()), nil, nil, false)
+	svc.RegisterResourceType(decl)
+
+	_, svcErr := svc.CreatePolicy(context.Background(), testType, testResource, ownerOU, PolicyRequest{
+		Targets: []TargetRequest{{
+			Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{"assignments": rule},
+		}},
+	})
+	return svcErr
+}
+
+// A rule shape the type refuses is reported with the type's own reason, because the caller needs
+// that reason to correct the rule. Unlike a member refusal there is nothing about other
+// organization units in it to hide. The type sees the rule exactly as it was written.
+func (s *ServiceTestSuite) TestARefusedRuleShapeIsReportedWithTheTypesOwnReason() {
+	refusal := &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
+		Code:             "TST-0002",
+		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "allowedValues is not supported here"},
+	}
+	decl := &ruleValidatingDeclaration{refusal: refusal}
+	rule := OverlayRule{Editable: true, AllowedValues: members("x")}
+
+	svcErr := s.createWithRuleValidator(decl, rule)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(*refusal, *svcErr)
+	s.Require().Len(decl.seen, 1)
+	s.Equal(rule, decl.seen[0], "the type is asked about the rule as the initiator wrote it")
+}
+
+// The shape is checked before the members, so a rule the type cannot use at all is not answered as
+// though one of its members were the problem.
+func (s *ServiceTestSuite) TestRuleShapeIsCheckedBeforeMembers() {
+	decl := &ruleValidatingDeclaration{
+		memberValidatingDeclaration: memberValidatingDeclaration{refuse: map[string]*tidcommon.ServiceError{
+			"x": memberRefusal("member refused"),
+		}},
+		refusal: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "TST-0002"},
+	}
+
+	svcErr := s.createWithRuleValidator(decl, OverlayRule{Editable: true, AllowedValues: members("x")})
+
+	s.Require().NotNil(svcErr)
+	s.Equal("TST-0002", svcErr.Code)
+}
+
+// A rule check that could not run has refused nothing, so it is reported as an internal failure.
+func (s *ServiceTestSuite) TestAFailedRuleCheckIsReportedAsAnInternalError() {
+	decl := &ruleValidatingDeclaration{refusal: &tidcommon.InternalServerError}
+
+	svcErr := s.createWithRuleValidator(decl, OverlayRule{Editable: true})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // Deleting a policy cascades to the reshares beneath it, so cleanup has to know what those reshares

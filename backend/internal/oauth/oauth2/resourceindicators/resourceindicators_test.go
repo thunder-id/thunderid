@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -217,6 +218,21 @@ func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_DropsInv
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"read", "delete"}, scopes)
+}
+
+// A token issued for an organization unit is bounded by what that unit may use. The unit travels on
+// the context, so downscoping hands the context to the resource server unchanged.
+func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_BoundsByTheAccessingOU() {
+	suite.mockResourceService.On("ValidatePermissions",
+		mock.MatchedBy(func(ctx context.Context) bool { return syscontext.GetAccessingOUID(ctx) == "ou-1" }),
+		"rs01", []string{"read", "delete"}).
+		Return([]string{"delete"}, nil)
+
+	scopes, err := DownscopeToResourceServer(syscontext.WithAccessingOUID(context.Background(), "ou-1"),
+		suite.mockResourceService, "rs01", []string{"read", "delete"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"read"}, scopes)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_PreservesOrder() {

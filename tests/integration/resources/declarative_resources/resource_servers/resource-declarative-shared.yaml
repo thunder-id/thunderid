@@ -1,0 +1,66 @@
+resource_type: resource_server
+id: decl-shared-rs
+name: Declarative Shared Resource Server
+description: A declarative resource server shared with different permissions per organization unit
+identifier: https://localhost:8090/decl-shared-rs
+ouId: decl-m2m-root
+delimiter: ":"
+resources:
+  - name: Orders
+    handle: orders
+    actions:
+      - name: Read
+        handle: read
+      - name: Write
+        handle: write
+      - name: Delete
+        handle: delete
+  - name: Reports
+    handle: reports
+    actions:
+      - name: View
+        handle: view
+      - name: Export
+        handle: export
+  - name: Audit
+    handle: audit
+    actions:
+      - name: Read
+        handle: read
+sharingPolicies:
+  # The owner's policy. Each target carries its own terms: child A is given what the value names,
+  # and child B everything except what the excluded values withhold. Naming a resource shares it
+  # together with every action beneath it.
+  - id: decl-shared-rs-policy-owner
+    targets:
+      - scope: child
+        ouId: decl-m2m-child-a
+        overlayRules:
+          permissions:
+            value:
+              - orders
+              - reports:view
+      - scope: child
+        ouId: decl-m2m-child-b
+        overlayRules:
+          permissions:
+            excludedValues:
+              - audit
+              - orders:delete
+  # Child A reshares to its own child, and can only narrow what it was given.
+  - id: decl-shared-rs-policy-child-a
+    initiatingOuId: decl-m2m-child-a
+    targets:
+      - scope: child
+        ouId: decl-m2m-grandchild-a
+        overlayRules:
+          permissions:
+            value:
+              - orders:read
+  # Child B reshares to its own child naming no rule. Its child must still get no more than child B
+  # holds, rather than the whole server the rule's default would otherwise read as.
+  - id: decl-shared-rs-policy-child-b
+    initiatingOuId: decl-m2m-child-b
+    targets:
+      - scope: child
+        ouId: decl-m2m-grandchild-b

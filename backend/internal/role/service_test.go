@@ -17,6 +17,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -58,6 +59,14 @@ type RoleServiceTestSuite struct {
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	transactioner         *fakeTransactioner
 	service               RoleServiceInterface
+}
+
+// ctxForRoleOU matches a context naming the test role's organization unit, ou1, as the accessing
+// organization unit, which is how a role's organization unit reaches permission validation.
+func ctxForRoleOU() interface{} {
+	return mock.MatchedBy(func(ctx context.Context) bool {
+		return syscontext.GetAccessingOUID(ctx) == "ou1"
+	})
 }
 
 func TestRoleServiceTestSuite(t *testing.T) {
@@ -217,7 +226,7 @@ func (suite *RoleServiceTestSuite) TestCreateRole_Success() {
 	}
 
 	ou := oupkg.OrganizationUnit{ID: "ou1", Name: "Test OU", Handle: "default"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything,
+	suite.mockResourceService.On("ValidatePermissions", ctxForRoleOU(),
 		"rs1", []string{"perm1", "perm2"}).Return([]string{}, nil)
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything,
 		[]string{testUserID1}).Return(
@@ -239,8 +248,8 @@ func (suite *RoleServiceTestSuite) TestCreateRole_Success() {
 	suite.Equal("default", result.OUHandle)
 	suite.Equal(1, len(result.Permissions))
 	suite.Equal(2, len(result.Permissions[0].Permissions))
-	// Verify permission validation was called
-	suite.mockResourceService.AssertCalled(suite.T(), "ValidatePermissions", mock.Anything,
+	// Verify permission validation was called against the role's own organization unit
+	suite.mockResourceService.AssertCalled(suite.T(), "ValidatePermissions", ctxForRoleOU(),
 		"rs1", []string{"perm1", "perm2"})
 }
 
@@ -881,7 +890,7 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_Success() {
 	}
 
 	ou := oupkg.OrganizationUnit{ID: "ou1", Handle: "default"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything,
+	suite.mockResourceService.On("ValidatePermissions", ctxForRoleOU(),
 		"rs1", []string{"perm1", "perm2"}).Return([]string{}, nil)
 	suite.mockStore.On("IsRoleExist", mock.Anything,
 		"role1").Return(true, nil)
@@ -899,8 +908,8 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_Success() {
 	suite.Equal("New Name", result.Name)
 	suite.Equal("Updated description", result.Description)
 	suite.Equal("default", result.OUHandle)
-	// Verify permission validation was called
-	suite.mockResourceService.AssertCalled(suite.T(), "ValidatePermissions", mock.Anything,
+	// Verify permission validation was called against the role's own organization unit
+	suite.mockResourceService.AssertCalled(suite.T(), "ValidatePermissions", ctxForRoleOU(),
 		"rs1", []string{"perm1", "perm2"})
 }
 

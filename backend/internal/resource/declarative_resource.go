@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -230,6 +231,59 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 	}
 
 	return nil
+}
+
+// makeResourceServerSharingConfig creates the loader config the sharing framework reads a resource
+// server's declared policies with. It names the resource servers directory, because a policy is
+// carried inside the resource server that declares it rather than in a document of its own.
+func makeResourceServerSharingConfig(resourceService ResourceServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  ResourceServerSharingType,
+		DirectoryName: "resource_servers",
+		Parser:        makeResourceServerSharingParser(resourceService),
+	}
+}
+
+// resourceServerSharingDocument is the sharing half of a resource server document. It is read apart
+// from the resource server itself, because the policies are the sharing framework's request shape
+// and the resource server model is a provider contract that does not carry them.
+type resourceServerSharingDocument struct {
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
+}
+
+// makeResourceServerSharingParser returns a parser that reads the sharing half of one resource
+// server document.
+//
+// It resolves the owning organization unit through the service, because a document may name it by
+// handle and a policy has to be declared against the id.
+func makeResourceServerSharingParser(
+	resourceService ResourceServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		rs, err := parseToResourceServer(data)
+		if err != nil {
+			return nil, err
+		}
+		var doc resourceServerSharingDocument
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("failed to parse sharing policies of resource server '%s': %w", rs.Name, err)
+		}
+		if len(doc.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: rs.ID}, nil
+		}
+
+		if svcErr := resourceService.ResolveResourceServerOUHandle(context.Background(), rs); svcErr != nil {
+			return nil, fmt.Errorf("organization unit with handle %q not found for resource server '%s'",
+				rs.OUHandle, rs.Name)
+		}
+
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   rs.ID,
+			ResourceName: rs.Name,
+			OwningOUID:   rs.OUID,
+			Policies:     doc.SharingPolicies,
+		}, nil
+	}
 }
 
 // parseAndValidateResourceServerWrapper combines parsing, processing, and validation for resource servers.

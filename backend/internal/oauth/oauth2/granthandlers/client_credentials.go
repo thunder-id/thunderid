@@ -82,7 +82,8 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	if targetRS != nil {
 		audiences = []string{targetRS.Identifier}
 
-		// Downscope requested scopes to permissions defined on the target resource server.
+		// Downscope requested scopes to permissions defined on the target resource server and, when the
+		// token is requested for an organization unit, available to that unit. The unit travels on ctx.
 		scopes, errResp = resourceindicators.DownscopeToResourceServer(ctx, h.resourceService, targetRS.ID, scopes)
 		if errResp != nil {
 			return nil, errResp

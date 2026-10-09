@@ -82,6 +82,17 @@ type OverlayCleaner interface {
 	DeleteOverlayValues(ctx context.Context, resourceID, ouID string) error
 }
 
+// OverlayRuleValidator is an optional capability letting a resource type refuse rule shapes the
+// framework's algebra accepts but the type gives no meaning to, such as a menu on a field nobody
+// may choose for.
+type OverlayRuleValidator interface {
+	// ValidateOverlayRule reports whether a requested rule for fieldKey of resourceID is one the
+	// type supports. It sees the rule as the initiator wrote it, before any narrowing.
+	ValidateOverlayRule(
+		ctx context.Context, resourceID, fieldKey string, rule OverlayRule,
+	) *tidcommon.ServiceError
+}
+
 // MemberValidator is an optional capability letting a resource type reject members the initiating
 // organization unit cannot itself see. Only the resource type knows what a member id denotes.
 type MemberValidator interface {

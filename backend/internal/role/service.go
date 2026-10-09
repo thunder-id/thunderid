@@ -17,6 +17,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -176,8 +177,9 @@ func (rs *roleService) CreateRole(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	// Validate permissions exist in resource management system and are available to the role's
+	// organization unit
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -336,8 +338,9 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, err
 	}
 
-	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	// Validate permissions exist in resource management system and are available to the role's
+	// organization unit
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -676,10 +679,14 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// validatePermissions validates that all permissions exist in the resource management system.
+// validatePermissions validates that all permissions exist in the resource management system and
+// are available to the organization unit the role belongs to: the unit owns the resource server, or
+// a sharing policy reaching it shares those permissions. The role's unit is the accessing
+// organization unit the resource service bounds the permissions by.
 func (rs *roleService) validatePermissions(
-	ctx context.Context, permissions []ResourcePermissions,
+	ctx context.Context, ouID string, permissions []ResourcePermissions,
 ) *tidcommon.ServiceError {
+	ctx = syscontext.WithAccessingOUID(ctx, ouID)
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if len(permissions) == 0 {

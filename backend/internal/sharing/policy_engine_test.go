@@ -575,6 +575,51 @@ func (s *OverlayTestSuite) TestPermitsExcludesAWholeSubtree() {
 	s.True(c.permits(r, []string{"billingx"}), "a sibling sharing a prefix is not beneath it")
 }
 
+// A pinned rule grants what its value covers, or everything when it names no value, less what it
+// carves out. Coverage is the hierarchy's own, so a path grants what lies beneath it and nothing
+// that merely shares its prefix.
+func (s *OverlayTestSuite) TestRuleGrantsAPinnedRule() {
+	cases := []struct {
+		name   string
+		rule   OverlayRule
+		member string
+		want   bool
+	}{
+		{"no value grants everything", OverlayRule{}, "orders:read", true},
+		{"a value grants itself", OverlayRule{Value: set("orders")}, "orders", true},
+		{"a value grants what lies beneath it", OverlayRule{Value: set("orders")}, "orders:items:read", true},
+		{"a value grants no sibling", OverlayRule{Value: set("orders")}, "reports:view", false},
+		{"a value grants no prefix-sharing sibling", OverlayRule{Value: set("orders")}, "ordersx", false},
+		{"an empty value grants nothing", OverlayRule{Value: set()}, "orders", false},
+		{"an exclusion withholds its subtree", OverlayRule{ExcludedValues: set("orders")}, "orders:read", false},
+		{"an exclusion leaves the rest", OverlayRule{ExcludedValues: set("orders:delete")}, "orders:read", true},
+		{"an exclusion leaves the parent path", OverlayRule{ExcludedValues: set("orders:delete")}, "orders", true},
+		{"an exclusion applies inside a value",
+			OverlayRule{Value: set("orders"), ExcludedValues: set("orders:delete")}, "orders:delete", false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.Equal(tc.want, RuleGrants(tc.rule, FieldHierarchy, ":", tc.member))
+		})
+	}
+}
+
+// An editable rule grants its menu rather than its value, which is where the target only starts.
+func (s *OverlayTestSuite) TestRuleGrantsAnEditableRuleByItsMenu() {
+	r := OverlayRule{Editable: true, Value: set("a"), AllowedValues: set("a", "b")}
+
+	s.True(RuleGrants(r, FieldReferenceSet, "", "b"))
+	s.False(RuleGrants(r, FieldReferenceSet, "", "c"))
+}
+
+// The delimiter is the resource's own, so a path is only beneath another across that separator.
+func (s *OverlayTestSuite) TestRuleGrantsUsesTheGivenDelimiter() {
+	r := OverlayRule{Value: set("orders")}
+
+	s.True(RuleGrants(r, FieldHierarchy, "/", "orders/read"))
+	s.False(RuleGrants(r, FieldHierarchy, "/", "orders:read"))
+}
+
 // With no choice made the rule's own value is what the target holds.
 func (s *OverlayTestSuite) TestEffectiveFallsBackToTheRuleValue() {
 	c := newContainment(FieldReferenceSet, "")

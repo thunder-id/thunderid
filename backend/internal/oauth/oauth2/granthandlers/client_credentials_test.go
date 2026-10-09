@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -85,7 +86,11 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	// Every permission is defined. Requests naming an accessing organization unit stub their own
+	// answer, because that unit bounds the permissions too.
+	suite.mockResourceService.On("ValidatePermissions",
+		mock.MatchedBy(func(ctx context.Context) bool { return syscontext.GetAccessingOUID(ctx) == "" }),
+		mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &clientCredentialsGrantHandler{
@@ -897,6 +902,55 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_CollidingPe
 	assert.NotNil(suite.T(), result)
 	// The colliding permission is not granted on RS-B, so it is dropped from the token.
 	assert.Empty(suite.T(), result.AccessToken.Scopes)
+	suite.mockAuthzService.AssertExpectations(suite.T())
+}
+
+// TestHandleGrant_AccessingOU_DownscopesToTheOUsPermissions verifies that a token requested
+// for an organization unit carries only the permissions that unit may use, before the app's own
+// authorization is evaluated: a scope the resource server withholds from the unit is dropped even
+// though the app holds it.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AccessingOU_DownscopesToTheOUsPermissions() {
+	const (
+		rsIdentifier  = "https://orders.example.com"
+		accessingOUID = "ou-customer"
+	)
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "orders:read orders:delete",
+		Resources:    []string{rsIdentifier},
+	}
+
+	suite.mockResourceService.On("ValidatePermissions",
+		mock.MatchedBy(func(ctx context.Context) bool {
+			return syscontext.GetAccessingOUID(ctx) == accessingOUID
+		}), rsIdentifier, []string{"orders:read", "orders:delete"}).
+		Return([]string{"orders:delete"}, nil).Once()
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, accessingOUID).
+		Return(providers.OrganizationUnit{ID: accessingOUID}, nil).Maybe()
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, rsIdentifier,
+		[]string{"orders:read"}, []string{"orders:read"})
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Scopes) == 1 && ctx.Scopes[0] == "orders:read"
+		})).Return(&model.TokenDTO{
+		Token:     testJWTToken,
+		TokenType: constants.TokenTypeBearer,
+		Scopes:    []string{"orders:read"},
+		ClientID:  testClientID,
+		Subject:   testEntityID,
+		Audiences: []string{rsIdentifier},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(
+		syscontext.WithAccessingOUID(context.Background(), accessingOUID), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"orders:read"}, result.AccessToken.Scopes)
+	suite.mockResourceService.AssertExpectations(suite.T())
 	suite.mockAuthzService.AssertExpectations(suite.T())
 }
 

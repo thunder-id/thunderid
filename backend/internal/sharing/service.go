@@ -812,6 +812,13 @@ func (s *sharingService) materializeRules(
 	// rules can be attached to the row that was built from the entry carrying them.
 	out := make([]StoredRule, 0, len(targets))
 	for i, t := range targets {
+		inherited, svcErr := s.inheritedRules(ctx, rt, resourceID, owningOUID, initiatingOUID, t.ID,
+			req.Targets[i].OverlayRules, initiatorRules)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		out = append(out, inherited...)
+
 		for fieldKey, requested := range req.Targets[i].OverlayRules {
 			stored, svcErr := s.narrowOne(
 				ctx, rt, resourceID, fieldKey, t.ID, initiatingOUID, initiatorRules, requested)
@@ -820,6 +827,54 @@ func (s *sharingService) materializeRules(
 			}
 			out = append(out, stored)
 		}
+	}
+	return out, nil
+}
+
+// inheritedRules bounds the fields a reshare target leaves unnamed by what its initiator holds for
+// them.
+//
+// Resolution reads only the rules of the targets covering an organization unit, and answers a field
+// none of them names with the type's default. A reshare target that named nothing for a field would
+// therefore hand on the default, which can be wider than anything its initiator was given: a default
+// sharing the whole resource would undo every restriction above the reshare. Storing the default
+// clamped to the initiator's own rule keeps a reshare from widening, and replay re-clamps it like any
+// other stored rule, so it follows the ancestors when they change.
+//
+// Only a reshare needs this. An owner holds the whole resource, so the default is already its
+// ceiling. A field the initiator holds no rule for is left alone, since nothing bounds it there.
+func (s *sharingService) inheritedRules(
+	ctx context.Context, rt ResourceType, resourceID, owningOUID, initiatingOUID, targetID string,
+	named map[string]OverlayRule, initiatorRules map[string]OverlayRule,
+) ([]StoredRule, *tidcommon.ServiceError) {
+	if initiatingOUID == owningOUID {
+		return nil, nil
+	}
+	decl, ok := s.registry.get(rt)
+	if !ok {
+		return nil, &ErrorResourceTypeNotRegistered
+	}
+
+	fields := decl.Fields()
+	out := make([]StoredRule, 0, len(fields))
+	for _, f := range fields {
+		if _, isNamed := named[f.Key]; isNamed {
+			continue
+		}
+		if _, held := initiatorRules[f.Key]; !held {
+			continue
+		}
+		// What an owner-issued target omitting the field hands on. A field without a default asks
+		// for nothing of its own, so the initiator's rule passes through unchanged.
+		requested := OverlayRule{Editable: true}
+		if d, ok := s.registry.defaultRule(rt, f.Key); ok {
+			requested = d
+		}
+		stored, svcErr := s.clampOne(ctx, rt, resourceID, f.Key, targetID, initiatorRules, requested)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		out = append(out, stored)
 	}
 	return out, nil
 }
@@ -899,6 +954,9 @@ func (s *sharingService) narrowOne(
 	if !ok {
 		return StoredRule{}, withDetail(ErrorUnknownFieldKey, fieldKey)
 	}
+	if svcErr := s.validateRule(ctx, rt, resourceID, fieldKey, requested); svcErr != nil {
+		return StoredRule{}, svcErr
+	}
 	if svcErr := s.validateMembers(ctx, rt, resourceID, fieldKey, initiatingOUID, requested); svcErr != nil {
 		return StoredRule{}, svcErr
 	}
@@ -920,6 +978,32 @@ func (s *sharingService) narrowOne(
 		Resolved:  copyRule(resolved),
 		Requested: requested,
 	}, nil
+}
+
+// validateRule asks the resource type whether it supports the shape of a requested rule. Only a
+// write asks: replay clamps a rule that was accepted once already, against a ceiling that was too.
+func (s *sharingService) validateRule(
+	ctx context.Context, rt ResourceType, resourceID, fieldKey string, r OverlayRule,
+) *tidcommon.ServiceError {
+	decl, ok := s.registry.get(rt)
+	if !ok {
+		return nil
+	}
+	validator, ok := decl.(OverlayRuleValidator)
+	if !ok {
+		return nil
+	}
+	svcErr := validator.ValidateOverlayRule(ctx, resourceID, fieldKey, r)
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		s.logger.Error(ctx, "Resource type failed to validate an overlay rule",
+			log.String("resourceType", string(rt)), log.String("resourceID", resourceID),
+			log.String("fieldKey", fieldKey), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	return svcErr
 }
 
 // validateMembers asks the resource type whether the initiator may name these members, because

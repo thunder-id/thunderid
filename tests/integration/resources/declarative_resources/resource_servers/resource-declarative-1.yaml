@@ -14,3 +14,9 @@ resources:
         handle: read
       - name: Write
         handle: write
+# Roles in organization units created by the tests reference this resource server's permissions, and
+# a resource server's permissions are usable only where it is shared.
+sharingPolicies:
+  - id: decl-rs-1-policy-1
+    targets:
+      - scope: allOus
