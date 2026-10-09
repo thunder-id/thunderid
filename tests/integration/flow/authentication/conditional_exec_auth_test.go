@@ -118,9 +118,6 @@ var (
 				"type":       "string",
 				"credential": true,
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},
@@ -219,7 +216,6 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 	existingUserAttributes := map[string]interface{}{
 		"username":   "existingconditionalexecuser",
 		"password":   "Test@1234",
-		"sub":        conditionalExecExistingUserSub,
 		"email":      conditionalExecExistingUserEmail,
 		"givenName":  "Existing",
 		"familyName": "User",
@@ -263,11 +259,30 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(googleIDP)
 	ts.Require().NoError(err, "Failed to create Google IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// Record the link the federated sign-ins below resolve through.
+	ts.mockGoogleServer.SetAuthorizeFunc(func(email string) (string, error) {
+		return conditionalExecExistingUserEmail, nil
+	})
+	err = common.LinkAccount(common.LinkRequest{
+		Handle:       "conditional-exec-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         conditionalExecPreCreatedOUID,
+		UserType:     conditionalExecEntityType.Handle,
+		Username:     "existingconditionalexecuser",
+		Password:     "Test@1234",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := conditionalExecFlow.Nodes.([]map[string]interface{})
@@ -423,7 +438,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestExecuteConditionalNodes() {
 	ts.Require().NotEmpty(flowStep.Assertion, "Assertion token should be present")
 
 	// Find the created user to get their details
-	user, err := testutils.FindUserByAttribute("sub", conditionalExecNewUserSub)
+	user, err := testutils.GetUserFromAssertion(flowStep.Assertion)
 	ts.Require().NoError(err, "Failed to find created user")
 	ts.Require().NotNil(user, "User should be found after provisioning")
 

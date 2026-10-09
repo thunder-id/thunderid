@@ -1272,6 +1272,75 @@ func (_c *EntityServiceInterfaceMock_IsEntityDeclarative_Call) RunAndReturn(run 
 	return _c
 }
 
+// LinkAccount provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) LinkAccount(ctx context.Context, entityID string, idpID string, sub string) error {
+	ret := _mock.Called(ctx, entityID, idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LinkAccount")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = returnFunc(ctx, entityID, idpID, sub)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_LinkAccount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LinkAccount'
+type EntityServiceInterfaceMock_LinkAccount_Call struct {
+	*mock.Call
+}
+
+// LinkAccount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - idpID string
+//   - sub string
+func (_e *EntityServiceInterfaceMock_Expecter) LinkAccount(ctx interface{}, entityID interface{}, idpID interface{}, sub interface{}) *EntityServiceInterfaceMock_LinkAccount_Call {
+	return &EntityServiceInterfaceMock_LinkAccount_Call{Call: _e.mock.On("LinkAccount", ctx, entityID, idpID, sub)}
+}
+
+func (_c *EntityServiceInterfaceMock_LinkAccount_Call) Run(run func(ctx context.Context, entityID string, idpID string, sub string)) *EntityServiceInterfaceMock_LinkAccount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_LinkAccount_Call) Return(err error) *EntityServiceInterfaceMock_LinkAccount_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_LinkAccount_Call) RunAndReturn(run func(ctx context.Context, entityID string, idpID string, sub string) error) *EntityServiceInterfaceMock_LinkAccount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LoadDeclarativeResources provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) LoadDeclarativeResources(config DeclarativeLoaderConfig) error {
 	ret := _mock.Called(config)
@@ -1370,6 +1439,80 @@ func (_c *EntityServiceInterfaceMock_LoadIndexedAttributes_Call) Return(err erro
 }
 
 func (_c *EntityServiceInterfaceMock_LoadIndexedAttributes_Call) RunAndReturn(run func(attributes []string) error) *EntityServiceInterfaceMock_LoadIndexedAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveLinkedAccount provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ResolveLinkedAccount(ctx context.Context, idpID string, sub string) (*string, error) {
+	ret := _mock.Called(ctx, idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveLinkedAccount")
+	}
+
+	var r0 *string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*string, error)); ok {
+		return returnFunc(ctx, idpID, sub)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *string); ok {
+		r0 = returnFunc(ctx, idpID, sub)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, idpID, sub)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_ResolveLinkedAccount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveLinkedAccount'
+type EntityServiceInterfaceMock_ResolveLinkedAccount_Call struct {
+	*mock.Call
+}
+
+// ResolveLinkedAccount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idpID string
+//   - sub string
+func (_e *EntityServiceInterfaceMock_Expecter) ResolveLinkedAccount(ctx interface{}, idpID interface{}, sub interface{}) *EntityServiceInterfaceMock_ResolveLinkedAccount_Call {
+	return &EntityServiceInterfaceMock_ResolveLinkedAccount_Call{Call: _e.mock.On("ResolveLinkedAccount", ctx, idpID, sub)}
+}
+
+func (_c *EntityServiceInterfaceMock_ResolveLinkedAccount_Call) Run(run func(ctx context.Context, idpID string, sub string)) *EntityServiceInterfaceMock_ResolveLinkedAccount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ResolveLinkedAccount_Call) Return(s *string, err error) *EntityServiceInterfaceMock_ResolveLinkedAccount_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ResolveLinkedAccount_Call) RunAndReturn(run func(ctx context.Context, idpID string, sub string) (*string, error)) *EntityServiceInterfaceMock_ResolveLinkedAccount_Call {
 	_c.Call.Return(run)
 	return _c
 }

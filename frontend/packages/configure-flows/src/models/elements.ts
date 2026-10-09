@@ -59,6 +59,8 @@ export const ElementTypes = {
   Resend: 'RESEND',
   Timer: 'TIMER',
   QrCode: 'QR_CODE',
+  KeyValueList: 'KEY_VALUE_LIST',
+  CopyableText: 'COPYABLE_TEXT',
   Consent: 'CONSENT',
   ConsentInput: 'CONSENT_INPUT',
   Custom: 'CUSTOM',
@@ -138,11 +140,12 @@ export type ActionEventTypes = (typeof ActionEventTypes)[keyof typeof ActionEven
  * `action.type` on the element, which carries canvas navigation semantics.
  *
  * The values are deliberately not tied to a single use case: `Confirm` is read
- * by the session sign-out executor today, but any executor that routes to a
- * confirmation prompt can consume it.
+ * by the session sign-out executor today and `Reject` by the account linking
+ * executor, but any executor that routes to such a prompt can consume either.
  */
 export const PromptActionTypes = {
   Confirm: 'CONFIRM',
+  Reject: 'REJECT',
 } as const;
 
 export type PromptActionTypes = (typeof PromptActionTypes)[keyof typeof PromptActionTypes];

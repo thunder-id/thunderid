@@ -263,11 +263,11 @@ describe('ButtonExtendedProperties', () => {
     });
 
     it('should preserve an action type the selector does not model', async () => {
-      // REJECT is a valid prompt action type with no option here. Clearing it would silently
-      // discard a type authored directly in the flow definition.
+      // An action type with no option here is one authored directly in the flow definition.
+      // Clearing it would silently discard it.
       const user = userEvent.setup();
       const resource = createMockResource({
-        actionType: 'REJECT',
+        actionType: 'ESCALATE',
         eventType: 'SUBMIT',
       } as Partial<Resource>);
 
@@ -278,6 +278,44 @@ describe('ButtonExtendedProperties', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith('eventType', 'TRIGGER', resource);
       expect(mockOnChange).not.toHaveBeenCalledWith('actionType', '', resource);
+    });
+
+    it('should display Reject when the button carries the reject action', () => {
+      // A reject button is also a submit button, so only the action type tells it apart from
+      // a plain submit. Deriving from the event type would render them identically.
+      const resource = createMockResource({actionType: 'REJECT', eventType: 'SUBMIT'} as Partial<Resource>);
+
+      const {container} = render(<ButtonExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      expect(container.querySelector('#event-type-select')).toHaveTextContent(
+        'flows:core.buttonExtendedProperties.action.reject',
+      );
+    });
+
+    it('should write both the event type and the action type when Reject is picked', async () => {
+      const user = userEvent.setup();
+      const resource = createMockResource({eventType: 'TRIGGER'} as Partial<Resource>);
+
+      render(<ButtonExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByRole('option', {name: 'flows:core.buttonExtendedProperties.action.reject'}));
+
+      expect(mockOnChange).toHaveBeenCalledWith('eventType', 'SUBMIT', resource);
+      expect(mockOnChange).toHaveBeenCalledWith('actionType', 'REJECT', resource);
+    });
+
+    it('should clear the action type when moving from Reject back to a plain action', async () => {
+      const user = userEvent.setup();
+      const resource = createMockResource({actionType: 'REJECT', eventType: 'SUBMIT'} as Partial<Resource>);
+
+      render(<ButtonExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByRole('option', {name: 'flows:core.buttonExtendedProperties.action.trigger'}));
+
+      expect(mockOnChange).toHaveBeenCalledWith('eventType', 'TRIGGER', resource);
+      expect(mockOnChange).toHaveBeenCalledWith('actionType', '', resource);
     });
 
     it('should not clear the action type when it was never set', async () => {

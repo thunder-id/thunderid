@@ -9,27 +9,26 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 /*
-Account linking through the direct federated endpoints.
+Account linking attributes, observed through a flow.
 
-Linking is observable here in a way it is not in a flow: the response carries no claims, only which
-local user the identity resolved to, so the returned id *is* the result. These use
-/auth/oauth/standard/*, which is the only direct federated route — an OIDC connection reaches it through
-the cross-type allowance in validateIDPType, which is why the existing OIDC suite uses the same path.
+A match is visible as the linking prompt: the linking node forwards a matched account there and names
+the account it offers, so the address on the prompt *is* the result. The graph has no provisioning
+step, so an identity that matches nobody ends the flow without an assertion.
+
+The direct /auth/oauth/{provider}/finish endpoints cannot verify an account before linking it, so they resolve a
+federated identity only through a recorded link, which BR12 pins. They use
+/auth/oauth/standard/*, which is the only direct federated route. An OIDC connection reaches it through
+the cross-type allowance in validateIDPType.
 */
 
 const (
 	directAuthStart  = "/auth/oauth/standard/start"
 	directAuthFinish = "/auth/oauth/standard/finish"
-
-	// GitHub is not reachable through the standard endpoints: the cross-type allowance in
-	// validateIDPType covers OAUTH and OIDC only, so a GitHub connection there is rejected as
-	// AUTHN-1003. It has its own dedicated pair.
-	githubAuthStart  = "/auth/oauth/github/start"
-	githubAuthFinish = "/auth/oauth/github/finish"
 )
 
 // authenticateDirect drives the direct endpoints and returns the finish status, the decoded response and
@@ -43,23 +42,15 @@ func (s *FederatedMappingSuite) authenticateDirect(
 	return s.authenticateDirectVia(s.idpID, user.Sub)
 }
 
-// authenticateDirectVia drives the direct endpoints against any connection, for the OAuth and GitHub
-// scenarios whose identities live on a different mock.
+// authenticateDirectVia drives the direct endpoints against any connection, for the OAuth scenarios
+// whose identities live on a different mock.
 func (s *FederatedMappingSuite) authenticateDirectVia(
 	idpID, sub string,
 ) (int, testutils.AuthenticationResponse, string) {
 	s.T().Helper()
-	return s.authenticateVia(directAuthStart, directAuthFinish, idpID, sub)
-}
-
-// authenticateVia drives a given pair of direct endpoints, since GitHub has its own.
-func (s *FederatedMappingSuite) authenticateVia(
-	startPath, finishPath, idpID, sub string,
-) (int, testutils.AuthenticationResponse, string) {
-	s.T().Helper()
 	s.activeSub = sub
 
-	status, body := s.postJSON(startPath, map[string]interface{}{"idpId": idpID})
+	status, body := s.postJSON(directAuthStart, map[string]interface{}{"idpId": idpID})
 	s.Require().Equal(http.StatusOK, status, "failed to start federated authentication: %s", string(body))
 
 	var start struct {
@@ -71,7 +62,7 @@ func (s *FederatedMappingSuite) authenticateVia(
 	code, _, err := testutils.SimulateFederatedOAuthFlow(start.RedirectURL)
 	s.Require().NoError(err, "failed to simulate authorization at the identity provider")
 
-	status, body = s.postJSON(finishPath, map[string]interface{}{
+	status, body = s.postJSON(directAuthFinish, map[string]interface{}{
 		"sessionToken": start.SessionToken,
 		"code":         code,
 	})
@@ -126,63 +117,162 @@ func linkOn(attributes []string, pairs ...testutils.AttributeMapping) *testutils
 	return config
 }
 
-// B10: a federated identity whose subject matches nobody resolves to an existing user through the
-// configured linking attribute.
-func (s *FederatedMappingSuite) TestLinksToExistingUserByMappedAttribute() {
+// linkPassword is what a scenario proves a matched account with when it records a link.
+const linkPassword = "Linked#Secret1"
+
+// matchingApp creates a scenario application whose flow runs the named federated executor at the
+// connection, then the linking node, with no provisioning behind it.
+func (s *FederatedMappingSuite) matchingApp(executorName, idpID, clientID string) string {
+	s.T().Helper()
+	return s.createScenarioApp(common.VerifiedLinkingFlow("auth_flow_"+clientID, executorName, idpID,
+		s.createVerifyFlow(common.VerifyPasswordFlow("verify_flow_"+clientID))), clientID)
+}
+
+// promptedDetails returns the rows the linking prompt shows, label to value, or nil when the step is
+// not that prompt. The rows are the linking attribute values the identity matched an account on, so
+// every scenario here creates a single account those values can reach.
+func promptedDetails(step *common.FlowStep) map[string]string {
+	if step == nil || step.FlowStatus != "INCOMPLETE" {
+		return nil
+	}
+	var details []struct {
+		Label string `json:"label"`
+		Value string `json:"value"`
+	}
+	if json.Unmarshal([]byte(step.Data.AdditionalData["linkingPromptDetails"]), &details) != nil ||
+		len(details) == 0 {
+		return nil
+	}
+	rows := make(map[string]string, len(details))
+	for _, detail := range details {
+		rows[detail.Label] = detail.Value
+	}
+	return rows
+}
+
+// matchedOn applies a configuration, signs the identity in through the OIDC connection, and returns
+// the linking attribute values it matched an account on, or nil when they matched nobody.
+func (s *FederatedMappingSuite) matchedOn(
+	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) map[string]string {
+	s.T().Helper()
+	details, err := s.tryMatchedOn(config, user)
+	s.Require().NoError(err, "the federated sign-in should be answered")
+	return details
+}
+
+// tryMatchedOn is matchedOn for callers that treat a failed sign-in as a rejection.
+func (s *FederatedMappingSuite) tryMatchedOn(
+	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) (map[string]string, error) {
+	s.T().Helper()
+	s.applyConfig(config)
+	s.mockOIDC.AddUser(user)
+	step, err := s.authenticateFlow(
+		s.matchingApp("OIDCAuthExecutor", s.idpID, "federated-match-"+user.Sub), user.Sub)
+	if err != nil {
+		return nil, err
+	}
+	return promptedDetails(step), nil
+}
+
+// recordLink records the (connection, subject) link for the local account the connection currently
+// matches, the way an End-User would: through a verified linking flow, proving the account with its
+// username and linkPassword. The mock must already hold the identity and the connection must already
+// be configured.
+func (s *FederatedMappingSuite) recordLink(executorName, idpID, sub, username string) {
+	s.T().Helper()
+	s.activeSub = sub
+	s.Require().NoError(common.LinkAccount(common.LinkRequest{
+		Handle:       "fed-link-" + sub,
+		ExecutorName: executorName,
+		IDPID:        idpID,
+		OUID:         s.ouID,
+		UserType:     fedPersonType.Handle,
+		Username:     username,
+		Password:     linkPassword,
+	}), "failed to record the federated link")
+}
+
+// B10: a federated identity is matched to an existing user through the configured linking attribute.
+func (s *FederatedMappingSuite) TestLinkingAttributeMatchesExistingUser() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{"username": email, "email": email})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	user := s.baseUser(s.nextSubject())
 	user.Email = email
 
-	status, response, _ := s.authenticateDirect(linkOn([]string{"email"}, pair("email", "email")), user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "the identity should resolve to the user sharing its email")
+	s.Equal(map[string]string{"Email": email}, s.matchedOn(linkOn([]string{"email"}, pair("email", "email")), user),
+		"the identity should match the user sharing its email")
 }
 
-// B11: the subject is tried first, so an identity whose sub already matches a user resolves to that user
-// even when its linking attribute points at a different one.
-func (s *FederatedMappingSuite) TestSubTakesPrecedenceOverLinkingAttribute() {
-	sub := s.nextSubject()
-	subEmail := sub + "-bysub@example.com"
-	subUserID := s.createLocalUser(map[string]interface{}{
-		"username": subEmail, "email": subEmail, "sub": sub,
+// B11: the recorded link is tried first, so an identity that has linked before resolves to the user
+// it linked to even when the connection's linking attributes now point at a different one.
+func (s *FederatedMappingSuite) TestRecordedLinkTakesPrecedenceOverLinkingAttribute() {
+	linkedEmail := s.nextSubject() + "-linked@example.com"
+	linkedUserID := s.createLocalUser(map[string]interface{}{
+		"username": linkedEmail, "email": linkedEmail, "password": linkPassword,
 	})
 
-	linkEmail := s.nextSubject() + "-bylink@example.com"
-	linkUserID := s.createLocalUser(map[string]interface{}{"username": linkEmail, "email": linkEmail})
+	user := s.baseUser(s.nextSubject())
+	user.Email = linkedEmail
+	s.applyConfig(linkOn([]string{"email"}, pair("email", "email")))
+	s.mockOIDC.AddUser(user)
+	s.recordLink("OIDCAuthExecutor", s.idpID, user.Sub, linkedEmail)
 
-	user := s.baseUser(sub)
-	user.Email = linkEmail
+	// A second user now owns the value the connection links on, and the identity carries it. costCenter
+	// is used because it is the only non-unique attribute. Uniqueness is deployment-global, so the two
+	// users could not share an email.
+	otherEmail := s.nextSubject() + "-other@example.com"
+	s.createLocalUser(map[string]interface{}{
+		"username": otherEmail, "email": otherEmail, "costCenter": "CC-RELINK",
+	})
+	user.Custom["cost_centre"] = "CC-RELINK"
+	s.applyConfig(linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")))
+	s.mockOIDC.AddUser(user)
 
-	status, response, _ := s.authenticateDirect(linkOn([]string{"email"}, pair("email", "email")), user)
+	step, err := s.authenticateFlow(s.matchingApp("OIDCAuthExecutor", s.idpID, "federated-relink"), user.Sub)
 
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(subUserID, response.ID, "the subject match should win")
-	s.NotEqual(linkUserID, response.ID, "the linking attribute should not override a subject match")
+	s.Require().NoError(err, "the linked identity should authenticate")
+	s.Require().Equal("COMPLETE", step.FlowStatus,
+		"the recorded link should authenticate outright, with no prompt, got %+v", step)
+	claims, err := testutils.DecodeJWT(step.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(linkedUserID, claims.Sub, "the recorded link should win over the linking attributes")
 }
 
 // B12: linking may name the *external* claim. It is resolved to its local counterpart through the
 // configured mappings before the lookup runs.
 func (s *FederatedMappingSuite) TestLinkingAttributeNamedByExternalClaim() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{"username": email, "email": email})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	user := s.baseUser(s.nextSubject())
 	user.Custom["mail"] = email
 
 	// The linking list names "mail"; the mapping says mail becomes email locally.
-	status, response, _ := s.authenticateDirect(linkOn([]string{"mail"}, pair("mail", "email")), user)
+	s.Equal(map[string]string{"Email": email}, s.matchedOn(linkOn([]string{"mail"}, pair("mail", "email")), user),
+		"the external claim name should resolve to its local counterpart")
+}
 
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "the external claim name should resolve to its local counterpart")
+// B12a: a linking attribute matches on every local attribute it reaches, so when those name two
+// different users both are offered, and verification decides which one is the End-User's. One user
+// holds the address as a username and the other as an email, so both rows show.
+func (s *FederatedMappingSuite) TestLinkingAlternativesNamingDifferentUsersAreBothOffered() {
+	email := s.nextSubject() + "@example.com"
+	s.createLocalUser(map[string]interface{}{"username": email, "email": s.nextSubject() + "@example.com"})
+	s.createLocalUser(map[string]interface{}{"username": s.nextSubject(), "email": email})
+
+	user := s.baseUser(s.nextSubject())
+	user.Email = email
+
+	s.Equal(map[string]string{"Email": email, "Username": email},
+		s.matchedOn(linkOn([]string{"email"}, pair("email", "username")), user),
+		"a split match should offer the prompt rather than fail")
 }
 
 // B13: several linking attributes are combined, so the lookup identifies a user by all of them together.
 func (s *FederatedMappingSuite) TestMultipleLinkingAttributesCombined() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{
+	s.createLocalUser(map[string]interface{}{
 		"username": email, "email": email, "costCenter": "CC-100",
 	})
 
@@ -190,18 +280,15 @@ func (s *FederatedMappingSuite) TestMultipleLinkingAttributesCombined() {
 	user.Email = email
 	user.Custom["cost_centre"] = "CC-100"
 
-	status, response, _ := s.authenticateDirect(
+	s.Equal(map[string]string{"Cost center": "CC-100", "Email": email}, s.matchedOn(
 		linkOn([]string{"email", "costCenter"}, pair("email", "email"), pair("cost_centre", "costCenter")),
-		user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "both attributes together should resolve the user")
+		user), "both attributes together should match the user")
 }
 
-// B14a: two users share the linked value, so the lookup cannot identify one. The direct endpoint reports
-// that as a client error rather than picking arbitrarily. costCenter is used because it is the only
-// non-unique attribute — uniqueness is deployment-global, so email could not be duplicated.
-func (s *FederatedMappingSuite) TestAmbiguousLinkingAttributeIsReported() {
+// B14a: two users share the linked value, so the lookup names both, and verification decides which
+// one is the End-User's. costCenter is used because it is the only non-unique attribute.
+// Uniqueness is deployment-global, so email could not be duplicated.
+func (s *FederatedMappingSuite) TestAmbiguousLinkingAttributeOffersPrompt() {
 	first := s.nextSubject() + "@example.com"
 	second := s.nextSubject() + "@example.com"
 	s.createLocalUser(map[string]interface{}{"username": first, "email": first, "costCenter": "CC-AMB"})
@@ -210,75 +297,52 @@ func (s *FederatedMappingSuite) TestAmbiguousLinkingAttributeIsReported() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["cost_centre"] = "CC-AMB"
 
-	status, response, code := s.authenticateDirect(
-		linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), user)
-
-	// It must not pick one of them.
-	s.Empty(response.ID, "an ambiguous link must not resolve to an arbitrary user")
-
-	// The manager classifies ambiguity as a *client* error (AUTHN-MGR-1009, ClientErrorType), but
-	// mapCredentialsGetAttributesError maps only two codes and sends everything else to its default
-	// branch, so the classification is discarded and the caller sees an opaque 500. Asserted exactly,
-	// because an earlier draft asserted merely "not 200" and hid this. Recorded as G18.
-	s.Equal(http.StatusInternalServerError, status,
-		"ambiguity currently surfaces as an internal error rather than a client one")
-	s.Equal("SSE-5000", code, "the ambiguity code AUTHN-MGR-1009 does not reach the caller")
+	s.Equal(map[string]string{"Cost center": "CC-AMB"},
+		s.matchedOn(linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), user),
+		"an ambiguous match should offer the prompt rather than fail")
 }
 
-// B15: a linking attribute whose claim carries no value contributes nothing, so the lookup falls back to
-// the subject filter — which is the only path that does fall back.
-func (s *FederatedMappingSuite) TestLinkingAttributeAbsentFallsBackToSub() {
+// B15: a linking attribute whose claim carries no value contributes nothing, and there is nothing else
+// to consult.
+func (s *FederatedMappingSuite) TestLinkingAttributeAbsentMatchesNobody() {
 	sub := s.nextSubject()
 	email := sub + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{
-		"username": email, "email": email, "sub": sub,
-	})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	// The identity carries no cost_centre claim, so the configured linking attribute has no value.
-	user := s.baseUser(sub)
-
-	status, response, _ := s.authenticateDirect(
-		linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "with no linking value the subject filter should still resolve")
+	s.Empty(s.matchedOn(linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), s.baseUser(sub)),
+		"an identity with nothing to link on must not match a user")
 }
 
-// B16: with no linking configured the subject is the only thing consulted.
-func (s *FederatedMappingSuite) TestWithoutLinkingOnlySubResolves() {
+// B16: with no linking configured there is nothing to match on, so a connection that maps claims but
+// lists no linking attributes matches nobody. The local user is given the identity's email and it does
+// not reach it: a mapped claim only joins the lookup when the connection names it as a linking attribute.
+func (s *FederatedMappingSuite) TestWithoutLinkingNothingMatches() {
 	sub := s.nextSubject()
 	email := sub + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{
-		"username": email, "email": email, "sub": sub,
-	})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
-	user := s.baseUser(sub)
-	status, response, _ := s.authenticateDirect(mapping(fedPersonType.Handle, pair("email", "email")), user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "the subject alone should resolve the user")
+	s.Empty(s.matchedOn(mapping(fedPersonType.Handle, pair("email", "email")), s.baseUser(sub)),
+		"without account linking configured nothing should match")
 }
 
 // BR7: one configured linking attribute has a value and another does not. Only those with values join
-// the filter, so the present one still resolves the user.
+// the filter, so the present one still matches the user.
 func (s *FederatedMappingSuite) TestPartiallyPopulatedLinkingAttributes() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{"username": email, "email": email})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	user := s.baseUser(s.nextSubject())
 	user.Email = email // cost_centre is absent
 
-	status, response, _ := s.authenticateDirect(
+	s.Equal(map[string]string{"Email": email}, s.matchedOn(
 		linkOn([]string{"email", "costCenter"}, pair("email", "email"), pair("cost_centre", "costCenter")),
-		user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "an absent attribute should not prevent the present one resolving")
+		user), "an absent attribute should not prevent the present one matching")
 }
 
 // BR8: the attributes are combined with AND, so values that individually match different users together
 // match none.
-func (s *FederatedMappingSuite) TestLinkingAttributesMatchingDifferentUsersResolveNone() {
+func (s *FederatedMappingSuite) TestLinkingAttributesMatchingDifferentUsersMatchNone() {
 	emailOwner := s.nextSubject() + "@example.com"
 	s.createLocalUser(map[string]interface{}{"username": emailOwner, "email": emailOwner})
 
@@ -291,30 +355,23 @@ func (s *FederatedMappingSuite) TestLinkingAttributesMatchingDifferentUsersResol
 	user.Email = emailOwner
 	user.Custom["cost_centre"] = "CC-SPLIT"
 
-	status, _, _ := s.authenticateDirect(
+	s.Empty(s.matchedOn(
 		linkOn([]string{"email", "costCenter"}, pair("email", "email"), pair("cost_centre", "costCenter")),
-		user)
-
-	s.NotEqual(http.StatusOK, status,
-		"values matching two different users must not resolve either of them")
+		user), "values matching two different users must not match either of them")
 }
 
 // BR9: the filter stringifies the claim before looking it up, so a numeric claim still matches a value
 // stored as a string.
 func (s *FederatedMappingSuite) TestNumericLinkingClaimMatchesStoredString() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{
-		"username": email, "email": email, "costCenter": "4200",
-	})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "costCenter": "4200"})
 
 	user := s.baseUser(s.nextSubject())
 	user.Custom["cost_centre"] = 4200
 
-	status, response, _ := s.authenticateDirect(
-		linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), user)
-
-	s.Require().Equal(http.StatusOK, status)
-	s.Equal(existingID, response.ID, "a numeric claim should stringify and match the stored value")
+	s.Equal(map[string]string{"Cost center": "4200"},
+		s.matchedOn(linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), user),
+		"a numeric claim should stringify and match the stored value")
 }
 
 // BR10: linking on an email whose casing differs from the stored value.
@@ -326,14 +383,12 @@ func (s *FederatedMappingSuite) TestEmailLinkingCaseHandling() {
 	user := s.baseUser(s.nextSubject())
 	user.Email = local + "@EXAMPLE.COM"
 
-	status, _, _ := s.authenticateDirect(linkOn([]string{"email"}, pair("email", "email")), user)
-
 	// Email linking is case-sensitive: the lookup compares the claim verbatim, so an address differing
-	// only in case does not link and the subject fallback finds nobody. Worth pinning because addresses
-	// are case-insensitive in practice, so the same person signing in from a provider that normalises
-	// casing differently is treated as unknown. Recorded as G19.
-	s.NotEqual(http.StatusOK, status,
-		"a differently cased address does not link, so the identity resolves to nobody")
+	// only in case does not match. Worth pinning because addresses are case-insensitive in practice, so
+	// the same person signing in from a provider that normalises casing differently is treated as
+	// unknown. Recorded as G19.
+	s.Empty(s.matchedOn(linkOn([]string{"email"}, pair("email", "email")), user),
+		"a differently cased address does not match")
 }
 
 // BR11: linking on a value padded with whitespace. Nothing trims the claim before the lookup.
@@ -344,27 +399,129 @@ func (s *FederatedMappingSuite) TestWhitespaceAroundLinkingValueDoesNotMatch() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["mail"] = "  " + email + "  "
 
-	status, _, _ := s.authenticateDirect(linkOn([]string{"mail"}, pair("mail", "email")), user)
-
-	s.NotEqual(http.StatusOK, status,
+	s.Empty(s.matchedOn(linkOn([]string{"mail"}, pair("mail", "email")), user),
 		"a padded value is not trimmed before the lookup, so it should not match the stored address")
 }
 
-// BR12: signing in again after a first successful link resolves the same user rather than creating or
-// matching another.
-func (s *FederatedMappingSuite) TestRepeatedLoginResolvesTheSameUser() {
+// BR12: the direct endpoint has no flow to verify an account in, so a linking attribute match alone
+// does not sign the identity in there. Once a flow has recorded the link, the same endpoint resolves
+// it, and keeps resolving the same user on every sign-in after.
+func (s *FederatedMappingSuite) TestDirectEndpointResolvesOnlyRecordedLinks() {
 	email := s.nextSubject() + "@example.com"
-	existingID := s.createLocalUser(map[string]interface{}{"username": email, "email": email})
+	existingID := s.createLocalUser(map[string]interface{}{
+		"username": email, "email": email, "password": linkPassword,
+	})
 
 	user := s.baseUser(s.nextSubject())
 	user.Email = email
 	config := linkOn([]string{"email"}, pair("email", "email"))
 
-	firstStatus, first, _ := s.authenticateDirect(config, user)
-	s.Require().Equal(http.StatusOK, firstStatus)
-	s.Require().Equal(existingID, first.ID)
+	status, response, code := s.authenticateDirect(config, user)
+	s.Empty(response.ID, "an unlinked identity must not resolve through its linking attributes")
+	s.Equal(http.StatusBadRequest, status, "an unlinked identity should surface as a client error")
+	s.Equal("AUTHN-FED-1001", code, "an unlinked identity should be reported as a federated failure")
 
-	secondStatus, second, _ := s.authenticateDirect(config, user)
-	s.Require().Equal(http.StatusOK, secondStatus)
-	s.Equal(existingID, second.ID, "a repeated sign-in should resolve the same user")
+	s.recordLink("OIDCAuthExecutor", s.idpID, user.Sub, email)
+
+	for range 2 {
+		status, response, _ = s.authenticateDirect(config, user)
+		s.Require().Equal(http.StatusOK, status)
+		s.Equal(existingID, response.ID, "the recorded link should resolve the linked user")
+	}
+}
+
+// inFrameApp creates a scenario application whose flow verifies a matched account with steps in the
+// same flow rather than a called one.
+func (s *FederatedMappingSuite) inFrameApp(clientID string) string {
+	s.T().Helper()
+	return s.createScenarioApp(
+		common.InFrameLinkingFlow("auth_flow_"+clientID, "OIDCAuthExecutor", s.idpID), clientID)
+}
+
+// B17: verification runs as steps in the same flow. The connection maps its email claim onto the
+// local username, which is the verification prompt's identifier, and the prompt still asks for it:
+// the linking node clears the external claims for verification. Verifying the candidate links the
+// identity, and the next sign-in resolves through the link with no prompt.
+func (s *FederatedMappingSuite) TestInFrameVerificationLinksCandidate() {
+	email := s.nextSubject() + "@example.com"
+	userID := s.createLocalUser(map[string]interface{}{
+		"username": email, "email": email, "password": linkPassword,
+	})
+
+	user := s.baseUser(s.nextSubject())
+	user.Email = email
+	s.applyConfig(linkOn([]string{"email"}, pair("email", "username")))
+	s.mockOIDC.AddUser(user)
+	appID := s.inFrameApp("federated-inframe-link")
+
+	step, err := s.authenticateFlow(appID, user.Sub)
+	s.Require().NoError(err)
+	s.Require().NotNil(promptedDetails(step), "expected the linking prompt, got %+v", step)
+
+	step, err = common.CompleteFlow(step.ExecutionID, nil, common.LinkAccountAction, step.ChallengeToken)
+	s.Require().NoError(err)
+	s.Require().Equal("INCOMPLETE", step.FlowStatus, "expected the verification prompt, got %+v", step)
+	s.True(common.HasInput(step.Data.Inputs, "username"),
+		"a claim the connection asserted must not answer the verification prompt's identifier")
+
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": email, "password": linkPassword}, common.VerifyPasswordAction,
+		step.ChallengeToken)
+	s.Require().NoError(err)
+	s.Require().Equal("COMPLETE", step.FlowStatus, "verifying the candidate should link it, got %+v", step)
+	claims, err := testutils.DecodeJWT(step.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(userID, claims.Sub, "the flow should complete as the verified account")
+
+	step, err = s.authenticateFlow(appID, user.Sub)
+	s.Require().NoError(err)
+	s.Require().Equal("COMPLETE", step.FlowStatus,
+		"the recorded link should resolve the account with no prompt, got %+v", step)
+	claims, err = testutils.DecodeJWT(step.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(userID, claims.Sub, "the recorded link should resolve the verified account")
+}
+
+// B18: in-frame verification by an account that is not a candidate records nothing and offers the
+// linking prompt again with the error. Verifying the candidate on the retry then links it.
+func (s *FederatedMappingSuite) TestInFrameVerificationByNonCandidateRetries() {
+	email := s.nextSubject() + "@example.com"
+	candidateID := s.createLocalUser(map[string]interface{}{
+		"username": email, "email": email, "password": linkPassword,
+	})
+	otherEmail := s.nextSubject() + "@example.com"
+	s.createLocalUser(map[string]interface{}{
+		"username": otherEmail, "email": otherEmail, "password": linkPassword,
+	})
+
+	user := s.baseUser(s.nextSubject())
+	user.Email = email
+	s.applyConfig(linkOn([]string{"email"}, pair("email", "email")))
+	s.mockOIDC.AddUser(user)
+	appID := s.inFrameApp("federated-inframe-other")
+
+	step, err := s.authenticateFlow(appID, user.Sub)
+	s.Require().NoError(err)
+	s.Require().NotNil(promptedDetails(step), "expected the linking prompt, got %+v", step)
+
+	step, err = common.CompleteFlow(step.ExecutionID, nil, common.LinkAccountAction, step.ChallengeToken)
+	s.Require().NoError(err)
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": otherEmail, "password": linkPassword}, common.VerifyPasswordAction,
+		step.ChallengeToken)
+	s.Require().NoError(err)
+	s.Require().NotNil(promptedDetails(step), "a non-candidate should get the linking prompt again, got %+v", step)
+	s.Require().NotNil(step.Error)
+	s.Equal(nonCandidateVerifiedCode, step.Error.Code)
+
+	step, err = common.CompleteFlow(step.ExecutionID, nil, common.LinkAccountAction, step.ChallengeToken)
+	s.Require().NoError(err)
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": email, "password": linkPassword}, common.VerifyPasswordAction,
+		step.ChallengeToken)
+	s.Require().NoError(err)
+	s.Require().Equal("COMPLETE", step.FlowStatus, "verifying the candidate should link it, got %+v", step)
+	claims, err := testutils.DecodeJWT(step.Assertion)
+	s.Require().NoError(err, "failed to decode the assertion")
+	s.Equal(candidateID, claims.Sub, "the flow should complete as the candidate")
 }

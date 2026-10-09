@@ -167,6 +167,22 @@ vi.mock('../adapters/DynamicInputPlaceholderAdapter', () => ({
   ),
 }));
 
+vi.mock('../adapters/KeyValueListAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="key-value-list-adapter" data-resource-id={resource.id}>
+      Key Value List Adapter
+    </div>
+  ),
+}));
+
+vi.mock('../adapters/CopyableTextAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="copyable-text-adapter" data-resource-id={resource.id}>
+      Copyable Text Adapter
+    </div>
+  ),
+}));
+
 describe('CommonElementFactory', () => {
   const createMockElement = (overrides: Partial<Element> = {}): Element =>
     ({
@@ -502,6 +518,34 @@ describe('CommonElementFactory', () => {
 
       expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toBeInTheDocument();
       expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('Key Value List Element', () => {
+    it('should render KeyValueListAdapter for KeyValueList type', () => {
+      const keyValueListElement = createMockElement({
+        category: ElementCategories.Display,
+        type: ElementTypes.KeyValueList,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={keyValueListElement} />);
+
+      expect(screen.getByTestId('key-value-list-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('key-value-list-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('Copyable Text Element', () => {
+    it('should render CopyableTextAdapter for CopyableText type', () => {
+      const copyableTextElement = createMockElement({
+        category: ElementCategories.Display,
+        type: ElementTypes.CopyableText,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={copyableTextElement} />);
+
+      expect(screen.getByTestId('copyable-text-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('copyable-text-adapter')).toHaveAttribute('data-resource-id', 'element-1');
     });
   });
 

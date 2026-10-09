@@ -14,6 +14,7 @@ implicitly a "no local record" scenario; TestTokenExchange_NoLocalRecordRequired
 package token
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,6 +36,9 @@ const (
 	teAuthzRedirectURI  = "https://localhost:3000/callback"
 	teAuthzClientID     = "te_authz_mapping_client"
 	teAuthzClientSecret = "te_authz_mapping_secret"
+
+	teAuthzDirectAuthStart  = "/auth/oauth/standard/start"
+	teAuthzDirectAuthFinish = "/auth/oauth/standard/finish"
 
 	teAuthzRSIdentifier      = "https://te-authz-mapping.example.com"
 	teAuthzOtherRSIdentifier = "https://te-authz-mapping-other.example.com"
@@ -136,17 +140,7 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(ts.mockIDP.Start())
 
-	idpID, err := testutils.CreateIDP(testutils.IDP{
-		Name:        "Token Exchange Authorization Mapping IdP",
-		Description: "Mock external issuer for token exchange authorization mapping tests",
-		Type:        "OIDC",
-		Properties: []testutils.IDPProperty{
-			{Name: "issuer", Value: ts.mockIDP.GetURL()},
-			{Name: "jwks_endpoint", Value: ts.mockIDP.GetJWKSURL()},
-			{Name: "token_exchange_enabled", Value: "true"},
-			{Name: "trusted_token_audience", Value: teAuthzExternalCID},
-		},
-	})
+	idpID, err := testutils.CreateIDP(ts.idpFixture())
 	ts.Require().NoError(err)
 	ts.idpID = idpID
 
@@ -181,6 +175,30 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TearDownSuite() {
 	}
 }
 
+// idpFixture is the suite's connection. Updates rebuild from it rather than round-tripping a read,
+// because a read never returns the client secret and writing it back would clear it.
+func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) idpFixture() testutils.IDP {
+	return testutils.IDP{
+		Name:        "Token Exchange Authorization Mapping IdP",
+		Description: "Mock external issuer for token exchange authorization mapping tests",
+		Type:        "OIDC",
+		Properties: []testutils.IDPProperty{
+			{Name: "issuer", Value: ts.mockIDP.GetURL()},
+			{Name: "jwks_endpoint", Value: ts.mockIDP.GetJWKSURL()},
+			{Name: "token_exchange_enabled", Value: "true"},
+			{Name: "trusted_token_audience", Value: teAuthzExternalCID},
+			// The code-flow properties let assertNoFederatedLink sign the subject in directly.
+			{Name: "client_id", Value: teAuthzExternalCID},
+			{Name: "client_secret", Value: teAuthzExternalCSec, IsSecret: true},
+			{Name: "redirect_uri", Value: teAuthzRedirectURI},
+			{Name: "authorization_endpoint", Value: ts.mockIDP.GetAuthorizeURL()},
+			{Name: "token_endpoint", Value: ts.mockIDP.GetTokenURL()},
+			{Name: "userinfo_endpoint", Value: ts.mockIDP.GetUserInfoURL()},
+			{Name: "scopes", Value: "openid"},
+		},
+	}
+}
+
 // applyAuthorizationRuleMapping replaces the connection's authorizationMapping.rules for one claim. values is
 // a claim-value-to-targets map, converted into the equivalent equals rules (sorted by key, so the
 // resulting configuration is deterministic) since every scenario in this file is an exact-match case.
@@ -188,15 +206,13 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) applyAuthorizationRule
 	claim, delimiter string, values map[string][]testutils.AuthorizationTarget,
 ) {
 	ts.T().Helper()
-	current, err := testutils.GetIDP("oidc", ts.idpID)
-	ts.Require().NoError(err)
-	ts.Require().NotNil(current)
+	current := ts.idpFixture()
 	current.AttributeConfiguration = &testutils.AttributeConfiguration{
 		AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{
 			{Claim: claim, Delimiter: delimiter, Values: equalsRules(values)},
 		}},
 	}
-	ts.Require().NoError(testutils.UpdateIDP(ts.idpID, *current))
+	ts.Require().NoError(testutils.UpdateIDP(ts.idpID, current))
 }
 
 // applyAuthorizationRuleMappingRules replaces the connection's authorizationMapping.rules for one claim from
@@ -215,15 +231,13 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) applyAuthorizationRule
 	claim, valueType, delimiter string, rules []testutils.AuthorizationRule,
 ) {
 	ts.T().Helper()
-	current, err := testutils.GetIDP("oidc", ts.idpID)
-	ts.Require().NoError(err)
-	ts.Require().NotNil(current)
+	current := ts.idpFixture()
 	current.AttributeConfiguration = &testutils.AttributeConfiguration{
 		AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{
 			{Claim: claim, ValueType: valueType, Delimiter: delimiter, Values: rules},
 		}},
 	}
-	ts.Require().NoError(testutils.UpdateIDP(ts.idpID, *current))
+	ts.Require().NoError(testutils.UpdateIDP(ts.idpID, current))
 }
 
 // equalsRules converts a claim-value-to-targets map into the equivalent equals rules, one per key,
@@ -669,10 +683,6 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_NoLo
 		"te-admins": {{Type: testutils.AuthorizationTargetRole, ID: ts.mappedRoleID}},
 	})
 
-	before, err := testutils.FindUserByAttribute("sub", sub)
-	ts.Require().NoError(err)
-	ts.Require().Nil(before, "no local record should exist before the exchange")
-
 	idToken := ts.mintExternalIDToken(sub)
 	resp, status := ts.exchangeToken(idToken, "read", teAuthzRSIdentifier)
 	ts.Require().Equal(http.StatusOK, status, "error=%s description=%s", resp.Error, resp.ErrorDescription)
@@ -682,9 +692,55 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_NoLo
 	ts.Require().NoError(err)
 	ts.Equal(sub, claims.Sub)
 
-	after, err := testutils.FindUserByAttribute("sub", sub)
+	ts.assertNoFederatedLink(sub)
+}
+
+// assertNoFederatedLink signs sub in through the direct federated endpoints, which resolve an identity
+// only through a recorded link, and asserts it is reported as unlinked. A local record for a federated
+// identity is its link, so this proves none was created.
+func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) assertNoFederatedLink(sub string) {
+	ts.T().Helper()
+	ts.activeSub = sub
+
+	status, body := ts.postJSON(teAuthzDirectAuthStart, map[string]interface{}{"idpId": ts.idpID})
+	ts.Require().Equal(http.StatusOK, status, "failed to start federated authentication: %s", string(body))
+	var start struct {
+		SessionToken string `json:"sessionToken"`
+		RedirectURL  string `json:"redirectUrl"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &start))
+
+	code, _, err := testutils.SimulateFederatedOAuthFlow(start.RedirectURL)
+	ts.Require().NoError(err, "failed to simulate authorization at the identity provider")
+
+	status, body = ts.postJSON(teAuthzDirectAuthFinish, map[string]interface{}{
+		"sessionToken": start.SessionToken,
+		"code":         code,
+	})
+	var failure struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(body, &failure)
+	ts.Equal(http.StatusBadRequest, status, "the subject should not resolve to a local user: %s", string(body))
+	ts.Equal("AUTHN-FED-1001", failure.Code, "the subject should be reported as unlinked")
+}
+
+func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) postJSON(path string, body interface{}) (int, []byte) {
+	ts.T().Helper()
+	payload, err := json.Marshal(body)
 	ts.Require().NoError(err)
-	ts.Nil(after, "authorizing the exchange must not have created a local record")
+
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+path, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	return resp.StatusCode, responseBody
 }
 
 // A claim value that resolves, by direct name match, to a CHILD group must also carry whatever that

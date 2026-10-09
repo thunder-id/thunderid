@@ -144,6 +144,19 @@ func (s *cacheBackedEntityStore) DeleteEntity(ctx context.Context, id string) er
 	return nil
 }
 
+// LockEntity passes through to the wrapped store and does not cache the entity it returns. The
+// caller reads under the lock to modify the entity, so a cached copy, which a concurrent reader can
+// fill with a pre-commit value, would let that write drop another writer's change.
+func (s *cacheBackedEntityStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	return s.store.LockEntity(ctx, id)
+}
+
+// ResolveLinkedAccount passes through to the wrapped store without caching.
+func (s *cacheBackedEntityStore) ResolveLinkedAccount(ctx context.Context,
+	idpID, sub string) (*string, error) {
+	return s.store.ResolveLinkedAccount(ctx, idpID, sub)
+}
+
 func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
 	if len(filters) == 1 {

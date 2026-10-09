@@ -156,17 +156,4 @@ var (
 			DefaultValue: "The subject in the assertion does not match the authenticated user",
 		},
 	}
-	// ErrorAmbiguousUser is the error when multiple users match the provided attributes.
-	ErrorAmbiguousUser = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AUTHN-1011",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.authnservice.ambiguous_user",
-			DefaultValue: "Ambiguous user",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.authnservice.ambiguous_user_description",
-			DefaultValue: "Multiple users match the provided attributes",
-		},
-	}
 )

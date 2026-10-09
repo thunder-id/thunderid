@@ -129,9 +129,6 @@ var (
 			"email": map[string]interface{}{
 				"type": "string",
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"givenName": map[string]interface{}{
 				"type": "string",
 			},
@@ -147,7 +144,6 @@ var (
 			"username": "multiactionuser",
 			"password": "testpassword",
 			"email": "multiactionuser@example.com",
-			"sub": "google-multi-action-user-123",
 			"givenName": "Multi",
 			"familyName": "Action"
 		}`),
@@ -228,11 +224,27 @@ func (ts *MultiActionInputBindingTestSuite) SetupSuite() {
 			{Name: "redirect_uri", Value: "http://localhost:3000/callback", IsSecret: false},
 			{Name: "scopes", Value: "openid email profile", IsSecret: false},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(googleIDP)
 	ts.Require().NoError(err, "Failed to create Google IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// Record the link the federated sign-ins below resolve through.
+	err = common.LinkAccount(common.LinkRequest{
+		Handle:       "multi-action-link",
+		ExecutorName: "GoogleOIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         multiActionInputBindingTestOUID,
+		UserType:     multiActionInputBindingEntityType.Handle,
+		Username:     "multiactionuser",
+		Password:     "testpassword",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := multiActionInputBindingFlow.Nodes.([]map[string]interface{})

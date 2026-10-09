@@ -561,18 +561,18 @@ func (a *authAssertExecutor) resolveUserAttributes(
 			attributes[attr] = val
 			continue
 		}
-		// External claims are only a fallback and must never take priority over runtime data.
-		if val, exists := extIdentity.Claim(attr); exists && val != "" {
-			attributes[attr] = val
-			continue
-		}
-
 		// Check for the attribute in attributes fetched from user/authentication provider
 		if fetchedAttributes != nil {
 			if val, ok := fetchedAttributes[attr]; ok {
 				attributes[attr] = val
 				continue
 			}
+		}
+		// External claims are only a fallback and must never take priority over runtime data or the
+		// stored profile, since a linked sign-in resolves to a local user whose profile it must not rewrite.
+		if val, exists := extIdentity.Claim(attr); exists && val != "" {
+			attributes[attr] = val
+			continue
 		}
 	}
 

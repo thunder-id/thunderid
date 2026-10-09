@@ -56,11 +56,6 @@ schema: {
       "type": "string",
       "displayName": "Mobile Number",
       "required": false
-    },
-    "sub": {
-      "type": "string",
-      "displayName": "Subject",
-      "required": false
     }
 
   }

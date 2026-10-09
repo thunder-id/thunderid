@@ -38,10 +38,6 @@ schema:
     type: string
     displayName: Mobile Number
     required: false
-  sub:
-    type: string
-    displayName: Subject
-    required: false
   name:
     type: string
     displayName: Full Name
@@ -5644,7 +5640,6 @@ type: person
 ouHandle: default
 attributes:
   username: "{{ .ADMIN_USERNAME }}"
-  sub: "{{ .ADMIN_USERNAME }}"
   email: admin@example.com
   name: Administrator
   given_name: Admin
@@ -6010,6 +6005,10 @@ translations:
   elements:
     fields.usertype.label: User Type
     fields.usertype.placeholder: Select User Type
+    forms.link_prompt.title: Link your account
+    forms.link_prompt.description: Your details matched the account below. Do you want to link to it permanently?
+    forms.link_prompt.actions.confirm.label: Link account
+    forms.link_prompt.actions.reject.label: No, I want a separate account
   signout:
     forms.confirm.title: Sign out?
     forms.confirm.description: You are about to sign out of your account. Do you want to continue?

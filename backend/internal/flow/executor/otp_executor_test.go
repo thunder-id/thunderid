@@ -746,6 +746,43 @@ func (suite *OTPExecutorTestSuite) TestResolveUserID_AuthenticatedUser_EntityRef
 	assert.Equal(suite.T(), ErrEntityNotFound.Code, resp.Error.Code)
 }
 
+// A federated identity with no local user yet resolves to no reference and no error, so the user is
+// identified from the inputs instead.
+func (suite *OTPExecutorTestSuite) TestResolveUserID_AuthenticatedUser_UnresolvedEntityRef_FallsThrough() {
+	authUser := providers.AuthUser{}
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReferenceToken: "pending-federated-identity",
+		Attributes:           &providers.AttributesResponse{},
+	})
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, (*providers.EntityReference)(nil), (*tidcommon.ServiceError)(nil))
+
+	suite.mockEntityProvider.On("IdentifyEntity", mock.MatchedBy(func(attrs map[string]interface{}) bool {
+		_, hasMobile := attrs[common.AttributeMobileNumber]
+		return hasMobile
+	})).Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
+
+	ctx := &providers.NodeContext{
+		ExecutionID:  "exec-auth-unresolved",
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		AuthUser:     authUser,
+		NodeInputs: []providers.Input{
+			{Ref: "mobile_input", Identifier: common.AttributeMobileNumber,
+				Type: providers.InputTypePhone, Required: true},
+		},
+		UserInputs:  map[string]string{common.AttributeMobileNumber: "+1234567890"},
+		RuntimeData: map[string]string{},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrEntityNotFound.Code, resp.Error.Code)
+}
+
 // resolveUserID: IdentifyEntity returns non-nil pointer to empty string
 
 func (suite *OTPExecutorTestSuite) TestResolveUserID_IdentifyEntityReturnsEmptyString_ReturnsFailure() {

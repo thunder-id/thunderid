@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	flowcommon "github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -38,9 +39,6 @@ var oidcEntityType = testutils.UserType{
 		"password": map[string]interface{}{
 			"type":       "string",
 			"credential": true,
-		},
-		"sub": map[string]interface{}{
-			"type": "string",
 		},
 		"email": map[string]interface{}{
 			"type": "string",
@@ -102,7 +100,6 @@ func (suite *OIDCAuthTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "oidcuser",
 		"password":   "Test@1234",
-		"sub":        "user456",
 		"email":      "testuser@oidc.com",
 		"givenName":  "OIDC",
 		"familyName": "User",
@@ -167,11 +164,27 @@ func (suite *OIDCAuthTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(idp)
 	suite.Require().NoError(err, "Failed to create OIDC IDP")
 	suite.idpID = idpID
+
+	// Record the link the federated sign-ins below resolve through.
+	err = flowcommon.LinkAccount(flowcommon.LinkRequest{
+		Handle:       "authn-oidc-link",
+		ExecutorName: "OIDCAuthExecutor",
+		IDPID:        idpID,
+		OUID:         suite.ouID,
+		UserType:     oidcEntityType.Handle,
+		Username:     "oidcuser",
+		Password:     "Test@1234",
+	})
+	suite.Require().NoError(err, "Failed to record the federated link for the local user")
 }
 
 func (suite *OIDCAuthTestSuite) TearDownSuite() {

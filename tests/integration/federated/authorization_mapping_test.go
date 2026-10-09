@@ -112,6 +112,17 @@ func (s *FederatedMappingSuite) authorizeFederated(
 	requestedPermissions, resourceServerIdentifier string,
 ) []string {
 	s.T().Helper()
+	authorized, _ := s.authorizeFederatedEntity(config, user, requestedPermissions, resourceServerIdentifier)
+	return authorized
+}
+
+// authorizeFederatedEntity drives the flow like authorizeFederated, and also returns the entity the
+// assertion was issued for.
+func (s *FederatedMappingSuite) authorizeFederatedEntity(
+	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo,
+	requestedPermissions, resourceServerIdentifier string,
+) ([]string, *testutils.User) {
+	s.T().Helper()
 	s.applyConfig(config)
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
@@ -135,24 +146,23 @@ func (s *FederatedMappingSuite) authorizeFederated(
 	s.Require().Equal("COMPLETE", step.FlowStatus, "expected the flow to complete, got %+v", step)
 	s.Require().NotEmpty(step.Assertion, "a completed flow should carry an assertion")
 
-	provisioned, lookupErr := testutils.FindUserByAttribute("sub", user.Sub)
-	if lookupErr == nil && provisioned != nil {
-		s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
-	}
+	entity, err := testutils.GetUserFromAssertion(step.Assertion)
+	s.Require().NoError(err, "failed to look up the entity the assertion was issued for")
+	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, entity.ID)
 
 	claims, err := testutils.DecodeJWT(step.Assertion)
 	s.Require().NoError(err, "failed to decode the assertion")
 
 	raw, ok := claims.Additional["authorized_permissions"]
 	if !ok {
-		return nil
+		return nil, entity
 	}
 	str, ok := raw.(string)
 	s.Require().True(ok, "authorized_permissions should be a string claim")
 	if strings.TrimSpace(str) == "" {
-		return []string{}
+		return []string{}, entity
 	}
-	return strings.Fields(str)
+	return strings.Fields(str), entity
 }
 
 // A1 (multi-valued claims table, list shape): a list-valued claim resolves every element, not the
@@ -323,11 +333,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_MappedRoleWithNoLocalAssigneesG
 func (s *FederatedMappingSuite) TestAuthzMapping_DirectAssignmentPlusMappedRoleCombine() {
 	user := s.baseUser(s.nextSubject())
 	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
-	s.register(noMappingConfig, user)
-
-	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned entity")
-	s.Require().NotNil(entity, "the entity should have been provisioned")
+	entity := s.registerEntity(noMappingConfig, user)
 
 	directRoleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Federated Direct Deleter " + s.nextSubject(),
@@ -505,7 +511,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ConsentSurfacesAndCanDeclineMap
 	s.Require().Equal("INCOMPLETE", flowStep.FlowStatus,
 		"the flow should pause on the consent prompt, got %+v", flowStep)
 
-	if provisioned, lookupErr := testutils.FindUserByAttribute("sub", user.Sub); lookupErr == nil && provisioned != nil {
+	if provisioned, lookupErr := testutils.FindUserByAttribute("email", user.Email); lookupErr == nil && provisioned != nil {
 		s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
 	}
 
@@ -689,9 +695,8 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 	s.Require().Equal("COMPLETE", completed.FlowStatus, "expected the flow to complete, got %+v", completed)
 	s.Require().NotEmpty(completed.Assertion, "a completed flow should carry an assertion")
 
-	provisioned, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned entity")
-	s.Require().NotNil(provisioned, "the entity should have been provisioned")
+	provisioned, err := testutils.GetUserFromAssertion(completed.Assertion)
+	s.Require().NoError(err, "failed to look up the entity the assertion was issued for")
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
 
 	// The permissions are granted on this first login regardless of seeding (the dynamic mapping alone
@@ -727,11 +732,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 func (s *FederatedMappingSuite) TestAuthzMapping_LocalGroupPlusMappedGroupCombine() {
 	user := s.baseUser(s.nextSubject())
 	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
-	s.register(noMappingConfig, user)
-
-	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned entity")
-	s.Require().NotNil(entity, "the entity should have been provisioned")
+	entity := s.registerEntity(noMappingConfig, user)
 
 	directGroupID, err := testutils.CreateGroup(testutils.Group{
 		Name:    "Federated Direct Deleter Group " + s.nextSubject(),
@@ -776,11 +777,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_LocalGroupPlusMappedGroupCombin
 func (s *FederatedMappingSuite) TestAuthzMapping_OverlappingLocalAndMappedGroupDeduped() {
 	user := s.baseUser(s.nextSubject())
 	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
-	s.register(noMappingConfig, user)
-
-	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned entity")
-	s.Require().NotNil(entity, "the entity should have been provisioned")
+	entity := s.registerEntity(noMappingConfig, user)
 
 	// The entity is a member of this group from the moment it is created; the mapping below resolves
 	// to the same group id, so the group reaches the RBAC engine through both the entity's real
@@ -835,13 +832,9 @@ func (s *FederatedMappingSuite) TestAuthzMapping_WithoutSeedingFlagsMappingIsNot
 		"platform-editors": {groupTarget(s.authzMappedGroupID)},
 	})
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized, entity := s.authorizeFederatedEntity(config, user, "read write", "federated-authz-mapping-api")
 	s.ElementsMatch([]string{"read", "write"}, authorized,
 		"the mapped role and group should still authorize dynamically without the seeding flags")
-
-	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned entity")
-	s.Require().NotNil(entity, "the entity should have been provisioned")
 
 	roleAssignments, err := testutils.GetRoleAssignments(s.authzMappedRoleID)
 	s.Require().NoError(err, "failed to read the mapped role's assignments")

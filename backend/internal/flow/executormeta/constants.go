@@ -37,7 +37,7 @@ const (
 	ExecutorNameAgentTypeResolver            = "AgentTypeResolver"
 	ExecutorNameAttributeUniquenessValidator = "AttributeUniquenessValidator"
 	ExecutorNameSMSExecutor                  = "SMSExecutor"
-	ExecutorNameFederatedAuthResolver        = "FederatedAuthResolverExecutor"
+	ExecutorNameAccountLinking               = "AccountLinkingExecutor"
 	ExecutorNameSSOCheck                     = "SSOCheckExecutor"
 	ExecutorNameSession                      = "SessionExecutor"
 	ExecutorNameSessionSignOut               = "SessionSignOutExecutor"

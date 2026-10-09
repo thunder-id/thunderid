@@ -105,6 +105,32 @@ func (p *defaultAuthnProvider) GetEntityReference(ctx context.Context, entityRef
 	}, nil
 }
 
+// SearchEntityReferences returns every entity an attribute lookup matches, or none. It answers a
+// lookup GetEntityReference has already found ambiguous: the two match differently, so reading it
+// for anything else would change which entities a lookup names.
+func (p *defaultAuthnProvider) SearchEntityReferences(ctx context.Context,
+	filters map[string]interface{}) ([]providers.EntityReference, *tidcommon.ServiceError) {
+	entities, err := p.entitySvc.SearchEntities(ctx, filters)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return nil, nil
+		}
+		return nil, p.logAndReturnServerError(ctx, "Failed to search entities",
+			log.String("error", err.Error()))
+	}
+
+	refs := make([]providers.EntityReference, 0, len(entities))
+	for _, e := range entities {
+		refs = append(refs, providers.EntityReference{
+			EntityID:       e.ID,
+			EntityCategory: string(e.Category),
+			EntityType:     e.Type,
+			OUID:           e.OUID,
+		})
+	}
+	return refs, nil
+}
+
 // GetAttributes retrieves the user attributes using the internal entity service.
 func (p *defaultAuthnProvider) GetAttributes(
 	ctx context.Context,
@@ -197,6 +223,42 @@ func (p *defaultAuthnProvider) Enroll(
 	return p.buildAuthnResult(ctx, res)
 }
 
+// StoreAccountLink records a linked account against the entity the caller-supplied token
+// names. The token is this provider's own entity reference token, so it resolves the same way
+// GetEntityReference resolves one, and a token that names no entity is a client error.
+func (p *defaultAuthnProvider) StoreAccountLink(ctx context.Context, entityReferenceToken any,
+	idpID, sub string) *tidcommon.ServiceError {
+	if idpID == "" || sub == "" {
+		return newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+			"Invalid linked account", "A connection id and a subject are both required")
+	}
+
+	parsedToken, ok := entityReferenceToken.(map[string]interface{})
+	if !ok || parsedToken == nil {
+		return newClientError(authnprovidercm.ErrorCodeInvalidToken,
+			"Invalid entity reference token", "The provided entity reference token is invalid")
+	}
+
+	entityResult, svcErr := p.resolveEntityFromToken(ctx, parsedToken, "entity reference token")
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if err := p.entitySvc.LinkAccount(ctx, entityResult.ID, idpID, sub); err != nil {
+		if errors.Is(err, entity.ErrLinkedAccountConflict) {
+			return newClientError(authnprovidercm.ErrorCodeAmbiguousUser, "Account already linked",
+				"The account is linked to another user")
+		}
+		if errors.Is(err, entity.ErrIndexedValueLimitExceeded) {
+			return newClientError(authnprovidercm.ErrorCodeInvalidRequest, "Too many linked accounts",
+				"The user has reached the limit of linked accounts")
+		}
+		return p.logAndReturnServerError(ctx, "Failed to link account",
+			log.String("idpId", idpID), log.String("error", err.Error()))
+	}
+	return nil
+}
+
 func (p *defaultAuthnProvider) initiateAuthenticationWithPasskey(
 	ctx context.Context, initData any) (any, *tidcommon.ServiceError) {
 	req, ok := initData.(*passkey.PasskeyAuthenticationStartRequest)
@@ -271,6 +333,30 @@ func (p *defaultAuthnProvider) enrollWithPasskey(
 	return result, nil
 }
 
+// resolveLinkedEntity returns the local user the recorded (connection, subject) link names, or ""
+// when there is none. Two entities holding one link fail rather than read as no user.
+func (p *defaultAuthnProvider) resolveLinkedEntity(ctx context.Context,
+	token map[string]interface{}) (string, *tidcommon.ServiceError) {
+	idpID, _ := token[authnprovidercm.UserAttributeFederatedIdpID].(string)
+	sub, _ := token[authnprovidercm.UserAttributeSub].(string)
+
+	linkedID, resolveErr := p.entitySvc.ResolveLinkedAccount(ctx, idpID, sub)
+	switch {
+	case resolveErr == nil && linkedID != nil:
+		return *linkedID, nil
+	case errors.Is(resolveErr, entity.ErrAmbiguousEntity):
+		p.logger.Debug(ctx, "Multiple entities are linked to the same subject",
+			log.String("idpId", idpID))
+		return "", newClientError(authnprovidercm.ErrorCodeAmbiguousUser,
+			"Ambiguous user", "Multiple users are linked to the provided identity")
+	case resolveErr != nil && !errors.Is(resolveErr, entity.ErrEntityNotFound):
+		return "", p.logAndReturnServerError(ctx, "Failed to resolve linked account",
+			log.String("error", resolveErr.Error()))
+	}
+
+	return "", nil
+}
+
 func (p *defaultAuthnProvider) buildAuthnResult(
 	ctx context.Context, authnResult *authncommon.AuthnResult,
 ) (*providers.AuthnResult, *tidcommon.ServiceError) {
@@ -281,6 +367,20 @@ func (p *defaultAuthnProvider) buildAuthnResult(
 	entityID := ""
 	if idVal, ok := authnResult.Token[authnprovidercm.UserAttributeUserID]; ok {
 		entityID, _ = idVal.(string)
+	}
+	if entityID == "" && authnprovidercm.IsFederatedToken(authnResult.Token) {
+		resolvedID, svcErr := p.resolveLinkedEntity(ctx, authnResult.Token)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if resolvedID == "" {
+			// No local user for this identity yet. Hand the token back so the caller can provision
+			// and record the link.
+			result.EntityReferenceToken = authnResult.Token
+			result.AttributeToken = authnResult.Token
+			return result, nil
+		}
+		entityID = resolvedID
 	}
 	if entityID == "" {
 		identifiedEntityID, identifyErr := p.entitySvc.IdentifyEntity(ctx, authnResult.Token)
@@ -298,16 +398,31 @@ func (p *defaultAuthnProvider) buildAuthnResult(
 		entityID = *identifiedEntityID
 	}
 
+	res, svcErr := p.buildEntityAuthnResult(ctx, entityID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	res.AuthenticatedClaims = result.AuthenticatedClaims
+	return res, nil
+}
+
+// buildEntityAuthnResult builds a resolved AuthnResult (entity reference and attributes) for an entity
+// that is known to exist.
+func (p *defaultAuthnProvider) buildEntityAuthnResult(
+	ctx context.Context, entityID string,
+) (*providers.AuthnResult, *tidcommon.ServiceError) {
 	entityResult, getErr := p.entitySvc.GetEntity(ctx, entityID)
 	if getErr != nil {
 		return nil, p.logAndReturnServerError(ctx, "Failed to get entity after authentication",
 			log.String("error", getErr.Error()))
 	}
-	result.EntityReference = &providers.EntityReference{
-		EntityID:       entityResult.ID,
-		EntityCategory: string(entityResult.Category),
-		EntityType:     entityResult.Type,
-		OUID:           entityResult.OUID,
+	result := &providers.AuthnResult{
+		EntityReference: &providers.EntityReference{
+			EntityID:       entityResult.ID,
+			EntityCategory: string(entityResult.Category),
+			EntityType:     entityResult.Type,
+			OUID:           entityResult.OUID,
+		},
 	}
 	attributes := make(map[string]interface{})
 	if len(entityResult.Attributes) > 0 {
@@ -316,7 +431,6 @@ func (p *defaultAuthnProvider) buildAuthnResult(
 		}
 	}
 	result.Attributes = buildAttributesResponse(attributes)
-
 	return result, nil
 }
 
@@ -331,6 +445,12 @@ func (p *defaultAuthnProvider) resolveEntityFromToken(
 	entityID := ""
 	if idVal, ok := token[authnprovidercm.UserAttributeUserID]; ok {
 		entityID, _ = idVal.(string)
+	}
+	if entityID == "" && authnprovidercm.IsFederatedToken(token) {
+		// A federated token that reached here already went through resolution and found nothing.
+		// Re-resolving cannot help, and IdentifyEntity would scan for keys no index can answer.
+		return nil, newClientError(authnprovidercm.ErrorCodeUserNotFound,
+			"User not found", "No user found matching the provided "+tokenLabel)
 	}
 	if entityID == "" {
 		identifiedEntityID, identifyErr := p.entitySvc.IdentifyEntity(ctx, token)
@@ -599,6 +719,13 @@ func (p *defaultAuthnProvider) handleEntityAuthError(
 	return p.logAndReturnServerError(ctx, serverMsg, log.String("error", err.Error()))
 }
 
+func (p *defaultAuthnProvider) logAndReturnServerError(
+	ctx context.Context, msg string, fields ...log.Field) *tidcommon.ServiceError {
+	p.logger.Error(ctx, msg, fields...)
+	err := tidcommon.InternalServerError
+	return &err
+}
+
 func buildAttributesResponse(attrs map[string]interface{}) *providers.AttributesResponse {
 	resp := &providers.AttributesResponse{
 		Attributes:    make(map[string]*providers.AttributeResponse),
@@ -628,11 +755,4 @@ func newClientError(code, msg, desc string) *tidcommon.ServiceError {
 			DefaultValue: desc,
 		},
 	}
-}
-
-func (p *defaultAuthnProvider) logAndReturnServerError(
-	ctx context.Context, msg string, fields ...log.Field) *tidcommon.ServiceError {
-	p.logger.Error(ctx, msg, fields...)
-	err := tidcommon.InternalServerError
-	return &err
 }

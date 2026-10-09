@@ -100,7 +100,7 @@ Behavior:
 
 - The external attribute supports complex forms. Use **dot notation** to read a value nested inside another attribute. For example, `email.work` reads the `work` field from an `email` object.
 - The local attribute must be defined in the user type's schema; this is validated when you save the connection.
-- An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
+- Mappings copy rather than rename: the mapped value is published under the local attribute, and the original attribute is kept under its own name. Attributes without a mapping pass through unchanged.
 
 The mapping applies both when a user signs in through this connection in an authentication flow and when a token from this provider is exchanged (see [Trusted Issuer](../../trusted-issuer)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
 
@@ -129,14 +129,23 @@ Behavior:
 
 ### Account Linking
 
-To resolve an incoming federated identity to an existing local user by attributes when the subject identifier (`sub`) does not match, add attributes under **Account Linking**. Click **Add Attribute** to add an external attribute (for example, `email`) that is matched to find the associated local user.
+To find an existing local user for an incoming federated identity that has no recorded link to one, add attributes under **Account Linking**. Click **Add Attribute** to add an external attribute (for example, `email`) that is matched to find candidate local users.
 
 Behavior:
 
-- Resolution tries the subject identifier (`sub`) first. If it resolves an existing user, that user is used.
-- Otherwise, all configured attributes that have a value are matched together (AND) to resolve a unique local user.
-- Each attribute is an external claim name; if it's mapped under **Attribute Mappings** (for example, `email` to `work_email`), the mapped local attribute is used for the lookup instead.
-- If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
+- Resolution tries the recorded link for this connection and subject first. A subject is unique only within the connection that issued it, so both parts are required and a subject on its own never resolves a user.
+- Otherwise, every configured attribute that has a value must match. Each local user that matches becomes a candidate. A match does not sign the user in: the flow's Account Linking node has the user verify one of the candidates before linking it. The direct authentication API cannot prompt, so it signs in recorded links only.
+- Each attribute is an external claim name. It matches on every local attribute it's mapped to under **Attribute Mappings**, and on the local attribute of the same name, because mappings copy the value there too. For example, with `email` mapped to `username`, linking on `email` finds a user whose `username` or whose `email` holds the incoming address.
+- Each local attribute is matched on the value it would be provisioned with. An attribute with no mapping of its own therefore also works as a local attribute name: linking on `costCenter` with `cost_centre` mapped to `costCenter` matches on the incoming `cost_centre` value.
+- The same-named local attribute is skipped when its name has characters other than letters, digits, and underscores, which includes dot notation. Such an attribute matches only through its mappings, so it must be mapped for every user type, and saving rejects it otherwise. For example, linking on `address.email` requires a mapping such as `address.email` to `email` in each user type.
+- For a mapped attribute, the same-named local attribute is also skipped when another attribute is mapped onto that name, since that attribute's value is what is stored there. For example, with `email` mapped to `contactEmail` and `mail` mapped to `email`, linking on `email` matches on `contactEmail` only.
+- If a configured attribute has a value but nothing to match on, the connection matches no one. This can still happen at sign-in when the identity resolves to a user type that has no attribute mappings and the attribute's name has characters other than letters, digits, and underscores.
+- `userID`, `federatedIdpId`, `credentialUpdatedAt`, and `linkedIds` are reserved and never matched on. Saving rejects a linking attribute that is, or is mapped to, one of them.
+- If the configured attributes match more than one user, including when two of an attribute's local attributes name different users, every matching user is a candidate. The user verifies whichever account is theirs, and that account is the one linked.
+- Each attribute's local attributes are combined with every other's, and each combination is one lookup. For example, two attributes that each match on three local attributes need nine lookups. Saving rejects a configuration that needs more than 10 lookups for any user type.
+- If more than 10 users match, the sign-in fails. An attribute that matches that many users does not identify a person, so treat it as a configuration error.
+- If nothing resolves a user, the user is treated as new (subject to the flow's provisioning configuration).
+- Once a flow resolves or provisions the user, it records the link. Later sign-ins through this connection resolve on that link and never consult the attributes again.
 
 Click **Save changes** to apply your attribute configuration.
 

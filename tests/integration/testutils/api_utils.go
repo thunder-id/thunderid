@@ -1196,6 +1196,38 @@ func FindUserByAttribute(key, value string) (*User, error) {
 	return nil, nil
 }
 
+// GetUserFromAssertion returns the user a flow assertion was issued for, looked up by the assertion's
+// subject. A federated flow resolves its identity to exactly one user, and this is that user.
+func GetUserFromAssertion(assertion string) (*User, error) {
+	claims, err := DecodeJWT(assertion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode the assertion: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", TestServerURL+"/users/"+claims.Sub, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create get user request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send get user request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(body))
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf("failed to parse get user response: %w", err)
+	}
+	return &user, nil
+}
+
 // CreateGroup creates a group via API and returns the group ID
 func CreateGroup(group Group) (string, error) {
 	groupJSON, err := json.Marshal(group)

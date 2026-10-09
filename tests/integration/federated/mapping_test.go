@@ -63,8 +63,6 @@ func (s *FederatedMappingSuite) TestUnmappedClaimsPassThroughAndSourcesSurvive()
 	), user)
 
 	s.Equal("Federated", attributes["firstName"], "the mapped target is published")
-	s.Equal(sub, attributes["sub"],
-		"sub is not mapped anywhere yet still reaches the provisioned user")
 	s.Equal(user.Email, attributes["email"],
 		"the email claim survives under its own name even though it also feeds username")
 }

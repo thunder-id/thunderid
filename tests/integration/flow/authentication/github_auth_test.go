@@ -90,9 +90,6 @@ var githubEntityType = testutils.UserType{
 			"type":       "string",
 			"credential": true,
 		},
-		"sub": map[string]interface{}{
-			"type": "string",
-		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
@@ -164,7 +161,6 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "githubflowuser",
 		"password":   "Test@1234",
-		"sub":        "12345",
 		"email":      "testuser@github.com",
 		"givenName":  "Test",
 		"familyName": "User",
@@ -211,11 +207,27 @@ func (ts *GithubAuthFlowTestSuite) SetupSuite() {
 				IsSecret: false,
 			},
 		},
+		// Link on email so SetupSuite can record the link below.
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
 	}
 
 	idpID, err := testutils.CreateIDP(githubIDP)
 	ts.Require().NoError(err, "Failed to create GitHub IDP")
 	ts.config.CreatedIdpIDs = append(ts.config.CreatedIdpIDs, idpID)
+
+	// Record the link the federated sign-ins below resolve through.
+	err = common.LinkAccount(common.LinkRequest{
+		Handle:       "github-flow-link",
+		ExecutorName: "GithubOAuthExecutor",
+		IDPID:        idpID,
+		OUID:         githubAuthTestOU.ID,
+		UserType:     githubEntityType.Handle,
+		Username:     "githubflowuser",
+		Password:     "Test@1234",
+	})
+	ts.Require().NoError(err, "Failed to record the federated link for the existing user")
 
 	// Update flow definition with created IDP ID
 	nodes := githubAuthFlow.Nodes.([]map[string]interface{})

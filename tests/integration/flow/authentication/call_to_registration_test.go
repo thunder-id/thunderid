@@ -310,7 +310,9 @@ func (ts *CallToRegistrationFlowTestSuite) TestCallToRegistration() {
 	}
 }
 
-func (ts *CallToRegistrationFlowTestSuite) TestCallToRegistration_CalleeFails_RoutesToOnFailure() {
+// A duplicate username is caught before the create, so the callee re-prompts for a free one instead
+// of failing to the caller's onFailure edge.
+func (ts *CallToRegistrationFlowTestSuite) TestCallToRegistration_CalleeRepromptsOnDuplicate() {
 	err := common.UpdateAppConfig(ts.appID, ts.config.CreatedFlowIDs[1], ts.config.CreatedFlowIDs[0])
 	ts.Require().NoError(err)
 
@@ -325,16 +327,33 @@ func (ts *CallToRegistrationFlowTestSuite) TestCallToRegistration_CalleeFails_Ro
 	ts.Require().NoError(err)
 	ts.Require().Equal("INCOMPLETE", calleeStep.FlowStatus)
 
-	// Step 3: Submit duplicate username — provisioning executor fails, engine pops the frame
-	// and routes to caller CALL node's onFailure (END). Flow ends without auth assertion
+	// Step 3: Submit a duplicate username: the callee offers the screen again rather than failing,
+	// so the frame is never popped and the caller stays suspended at the CALL node.
 	inputs := map[string]string{
 		"username": ts.duplicateUsername,
 		"email":    "duplicate@example.com",
 		"password": "Secure@1234",
 	}
-	failStep, err := common.CompleteFlow(calleeStep.ExecutionID, inputs, "action_submit",
+	retryStep, err := common.CompleteFlow(calleeStep.ExecutionID, inputs, "action_submit",
 		calleeStep.ChallengeToken)
-	ts.Require().NoError(err, "Expected graceful handling of callee failure, not a transport error")
-	ts.Require().Equal("COMPLETE", failStep.FlowStatus, "Flow should complete via onFailure path")
-	ts.Require().Empty(failStep.Assertion, "No assertion expected — auth_assert was not reached")
+	ts.Require().NoError(err, "Expected graceful handling of the duplicate, not a transport error")
+	ts.Require().Equal("INCOMPLETE", retryStep.FlowStatus, "Callee should re-prompt for a free username")
+	ts.Require().NotNil(retryStep.Error, "The re-prompt should say why it came back")
+	ts.Require().Empty(retryStep.Assertion, "No assertion expected, auth_assert was not reached")
+	ts.Require().True(common.HasInput(retryStep.Data.Inputs, "username"),
+		"The username should be collectable again, got %+v", retryStep.Data.Inputs)
+
+	// Step 4: A free username completes the callee, the frame pops, and the caller resumes into
+	// auth_assert. This is what proves the re-prompt was recoverable rather than a stuck flow.
+	inputs["username"] = "call_reg_recovered_user_001"
+	completeStep, err := common.CompleteFlow(retryStep.ExecutionID, inputs, "action_submit",
+		retryStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", completeStep.FlowStatus, "Expected COMPLETE after the callee returns")
+	ts.Require().NotEmpty(completeStep.Assertion, "JWT assertion expected on completion")
+
+	recovered, err := testutils.FindUserByAttribute("username", "call_reg_recovered_user_001")
+	if err == nil && recovered != nil && recovered.ID != "" {
+		ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, recovered.ID)
+	}
 }

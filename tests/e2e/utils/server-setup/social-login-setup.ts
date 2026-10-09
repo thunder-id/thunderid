@@ -9,6 +9,7 @@
  * - Connection (identity provider) pointing at that vendor's mock OAuth/OIDC server
  * - Authentication flow with a "Continue with <vendor>" step
  * - Application rewired to use that flow, with its previous flow bindings restored on cleanup
+ * - Local user whose federated identity is linked through a verified linking flow
  *
  * Only the connection endpoint, resource names, executor and button branding differ per vendor;
  * everything else (application rewiring, linked user, cleanup) is identical, so the vendors share
@@ -25,7 +26,10 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
+import { serverUrl } from "../api-request";
+import { ApplicationsApi } from "../applications-api";
 import { UsersApi } from "../users-api";
+import { UserTypesApi } from "../user-types-api";
 import { ConnectionsApi } from "../connections-api";
 import { FlowsApi } from "../flows-api";
 import { rewireApplicationFlows, restoreApplicationFlows } from "./application-flows";
@@ -66,13 +70,10 @@ const VENDOR_PROFILES: Record<SocialVendor, VendorProfile> = {
 
 export interface SocialLinkedUser {
   username: string;
+  /** Must match the email the vendor's mock server issues: the connection links on email. */
   email: string;
-  /**
-   * Must match the `sub` claim the vendor's mock server issues for this identity. For Google
-   * that is the ID token's `sub`; for GitHub it is the numeric account id as a string, which
-   * the backend renames to `sub` (see backend/internal/authn/oauth/utils.go::ProcessSubClaim).
-   */
-  sub: string;
+  /** Proves the account while the federated identity is linked to it. */
+  password: string;
 }
 
 export interface SocialLoginSetupConfig {
@@ -86,8 +87,8 @@ export interface SocialLoginSetupConfig {
   /**
    * Local user to link the federated identity to. The auth flow node sets
    * allowAuthenticationWithoutLocalUser: false (matching real usage, where a user first
-   * registers via the vendor and later logs in against that stored identity), so login only
-   * succeeds when a local user with this `sub` attribute already exists.
+   * links their vendor identity and later logs in with it), so login only succeeds once the
+   * identity is linked to this user.
    */
   linkedUser: SocialLinkedUser;
 }
@@ -151,13 +152,12 @@ export class SocialLoginSetup {
       console.log(`✓ Application updated with ${vendorName} authentication flow`);
       cleanupFunctions.push(request => restoreApplicationFlows(request, appId, originalFlows));
 
-      const user = await this.createOrGetLinkedUser();
-      if (user.created) {
-        console.log(`✓ Linked local user created: ${user.id}`);
-        cleanupFunctions.push(request => this.deleteUser(request, user.id));
-      } else {
-        console.log(`✓ Using existing linked local user: ${user.id}`);
-      }
+      const user = await this.createLinkedUser();
+      console.log(`✓ Local user created: ${user.id}`);
+      cleanupFunctions.push(request => this.deleteUser(request, user.id));
+
+      await this.recordLink(connection.id);
+      console.log(`✓ ${vendorName} identity linked to the local user`);
 
       console.log(`=== ${vendorName} Social Login Setup Completed ===\n`);
 
@@ -218,20 +218,28 @@ export class SocialLoginSetup {
   private async createOrGetConnection(): Promise<{ id: string; created: boolean }> {
     const name = `E2E Mock ${this.profile.displayName} Connection`;
     const connectionsApi = new ConnectionsApi(this.request);
-
-    const existing = await connectionsApi.findByName(this.config.vendor, name);
-    if (existing) {
-      return { id: existing.id, created: false };
-    }
-
-    const connection = await connectionsApi.create(this.config.vendor, {
+    const connectionData = {
       name,
       description: `Mock ${this.profile.displayName} identity provider for e2e social login testing`,
       clientId: this.config.clientId,
       clientSecret: this.config.clientSecret,
       redirectUri: this.config.redirectUri,
       scopes: this.profile.scopes,
-    });
+      // recordLink matches the local user on email, the one claim both vendors' mocks share with it.
+      attributeConfiguration: {
+        userTypeResolution: { default: "person" },
+        accountLinking: { attributes: ["email"] },
+      },
+    };
+
+    const existing = await connectionsApi.findByName(this.config.vendor, name);
+    if (existing) {
+      // A leftover connection from an earlier run may predate the account linking settings.
+      await connectionsApi.update(this.config.vendor, existing.id, connectionData);
+      return { id: existing.id, created: false };
+    }
+
+    const connection = await connectionsApi.create(this.config.vendor, connectionData);
     return { id: connection.id, created: true };
   }
 
@@ -263,22 +271,151 @@ export class SocialLoginSetup {
   }
 
   /**
-   * Create or get a local user carrying the `sub` attribute the auth flow links against.
+   * Create the local user the federated identity is linked to. A user left over from an earlier
+   * run is replaced rather than reused, so its password and links are the ones this run sets.
    */
-  private async createOrGetLinkedUser(): Promise<{ id: string; created: boolean }> {
+  private async createLinkedUser(): Promise<{ id: string }> {
     const usersApi = new UsersApi(this.request);
-
-    const existing = await usersApi.findByUsername(this.config.linkedUser.username);
-    if (existing) {
-      return { id: existing.id, created: false };
-    }
+    await usersApi.deleteByUsername(this.config.linkedUser.username);
 
     const user = await usersApi.createUser({
       username: this.config.linkedUser.username,
       email: this.config.linkedUser.email,
-      sub: this.config.linkedUser.sub,
+      password: this.config.linkedUser.password,
     });
-    return { id: user.id, created: true };
+    return { id: user.id };
+  }
+
+  /**
+   * Record the (connection, subject) link by running a verified linking flow through the Flow
+   * Execution API on a throwaway application. The mock server must already hold the identity.
+   */
+  private async recordLink(connectionId: string): Promise<void> {
+    const handle = `e2e-${this.config.vendor}-link-${Date.now()}`;
+    const flowsApi = new FlowsApi(this.request);
+    const applicationsApi = new ApplicationsApi(this.request);
+    const teardown: Array<() => Promise<boolean>> = [];
+
+    try {
+      const verifyFlow = await flowsApi.create({
+        handle: `${handle}-verify`,
+        name: `E2E Link Verify ${handle}`,
+        flowType: "AUTHENTICATION",
+        nodes: verifyPasswordFlowNodes(),
+      });
+      teardown.push(() => flowsApi.deleteById(verifyFlow.id));
+
+      const linkFlow = await flowsApi.create({
+        handle,
+        name: `E2E Link ${handle}`,
+        flowType: "AUTHENTICATION",
+        nodes: verifiedLinkingFlowNodes(this.profile.executorName, connectionId, verifyFlow.id),
+      });
+      teardown.push(() => flowsApi.deleteById(linkFlow.id));
+
+      const registrationFlow = await flowsApi.create({
+        handle: `${handle}-reg`,
+        name: `E2E Link Registration ${handle}`,
+        flowType: "REGISTRATION",
+        nodes: isolatedRegistrationFlowNodes(),
+      });
+      teardown.push(() => flowsApi.deleteById(registrationFlow.id));
+
+      const personType = await new UserTypesApi(this.request).findByHandle("person");
+      if (!personType) {
+        throw new Error('GET /user-types returned no "person" user type');
+      }
+
+      // The token-exchange grant makes the application flow-native, so it is issued a Flow Secret
+      // and may start a flow through the Flow Execution API.
+      const app = await applicationsApi.create({
+        name: `E2E Link App ${handle}`,
+        type: "fullstack",
+        ouId: personType.ouId,
+        authFlowId: linkFlow.id,
+        registrationFlowId: registrationFlow.id,
+        isRegistrationFlowEnabled: false,
+        allowedUserTypes: ["person"],
+        inboundAuthConfig: [
+          {
+            type: "oauth2",
+            config: {
+              clientId: handle,
+              clientSecret: `${handle}-secret`,
+              redirectUris: ["https://localhost:3000/callback"],
+              grantTypes: ["client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"],
+            },
+          },
+        ],
+      });
+      teardown.push(() => applicationsApi.deleteById(app.id));
+      const flowSecret = app.flowSecret;
+      if (typeof flowSecret !== "string" || !flowSecret) {
+        throw new Error("the linking application was not issued a Flow Secret");
+      }
+
+      let step = await this.executeFlow({ applicationId: app.id, flowType: "AUTHENTICATION" }, flowSecret);
+      const { code, state } = await this.authorizeAtVendor(step.data?.redirectURL);
+
+      step = await this.executeFlow({
+        executionId: step.executionId,
+        challengeToken: step.challengeToken,
+        inputs: { code, state },
+      });
+      if (step.flowStatus !== "INCOMPLETE" || !step.data?.additionalData?.linkingPromptDetails) {
+        throw new Error(`expected the linking prompt for the local user, got ${JSON.stringify(step)}`);
+      }
+
+      step = await this.executeFlow({
+        executionId: step.executionId,
+        challengeToken: step.challengeToken,
+        action: LINK_ACCOUNT_ACTION,
+      });
+      step = await this.executeFlow({
+        executionId: step.executionId,
+        challengeToken: step.challengeToken,
+        inputs: { username: this.config.linkedUser.username, password: this.config.linkedUser.password },
+        action: VERIFY_PASSWORD_ACTION,
+      });
+      if (step.flowStatus !== "COMPLETE") {
+        throw new Error(`expected the verified account to be linked, got ${JSON.stringify(step)}`);
+      }
+    } finally {
+      for (const remove of teardown.reverse()) {
+        await remove();
+      }
+    }
+  }
+
+  /** One unauthenticated `/flow/execute` call. The Flow Secret is presented only to start a flow. */
+  private async executeFlow(body: Record<string, unknown>, flowSecret?: string): Promise<FlowStep> {
+    const response = await this.request.post(`${serverUrl}/flow/execute`, {
+      data: body,
+      headers: flowSecret ? { "Flow-Secret": flowSecret } : {},
+      ignoreHTTPSErrors: true,
+    });
+    if (!response.ok()) {
+      throw new Error(`POST /flow/execute failed (${response.status()}): ${await response.text()}`);
+    }
+    return (await response.json()) as FlowStep;
+  }
+
+  /** Follow the flow's redirect to the vendor mock, which approves at once and returns a code. */
+  private async authorizeAtVendor(redirectURL: string | undefined): Promise<{ code: string; state: string }> {
+    if (!redirectURL) {
+      throw new Error("expected the linking flow to redirect to the vendor");
+    }
+    const response = await this.request.get(redirectURL, { maxRedirects: 0, ignoreHTTPSErrors: true });
+    const location = response.headers()["location"];
+    if (!location) {
+      throw new Error(`expected the vendor to redirect back with a code, got ${response.status()}`);
+    }
+    const params = new URL(location).searchParams;
+    const code = params.get("code");
+    if (!code) {
+      throw new Error(`the vendor redirected back without a code: ${location}`);
+    }
+    return { code, state: params.get("state") ?? "" };
   }
 
   /**
@@ -302,7 +439,7 @@ export class SocialLoginSetup {
   }
 
   /**
-   * Delete the linked user
+   * Delete the linked user, along with its link
    */
   private async deleteUser(request: APIRequestContext, userId: string): Promise<void> {
     const deleted = await new UsersApi(request).deleteById(userId);
@@ -320,4 +457,95 @@ export class SocialLoginSetup {
       .replace(/\{\{PROVIDER_ICON\}\}/g, this.profile.icon);
     return JSON.parse(nodesJson);
   }
+}
+
+type FlowStep = {
+  executionId: string;
+  flowStatus: string;
+  challengeToken?: string;
+  data?: { redirectURL?: string; additionalData?: Record<string, string> };
+};
+
+// Action refs of the prompts the verified linking flow forwards a matched account through.
+const LINK_ACCOUNT_ACTION = "link_account";
+const VERIFY_PASSWORD_ACTION = "verify_password";
+const SEPARATE_ACCOUNT_ACTION = "use_new_account";
+
+const usernameInput = { identifier: "username", type: "TEXT_INPUT", required: true };
+const passwordInput = { identifier: "password", type: "PASSWORD_INPUT", required: true };
+
+/** A username and password sign-in, run as its own frame by the linking flow's CALL node. */
+function verifyPasswordFlowNodes(): unknown[] {
+  return [
+    { id: "start", type: "START", onSuccess: "credentials_prompt" },
+    {
+      id: "credentials_prompt",
+      type: "PROMPT",
+      prompts: [
+        {
+          inputs: [usernameInput, passwordInput],
+          action: { ref: VERIFY_PASSWORD_ACTION, nextNode: "credentials_auth" },
+        },
+      ],
+    },
+    {
+      id: "credentials_auth",
+      type: "TASK_EXECUTION",
+      executor: { name: "CredentialsAuthExecutor", inputs: [usernameInput, passwordInput] },
+      onSuccess: "auth_assert",
+      onIncomplete: "credentials_prompt",
+    },
+    { id: "auth_assert", type: "TASK_EXECUTION", executor: { name: "AuthAssertExecutor" }, onSuccess: "end" },
+    { id: "end", type: "END" },
+  ];
+}
+
+/**
+ * Federated sign-in followed by the linking node: a matched account is confirmed, verified through
+ * the called flow, and linked when the verification returns to the linking node.
+ */
+function verifiedLinkingFlowNodes(executorName: string, idpId: string, verifyFlowId: string): unknown[] {
+  return [
+    { id: "start", type: "START", onSuccess: "federated_auth" },
+    {
+      id: "federated_auth",
+      type: "TASK_EXECUTION",
+      properties: { idpId },
+      executor: { name: executorName },
+      onSuccess: "linking",
+    },
+    {
+      id: "linking",
+      type: "TASK_EXECUTION",
+      executor: { name: "AccountLinkingExecutor" },
+      onSuccess: "auth_assert",
+      onIncomplete: "linking_prompt",
+    },
+    {
+      id: "linking_prompt",
+      type: "PROMPT",
+      prompts: [
+        { action: { ref: LINK_ACCOUNT_ACTION, type: "CONFIRM", nextNode: "verify_account" } },
+        { action: { ref: SEPARATE_ACCOUNT_ACTION, type: "REJECT", nextNode: "linking" } },
+      ],
+    },
+    { id: "verify_account", type: "CALL", flow: { ref: verifyFlowId }, onSuccess: "linking" },
+    { id: "auth_assert", type: "TASK_EXECUTION", executor: { name: "AuthAssertExecutor" }, onSuccess: "end" },
+    { id: "end", type: "END" },
+  ];
+}
+
+/** A registration flow of the linking application's own, so it references no other application's flows. */
+function isolatedRegistrationFlowNodes(): unknown[] {
+  return [
+    { id: "start", type: "START", onSuccess: "user_type_resolver" },
+    {
+      id: "user_type_resolver",
+      type: "TASK_EXECUTION",
+      executor: { name: "UserTypeResolver" },
+      onSuccess: "provisioning",
+    },
+    { id: "provisioning", type: "TASK_EXECUTION", executor: { name: "ProvisioningExecutor" }, onSuccess: "end" },
+    { id: "end", type: "END" },
+  ];
 }

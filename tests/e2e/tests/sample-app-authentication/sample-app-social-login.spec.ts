@@ -22,6 +22,7 @@
  *   mock's base URL
  * - Mock server for the vendor (automatically started)
  * - Vendor authentication flow (automatically created)
+ * - Local user with the vendor identity linked to it (automatically created and linked)
  *
  * Required environment variables:
  * - SAMPLE_APP_URL: URL of the sample app (e.g., https://localhost:3000)
@@ -29,6 +30,7 @@
  * - MOCK_GOOGLE_BASE_URL / MOCK_GITHUB_BASE_URL: Base URL each vendor's mock server listens on;
  *   a vendor's suite is skipped when its variable is not set
  * - ADMIN_USERNAME / ADMIN_PASSWORD: Admin credentials (default: admin/admin)
+ * - SAMPLE_APP_PASSWORD: Linked user password (default: "e2e-test-password")
  */
 
 import { test, expect } from "../../fixtures/sample-app";
@@ -41,6 +43,8 @@ import { Timeouts } from "../../constants/timeouts";
 import { SampleAppClientIds } from "../../constants/sample-apps";
 
 const sampleAppUrl = process.env.SAMPLE_APP_URL;
+// Proves the local user while setup links the vendor identity to it.
+const linkedUserPassword = process.env.SAMPLE_APP_PASSWORD || "e2e-test-password";
 
 // The vendor IDP must redirect back to the gate app's own callback route (not the sample app's
 // URL): the flow's executionId is resumed from sessionStorage on the gate's origin, which a
@@ -67,9 +71,6 @@ const mockGitHubUser = {
   email: null,
 };
 const mockGitHubUserEmail = "e2e-github-user@example.com";
-// GitHub has no `sub` claim; the backend derives it from the numeric account id, as a string
-// (see backend/internal/authn/oauth/utils.go::ProcessSubClaim).
-const mockGitHubUserSub = String(mockGitHubUser.id);
 
 const VENDORS = [
   {
@@ -79,7 +80,7 @@ const VENDORS = [
     defaultPort: 8093,
     mockClientId: "e2e-mock-google-client-id",
     mockClientSecret: "e2e-mock-google-client-secret",
-    linkedUser: { username: "e2e-google-login-user", email: mockGoogleUser.email, sub: mockGoogleUser.sub },
+    linkedUser: { username: "e2e-google-login-user", email: mockGoogleUser.email, password: linkedUserPassword },
     createMock(port: number, clientId: string, clientSecret: string) {
       const mock = new MockGoogleOIDCServer(port, clientId, clientSecret);
       mock.addUser(mockGoogleUser);
@@ -93,7 +94,7 @@ const VENDORS = [
     defaultPort: 8092,
     mockClientId: "e2e-mock-github-client-id",
     mockClientSecret: "e2e-mock-github-client-secret",
-    linkedUser: { username: "e2e-github-login-user", email: mockGitHubUserEmail, sub: mockGitHubUserSub },
+    linkedUser: { username: "e2e-github-login-user", email: mockGitHubUserEmail, password: linkedUserPassword },
     createMock(port: number, clientId: string, clientSecret: string) {
       const mock = new MockGitHubOAuthServer(port, clientId, clientSecret);
       mock.addUser(mockGitHubUser, [{ email: mockGitHubUserEmail, primary: true, verified: true }]);

@@ -190,6 +190,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthnProviderError'
 
+  /link-account:
+    post:
+      summary: Link an account to a user
+      description: >
+        Record that the user named by the entity reference token authenticates as the given subject
+        at the given connection. The call is idempotent, so recording a subject the user already holds
+        returns 200. A provider that does not store links returns 400 with AUP-0005, and
+        the sign-in proceeds without a link. A provider that finds the subject linked to another user
+        returns 400 with AUP-0007.
+      operationId: linkAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkAccountRequest'
+      responses:
+        '200':
+          description: Link recorded, or already recorded
+        '400':
+          description: Invalid request, links not stored, or subject linked to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '401':
+          description: Invalid entity reference token or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -257,6 +295,26 @@ components:
           $ref: '#/components/schemas/AuthnMetadata'
       required:
         - credentials
+
+    LinkAccountRequest:
+      type: object
+      properties:
+        entityReferenceToken:
+          type: object
+          additionalProperties: true
+          description: >
+            The provider's own entity reference token for the user being linked, or
+            {"userID": "<entity id>"} once the user is resolved
+        idpId:
+          type: string
+          description: ID of the connection that asserted the subject
+        sub:
+          type: string
+          description: Subject identifier the connection asserted
+      required:
+        - entityReferenceToken
+        - idpId
+        - sub
 
     AuthnMetadata:
       type: object
@@ -444,7 +502,7 @@ components:
         - AUP-0004: Invalid Token
         - AUP-0005: Not Implemented
         - AUP-0006: Invalid Request
-        - AUP-0007: Ambiguous User
+        - AUP-0007: Ambiguous User, or a subject already linked to another user
         - AUP-0008: Enrollment Failed
       enum:
         - AUP-0001

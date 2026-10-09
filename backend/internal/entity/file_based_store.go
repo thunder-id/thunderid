@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -113,6 +114,47 @@ func (f *entityFileBasedStore) UpdateSystemCredentials(ctx context.Context, enti
 // DeleteEntity is not supported in file-based store.
 func (f *entityFileBasedStore) DeleteEntity(ctx context.Context, id string) error {
 	return errors.New("DeleteEntity is not supported in file-based store")
+}
+
+// LockEntity is not supported in file-based store.
+func (f *entityFileBasedStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	return providers.Entity{}, errors.New("LockEntity is not supported in file-based store")
+}
+
+// ResolveLinkedAccount finds the declarative entity linked to a subject at a connection.
+func (f *entityFileBasedStore) ResolveLinkedAccount(ctx context.Context,
+	idpID, sub string) (*string, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []string
+	for _, resource := range resources {
+		if len(resource.Entity.SystemAttributes) == 0 {
+			continue
+		}
+		var attrs map[string]interface{}
+		if err := json.Unmarshal(resource.Entity.SystemAttributes, &attrs); err != nil {
+			continue
+		}
+		links, ok := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if hasLinkedSubject(links, idpID, sub) {
+			matches = append(matches, resource.Entity.ID)
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	if len(matches) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+
+	return &matches[0], nil
 }
 
 // IdentifyEntity identifies an entity with the given filters by linear search.

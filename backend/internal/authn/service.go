@@ -405,9 +405,11 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
 
+	// This API has no flow to verify an account before linking it, so only a recorded link signs a
+	// federated identity in here. One without a link resolves to nobody and fails.
 	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
 	if svcErr != nil {
-		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
+		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
 
 	user := &providers.Entity{
@@ -613,11 +615,10 @@ func (as *authenticationService) verifyAssertionSubject(ctx context.Context, ass
 func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svcErr *tidcommon.ServiceError,
 	logger *log.Logger) *tidcommon.ServiceError {
 	switch svcErr.Code {
-	case authnprovidermgr.ErrorAuthenticationFailed.Code:
-		return &ErrorFederatedAuthenticationFailed
-	case authnprovidermgr.ErrorUserNotFound.Code:
-		return &ErrorFederatedAuthenticationFailed
-	case authnprovidermgr.ErrorInvalidRequest.Code:
+	// Ambiguity here means more than one user holds a recorded link to the same federated subject.
+	case authnprovidermgr.ErrorAuthenticationFailed.Code, authnprovidermgr.ErrorUserNotFound.Code,
+		authnprovidermgr.ErrorAmbiguousUser.Code, authnprovidermgr.ErrorInvalidRequest.Code,
+		authnprovidermgr.ErrorGetEntityReferenceClientError.Code:
 		return &ErrorFederatedAuthenticationFailed
 	default:
 		logger.Error(ctx, "Error occurred while performing federated authentication",

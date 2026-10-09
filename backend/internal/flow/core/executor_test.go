@@ -439,6 +439,24 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			providers.ExecFailure,
 			true,
 		},
+		{
+			// A federated identity with no local user yet resolves to no reference and no error.
+			"Entity reference not resolved yet - attribute still checked",
+			[]providers.Input{{Identifier: userAttributeUserID, Required: true}},
+			providers.AuthUser{},
+			func(m *managermock.AuthnProviderManagerMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(providers.AuthUser{}, nil, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			nil,
+			false,
+			providers.ExecFailure,
+			true,
+		},
 	}
 
 	for _, tt := range tests {

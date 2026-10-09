@@ -1894,3 +1894,275 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnionMappedPermission
 	result := UnionMappedPermissionTargets([]string{"write"}, []string{"read", "write"}, targets, "rs-1")
 	suite.Equal([]string{"write", "read"}, result)
 }
+
+func linkingOn(attrs ...string) *providers.AccountLinking {
+	return &providers.AccountLinking{Attributes: attrs}
+}
+
+// linkingFilters runs the resolver the way BuildFederatedAuthResult does, on the mapped claims.
+func linkingFilters(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []map[string]interface{} {
+	return BuildAccountLinkingFilters(linking, ApplyAttributeMappings(claims, mappings), mappings)
+}
+
+func (s *IDPUtilsTestSuite) TestGetAccountLinkingLocalAttributes() {
+	mappings := []providers.AttributeMapping{
+		{ExternalAttribute: "email", LocalAttribute: "username"},
+		{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+	}
+	claims := ApplyAttributeMappings(map[string]interface{}{
+		"email": "a@example.com", "phone_number": "+15550001", "userID": "u1",
+	}, mappings)
+
+	s.Nil(GetAccountLinkingLocalAttributes(nil, claims, mappings))
+	s.Equal([]string{"username", "email", "mobileNumber", "phone_number"},
+		GetAccountLinkingLocalAttributes(linkingOn("email", "phone_number", "email"), claims, mappings))
+	s.Empty(GetAccountLinkingLocalAttributes(linkingOn("userID", "nickname"), claims, mappings))
+}
+
+// The seeded Google and OIDC shape: email feeds the required username, and mappings copy, so the
+// email claim still lands in the local email attribute and must be matched there too.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MatchesMappedTargetAndSameNamedAttribute() {
+	filters := linkingFilters(linkingOn("email"),
+		map[string]interface{}{"email": "a@example.com"},
+		[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: "username"}})
+
+	s.Equal([]map[string]interface{}{
+		{"username": "a@example.com"},
+		{"email": "a@example.com"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_ExplicitSameNameMappingIsNotDuplicated() {
+	filters := linkingFilters(linkingOn("email"),
+		map[string]interface{}{"email": "a@example.com"},
+		[]providers.AttributeMapping{
+			{ExternalAttribute: "email", LocalAttribute: "email"},
+			{ExternalAttribute: "email", LocalAttribute: "username"},
+		})
+
+	s.Equal([]map[string]interface{}{
+		{"email": "a@example.com"},
+		{"username": "a@example.com"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnmappedAttributeMatchesItsOwnName() {
+	filters := linkingFilters(linkingOn("email"), map[string]interface{}{"email": "a@example.com"}, nil)
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}}, filters)
+}
+
+// A dotted path is read through nested claims, but a local attribute never carries that name, so only
+// the explicit target can match. Unmapped, the value has nowhere to match and linking is off.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_NestedClaimMatchesOnlyItsMappedTarget() {
+	claims := map[string]interface{}{"profile": map[string]interface{}{"mail": "a@example.com"}}
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}},
+		linkingFilters(linkingOn("profile.mail"), claims,
+			[]providers.AttributeMapping{{ExternalAttribute: "profile.mail", LocalAttribute: "email"}}))
+	s.Nil(linkingFilters(linkingOn("profile.mail"), claims, nil))
+}
+
+// A claim name the entity store cannot query is never searched under its own name.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnqueryableClaimNameMatchesOnlyItsMappedTarget() {
+	claims := map[string]interface{}{"custom:email": "a@example.com"}
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}},
+		linkingFilters(linkingOn("custom:email"), claims,
+			[]providers.AttributeMapping{{ExternalAttribute: "custom:email", LocalAttribute: "email"}}))
+	s.Nil(linkingFilters(linkingOn("custom:email"), claims, nil))
+}
+
+// A mapped claim is not matched against a same-named local attribute another claim feeds, because
+// that claim's value is what gets stored there.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MappedClaimSkipsSameNamedAttributeFedByAnotherClaim() {
+	s.Equal([]map[string]interface{}{{"username": "a@example.com"}},
+		linkingFilters(linkingOn("email"),
+			map[string]interface{}{"email": "a@example.com", "mail": "b@example.com"},
+			[]providers.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "username"},
+				{ExternalAttribute: "mail", LocalAttribute: "email"},
+			}))
+}
+
+// An unmapped linking attribute matches its local attribute on whatever is stored there, which is how
+// a connection links on a local attribute another claim is mapped to.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_UnmappedAttributeMatchesTheValueAnotherClaimFeeds() {
+	s.Equal([]map[string]interface{}{{"costCenter": "CC-1"}},
+		linkingFilters(linkingOn("costCenter"), map[string]interface{}{"cost_code": "CC-1"},
+			[]providers.AttributeMapping{{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}}))
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_CombinesEveryAlternativeOfEachAttribute() {
+	filters := linkingFilters(linkingOn("email", "phone"),
+		map[string]interface{}{"email": "a@example.com", "phone": "123"},
+		[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: "username"}})
+
+	s.Equal([]map[string]interface{}{
+		{"username": "a@example.com", "phone": "123"},
+		{"email": "a@example.com", "phone": "123"},
+	}, filters)
+}
+
+// Two linking attributes landing on one local attribute read the same stored value, so they merge.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_MergesAttributesLandingOnOneLocalAttribute() {
+	filters := linkingFilters(linkingOn("costCenter", "cost_code"),
+		map[string]interface{}{"cost_code": "CC-1"},
+		[]providers.AttributeMapping{{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}})
+
+	s.Equal([]map[string]interface{}{
+		{"costCenter": "CC-1"},
+		{"costCenter": "CC-1", "cost_code": "CC-1"},
+	}, filters)
+}
+
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_LeavesOutAttributesWithoutValues() {
+	filters := linkingFilters(linkingOn("email", "phone"),
+		map[string]interface{}{"email": "a@example.com", "phone": ""}, nil)
+
+	s.Equal([]map[string]interface{}{{"email": "a@example.com"}}, filters)
+	s.Nil(linkingFilters(linkingOn("email"), map[string]interface{}{}, nil))
+	s.Nil(linkingFilters(nil, map[string]interface{}{"email": "a@example.com"}, nil))
+}
+
+// An attribute with a value but nowhere to match on disables linking rather than being dropped, which
+// would widen the match to the attributes that remain.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_AttributeWithNoTargetDisablesLinking() {
+	s.Nil(linkingFilters(linkingOn("email", "custom:tenant"),
+		map[string]interface{}{"email": "a@example.com", "custom:tenant": "acme"}, nil))
+}
+
+// A reserved name would let the identity provider pick the account, so it never reaches a filter.
+func (s *IDPUtilsTestSuite) TestBuildAccountLinkingFilters_NeverMatchesOnReservedNames() {
+	for _, reserved := range []string{"userID", "federatedIdpId", "credentialUpdatedAt", "linkedIds"} {
+		s.Nil(linkingFilters(linkingOn(reserved), map[string]interface{}{reserved: "x"}, nil), reserved)
+		s.Equal([]map[string]interface{}{{"email": "x"}},
+			linkingFilters(linkingOn("email"), map[string]interface{}{"email": "x"},
+				[]providers.AttributeMapping{{ExternalAttribute: "email", LocalAttribute: reserved}}), reserved)
+	}
+	s.Nil(linkingFilters(linkingOn("custom:email"), map[string]interface{}{"custom:email": "x"},
+		[]providers.AttributeMapping{{ExternalAttribute: "custom:email", LocalAttribute: "linkedIds.idp-1"}}))
+}
+
+func (s *IDPUtilsTestSuite) TestValidateAccountLinking() {
+	cases := []struct {
+		name    string
+		profile providers.AttributeConfiguration
+		errKey  string
+	}{
+		{name: "no linking", profile: providers.AttributeConfiguration{}},
+		{
+			name: "mapped attribute",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"}}}},
+			},
+		},
+		{
+			name: "local attribute another claim feeds",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("costCenter"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "cost_code", LocalAttribute: "costCenter"}}}},
+			},
+		},
+		{
+			name:    "empty attribute",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn(" ")},
+			errKey:  "error.idpservice.attribute_configuration_linking_empty_description",
+		},
+		{
+			name:    "reserved attribute",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn("userID")},
+			errKey:  "error.idpservice.attribute_configuration_linking_reserved_description",
+		},
+		{
+			name: "unqueryable name mapped for every user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("custom:email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "custom:email", LocalAttribute: "email"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "custom:email", LocalAttribute: "workEmail"}}},
+				},
+			},
+		},
+		{
+			name:    "unqueryable name with no mappings",
+			profile: providers.AttributeConfiguration{AccountLinking: linkingOn("email.work")},
+			errKey:  "error.idpservice.attribute_configuration_linking_unmatchable_description",
+		},
+		{
+			name: "unqueryable name unmapped for one user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("cost-center"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "cost-center", LocalAttribute: "costCenter"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "email"}}},
+				},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_unmatchable_description",
+		},
+		{
+			name: "mapped onto a reserved attribute",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "linkedIds.x"}}}},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_reserved_description",
+		},
+		{
+			// email and phone match on three local attributes each: 3 x 3 = 9 lookups.
+			name: "lookups within the bound",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email", "phone"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{UserType: "person",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"},
+						{ExternalAttribute: "email", LocalAttribute: "workEmail"},
+						{ExternalAttribute: "phone", LocalAttribute: "mobile"},
+						{ExternalAttribute: "phone", LocalAttribute: "workPhone"}}}},
+			},
+		},
+		{
+			// Adding a third such attribute makes it 27 lookups for staff.
+			name: "lookups past the bound for one user type",
+			profile: providers.AttributeConfiguration{
+				AccountLinking: linkingOn("email", "phone", "employeeId"),
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{
+					{UserType: "person", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"}}},
+					{UserType: "staff", Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "email", LocalAttribute: "username"},
+						{ExternalAttribute: "email", LocalAttribute: "workEmail"},
+						{ExternalAttribute: "phone", LocalAttribute: "mobile"},
+						{ExternalAttribute: "phone", LocalAttribute: "workPhone"},
+						{ExternalAttribute: "employeeId", LocalAttribute: "staffId"},
+						{ExternalAttribute: "employeeId", LocalAttribute: "badgeId"}}},
+				},
+			},
+			errKey: "error.idpservice.attribute_configuration_linking_too_many_lookups_description",
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			svcErr := validateAccountLinking(&tc.profile)
+			if tc.errKey == "" {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+			s.Equal(tc.errKey, svcErr.ErrorDescription.Key)
+		})
+	}
+}

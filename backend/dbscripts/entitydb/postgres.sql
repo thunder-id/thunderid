@@ -80,3 +80,7 @@ CREATE TABLE "ENTITY_IDENTIFIER" (
 
 -- Index for fast identifier lookups (primary use case for authentication)
 CREATE INDEX idx_entity_identifier_lookup ON "ENTITY_IDENTIFIER" (NAME, VALUE);
+
+-- A subject at a connection links to at most one entity per deployment
+CREATE UNIQUE INDEX idx_entity_identifier_linked_id ON "ENTITY_IDENTIFIER" (DEPLOYMENT_ID, NAME, VALUE)
+    WHERE SOURCE = 'system' AND substr(NAME, 1, 10) = 'linkedIds.';

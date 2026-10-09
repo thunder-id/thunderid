@@ -882,6 +882,31 @@ func (suite *AuthenticationServiceTestSuite) mockFederatedAuthnSuccess(idpType p
 	return sessionToken
 }
 
+// A federated identity with no recorded link resolves to nobody. This API cannot verify an account
+// before linking it, so it fails rather than matching on the connection's account-linking attributes.
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationWithoutRecordedLinkFails() {
+	sessionToken := suite.createSessionToken(providers.IDPTypeOAuth)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(creds map[string]interface{}) bool {
+			_, ok := creds[authnprovidercm.CredentialTypeFederated]
+			return ok
+		}), mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{"sub": "sub-1"}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (*providers.EntityReference)(nil), &authnprovidermgr.ErrorUserNotFound).Once()
+
+	result, err := suite.service.FinishIDPAuthentication(
+		context.Background(), providers.IDPTypeOAuth, sessionToken, true, "", testAuthCode)
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "ResolveLinkCandidates", mock.Anything, mock.Anything)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "LinkAccount",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationOAuthSuccess() {
 	sessionToken := suite.mockFederatedAuthnSuccess(providers.IDPTypeOAuth)
 	result, err := suite.service.FinishIDPAuthentication(
@@ -2338,6 +2363,24 @@ func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorInvalidRe
 	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
 }
 
+// The entity-reference fetch reports through this mapper too, so the codes it raises must keep their
+// client classification instead of reaching the default branch.
+func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorEntityReferenceCases() {
+	logger := log.GetLogger()
+
+	err := suite.service.mapFederatedAuthnError(context.Background(),
+		&authnprovidermgr.ErrorUserNotFound, logger)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
+
+	err = suite.service.mapFederatedAuthnError(context.Background(),
+		&authnprovidermgr.ErrorGetEntityReferenceClientError, logger)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
+
+	err = suite.service.mapFederatedAuthnError(context.Background(),
+		&tidcommon.InternalServerError, logger)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 func (suite *AuthenticationServiceTestSuite) TestVerifyOTPServerError() {
 	sessionToken := testSessionTkn
 	otpCode := "123456"
@@ -2506,7 +2549,30 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationGetEntit
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(ErrorInvalidToken.Code, err.Code)
+	// The federated path reports this as a federated failure, not as "Invalid token": the request
+	// carries an authorization code, not a token the caller could have got wrong.
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
+}
+
+// More than one user holding a recorded link to the same subject is a client error, and the caller
+// has to see it as one: everything this mapper does not name collapses into an opaque 500.
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationAmbiguousLinkIsAClientError() {
+	sessionToken := suite.createSessionToken(providers.IDPTypeOAuth)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(creds map[string]interface{}) bool {
+			_, ok := creds["federated"]
+			return ok
+		}), mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, &authnprovidermgr.ErrorAmbiguousUser).Once()
+
+	result, err := suite.service.FinishIDPAuthentication(
+		context.Background(), providers.IDPTypeOAuth, sessionToken, false, "", testAuthCode)
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.ClientErrorType, err.Type)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
 }
 
 func (suite *AuthenticationServiceTestSuite) TestVerifyAndDecodeSessionTokenInvalidAuthData() {
