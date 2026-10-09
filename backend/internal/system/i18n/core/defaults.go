@@ -1061,6 +1061,8 @@ var defaultMessages = map[string]string{
 	"error.notificationtemplateservice.missing_subject_description": "A subject is required for email templates",
 	"error.notificationtemplateservice.not_found": "Template not found",
 	"error.notificationtemplateservice.not_found_description": "The requested notification template does not exist",
+	"error.notificationtemplateservice.read_only": "Template is read-only",
+	"error.notificationtemplateservice.read_only_description": "The template is declared in a file and cannot be modified through the API",
 	"error.notificationtemplateservice.subject_not_allowed": "Subject not allowed",
 	"error.notificationtemplateservice.subject_not_allowed_description": "A subject cannot be set for this channel",
 	"error.notificationtemplateservice.template_in_use": "Template in use",

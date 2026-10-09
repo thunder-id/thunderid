@@ -112,7 +112,7 @@ func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, chann
 		return nil, svcErr
 	}
 
-	dao, svcErr := ts.toValidatedDAO(channel, "", request.DisplayName, request.Description,
+	dao, svcErr := buildValidatedDAO(channel, "", request.DisplayName, request.Description,
 		request.Content, request.Design)
 	if svcErr != nil {
 		return nil, svcErr
@@ -192,7 +192,7 @@ func (ts *notificationTemplateService) ValidateTemplate(ctx context.Context, cha
 	if svcErr := validateHandle(request.Handle); svcErr != nil {
 		return svcErr
 	}
-	_, svcErr := ts.toValidatedDAO(channel, "", request.DisplayName, request.Description,
+	_, svcErr := buildValidatedDAO(channel, "", request.DisplayName, request.Description,
 		request.Content, request.Design)
 	return svcErr
 }
@@ -209,7 +209,7 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 		return nil, &ErrorInvalidTemplateID
 	}
 
-	dao, svcErr := ts.toValidatedDAO(channel, id, request.DisplayName, request.Description,
+	dao, svcErr := buildValidatedDAO(channel, id, request.DisplayName, request.Description,
 		request.Content, request.Design)
 	if svcErr != nil {
 		return nil, svcErr
@@ -231,6 +231,9 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 	if txErr != nil {
 		if notFound {
 			return nil, &ErrorTemplateNotFound
+		}
+		if errors.Is(txErr, errDeclarativeTemplate) {
+			return nil, &ErrorTemplateReadOnly
 		}
 		ts.logger.Error(ctx, "Failed to update notification template", log.String("id", id), log.Error(txErr))
 		return nil, &tidcommon.InternalServerError
@@ -284,6 +287,9 @@ func (ts *notificationTemplateService) DeleteTemplate(
 	if err := ts.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return ts.store.DeleteTemplate(txCtx, channel, id)
 	}); err != nil {
+		if errors.Is(err, errDeclarativeTemplate) {
+			return &ErrorTemplateReadOnly
+		}
 		ts.logger.Error(ctx, "Failed to delete notification template", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
@@ -319,6 +325,10 @@ func (ts *notificationTemplateService) persistUniqueHandle(ctx context.Context, 
 		if handleConflict {
 			return &ErrorTemplateHandleConflict
 		}
+		// The handle is free but it belongs to a file-declared template; such templates are read-only.
+		if errors.Is(txErr, errDeclarativeTemplate) {
+			return &ErrorTemplateReadOnly
+		}
 		// Race backstop: two concurrent creates can both pass the read pre-check; the loser's INSERT
 		// then trips the UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE) constraint. Map that to the documented
 		// conflict instead of a 500.
@@ -331,10 +341,9 @@ func (ts *notificationTemplateService) persistUniqueHandle(ctx context.Context, 
 	return nil
 }
 
-// toValidatedDAO validates the request through the channel handler and builds a templateDAO.
-// displayName and body are required for every channel; per-channel rules and canonicalization are
-// delegated to the channel rules. The handle is validated and set separately by the caller.
-func (ts *notificationTemplateService) toValidatedDAO(channel ChannelType, id, displayName, description string,
+// buildValidatedDAO validates and normalizes a template. Shared by the service and declarative loader;
+// the handle is validated and set separately by the caller.
+func buildValidatedDAO(channel ChannelType, id, displayName, description string,
 	content TemplateContent, design *TemplateDesign) (templateDAO, *tidcommon.ServiceError) {
 	rules, svcErr := rulesFor(channel)
 	if svcErr != nil {

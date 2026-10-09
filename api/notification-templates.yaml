@@ -219,7 +219,19 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          description: 'Forbidden: insufficient permissions, or the template is declared in a file and is read-only (NTM-1022).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "NTM-1022"
+                message:
+                  key: "error.notificationtemplateservice.read_only"
+                  defaultValue: "Template is read-only"
+                description:
+                  key: "error.notificationtemplateservice.read_only_description"
+                  defaultValue: "The template is declared in a file and cannot be modified through the API"
         "404":
           $ref: '#/components/responses/NotFound'
         "500":
@@ -240,7 +252,19 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          description: 'Forbidden: insufficient permissions, or the template is declared in a file and is read-only (NTM-1022).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "NTM-1022"
+                message:
+                  key: "error.notificationtemplateservice.read_only"
+                  defaultValue: "Template is read-only"
+                description:
+                  key: "error.notificationtemplateservice.read_only_description"
+                  defaultValue: "The template is declared in a file and cannot be modified through the API"
         "409":
           description: 'Conflict: the template is referenced by a flow and cannot be deleted.'
           content:

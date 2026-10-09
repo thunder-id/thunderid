@@ -11,14 +11,14 @@ import "github.com/thunder-id/thunderid/internal/system/utils"
 // tokens, body only). Fields that do not apply to a channel are left empty. Persisted as the CONTENT
 // JSON column.
 type TemplateContent struct {
-	Subject string `json:"subject,omitempty"`
-	Body    string `json:"body"`
+	Subject string `json:"subject,omitempty" yaml:"subject,omitempty"`
+	Body    string `json:"body" yaml:"body"`
 }
 
 // TemplateDesign holds a template's design references (email only). Persisted in the DESIGN JSON
 // column of NOTIFICATION_TEMPLATE; nil for channels without a design.
 type TemplateDesign struct {
-	ColorScheme string `json:"colorScheme,omitempty"`
+	ColorScheme string `json:"colorScheme,omitempty" yaml:"colorScheme,omitempty"`
 }
 
 // Template is the full representation of a notification template.

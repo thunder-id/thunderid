@@ -165,6 +165,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusNotFound
 		case ErrorTemplateInUse.Code, ErrorTemplateHandleConflict.Code:
 			statusCode = http.StatusConflict
+		case ErrorTemplateReadOnly.Code:
+			// A file-declared template is read-only; a write is refused rather than a bad request.
+			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}

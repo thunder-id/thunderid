@@ -18,6 +18,10 @@ var (
 	// errHandleConflict is an internal sentinel used to roll back a transaction when a handle already
 	// exists; the caller surfaces ErrorTemplateHandleConflict.
 	errHandleConflict = errors.New("template handle already exists")
+
+	// errDeclarativeTemplate is returned when a write targets a file-declared template; the service
+	// surfaces ErrorTemplateReadOnly.
+	errDeclarativeTemplate = errors.New("a notification template declared in a file cannot be changed through the API")
 )
 
 var (
@@ -302,6 +306,20 @@ var (
 			Key: "error.notificationtemplateservice.invalid_placeholder_description",
 			DefaultValue: "The content contains a malformed or unsupported placeholder; use " +
 				"{{ctx(key)}}, {{t(key)}}, or {{design(token)}}",
+		},
+	}
+
+	// ErrorTemplateReadOnly is returned when a write targets a file-declared template.
+	ErrorTemplateReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.read_only",
+			DefaultValue: "Template is read-only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.read_only_description",
+			DefaultValue: "The template is declared in a file and cannot be modified through the API",
 		},
 	}
 
