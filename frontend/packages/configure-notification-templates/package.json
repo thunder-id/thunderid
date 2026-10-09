@@ -1,16 +1,16 @@
 {
   "private": true,
-  "name": "@thunderid/configure-design",
+  "name": "@thunderid/configure-notification-templates",
   "version": "0.0.0",
-  "description": "Design (theme/layout builder) feature for ⚡️ ThunderID applications",
+  "description": "Notification templates feature for ⚡️ ThunderID applications",
   "keywords": [
     "thunderid",
     "configure",
-    "design",
+    "notification-templates",
     "react",
     "feature"
   ],
-  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-design#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-notification-templates#readme",
   "bugs": {
     "url": "https://github.com/thunder-id/thunderid/issues"
   },
@@ -36,7 +36,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/thunder-id/thunderid",
-    "directory": "frontend/packages/configure-design"
+    "directory": "frontend/packages/configure-notification-templates"
   },
   "scripts": {
     "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",
@@ -51,16 +51,12 @@
     "typecheck": "tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
-    "@emotion/cache": "^11.14.0",
-    "@emotion/react": "^11.14.0",
-    "@monaco-editor/react": "catalog:",
     "@playwright/test": "catalog:",
-    "@tanstack/react-query": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
     "@thunderid/components": "workspace:^",
-    "@thunderid/configure-connections": "workspace:^",
+    "@thunderid/configure-design": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/design": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
@@ -68,27 +64,20 @@
     "@thunderid/i18n": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
-    "@thunderid/react": "catalog:",
     "@thunderid/test-utils": "workspace:^",
     "@thunderid/utils": "workspace:^",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "@vitest/browser-playwright": "catalog:",
     "@vitest/coverage-istanbul": "catalog:",
-    "@wso2/oxygen-ui": "catalog:",
-    "@wso2/oxygen-ui-icons-react": "catalog:",
     "eslint": "catalog:",
     "prettier": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-i18next": "catalog:",
-    "react-router": "catalog:",
     "rimraf": "catalog:",
     "rolldown": "catalog:",
     "tslib": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "publishConfig": {
@@ -96,12 +85,9 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@emotion/cache": "^11.14.0",
-    "@emotion/react": "^11.14.0",
-    "@monaco-editor/react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@thunderid/components": "workspace:^",
-    "@thunderid/configure-connections": "workspace:^",
+    "@thunderid/configure-design": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/design": "workspace:^",
     "@thunderid/hooks": "workspace:^",

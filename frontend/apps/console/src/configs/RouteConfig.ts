@@ -9,6 +9,7 @@ import type {DesignRoutePaths} from '@thunderid/configure-design';
 import type {FlowRoutePaths} from '@thunderid/configure-flows';
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
+import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
@@ -72,6 +73,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   TranslationRoutePaths &
   VerifiableCredentialRoutePaths &
   ImportExportRoutePaths &
+  NotificationTemplateRoutePaths &
   DesignRoutePaths &
   FlowRoutePaths &
   GroupRoutePaths &
@@ -97,6 +99,7 @@ export const ROUTE_SEGMENTS = {
   trustedIssuers: 'trusted-issuers',
   resourceServers: 'resource-servers',
   translations: 'translations',
+  notificationTemplates: 'notification-templates',
   home: 'home',
   applications: 'applications',
   groups: 'groups',
@@ -156,6 +159,12 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.translations}`,
     detail: (language) => `/${ROUTE_SEGMENTS.translations}/${language}`,
     create: () => `/${ROUTE_SEGMENTS.translations}/create`,
+  },
+  notificationTemplates: {
+    list: () => `/${ROUTE_SEGMENTS.notificationTemplates}`,
+    channel: (channel) => `/${ROUTE_SEGMENTS.notificationTemplates}/${channel}`,
+    create: (channel) => `/${ROUTE_SEGMENTS.notificationTemplates}/${channel}/create`,
+    detail: (channel, id) => `/${ROUTE_SEGMENTS.notificationTemplates}/${channel}/${id}`,
   },
   home: {
     list: () => `/${ROUTE_SEGMENTS.home}`,

@@ -27,6 +27,8 @@ import {
   Languages,
   Layers,
   LayoutGrid,
+  Mail,
+  MessageSquare,
   Palette,
   Server,
   Settings,
@@ -294,6 +296,25 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             text: t('navigation:pages.design', 'Design'),
             icon: <Palette />,
             path: RouteConfig.design.list(),
+          },
+          {
+            id: 'notifications',
+            text: t('navigation:pages.notifications', 'Notifications'),
+            icon: <Mail />,
+            children: [
+              {
+                id: 'email-templates',
+                text: t('navigation:pages.emailTemplates', 'Email Templates'),
+                icon: <Mail />,
+                path: RouteConfig.notificationTemplates.channel('email'),
+              },
+              {
+                id: 'sms-templates',
+                text: t('navigation:pages.smsTemplates', 'SMS Templates'),
+                icon: <MessageSquare />,
+                path: RouteConfig.notificationTemplates.channel('sms'),
+              },
+            ],
           },
           {
             id: 'translations',

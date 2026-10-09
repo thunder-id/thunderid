@@ -4,6 +4,7 @@
 import {PageLoader} from '@thunderid/components';
 import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
+import type {NotificationChannel} from '@thunderid/configure-notification-templates';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
@@ -47,6 +48,15 @@ const TranslationsEditPage = lazy(() =>
 );
 const TranslationsListPage = lazy(() =>
   import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsListPage})),
+);
+const NotificationTemplatesListPage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplatesListPage})),
+);
+const NotificationTemplateEditPage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplateEditPage})),
+);
+const NotificationTemplateCreatePage = lazy(() =>
+  import('@thunderid/configure-notification-templates').then((m) => ({default: m.NotificationTemplateCreatePage})),
 );
 const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
 const UserCreatePage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserCreatePage})));
@@ -526,6 +536,28 @@ export default function App(): JSX.Element {
               >
                 <Route index element={<TranslationsListPage />} />
                 <Route path=":language" element={<TranslationsEditPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.notificationTemplates.list()}
+                element={
+                  <ProtectedRoute>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
+                <Route path=":channel" element={<NotificationTemplatesListPage />} />
+                <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
+                element={
+                  <ProtectedRoute>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<NotificationTemplateCreatePage />} />
               </Route>
             </Routes>
           </Suspense>

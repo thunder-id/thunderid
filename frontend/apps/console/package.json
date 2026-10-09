@@ -69,6 +69,7 @@
     "@thunderid/configure-flows": "workspace:^",
     "@thunderid/configure-groups": "workspace:^",
     "@thunderid/configure-import-export": "workspace:^",
+    "@thunderid/configure-notification-templates": "workspace:^",
     "@thunderid/configure-roles": "workspace:^",
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/configure-user-types": "workspace:^",
