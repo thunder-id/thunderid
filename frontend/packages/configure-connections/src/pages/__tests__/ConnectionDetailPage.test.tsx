@@ -82,24 +82,32 @@ const AUTHZEN_PDP_CONNECTION = {
 const AUTHZEN_PDP_BEARER_CONNECTION = {
   ...AUTHZEN_PDP_CONNECTION,
   authentication: {
-    scheme: 'BEARER',
-    bearer: {token: '******'},
+    type: 'bearer',
+    properties: {token: '******'},
   },
 };
 
 const AUTHZEN_PDP_BEARER_WITHOUT_TOKEN = {
   ...AUTHZEN_PDP_CONNECTION,
   authentication: {
-    scheme: 'BEARER',
-    bearer: {token: ''},
+    type: 'bearer',
+    properties: {token: ''},
   },
 };
 
-const AUTHZEN_PDP_API_KEY_WITH_NULL_HEADERS = {
+const AUTHZEN_PDP_API_KEY_WITH_NULL_PROPERTIES = {
   ...AUTHZEN_PDP_CONNECTION,
   authentication: {
-    scheme: 'API_KEY',
-    apiKey: {headers: null},
+    type: 'api_key',
+    properties: null,
+  },
+};
+
+const AUTHZEN_PDP_API_KEYS = {
+  ...AUTHZEN_PDP_CONNECTION,
+  authentication: {
+    type: 'api_key',
+    properties: {'X-First-Key': '******', 'X-Second-Key': '******'},
   },
 };
 
@@ -559,7 +567,7 @@ describe('ConnectionDetailPage', () => {
   it('AuthZEN PDP: handles a stored API key response with null headers', () => {
     mockParams.type = 'authzen-pdp';
     mockParams.id = 'pdp1';
-    mockConn.data = AUTHZEN_PDP_API_KEY_WITH_NULL_HEADERS;
+    mockConn.data = AUTHZEN_PDP_API_KEY_WITH_NULL_PROPERTIES;
 
     render(<ConnectionDetailPage />);
 
@@ -569,6 +577,21 @@ describe('ConnectionDetailPage', () => {
 
     fireEvent.click(screen.getByTestId('connection-tab-authentication'));
     expect(screen.getByText('This field is required.')).toBeInTheDocument();
+  });
+
+  it('AuthZEN PDP: sends the remaining masked header when one is deleted', () => {
+    mockParams.type = 'authzen-pdp';
+    mockParams.id = 'pdp1';
+    mockConn.data = AUTHZEN_PDP_API_KEYS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-authentication'));
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      authentication: {type: 'api_key', properties: {'X-Second-Key': '******'}},
+    });
   });
 
   it('AuthZEN PDP: preserves stored authentication when saving unrelated changes', () => {
@@ -597,7 +620,7 @@ describe('ConnectionDetailPage', () => {
     fireEvent.click(screen.getByTestId('save-bar'));
 
     const payload = updateMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).toMatchObject({authentication: {scheme: 'BEARER', bearer: {token: 'new-token'}}});
+    expect(payload).toMatchObject({authentication: {type: 'bearer', properties: {token: 'new-token'}}});
     expect(payload).not.toHaveProperty('authenticationScheme');
     expect(payload).not.toHaveProperty('bearerToken');
   });
@@ -628,7 +651,7 @@ describe('ConnectionDetailPage', () => {
     fireEvent.click(screen.getByTestId('save-bar'));
 
     expect(updateMock.mock.calls[0][0]).toMatchObject({
-      authentication: {scheme: 'BEARER', bearer: {token: 'new-token'}},
+      authentication: {type: 'bearer', properties: {token: 'new-token'}},
     });
   });
 
@@ -644,6 +667,6 @@ describe('ConnectionDetailPage', () => {
     fireEvent.click(screen.getByTestId('save-bar'));
 
     const payload = updateMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).toMatchObject({authentication: {scheme: 'NONE'}});
+    expect(payload).toMatchObject({authentication: {type: 'none'}});
   });
 });

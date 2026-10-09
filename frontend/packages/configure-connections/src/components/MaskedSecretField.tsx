@@ -28,6 +28,7 @@ interface MaskedSecretFieldProps {
   error?: string;
   hint?: string;
   required?: boolean;
+  showStoredControls?: boolean;
 }
 
 export default function MaskedSecretField({
@@ -41,6 +42,7 @@ export default function MaskedSecretField({
   error = undefined,
   hint = undefined,
   required = false,
+  showStoredControls = true,
 }: MaskedSecretFieldProps): JSX.Element {
   const {t} = useTranslation('connections');
   const [visible, setVisible] = useState(false);
@@ -66,16 +68,18 @@ export default function MaskedSecretField({
               },
             }}
           />
-          <Button
-            variant="outlined"
-            startIcon={<RotateCcw size={16} />}
-            onClick={() => onReplacingChange(true)}
-            data-testid={`${id}-replace`}
-          >
-            {t('form.secret.update')}
-          </Button>
+          {showStoredControls && (
+            <Button
+              variant="outlined"
+              startIcon={<RotateCcw size={16} />}
+              onClick={() => onReplacingChange(true)}
+              data-testid={`${id}-replace`}
+            >
+              {t('form.secret.update')}
+            </Button>
+          )}
         </Box>
-        <FormHelperText>{t('form.secret.keepHelp')}</FormHelperText>
+        {showStoredControls && <FormHelperText>{t('form.secret.keepHelp')}</FormHelperText>}
       </FormControl>
     );
   }

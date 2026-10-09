@@ -54,8 +54,8 @@ func (s *AuthenticationTestSuite) TestAuthenticationConfigNormalizesType() {
 
 // An unrecognized type is kept as given so Validate rejects it instead of it becoming "none".
 func (s *AuthenticationTestSuite) TestAuthenticationConfigPassesUnknownTypeThrough() {
-	cfg := (&Authentication{Type: "bearer"}).Config()
-	s.Equal(Type("bearer"), cfg.Type)
+	cfg := (&Authentication{Type: "digest"}).Config()
+	s.Equal(Type("digest"), cfg.Type)
 
 	err := Validate(cfg, allTypes())
 	s.Require().Error(err)

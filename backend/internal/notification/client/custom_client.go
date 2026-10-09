@@ -6,6 +6,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 )
 
 const (
@@ -24,12 +27,13 @@ const (
 
 // CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
 type CustomClient struct {
-	name        string
-	url         string
-	httpMethod  string
-	httpHeaders map[string]string
-	contentType string
-	httpClient  syshttp.HTTPClientInterface
+	name          string
+	url           string
+	httpMethod    string
+	legacyHeaders map[string]string
+	authenticator httpauth.Authenticator
+	contentType   string
+	httpClient    syshttp.HTTPClientInterface
 }
 
 // newCustomClient creates a new instance of CustomClient.
@@ -40,9 +44,35 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	client.name = sender.Name
 
 	for _, prop := range sender.Properties {
+		if outboundauth.OwnsPropertyKey(prop.GetName()) {
+			continue
+		}
 		value, err := prop.GetValue()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
+		}
+
+		if prop.GetName() == common.CustomPropKeyAPIKeyHeaders {
+			if prop.IsSecret() {
+				var headers []struct{ Name, Value string }
+				if err := json.Unmarshal([]byte(value), &headers); err != nil {
+					return nil, fmt.Errorf("failed to parse stored HTTP headers: %w", err)
+				}
+				client.legacyHeaders = make(map[string]string, len(headers))
+				for _, header := range headers {
+					name, err := httpauth.ValidateAPIKeyHeader(header.Name, header.Value)
+					if err != nil {
+						return nil, err
+					}
+					client.legacyHeaders[name] = header.Value
+				}
+			} else {
+				client.legacyHeaders, err = parseLegacyHTTPHeaders(value)
+				if err != nil {
+					return nil, err
+				}
+			}
+			continue
 		}
 
 		switch prop.GetName() {
@@ -50,19 +80,22 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 			client.url = value
 		case common.CustomPropKeyHTTPMethod:
 			client.httpMethod = strings.ToUpper(value)
-		case common.CustomPropKeyHTTPHeaders:
-			headers, err := client.getHeadersFromString(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
-			}
-			client.httpHeaders = headers
 		case common.CustomPropKeyContentType:
 			client.contentType = strings.ToUpper(value)
 		default:
 			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
 		}
 	}
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	config, err := outboundauth.FromProperties(sender.Properties)
+	if err != nil {
+		return nil, err
+	}
+	authenticator, err := httpauth.New(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure API key headers: %w", err)
+	}
+	client.authenticator = authenticator
+	client.httpClient = syshttp.NewHTTPClientWithoutRedirects(httpClientTimeout, false)
 
 	return client, nil
 }
@@ -119,8 +152,13 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 		return fmt.Errorf("unsupported content type: %s", c.contentType)
 	}
 
-	for key, value := range c.httpHeaders {
-		req.Header.Set(key, value)
+	if c.authenticator != nil {
+		if err := c.authenticator.Authenticate(ctx, req); err != nil {
+			return err
+		}
+	}
+	for name, value := range c.legacyHeaders {
+		req.Header.Set(name, value)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -145,18 +183,19 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	return nil
 }
 
-// getHeadersFromString parses a string of HTTP headers into a map.
-func (c *CustomClient) getHeadersFromString(headersString string) (map[string]string, error) {
+func parseLegacyHTTPHeaders(value string) (map[string]string, error) {
 	headers := make(map[string]string)
-	for _, header := range strings.Split(headersString, ",") {
-		parts := strings.SplitN(header, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			headers[key] = value
-		} else {
-			return nil, fmt.Errorf("invalid HTTP header format: %s", header)
+	for _, segment := range strings.Split(value, ",") {
+		parts := strings.SplitN(segment, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("failed to parse legacy HTTP headers: invalid header format")
 		}
+		name := strings.TrimSpace(parts[0])
+		headerValue := strings.TrimSpace(parts[1])
+		if name == "" || headerValue == "" {
+			return nil, fmt.Errorf("failed to parse legacy HTTP headers: invalid header format")
+		}
+		headers[name] = headerValue
 	}
 	return headers, nil
 }

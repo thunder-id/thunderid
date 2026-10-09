@@ -15,6 +15,7 @@ import (
 
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
@@ -25,6 +26,12 @@ type SMSGatewayTestSuite struct {
 	handler   *handler
 	mockIDP   *idpmock.IDPServiceInterfaceMock
 	mockNotif *notificationmock.NotificationSenderMgtSvcInterfaceMock
+}
+
+const legacyHTTPHeadersProperty = "http_headers"
+
+func apiKeyAuthentication(headers map[string]string) *outboundauth.Authentication {
+	return &outboundauth.Authentication{Type: string(outboundauth.TypeAPIKey), Properties: headers}
 }
 
 func TestSMSGatewaySuite(t *testing.T) {
@@ -39,7 +46,11 @@ func (s *SMSGatewayTestSuite) TestToSenderDTOMapsFields() {
 	dto, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
 		Name: "Prod SMS", Description: "Custom webhook sender",
 		URL: "https://sms.example.com/send", HTTPMethod: "POST",
-		HTTPHeaders: "Authorization: Bearer abc123", ContentType: "JSON",
+		Authentication: apiKeyAuthentication(map[string]string{
+			"X-API-Key": "secret",
+			"X-Tenant":  "tenant-1",
+		}),
+		ContentType: "JSON",
 	})
 	s.Require().NoError(err)
 	s.Equal(ncommon.NotificationSenderTypeMessage, dto.Type)
@@ -50,7 +61,8 @@ func (s *SMSGatewayTestSuite) TestToSenderDTOMapsFields() {
 	s.Require().NoError(err)
 	s.Equal("https://sms.example.com/send", values[ncommon.CustomPropKeyURL])
 	s.Equal("POST", values[ncommon.CustomPropKeyHTTPMethod])
-	s.Equal("Authorization: Bearer abc123", values[ncommon.CustomPropKeyHTTPHeaders])
+	s.Equal(maskedSecretValue, values["authentication_X-Api-Key"])
+	s.Equal(maskedSecretValue, values["authentication_X-Tenant"])
 	s.Equal("JSON", values[ncommon.CustomPropKeyContentType])
 }
 
@@ -64,8 +76,83 @@ func (s *SMSGatewayTestSuite) TestToSenderDTOOmitsEmptyOptionalFields() {
 	s.Require().NoError(err)
 	s.Equal("https://sms.example.com/send", values[ncommon.CustomPropKeyURL])
 	s.NotContains(values, ncommon.CustomPropKeyHTTPMethod)
-	s.NotContains(values, ncommon.CustomPropKeyHTTPHeaders)
+	s.NotContains(values, "authentication_X-Api-Key")
 	s.NotContains(values, ncommon.CustomPropKeyContentType)
+}
+
+func (s *SMSGatewayTestSuite) TestToSenderDTORejectsInvalidAPIKeyHeader() {
+	_, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
+		Name: "Prod SMS", URL: "https://sms.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{"Content-Type": "application/json"}),
+	})
+
+	s.Require().Error(err)
+}
+
+func (s *SMSGatewayTestSuite) TestCreateRejectsMaskedAPIKeyHeaderValue() {
+	_, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
+		Name: "Prod SMS", URL: "https://sms.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{"X-API-Key": maskedSecretValue}),
+	})
+
+	s.Require().Error(err)
+}
+
+func (s *SMSGatewayTestSuite) TestUpdateRetainsMaskedHeaderAndDeletesOmittedHeader() {
+	existing, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
+		Name: "Prod SMS", URL: "https://sms.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{
+			"X-First-Key": "first-secret", "X-Second-Key": "second-secret",
+		}),
+	})
+	s.Require().NoError(err)
+	incoming, err := smsGatewayUpdateToSenderDTO(smsGatewayConnectionRequest{
+		Name: "Prod SMS", URL: "https://sms.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{
+			"X-Second-Key": maskedSecretValue, "X-Third-Key": "third-secret",
+		}),
+	})
+	s.Require().NoError(err)
+
+	merged, err := mergeSMSGatewayAuthentication(incoming.Properties, existing.Properties)
+	s.Require().NoError(err)
+	config, err := outboundauth.FromProperties(merged)
+	s.Require().NoError(err)
+	s.Equal(map[string]string{
+		"X-Second-Key": "second-secret", "X-Third-Key": "third-secret",
+	}, config.Properties)
+}
+
+func (s *SMSGatewayTestSuite) TestUpdateRejectsRetainingHeaderAfterURLChange() {
+	existing, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
+		URL:            "https://sms.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{"X-API-Key": "secret"}),
+	})
+	s.Require().NoError(err)
+	incoming, err := smsGatewayUpdateToSenderDTO(smsGatewayConnectionRequest{
+		URL:            "https://other.example.com/send",
+		Authentication: apiKeyAuthentication(map[string]string{"X-API-Key": maskedSecretValue}),
+	})
+	s.Require().NoError(err)
+	_, err = mergeSMSGatewayAuthentication(incoming.Properties, existing.Properties)
+	s.Require().Error(err)
+}
+
+func (s *SMSGatewayTestSuite) TestFromSenderDTOMasksLegacyHTTPHeaders() {
+	response, err := smsGatewayFromSenderDTO(ncommon.NotificationSenderDTO{
+		ID: "sg-1", Name: "Legacy SMS", Provider: ncommon.NotificationProviderTypeCustom,
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
+			mustProperty(s.T(), legacyHTTPHeadersProperty,
+				"X-API-Key: legacy-secret, X-Tenant: tenant-1", false),
+		},
+	})
+
+	s.Require().NoError(err)
+	s.Equal(map[string]string{
+		"X-Api-Key": maskedSecretValue,
+		"X-Tenant":  maskedSecretValue,
+	}, response.Authentication.Properties)
 }
 
 func (s *SMSGatewayTestSuite) TestCreateReturnsPlaintextNonSecretFields() {
@@ -78,14 +165,20 @@ func (s *SMSGatewayTestSuite) TestCreateReturnsPlaintextNonSecretFields() {
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
 				mustProperty(s.T(), ncommon.CustomPropKeyHTTPMethod, "POST", false),
-				mustProperty(s.T(), ncommon.CustomPropKeyHTTPHeaders, "Authorization: Bearer abc123", false),
+				mustProperty(s.T(), "authentication_type", "api_key", false),
+				mustProperty(s.T(), "authentication_X-Api-Key", "secret", true),
+				mustProperty(s.T(), "authentication_X-Tenant", "tenant-1", true),
 				mustProperty(s.T(), ncommon.CustomPropKeyContentType, "JSON", false),
 			},
 		}, (*tidcommon.ServiceError)(nil))
 
 	body, _ := json.Marshal(smsGatewayConnectionRequest{
 		Name: "Prod SMS", URL: "https://sms.example.com/send", HTTPMethod: "POST",
-		HTTPHeaders: "Authorization: Bearer abc123", ContentType: "JSON",
+		Authentication: apiKeyAuthentication(map[string]string{
+			"X-API-Key": "secret",
+			"X-Tenant":  "tenant-1",
+		}),
+		ContentType: "JSON",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/connections/sms-gateway", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
@@ -98,7 +191,10 @@ func (s *SMSGatewayTestSuite) TestCreateReturnsPlaintextNonSecretFields() {
 	s.Equal("sms-gateway", resp.Type)
 	s.Equal("https://sms.example.com/send", resp.URL)
 	s.Equal("POST", resp.HTTPMethod)
-	s.Equal("Authorization: Bearer abc123", resp.HTTPHeaders)
+	s.Equal(map[string]string{
+		"X-Api-Key": maskedSecretValue,
+		"X-Tenant":  maskedSecretValue,
+	}, resp.Authentication.Properties)
 	s.Equal("JSON", resp.ContentType)
 }
 

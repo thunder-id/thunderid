@@ -86,11 +86,11 @@ func (s *PropertiesTestSuite) TestToPropertiesSkipsBlankAndDropsUndeclaredFields
 }
 
 func (s *PropertiesTestSuite) TestToPropertiesRejectsUnknownType() {
-	_, err := ToProperties(Config{Type: Type("bearer")})
+	_, err := ToProperties(Config{Type: Type("digest")})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "unsupported authentication type")
 	s.Require().ErrorIs(err, errUnsupportedType)
-	s.Contains(err.Error(), "bearer")
+	s.Contains(err.Error(), "digest")
 }
 
 func (s *PropertiesTestSuite) TestRoundTripThroughProperties() {
@@ -120,8 +120,8 @@ func (s *PropertiesTestSuite) TestFromPropertiesIgnoresForeignKeys() {
 }
 
 func (s *PropertiesTestSuite) TestFromValuesSurfacesUnknownStoredType() {
-	cfg := FromValues(map[string]string{propertyKeyType: "bearer"})
-	s.Equal(Type("bearer"), cfg.Type)
+	cfg := FromValues(map[string]string{propertyKeyType: "digest"})
+	s.Equal(Type("digest"), cfg.Type)
 
 	// Surfacing it verbatim lets Validate reject it descriptively instead of silently
 	// downgrading a sender to unauthenticated.

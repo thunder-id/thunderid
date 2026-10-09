@@ -92,8 +92,7 @@ func (s *MetaTestSuite) TestBasicMethodDescribesItsFieldsInRenderOrder() {
 // A vendor whose credentials are a fixed contract has no choice to offer, so it advertises no
 // methods and the console renders no authentication section for it.
 func (s *MetaTestSuite) TestVendorsWithoutConfigurableAuthenticationAdvertiseNone() {
-	for _, vendor := range []string{"twilio", "vonage", "google", "oidc", smsGatewayVendorName,
-		authZENPDPVendorName} {
+	for _, vendor := range []string{"twilio", "vonage", "google", "oidc"} {
 		s.Run(vendor, func() {
 			resp := s.describe(vendor)
 			s.Empty(resp.Authentication.Methods)
@@ -123,7 +122,10 @@ func (s *MetaTestSuite) TestNoVendorDescribesEveryVendor() {
 // reads the same set the validator does.
 func (s *MetaTestSuite) TestAdvertisedMethodsMatchTheValidatedSet() {
 	cases := map[string][]outboundauth.Type{
-		emailSMTPVendorName: smtpauth.SupportedTypes(),
+		emailSMTPVendorName:  smtpauth.SupportedTypes(),
+		smsGatewayVendorName: {outboundauth.TypeNone, outboundauth.TypeAPIKey},
+		authZENPDPVendorName: {outboundauth.TypeNone, outboundauth.TypeBearer, outboundauth.TypeBasic,
+			outboundauth.TypeAPIKey},
 	}
 
 	for vendor, supported := range cases {

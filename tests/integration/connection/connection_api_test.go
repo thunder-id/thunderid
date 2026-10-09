@@ -156,10 +156,11 @@ type vonageConnectionRequest struct {
 }
 
 type smsGatewayConnectionRequest struct {
-	Name        string `json:"name"`
-	URL         string `json:"url"`
-	HTTPMethod  string `json:"httpMethod,omitempty"`
-	HTTPHeaders string `json:"httpHeaders,omitempty"`
+	Name           string                  `json:"name"`
+	URL            string                  `json:"url"`
+	HTTPMethod     string                  `json:"httpMethod,omitempty"`
+	HTTPHeaders    string                  `json:"httpHeaders,omitempty"`
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
 }
 
 type smtpConnectionRequest struct {
@@ -434,12 +435,18 @@ func (s *ConnectionAPITestSuite) TestVonageCreateAndGet() {
 func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
 		Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+			"X-First-Key": "first-secret", "X-Second-Key": "second-secret",
+		}},
 	})
 	defer s.deleteConnection("sms-gateway", created.ID)
 
 	s.Equal("sms-gateway", created.Type)
-	// SMS gateway fields are non-secret and round-trip in plaintext.
 	s.Equal("https://sms.example.com/send", created.URL)
+	s.Require().NotNil(created.Authentication)
+	s.Equal(map[string]string{
+		"X-First-Key": maskedSecretValue, "X-Second-Key": maskedSecretValue,
+	}, created.Authentication.Properties)
 
 	res, err := doRequest(http.MethodGet, "/connections/sms-gateway/"+created.ID, nil)
 	s.Require().NoError(err)
@@ -447,6 +454,37 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	var fetched connectionResponse
 	s.Require().NoError(res.decode(&fetched))
 	s.Equal("https://sms.example.com/send", fetched.URL)
+	s.Equal(created.Authentication.Properties, fetched.Authentication.Properties)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			Authentication: &outboundAuthentication{Type: "api_key", Properties: map[string]string{
+				"X-Second-Key": maskedSecretValue, "X-Third-Key": "third-secret",
+			}},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+	var updated connectionResponse
+	s.Require().NoError(updateRes.decode(&updated))
+	s.Require().NotNil(updated.Authentication)
+	s.Equal(map[string]string{
+		"X-Second-Key": maskedSecretValue, "X-Third-Key": maskedSecretValue,
+	}, updated.Authentication.Properties)
+
+	deleteHeadersRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		map[string]interface{}{
+			"name":           "Test SMS Gateway",
+			"url":            "https://sms.example.com/send",
+			"httpMethod":     "POST",
+			"authentication": outboundAuthentication{Type: "none"},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, deleteHeadersRes.status, string(deleteHeadersRes.body))
+	var withoutHeaders connectionResponse
+	s.Require().NoError(deleteHeadersRes.decode(&withoutHeaders))
+	s.Require().NotNil(withoutHeaders.Authentication)
+	s.Equal("none", withoutHeaders.Authentication.Type)
 }
 
 func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTripWithSecretMasking() {

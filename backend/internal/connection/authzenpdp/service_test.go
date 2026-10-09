@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -234,6 +235,45 @@ func TestServiceRejectsInvalidConnectionBeforePersistence(t *testing.T) {
 	require.NotNil(t, createErr)
 	require.NotNil(t, updateErr)
 	require.Zero(t, store.createCalls)
+	require.Zero(t, store.updateCalls)
+}
+
+func TestServiceRejectsMaskedAPIKeyHeaderBeforePersistence(t *testing.T) {
+	store := &serviceStoreStub{}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+	request := ConnectionRequest{
+		Name:     "AuthZEN PDP",
+		Endpoint: "https://pdp.example.com/evaluation",
+		Authentication: &outboundauth.Authentication{
+			Type:       string(outboundauth.TypeAPIKey),
+			Properties: map[string]string{"X-API-Key": "******"},
+		},
+	}
+
+	_, createErr := service.CreateAuthZENPDPConnection(context.Background(), request)
+	_, updateErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", request)
+
+	require.Equal(t, ErrorInvalidAuthentication.Code, createErr.Code)
+	require.Equal(t, ErrorInvalidAuthentication.Code, updateErr.Code)
+	require.Zero(t, store.createCalls)
+	require.Zero(t, store.updateCalls)
+}
+
+func TestServiceUpdateRejectsRemoteHTTPForStoredAuthentication(t *testing.T) {
+	store := &serviceStoreStub{connection: AuthZENPDPConnection{
+		ID:                   "pdp-1",
+		Name:                 "AuthZEN PDP",
+		Endpoint:             "https://pdp.example.com/evaluation",
+		AuthenticationScheme: "BEARER",
+	}}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+
+	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+		Name:     "AuthZEN PDP",
+		Endpoint: "http://pdp.example.com/evaluation",
+	})
+
+	require.NotNil(t, svcErr)
 	require.Zero(t, store.updateCalls)
 }
 

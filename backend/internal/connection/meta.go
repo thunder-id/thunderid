@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -44,6 +45,9 @@ func authTypesForVendor(vendor string) ([]outboundauth.Type, bool) {
 	}
 	for _, candidate := range smsBackedVendors {
 		if candidate.name == vendor {
+			if vendor == smsGatewayVendorName {
+				return []outboundauth.Type{outboundauth.TypeNone, outboundauth.TypeAPIKey}, true
+			}
 			return nil, true
 		}
 	}
@@ -51,7 +55,7 @@ func authTypesForVendor(vendor string) ([]outboundauth.Type, bool) {
 		return nil, true
 	}
 	if vendor == authZENPDPVendorName {
-		return nil, true
+		return httpauth.SupportedTypes(), true
 	}
 	return nil, false
 }

@@ -244,7 +244,10 @@ func (ts *DispatchTestSuite) TestDispatchCustomHeaders() {
 	senderID := ts.createSender("Dispatch Custom Headers Sender", map[string]interface{}{
 		"httpMethod":  "POST",
 		"contentType": "JSON",
-		"httpHeaders": "X-Dispatch-Test: integration",
+		"authentication": map[string]interface{}{
+			"type":       "api_key",
+			"properties": map[string]string{"X-Dispatch-Test": "integration"},
+		},
 	})
 
 	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")

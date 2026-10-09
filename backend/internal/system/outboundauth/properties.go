@@ -75,6 +75,15 @@ func ToProperties(cfg Config) ([]cmodels.Property, error) {
 		}
 		props = append(props, *prop)
 	}
+	if method.AdditionalProperties != nil {
+		for name, value := range cfg.Properties {
+			prop, err := cmodels.NewProperty(propertyKey(name), value, method.AdditionalProperties.Credential)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build property %s: %w", propertyKey(name), err)
+			}
+			props = append(props, *prop)
+		}
+	}
 
 	return props, nil
 }
@@ -120,6 +129,14 @@ func FromValues(values map[string]string) Config {
 	for _, field := range method.Fields {
 		if value, exists := values[propertyKey(field.Key)]; exists {
 			cfg.Properties[field.Key] = value
+		}
+	}
+	if method.AdditionalProperties != nil {
+		for name, value := range values {
+			if name == propertyKeyType || !OwnsPropertyKey(name) {
+				continue
+			}
+			cfg.Properties[strings.TrimPrefix(name, propertyKeyPrefix)] = value
 		}
 	}
 

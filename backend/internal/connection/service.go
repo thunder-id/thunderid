@@ -13,7 +13,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -286,16 +288,33 @@ func (s *service) updateSender(ctx context.Context, senderType ncommon.Notificat
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties,
+	storedProperties := existing.Properties
+	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom {
+		var err error
+		dto.Properties, err = mergeSMSGatewayAuthentication(dto.Properties, existing.Properties)
+		if err != nil {
+			return nil, &notification.ErrorInvalidRequestFormat
+		}
+		storedProperties = make([]cmodels.Property, 0, len(existing.Properties))
+		for _, property := range existing.Properties {
+			if !outboundauth.OwnsPropertyKey(property.GetName()) &&
+				property.GetName() != ncommon.CustomPropKeyAPIKeyHeaders {
+				storedProperties = append(storedProperties, property)
+			}
+		}
+	}
+	dto.Properties = mergeStoredSecrets(dto.Properties, storedProperties,
 		senderCredentialTargetKeys(senderType, provider)...)
 	return s.notificationService.UpdateSender(ctx, id, dto)
 }
 
 // senderCredentialTargetKeys returns the transport properties that identify where a sender's
-// outbound authentication credential is presented. Only email vendors carry outbound
-// authentication today; every other sender reports none.
+// outbound authentication credential is presented.
 func senderCredentialTargetKeys(senderType ncommon.NotificationSenderType,
 	provider ncommon.NotificationProviderType) []string {
+	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom {
+		return []string{ncommon.CustomPropKeyURL}
+	}
 	if senderType != ncommon.NotificationSenderTypeEmail {
 		return nil
 	}

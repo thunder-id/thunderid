@@ -99,6 +99,11 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 				Value:    "JSON",
 				IsSecret: false,
 			},
+			{
+				Name:     "http_headers",
+				Value:    `[{"name":"X-SMS-OTP-Test","value":"integration"}]`,
+				IsSecret: true,
+			},
 		},
 	}
 
@@ -190,6 +195,8 @@ func (suite *SMSOTPAuthTestSuite) TestSendOTPSuccess() {
 	lastMessage := suite.mockServer.GetLastMessage()
 	suite.Require().NotNil(lastMessage, "OTP message should be sent to mock server")
 	suite.NotEmpty(lastMessage.OTP, "OTP should be extractable from message")
+	suite.Equal("integration", lastMessage.Headers[http.CanonicalHeaderKey("X-SMS-OTP-Test")],
+		"The configured header should be present on the outbound request, got %v", lastMessage.Headers)
 }
 
 func (suite *SMSOTPAuthTestSuite) TestSendOTPInvalidSender() {
@@ -695,7 +702,15 @@ func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSe
 		case "http_method":
 			body["httpMethod"] = prop.Value
 		case "http_headers":
-			body["httpHeaders"] = prop.Value
+			var headers []map[string]string
+			if err := json.Unmarshal([]byte(prop.Value), &headers); err != nil {
+				return "", fmt.Errorf("failed to decode API key headers: %w", err)
+			}
+			properties := make(map[string]string, len(headers))
+			for _, header := range headers {
+				properties[header["name"]] = header["value"]
+			}
+			body["authentication"] = map[string]interface{}{"type": "api_key", "properties": properties}
 		case "content_type":
 			body["contentType"] = prop.Value
 		}

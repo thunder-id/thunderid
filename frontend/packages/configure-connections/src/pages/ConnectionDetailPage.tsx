@@ -105,7 +105,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const [editedValues, setEditedValues] = useState<ConnectionFormValues>({});
   const [editedSubjectMapping, setEditedSubjectMapping] = useState<Partial<SubjectMappingValues>>({});
   const [secretReplacing, setSecretReplacing] = useState(false);
-  const [headersReplacing, setHeadersReplacing] = useState(false);
   const [editedAttr, setEditedAttr] = useState<AttributeConfiguration | undefined | null>(null);
   const [attrValid, setAttrValid] = useState(true);
   const [attrsKey, setAttrsKey] = useState(0);
@@ -161,7 +160,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     setEditedValues({});
     setEditedSubjectMapping({});
     setSecretReplacing(false);
-    setHeadersReplacing(false);
     setEditedAttr(null);
     setAttrValid(true);
     setAttrsKey((k) => k + 1);
@@ -174,7 +172,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     setGeneralError(null);
   };
 
-  const formDirty: boolean = JSON.stringify(values) !== JSON.stringify(baseline) || secretReplacing || headersReplacing;
+  const formDirty: boolean = JSON.stringify(values) !== JSON.stringify(baseline) || secretReplacing;
   const attrDirty: boolean = editedAttr !== null && canonicalAttr(editedAttr) !== canonicalAttr(baselineAttr);
   const subjectMappingValues: SubjectMappingValues = {...baselineSubjectMapping, ...editedSubjectMapping};
   const subjectMappingDirty: boolean =
@@ -200,18 +198,19 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     !directMappingsValid;
   const selectedAuthenticationScheme =
     (values['authenticationScheme'] as AuthenticationMethod | undefined) ?? AuthenticationMethods.NONE;
-  const persistedAuthenticationScheme = data?.authentication?.scheme ?? AuthenticationMethods.NONE;
+  const persistedAuthenticationScheme = data?.authentication?.type?.toUpperCase() ?? AuthenticationMethods.NONE;
   const hasStoredCredentialForSelectedScheme =
     selectedAuthenticationScheme === persistedAuthenticationScheme &&
     (selectedAuthenticationScheme === AuthenticationMethods.BEARER
-      ? Boolean(data?.authentication?.bearer?.token)
+      ? Boolean(data?.authentication?.properties?.['token'])
       : selectedAuthenticationScheme === AuthenticationMethods.BASIC
-        ? Boolean(data?.authentication?.basic?.username) && Boolean(data?.authentication?.basic?.password)
+        ? Boolean(data?.authentication?.properties?.['username']) &&
+          Boolean(data?.authentication?.properties?.['password'])
         : false);
   const hasStoredHTTPHeaders =
     selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
     selectedAuthenticationScheme === persistedAuthenticationScheme &&
-    Boolean(data?.authentication?.apiKey?.headers?.length);
+    Boolean(Object.keys(data?.authentication?.properties ?? {}).length);
   const requiredCredentialError = t('validation.required', 'This field is required.');
   const authenticationErrors = {
     bearerToken:
@@ -234,7 +233,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
         : undefined,
     httpHeaders:
       selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-      (headersReplacing || !hasStoredHTTPHeaders) &&
+      !hasStoredHTTPHeaders &&
       (values['httpHeaders'] ?? '').trim() === ''
         ? requiredCredentialError
         : undefined,
@@ -311,7 +310,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
         selectedAuthenticationScheme === AuthenticationMethods.BASIC) &&
         (secretReplacing || hasEnteredAuthenticationCredential)) ||
       (selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-        (headersReplacing || hasEnteredAuthenticationCredential));
+        values['httpHeaders'] !== baseline['httpHeaders']);
     const requestFields = supportsAuthentication
       ? fields.filter((field) => !AUTHENTICATION_METHOD_FIELD_NAMES.has(field.name))
       : fields;
@@ -522,7 +521,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   basicPassword={values['basicPassword'] ?? ''}
                   httpHeaders={values['httpHeaders'] ?? ''}
                   hasStoredHTTPHeaders={hasStoredHTTPHeaders}
-                  headersReplacing={headersReplacing}
                   hasStoredSecret={hasStoredCredentialForSelectedScheme}
                   replacing={secretReplacing}
                   errors={authenticationErrors}
@@ -530,7 +528,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     clearSaveError();
                     if (name === 'authenticationScheme') {
                       setSecretReplacing(false);
-                      setHeadersReplacing(false);
                       setEditedValues((prev) => ({
                         ...prev,
                         authenticationScheme: value,
@@ -543,7 +540,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     }
                     setEditedValues((prev) => ({...prev, [name]: value}));
                   }}
-                  onHeadersReplacingChange={setHeadersReplacing}
                   onReplacingChange={setSecretReplacing}
                 />
               </SettingsCard>

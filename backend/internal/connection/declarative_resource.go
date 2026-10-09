@@ -159,7 +159,10 @@ func (e *connectionExporter) GetResourceByID(ctx context.Context, id string) (
 			return nil, "", svcErr
 		}
 		if pdpConnection != nil {
-			model := connectionModelFromAuthZENPDP(*pdpConnection)
+			model, err := connectionModelFromAuthZENPDP(*pdpConnection)
+			if err != nil {
+				return nil, "", &tidcommon.InternalServerError
+			}
 			return &model, model.Name, nil
 		}
 	}
@@ -212,6 +215,8 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{SecretVariables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{SecretVariables: []string{"APISecret"}}
+	case authZENPDPVendorName, smsGatewayVendorName:
+		return authenticationResourceRules(model.Authentication)
 	case emailSMTPVendorName:
 		return authenticationResourceRules(model.Authentication)
 	default:
@@ -245,6 +250,13 @@ func authenticationResourceRules(
 		// left out rather than exported as a blank variable.
 		if field.Credential && auth.Properties[field.Key] != "" {
 			variables = append(variables, "Authentication.Properties."+field.Key)
+		}
+	}
+	if method.AdditionalProperties != nil && method.AdditionalProperties.Credential {
+		for name, value := range auth.Properties {
+			if value != "" {
+				variables = append(variables, "Authentication.Properties."+name)
+			}
 		}
 	}
 	if len(variables) == 0 {
@@ -340,7 +352,17 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 	case ncommon.NotificationProviderTypeCustom:
 		model.URL = values[ncommon.CustomPropKeyURL]
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
-		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
+		auth := outboundauth.AuthenticationFromValues(values)
+		if auth.Type == string(outboundauth.TypeNone) && values[ncommon.CustomPropKeyAPIKeyHeaders] != "" {
+			legacyHeaders, err := legacySMSGatewayHeaderValues(dto.Properties)
+			if err != nil {
+				return connectionExportModel{}, err
+			}
+			if len(legacyHeaders) > 0 {
+				auth = outboundauth.Authentication{Type: string(outboundauth.TypeAPIKey), Properties: legacyHeaders}
+			}
+		}
+		model.Authentication = &auth
 		model.ContentType = values[ncommon.CustomPropKeyContentType]
 	case ncommon.NotificationProviderTypeSMTP:
 		model.Host = values[ncommon.SMTPPropKeyHost]
@@ -355,18 +377,26 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 }
 
 // connectionModelFromAuthZENPDP builds the unified export model from an AuthZEN PDP connection.
-func connectionModelFromAuthZENPDP(connection authzenpdp.AuthZENPDPConnection) connectionExportModel {
+func connectionModelFromAuthZENPDP(connection authzenpdp.AuthZENPDPConnection) (connectionExportModel, error) {
+	authenticationConfig, err := connection.OutboundAuthenticationConfig()
+	if err != nil {
+		return connectionExportModel{}, err
+	}
+	authentication := &outboundauth.Authentication{
+		Type: string(authenticationConfig.Type), Properties: authenticationConfig.Properties,
+	}
 	return connectionExportModel{
 		ID:                       connection.ID,
-		Type:                     "authzen-pdp",
+		Type:                     authZENPDPVendorName,
 		Name:                     connection.Name,
 		Description:              connection.Description,
 		AuthZENPDPEndpoint:       connection.Endpoint,
 		AuthZENPDPBatchEndpoint:  connection.BatchEndpoint,
 		AuthZENPDPTimeoutMS:      connection.TimeoutMS,
 		AuthZENPDPRetryCount:     &connection.RetryCount,
+		Authentication:           authentication,
 		SubjectAttributeMappings: connection.SubjectAttributeMappings,
-	}
+	}, nil
 }
 
 // connectionModelToDTO converts a parsed connection document into the underlying
@@ -448,7 +478,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 	case smsGatewayVendorName:
 		dto, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
 			Name: model.Name, Description: model.Description, URL: model.URL,
-			HTTPMethod: model.HTTPMethod, HTTPHeaders: model.HTTPHeaders, ContentType: model.ContentType,
+			HTTPMethod: model.HTTPMethod, Authentication: model.Authentication, ContentType: model.ContentType,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -472,7 +502,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 }
 
 // connectionModelToAuthZENPDP converts the unified connection export model into an AuthZEN PDP connection.
-func connectionModelToAuthZENPDP(model connectionExportModel) *authzenpdp.AuthZENPDPConnection {
+func connectionModelToAuthZENPDP(model connectionExportModel) (*authzenpdp.AuthZENPDPConnection, error) {
 	connection := authzenpdp.AuthZENPDPConnection{
 		ID:                       model.ID,
 		Name:                     model.Name,
@@ -486,7 +516,10 @@ func connectionModelToAuthZENPDP(model connectionExportModel) *authzenpdp.AuthZE
 	if model.AuthZENPDPRetryCount != nil {
 		connection.RetryCount = *model.AuthZENPDPRetryCount
 	}
-	return &connection
+	if err := connection.SetAuthentication(model.Authentication); err != nil {
+		return nil, err
+	}
+	return &connection, nil
 }
 
 // ParseConnectionFromNode decodes a yaml.Node into the underlying identity-provider or
@@ -506,10 +539,10 @@ func ParseAuthZENPDPConnectionFromNode(node *yaml.Node) (*authzenpdp.AuthZENPDPC
 	if err := node.Decode(&model); err != nil {
 		return nil, fmt.Errorf("failed to parse connection document: %w", err)
 	}
-	if model.Type != "authzen-pdp" {
+	if model.Type != authZENPDPVendorName {
 		return nil, nil
 	}
-	return connectionModelToAuthZENPDP(model), nil
+	return connectionModelToAuthZENPDP(model)
 }
 
 // parseToConnectionDTOWrapper wraps connectionModelToDTO to match ResourceConfig.Parser,
@@ -519,8 +552,8 @@ func parseToConnectionDTOWrapper(data []byte) (interface{}, error) {
 	if err := yaml.Unmarshal(data, &model); err != nil {
 		return nil, err
 	}
-	if model.Type == "authzen-pdp" {
-		return connectionModelToAuthZENPDP(model), nil
+	if model.Type == authZENPDPVendorName {
+		return connectionModelToAuthZENPDP(model)
 	}
 	idpDTO, senderDTO, err := connectionModelToDTO(model)
 	if err != nil {

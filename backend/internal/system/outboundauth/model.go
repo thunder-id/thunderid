@@ -18,8 +18,12 @@ type Type string
 const (
 	// TypeNone sends no credentials.
 	TypeNone Type = "none"
-	// TypeBasic sends a username and a password, presented as SASL PLAIN over SMTP.
+	// TypeBasic sends a username and a password.
 	TypeBasic Type = "basic"
+	// TypeBearer sends a bearer token over HTTP.
+	TypeBearer Type = "bearer"
+	// TypeAPIKey sends configured headers over HTTP.
+	TypeAPIKey Type = "api_key"
 )
 
 // FieldType is the value type of a credential field.
@@ -35,6 +39,8 @@ const (
 	FieldBasicUsername = "username"
 	// FieldBasicPassword is the basic method's password field.
 	FieldBasicPassword = "password"
+	// FieldBearerToken is the bearer token property.
+	FieldBearerToken = "token"
 )
 
 // Field describes one credential field of an authentication method.
@@ -61,6 +67,8 @@ type Method struct {
 	DisplayName string `json:"displayName"`
 	// Fields are the method's credential fields, in display order. Empty for TypeNone.
 	Fields []Field `json:"fields"`
+	// AdditionalProperties describes dynamic credential keys such as HTTP header names.
+	AdditionalProperties *Field `json:"additionalProperties,omitempty"`
 }
 
 // Config is a resolved outbound authentication configuration: a method plus its field values

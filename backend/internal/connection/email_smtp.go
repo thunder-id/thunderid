@@ -5,11 +5,13 @@ package connection
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
 )
 
 // emailSMTPConnectionRequest is the create/update payload for an SMTP email connection. Port and TLS
@@ -71,7 +73,8 @@ func emailSMTPToSenderDTO(req emailSMTPConnectionRequest) (*ncommon.Notification
 		return nil, err
 	}
 	authConfig := req.Authentication.Config()
-	if _, ok := outboundauth.ParseType(string(authConfig.Type)); !ok {
+	if _, ok := outboundauth.ParseType(string(authConfig.Type)); !ok ||
+		!slices.Contains(smtpauth.SupportedTypes(), authConfig.Type) {
 		return nil, errUnsupportedAuthenticationType
 	}
 	authProps, err := outboundauth.ToProperties(authConfig)

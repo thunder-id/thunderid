@@ -71,12 +71,12 @@ func (s *RegistryTestSuite) TestGetMethod() {
 	s.False(method.Fields[0].Credential)
 	s.True(method.Fields[1].Credential)
 
-	_, ok = GetMethod(Type("bearer"))
+	_, ok = GetMethod(Type("digest"))
 	s.False(ok)
 }
 
 func (s *RegistryTestSuite) TestGetMethodsPreservesCallerOrderAndSkipsUnknown() {
-	result := GetMethods([]Type{TypeBasic, Type("bearer"), TypeNone})
+	result := GetMethods([]Type{TypeBasic, Type("digest"), TypeNone})
 	s.Require().Len(result, 2)
 	s.Equal(TypeBasic, result[0].Type)
 	s.Equal(TypeNone, result[1].Type)

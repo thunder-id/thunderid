@@ -322,8 +322,19 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
-  httpHeaders?: string;
+  /** Optional authentication applied to every request. SMS gateways support API-key headers only. */
+  authentication?: OutboundAuthentication;
+}
+
+/** One API-key HTTP header. Values are write-only and returned masked. */
+export interface APIKeyHeader {
+  name: string;
+  value: string;
+}
+
+export interface OutboundAuthentication {
+  type: 'none' | 'bearer' | 'basic' | 'api_key';
+  properties?: Record<string, string>;
 }
 
 export interface AuthZENPDPConnectionRequest {
@@ -337,21 +348,7 @@ export interface AuthZENPDPConnectionRequest {
   subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
 }
 
-export interface APIKeyHeader {
-  name: string;
-  value: string;
-}
-
-export interface OutboundAuthentication {
-  scheme: 'NONE' | 'BEARER' | 'BASIC' | 'API_KEY';
-  bearer?: {token: string};
-  basic?: {username: string; password: string};
-  apiKey?: {headers: APIKeyHeader[]};
-}
-
-export interface OutboundAuthenticationResponse extends Omit<OutboundAuthentication, 'apiKey'> {
-  apiKey?: {headers: APIKeyHeader[] | null};
-}
+export type OutboundAuthenticationResponse = OutboundAuthentication;
 
 export interface AuthZENPDPSubjectAttributeMapping {
   entityType: string;
@@ -380,9 +377,10 @@ export type ConnectionRequest =
  * Vendor response — secrets are never returned. A superset carrying every vendor's
  * fields (IdP + SMS); the shared form mapping reads only the fields relevant to each type.
  */
-export interface ConnectionResponse extends OIDCConnectionRequest {
+export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   id: string;
   type: ConnectionType;
+  name: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;

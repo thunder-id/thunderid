@@ -31,7 +31,19 @@ func Validate(cfg Config, supported []Type) error {
 
 	for name := range cfg.Properties {
 		if !slices.ContainsFunc(method.Fields, func(field Field) bool { return field.Key == name }) {
-			return fmt.Errorf("unknown authentication property for type %s: %s", authType, name)
+			if method.AdditionalProperties == nil {
+				return fmt.Errorf("unknown authentication property for type %s: %s", authType, name)
+			}
+		}
+	}
+	if method.AdditionalProperties != nil && method.AdditionalProperties.Required && len(cfg.Properties) == 0 {
+		return fmt.Errorf("at least one authentication property is required for type %s", authType)
+	}
+	if method.AdditionalProperties != nil {
+		for name, value := range cfg.Properties {
+			if strings.TrimSpace(name) == "" || strings.TrimSpace(value) == "" {
+				return fmt.Errorf("authentication property name and value are required for type %s", authType)
+			}
 		}
 	}
 

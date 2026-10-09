@@ -24,7 +24,7 @@ func (s *ValidateTestSuite) TestValidateAcceptsValidConfigurations() {
 }
 
 func (s *ValidateTestSuite) TestValidateRejectsUnknownType() {
-	err := Validate(Config{Type: Type("bearer")}, allTypes())
+	err := Validate(Config{Type: Type("digest")}, allTypes())
 	s.Require().Error(err)
 	s.Contains(err.Error(), "unsupported authentication type")
 }
@@ -51,7 +51,7 @@ func (s *ValidateTestSuite) TestValidateRejectsMissingAndBlankRequiredFields() {
 }
 
 func (s *ValidateTestSuite) TestValidateAcceptsBlankOptionalField() {
-	const apiKey Type = "api_key"
+	const apiKey Type = "custom_optional"
 	withTemporaryMethod(Method{
 		Type:        apiKey,
 		DisplayName: "API key",

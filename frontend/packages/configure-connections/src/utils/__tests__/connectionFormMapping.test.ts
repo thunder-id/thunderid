@@ -36,7 +36,7 @@ describe('emptyFormValues', () => {
     expect(values['httpMethod']).toBe('POST');
     expect(values['contentType']).toBe('JSON');
     expect(values['url']).toBe('');
-    expect(values['httpHeaders']).toBe('');
+    expect(values['apiKeyHeaders']).toBe('');
   });
 });
 
@@ -64,6 +64,22 @@ describe('responseToFormValues', () => {
     const response = {id: '1', type: 'google', name: 'X', clientId: 'y'} as ConnectionResponse;
     const values = responseToFormValues(response, GOOGLE_FIELDS, REDIRECT);
     expect(values['redirectUri']).toBe(REDIRECT);
+  });
+
+  it('shows masked API-key headers in the SMS gateway form', () => {
+    const response = {
+      id: '1',
+      type: 'sms-gateway',
+      name: 'SMS Gateway',
+      authentication: {
+        type: 'api_key',
+        properties: {'Key-1': '******', 'Key-2': '******'},
+      },
+    } as ConnectionResponse;
+
+    expect(responseToFormValues(response, SMS_GATEWAY_FIELDS, REDIRECT)['apiKeyHeaders']).toBe(
+      'Key-1: ******, Key-2: ******',
+    );
   });
 
   it('converts a boolean tokenExchangeEnabled into a "true"/"false" form string', () => {
@@ -109,15 +125,15 @@ describe('responseToFormValues', () => {
       name: 'Cerbos PDP',
       endpoint: 'https://pdp.example.com/access/v1/evaluation',
       authentication: {
-        scheme: 'BASIC',
-        basic: {username: MASKED_SECRET, password: MASKED_SECRET},
+        type: 'basic',
+        properties: {username: 'test-user', password: MASKED_SECRET},
       },
     } as ConnectionResponse;
 
     const values = responseToFormValues(response, AUTHZEN_PDP_FIELDS, REDIRECT);
 
     expect(values['authenticationScheme']).toBe('BASIC');
-    expect(values['basicUsername']).toBe('');
+    expect(values['basicUsername']).toBe('test-user');
     expect(values['basicPassword']).toBe('');
   });
 
@@ -125,7 +141,7 @@ describe('responseToFormValues', () => {
     const fields: ConnectionFieldDef[] = [
       {
         name: 'authMode',
-        responsePath: 'authentication.scheme',
+        responsePath: 'authentication.type',
         labelKey: 'test.authMode',
         kind: 'select',
       },
@@ -133,18 +149,18 @@ describe('responseToFormValues', () => {
     const response = {
       id: '1',
       type: 'authzen-pdp',
-      authentication: {scheme: 'BEARER'},
+      authentication: {type: 'bearer'},
     } as ConnectionResponse;
 
-    expect(responseToFormValues(response, fields, REDIRECT)['authMode']).toBe('BEARER');
+    expect(responseToFormValues(response, fields, REDIRECT)['authMode']).toBe('bearer');
   });
 });
 
 describe('outboundAuthenticationFromFormValues', () => {
   it('maps Bearer authentication', () => {
     expect(outboundAuthenticationFromFormValues({authenticationScheme: 'BEARER', bearerToken: ' token '})).toEqual({
-      scheme: 'BEARER',
-      bearer: {token: 'token'},
+      type: 'bearer',
+      properties: {token: 'token'},
     });
   });
 
@@ -155,7 +171,7 @@ describe('outboundAuthenticationFromFormValues', () => {
         basicUsername: ' user ',
         basicPassword: ' password ',
       }),
-    ).toEqual({scheme: 'BASIC', basic: {username: 'user', password: 'password'}});
+    ).toEqual({type: 'basic', properties: {username: 'user', password: 'password'}});
   });
 
   it('maps API-key headers as structured values', () => {
@@ -165,19 +181,14 @@ describe('outboundAuthenticationFromFormValues', () => {
         httpHeaders: 'X-API-Key: secret, X-Tenant: acme',
       }),
     ).toEqual({
-      scheme: 'API_KEY',
-      apiKey: {
-        headers: [
-          {name: 'X-API-Key', value: 'secret'},
-          {name: 'X-Tenant', value: 'acme'},
-        ],
-      },
+      type: 'api_key',
+      properties: {'X-API-Key': 'secret', 'X-Tenant': 'acme'},
     });
   });
 
   it('maps missing or NONE authentication to no authentication', () => {
-    expect(outboundAuthenticationFromFormValues({})).toEqual({scheme: 'NONE'});
-    expect(outboundAuthenticationFromFormValues({authenticationScheme: 'NONE'})).toEqual({scheme: 'NONE'});
+    expect(outboundAuthenticationFromFormValues({})).toEqual({type: 'none'});
+    expect(outboundAuthenticationFromFormValues({authenticationScheme: 'NONE'})).toEqual({type: 'none'});
   });
 });
 
@@ -244,6 +255,60 @@ describe('formValuesToRequest', () => {
     const fields: ConnectionFieldDef[] = [{name: 'customLimit', labelKey: 'test.customLimit', kind: 'number'}];
 
     expect(formValuesToRequest({customLimit: '7'}, fields, {mode: 'edit'})).toEqual({customLimit: 7});
+  });
+
+  it('converts SMS gateway API-key header rows into structured request headers', () => {
+    const payload = formValuesToRequest(
+      {
+        name: 'Custom SMS Sender',
+        url: 'https://sms.example.com/send',
+        httpMethod: 'POST',
+        contentType: 'JSON',
+        apiKeyHeaders: 'X-API-Key: secret, X-Tenant: tenant-1',
+      },
+      SMS_GATEWAY_FIELDS,
+      {mode: 'create'},
+    ) as unknown as Record<string, unknown>;
+
+    expect(payload['authentication']).toEqual({
+      type: 'api_key',
+      properties: {'X-API-Key': 'secret', 'X-Tenant': 'tenant-1'},
+    });
+  });
+
+  it('sends masked SMS gateway API-key headers as retain markers on edit', () => {
+    const payload = formValuesToRequest(
+      {
+        name: 'Custom SMS Sender',
+        url: 'https://sms.example.com/send',
+        httpMethod: 'POST',
+        contentType: 'JSON',
+        apiKeyHeaders: 'Key-1: ******, Key-2: ******',
+      },
+      SMS_GATEWAY_FIELDS,
+      {mode: 'edit'},
+    ) as unknown as Record<string, unknown>;
+
+    expect(payload['authentication']).toEqual({
+      type: 'api_key',
+      properties: {'Key-1': '******', 'Key-2': '******'},
+    });
+  });
+
+  it('sends an empty API-key header list when all stored headers are deleted', () => {
+    const payload = formValuesToRequest(
+      {
+        name: 'Custom SMS Sender',
+        url: 'https://sms.example.com/send',
+        httpMethod: 'POST',
+        contentType: 'JSON',
+        apiKeyHeaders: '',
+      },
+      SMS_GATEWAY_FIELDS,
+      {mode: 'edit'},
+    ) as unknown as Record<string, unknown>;
+
+    expect(payload['authentication']).toEqual({type: 'none'});
   });
 
   it('still sends the SMS gateway transport defaults now that neither field is required', () => {
@@ -377,6 +442,22 @@ describe('validateConnectionForm', () => {
     const values = {...emptyFormValues(GOOGLE_FIELDS, REDIRECT), name: 'n', clientId: 'c'};
     const errors = validateConnectionForm(values, GOOGLE_FIELDS, 'edit');
     expect(errors).not.toHaveProperty('clientSecret');
+  });
+
+  it('rejects an incomplete API key header pair', () => {
+    const errors = validateConnectionForm(
+      {
+        name: 'Custom SMS Sender',
+        url: 'https://sms.example.com/send',
+        httpMethod: 'POST',
+        contentType: 'JSON',
+        apiKeyHeaders: 'X-API-Key:',
+      },
+      SMS_GATEWAY_FIELDS,
+      'edit',
+    );
+
+    expect(errors['apiKeyHeaders']).toBe('connections:validation.keyValuePair');
   });
 
   it('flags invalid URLs and accepts valid ones', () => {

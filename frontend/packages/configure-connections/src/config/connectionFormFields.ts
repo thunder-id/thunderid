@@ -369,12 +369,12 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       ],
     },
     {
-      name: 'httpHeaders',
-      labelKey: 'connections:form.fields.httpHeaders.label',
-      hintKey: 'connections:form.fields.httpHeaders.hint',
+      name: 'apiKeyHeaders',
+      labelKey: 'connections:form.fields.apiKeyHeaders.label',
+      hintKey: 'connections:form.fields.apiKeyHeaders.hint',
       kind: 'key-value',
       placeholder: 'X-API-Key',
-      addLabelKey: 'connections:form.fields.httpHeaders.add',
+      addLabelKey: 'connections:form.fields.apiKeyHeaders.add',
     },
   ],
   [ConnectionTypes.AUTHZEN_PDP]: [
@@ -420,7 +420,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     },
     {
       name: 'authenticationScheme',
-      responsePath: 'authentication.scheme',
+      responsePath: 'authentication.type',
       labelKey: 'connections:form.fields.authScheme.label',
       kind: 'select',
       visibility: 'edit',
@@ -450,8 +450,9 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     },
     {
       name: 'basicUsername',
+      responsePath: 'authentication.properties.username',
       labelKey: 'connections:form.fields.basicUsername.label',
-      kind: 'secret',
+      kind: 'text',
       visibility: 'edit',
       requiredWhenValue: {field: 'authenticationScheme', value: 'BASIC'},
     },

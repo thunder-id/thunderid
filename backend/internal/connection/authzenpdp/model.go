@@ -3,42 +3,45 @@
 
 package authzenpdp
 
+import (
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+)
+
 // ConnectionRequest is the API representation of an AuthZEN PDP connection request.
 type ConnectionRequest struct {
-	ID                       string                    `json:"-" yaml:"-"`
-	Name                     string                    `json:"name"`
-	Description              string                    `json:"description,omitempty"`
-	Endpoint                 string                    `json:"endpoint"`
-	BatchEndpoint            string                    `json:"batchEndpoint,omitempty"`
-	TimeoutMS                int                       `json:"timeoutMs,omitempty"`
-	RetryCount               *int                      `json:"retryCount,omitempty"`
-	SubjectAttributeMappings []SubjectAttributeMapping `json:"subjectAttributeMappings,omitempty"`
+	ID                       string                       `json:"-" yaml:"-"`
+	Name                     string                       `json:"name"`
+	Description              string                       `json:"description,omitempty"`
+	Endpoint                 string                       `json:"endpoint"`
+	BatchEndpoint            string                       `json:"batchEndpoint,omitempty"`
+	TimeoutMS                int                          `json:"timeoutMs,omitempty"`
+	RetryCount               *int                         `json:"retryCount,omitempty"`
+	Authentication           *outboundauth.Authentication `json:"authentication,omitempty"`
+	SubjectAttributeMappings []SubjectAttributeMapping    `json:"subjectAttributeMappings,omitempty"`
 }
 
 // ConnectionResponse is the API representation of an AuthZEN PDP connection.
 type ConnectionResponse struct {
-	ID                       string                    `json:"id"`
-	Name                     string                    `json:"name"`
-	Description              string                    `json:"description,omitempty"`
-	Type                     string                    `json:"type"`
-	Endpoint                 string                    `json:"endpoint"`
-	BatchEndpoint            string                    `json:"batchEndpoint,omitempty"`
-	TimeoutMS                int                       `json:"timeoutMs"`
-	RetryCount               int                       `json:"retryCount"`
-	SubjectAttributeMappings []SubjectAttributeMapping `json:"subjectAttributeMappings,omitempty"`
+	ID                       string                      `json:"id"`
+	Name                     string                      `json:"name"`
+	Description              string                      `json:"description,omitempty"`
+	Type                     string                      `json:"type"`
+	Endpoint                 string                      `json:"endpoint"`
+	BatchEndpoint            string                      `json:"batchEndpoint,omitempty"`
+	TimeoutMS                int                         `json:"timeoutMs"`
+	RetryCount               int                         `json:"retryCount"`
+	Authentication           outboundauth.Authentication `json:"authentication"`
+	SubjectAttributeMappings []SubjectAttributeMapping   `json:"subjectAttributeMappings,omitempty"`
 }
 
 // ToResponse converts an internal connection into an API response.
 func ToResponse(connection AuthZENPDPConnection) ConnectionResponse {
 	return ConnectionResponse{
-		ID:                       connection.ID,
-		Name:                     connection.Name,
-		Description:              connection.Description,
-		Type:                     "authzen-pdp",
-		Endpoint:                 connection.Endpoint,
-		BatchEndpoint:            connection.BatchEndpoint,
-		TimeoutMS:                connection.TimeoutMS,
-		RetryCount:               connection.RetryCount,
+		ID: connection.ID, Name: connection.Name, Description: connection.Description,
+		Type: "authzen-pdp", Endpoint: connection.Endpoint, BatchEndpoint: connection.BatchEndpoint,
+		TimeoutMS: connection.TimeoutMS, RetryCount: connection.RetryCount,
+		Authentication:           connection.authenticationResponse(),
 		SubjectAttributeMappings: connection.SubjectAttributeMappings,
 	}
 }
@@ -53,6 +56,8 @@ type AuthZENPDPConnection struct {
 	BatchEndpoint            string
 	TimeoutMS                int
 	RetryCount               int
+	AuthenticationScheme     string
+	AuthenticationProperties []cmodels.Property
 	SubjectAttributeMappings []SubjectAttributeMapping
 }
 

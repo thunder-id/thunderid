@@ -14,10 +14,16 @@ import (
 // Display labels of the registered methods and fields. They are served as references to the
 // system i18n namespace, so their default translations ship with the server.
 var (
-	labelMethodNone    = tidcommon.I18nMessage{Key: "outboundauth.method.none", DefaultValue: "None"}
-	labelMethodBasic   = tidcommon.I18nMessage{Key: "outboundauth.method.basic", DefaultValue: "Username and Password"}
-	labelFieldUsername = tidcommon.I18nMessage{Key: "outboundauth.field.username", DefaultValue: "Username"}
-	labelFieldPassword = tidcommon.I18nMessage{Key: "outboundauth.field.password", DefaultValue: "Password"}
+	labelMethodNone  = tidcommon.I18nMessage{Key: "outboundauth.method.none", DefaultValue: "None"}
+	labelMethodBasic = tidcommon.I18nMessage{
+		Key: "outboundauth.method.basic", DefaultValue: "Username and Password",
+	}
+	labelFieldUsername      = tidcommon.I18nMessage{Key: "outboundauth.field.username", DefaultValue: "Username"}
+	labelFieldPassword      = tidcommon.I18nMessage{Key: "outboundauth.field.password", DefaultValue: "Password"}
+	labelMethodBearer       = tidcommon.I18nMessage{Key: "outboundauth.method.bearer", DefaultValue: "Bearer token"}
+	labelMethodAPIKey       = tidcommon.I18nMessage{Key: "outboundauth.method.api_key", DefaultValue: "API key"}
+	labelFieldBearerToken   = tidcommon.I18nMessage{Key: "outboundauth.field.token", DefaultValue: "Bearer token"}
+	labelFieldAPIKeyHeaders = tidcommon.I18nMessage{Key: "outboundauth.field.headers", DefaultValue: "API key headers"}
 )
 
 // registeredMethods is the single source of truth for every supported authentication method.
@@ -50,6 +56,22 @@ var registeredMethods = []Method{
 			},
 		},
 	},
+	{
+		Type:        TypeBearer,
+		DisplayName: systemI18nRef(labelMethodBearer),
+		Fields: []Field{{
+			Key: FieldBearerToken, Type: fieldTypeText, Required: true, Credential: true,
+			DisplayName: systemI18nRef(labelFieldBearerToken),
+		}},
+	},
+	{
+		Type:        TypeAPIKey,
+		DisplayName: systemI18nRef(labelMethodAPIKey),
+		AdditionalProperties: &Field{
+			Type: fieldTypeText, Required: true, Credential: true,
+			DisplayName: systemI18nRef(labelFieldAPIKeyHeaders),
+		},
+	},
 }
 
 // GetMethod returns the method registered for authType. Its fields are a copy, so a caller
@@ -58,6 +80,10 @@ func GetMethod(authType Type) (Method, bool) {
 	for _, method := range registeredMethods {
 		if method.Type == authType {
 			method.Fields = slices.Clone(method.Fields)
+			if method.AdditionalProperties != nil {
+				field := *method.AdditionalProperties
+				method.AdditionalProperties = &field
+			}
 			return method, true
 		}
 	}

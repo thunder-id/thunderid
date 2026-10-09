@@ -105,7 +105,7 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		createSenderHandler(h, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
 		getSenderHandler(h, message, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO),
 		updateSenderHandler(h, message, ncommon.NotificationProviderTypeCustom,
-			smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
+			smsGatewayUpdateToSenderDTO, smsGatewayFromSenderDTO),
 		collectionOpts, itemOpts)
 
 	// Email-backed vendors.

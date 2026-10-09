@@ -1529,6 +1529,13 @@ components:
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
 
     AuthZENPDPConnectionUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/AuthZENPDPConnectionConfiguration'
+        - type: object
+          properties:
+            authentication:
+              $ref: '#/components/schemas/OutboundAuthentication'
+    AuthZENPDPConnectionConfiguration:
       type: object
       required: [name, endpoint]
       properties:
@@ -1563,12 +1570,14 @@ components:
       $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
     AuthZENPDPConnectionResponse:
       allOf:
-        - $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
         - type: object
           required: [id, type]
           properties:
             id: { type: string, format: uuid }
             type: { type: string, enum: [authzen-pdp] }
+            authentication:
+              $ref: '#/components/schemas/OutboundAuthentication'
+        - $ref: '#/components/schemas/AuthZENPDPConnectionConfiguration'
 
     AuthZENPDPSubjectAttributeMapping:
       type: object
@@ -1648,12 +1657,8 @@ components:
         description: { type: string }
         url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
         httpMethod: { type: string, enum: [GET, POST], example: "POST" }
-        httpHeaders:
-          type: string
-          description: |
-            Comma-separated `Key: value` pairs sent with every request, including any credential
-            header the gateway requires. Header values are stored and returned in plain text.
-          example: "Authorization: Bearer token"
+        authentication:
+          $ref: '#/components/schemas/OutboundAuthentication'
         contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
     SMSGatewayConnectionCreateRequest:
       $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
@@ -1666,7 +1671,8 @@ components:
         type: { type: string, example: "sms-gateway" }
         url: { type: string }
         httpMethod: { type: string }
-        httpHeaders: { type: string }
+        authentication:
+          $ref: '#/components/schemas/OutboundAuthentication'
         contentType: { type: string }
 
     SMTPConnectionUpdateRequest:
@@ -1727,9 +1733,11 @@ components:
         schema. Call `GET /connections/meta?vendor={vendor}` to discover the methods a vendor
         supports and the fields each one takes.
 
-        A field the method marks as a credential is write-only: it is stored encrypted, returned
-        masked as `"******"`, and may be omitted on update to keep the stored value. Changing
-        `type`, or setting it to `none`, discards the previous method's stored credentials.
+        Credential values are stored encrypted and returned as `"******"`. On update, a masked
+        value retains the matching stored credential while the connection target is unchanged.
+        For `api_key`, `properties` contains HTTP header names and values. Omitting a header
+        from a supplied `api_key` block deletes it. Omitting the whole `authentication` block
+        keeps the existing configuration. Setting `type` to `none` removes authentication.
       required: [type]
       properties:
         type:
@@ -1783,6 +1791,8 @@ components:
           type: array
           description: "The method's fields, in the order a console should render them."
           items: { $ref: '#/components/schemas/OutboundAuthField' }
+        additionalProperties:
+          $ref: '#/components/schemas/OutboundAuthField'
 
     OutboundAuthField:
       type: object
@@ -1801,7 +1811,6 @@ components:
           type: string
           description: "Label for the field. Either plain text or an i18n template pattern."
           example: "{{t(system:outboundauth.field.password)}}"
-
     AttributeConfiguration:
       type: object
       description: External-to-local attribute mapping configuration for the connection.
