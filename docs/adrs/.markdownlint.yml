@@ -1,0 +1,22 @@
+# markdownlint configuration for architectural decision records.
+# Based on the configuration shipped with MADR 4.0.0.
+
+# MD013/line-length: disabled. Records use one sentence per line, so lines vary
+# in length by design and wrapping them would make diffs harder to review.
+MD013: false
+
+# MD024/no-duplicate-heading: allow the same heading text under different parents.
+# "Consequences" appears under Decision Outcome and option headings repeat under
+# "Pros and Cons of the Options".
+MD024:
+  siblings_only: true
+
+# MD004/ul-style: MADR uses asterisks as list markers.
+MD004:
+  style: asterisk
+
+# MD025/single-title: one H1 per file, which is the record title.
+MD025: true
+
+# MD034/no-bare-urls: keep URLs in angle brackets or link syntax.
+MD034: true

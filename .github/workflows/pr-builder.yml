@@ -64,8 +64,12 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
           filters: |
+            # dorny/paths-filter matches with predicate-quantifier 'some', so a
+            # leading-'!' pattern would match every file outside docs/adrs and turn
+            # this filter on for all pull requests. Exclude the log with an extglob.
             docs:
-              - 'docs/**'
+              - 'docs/!(adrs)/**'
+              - 'docs/*'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
