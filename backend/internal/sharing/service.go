@@ -120,8 +120,8 @@ type sharingService struct {
 
 	// The caches are all derived from the policy graph, so any write clears them wholesale: one
 	// edit can change an unbounded number of resolved answers.
-	visibilityCache  cache.CacheInterface[bool]
-	overlayRuleCache cache.CacheInterface[ResolvedOverlay]
+	visibilityCache  cache.GroupedCacheInterface[bool]
+	overlayRuleCache cache.GroupedCacheInterface[ResolvedOverlay]
 
 	allowChildOUCrossTreeSharing bool
 }
@@ -142,8 +142,8 @@ func newSharingService(
 	ouHierarchyResolver sysauthz.OUHierarchyResolver,
 	ouEnumerator oupkg.HierarchyEnumeratorInterface,
 	transactioner providers.Transactioner,
-	visibilityCache cache.CacheInterface[bool],
-	overlayRuleCache cache.CacheInterface[ResolvedOverlay],
+	visibilityCache cache.GroupedCacheInterface[bool],
+	overlayRuleCache cache.GroupedCacheInterface[ResolvedOverlay],
 	allowChildOUCrossTreeSharing bool,
 ) SharingServiceInterface {
 	return &sharingService{
@@ -237,7 +237,7 @@ func (s *sharingService) createPolicy(
 
 	if declared {
 		s.fileStore.seed(policy)
-		s.clearCaches(ctx)
+		s.invalidateResource(ctx, policy.ResourceType, policy.ResourceID)
 		return policy, nil
 	}
 
@@ -255,7 +255,7 @@ func (s *sharingService) createPolicy(
 		s.logger.Error(ctx, "Failed to create sharing policy", log.Error(err))
 		return Policy{}, &tidcommon.InternalServerError
 	}
-	s.clearCaches(ctx)
+	s.invalidateResource(ctx, policy.ResourceType, policy.ResourceID)
 	return policy, nil
 }
 
@@ -1078,7 +1078,7 @@ func (s *sharingService) UpdatePolicy(
 		return Policy{}, &tidcommon.InternalServerError
 	}
 
-	s.clearCaches(ctx)
+	s.invalidateResource(ctx, current.ResourceType, current.ResourceID)
 	proposed.Version = current.Version + 1
 	return proposed, nil
 }
@@ -1283,7 +1283,7 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 		return &tidcommon.InternalServerError
 	}
 
-	s.clearCaches(ctx)
+	s.invalidateResource(ctx, policy.ResourceType, policy.ResourceID)
 	return nil
 }
 
@@ -1593,7 +1593,7 @@ func (s *sharingService) IsVisible(
 		return true, nil
 	}
 
-	key := cache.CacheKey{Key: fmt.Sprintf("%s:%s:%s", rt, resourceID, ouID)}
+	key := resourceCacheKey(rt, resourceID, ouID)
 	if s.visibilityCache != nil {
 		if cached, ok := s.visibilityCache.Get(ctx, key); ok {
 			return cached, nil
@@ -1658,7 +1658,7 @@ func (s *sharingService) ResolveOverlayRules(
 	}
 	ownerIsAsking := known && owner == ouID
 
-	key := cache.CacheKey{Key: fmt.Sprintf("%s:%s:%s", rt, resourceID, ouID)}
+	key := resourceCacheKey(rt, resourceID, ouID)
 	if s.overlayRuleCache != nil && !ownerIsAsking {
 		if cached, ok := s.overlayRuleCache.Get(ctx, key); ok {
 			return cached, nil
@@ -2127,17 +2127,37 @@ func (s *sharingService) buildChain(ctx context.Context, ouID string) ([]string,
 	return append(chain, ouID), nil
 }
 
-// clearCaches drops every derived answer after a write, since one edit can change an unbounded
-// number of them and tracking per-key dependencies would cost more than recomputing.
-func (s *sharingService) clearCaches(ctx context.Context) {
+// resourceCacheGroup is the invalidation unit for the derived answers: one group per resource.
+//
+// A policy write changes the answer for every organization unit the resource reaches, and which
+// units those are is not known at write time. Grouping by resource lets the write drop exactly
+// that set, without touching answers for other resources and without enumerating the units.
+func resourceCacheGroup(rt ResourceType, resourceID string) string {
+	return fmt.Sprintf("%s:%s", rt, resourceID)
+}
+
+// resourceCacheKey addresses one organization unit's answer for one resource.
+func resourceCacheKey(rt ResourceType, resourceID, ouID string) cache.GroupedCacheKey {
+	return cache.GroupedCacheKey{Group: resourceCacheGroup(rt, resourceID), Key: ouID}
+}
+
+// invalidateResource drops every derived answer for one resource after a write to its policies.
+//
+// Only that resource's answers go. Before these caches were grouped this had to clear everything,
+// which on Redis silently did nothing at all, so stale answers were served until they expired.
+func (s *sharingService) invalidateResource(ctx context.Context, rt ResourceType, resourceID string) {
+	group := resourceCacheGroup(rt, resourceID)
+
 	if s.visibilityCache != nil {
-		if err := s.visibilityCache.Clear(ctx); err != nil {
-			s.logger.Warn(ctx, "Failed to clear the visibility cache", log.Error(err))
+		if err := s.visibilityCache.DeleteGroup(ctx, group); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate the visibility cache",
+				log.String("group", group), log.Error(err))
 		}
 	}
 	if s.overlayRuleCache != nil {
-		if err := s.overlayRuleCache.Clear(ctx); err != nil {
-			s.logger.Warn(ctx, "Failed to clear the overlay cache", log.Error(err))
+		if err := s.overlayRuleCache.DeleteGroup(ctx, group); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate the overlay cache",
+				log.String("group", group), log.Error(err))
 		}
 	}
 }

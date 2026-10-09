@@ -1826,26 +1826,28 @@ func (s *ServiceTestSuite) TestExportKeepsBothPoliciesWhenIDsCollide() {
 // interface; this supplies the behavior, because a read that populates the cache has to be served
 // from it the next time.
 type cacheState[T any] struct {
-	values map[string]T
-	gets   int
-	sets   int
+	// values is group -> entry key -> value, mirroring how the real cache stores them.
+	values       map[string]map[string]T
+	gets         int
+	sets         int
+	groupDeletes int
 }
 
 // newMockCache returns a generated cache mock backed by fresh state, along with that state so a
-// test can inspect it. Every method is wired as Maybe, since no test needs all eight.
+// test can inspect it. Every method is wired as Maybe, since no test needs all of them.
 func newMockCache[T any](t interface {
 	mock.TestingT
 	Cleanup(func())
-}) (*cachemock.CacheInterfaceMock[T], *cacheState[T]) {
-	st := &cacheState[T]{values: map[string]T{}}
-	m := cachemock.NewCacheInterfaceMock[T](t)
+}) (*cachemock.GroupedCacheInterfaceMock[T], *cacheState[T]) {
+	st := &cacheState[T]{values: map[string]map[string]T{}}
+	m := cachemock.NewGroupedCacheInterfaceMock[T](t)
 	e := m.EXPECT()
 	a := mock.Anything
 	e.GetName().Return("mock-cache").Maybe()
 	e.Get(a, a).RunAndReturn(st.Get).Maybe()
 	e.Set(a, a, a).RunAndReturn(st.Set).Maybe()
 	e.Delete(a, a).RunAndReturn(st.Delete).Maybe()
-	e.Clear(a).RunAndReturn(st.Clear).Maybe()
+	e.DeleteGroup(a, a).RunAndReturn(st.DeleteGroup).Maybe()
 	e.IsEnabled().Return(true).Maybe()
 	e.GetStats().Return(cache.CacheStat{}).Maybe()
 	e.CleanupExpired().Return().Maybe()
@@ -1853,29 +1855,43 @@ func newMockCache[T any](t interface {
 }
 
 // Get reads a cached value, counting the read.
-func (c *cacheState[T]) Get(_ context.Context, key cache.CacheKey) (T, bool) {
+func (c *cacheState[T]) Get(_ context.Context, key cache.GroupedCacheKey) (T, bool) {
 	c.gets++
-	v, ok := c.values[key.Key]
+	v, ok := c.values[key.Group][key.Key]
 	return v, ok
 }
 
 // Set writes a cached value, counting the write.
-func (c *cacheState[T]) Set(_ context.Context, key cache.CacheKey, value T) error {
+func (c *cacheState[T]) Set(_ context.Context, key cache.GroupedCacheKey, value T) error {
 	c.sets++
-	c.values[key.Key] = value
+	if c.values[key.Group] == nil {
+		c.values[key.Group] = map[string]T{}
+	}
+	c.values[key.Group][key.Key] = value
 	return nil
 }
 
 // Delete drops one cached value.
-func (c *cacheState[T]) Delete(_ context.Context, key cache.CacheKey) error {
-	delete(c.values, key.Key)
+func (c *cacheState[T]) Delete(_ context.Context, key cache.GroupedCacheKey) error {
+	delete(c.values[key.Group], key.Key)
 	return nil
 }
 
-// Clear drops every cached value.
-func (c *cacheState[T]) Clear(_ context.Context) error {
-	c.values = map[string]T{}
+// DeleteGroup drops every value cached for one resource, counting the invalidation so a test can
+// tell a scoped invalidation from none at all.
+func (c *cacheState[T]) DeleteGroup(_ context.Context, group string) error {
+	c.groupDeletes++
+	delete(c.values, group)
 	return nil
+}
+
+// size reports how many entries are cached across every group.
+func (c *cacheState[T]) size() int {
+	n := 0
+	for _, group := range c.values {
+		n += len(group)
+	}
+	return n
 }
 
 // The owner can see its own resource before anyone has shared anything, so visibility cannot be
@@ -2085,6 +2101,38 @@ func (s *ServiceTestSuite) TestUpdateStillLetsASelectivePolicyWidenItsRules() {
 	s.Require().Nil(svcErr)
 	s.Require().Len(updated.Rules, 1)
 	s.ElementsMatch([]string{"a", "b"}, *updated.Rules[0].Resolved.AllowedValues)
+}
+
+// A policy write invalidates the answers derived for that resource, and only those.
+//
+// The invalidation is per resource because one write changes the answer for every organization
+// unit the resource reaches, and which units those are is not known at write time. Before the
+// caches were grouped this had to drop everything, which on Redis did nothing at all.
+func (s *ServiceTestSuite) TestAWriteInvalidatesOnlyItsOwnResource() {
+	ctx := context.Background()
+	visibilityMock, visibility := newMockCache[bool](s.T())
+	hierarchy, enumerator := testResolver(s.T())
+	svc := newSharingService(mustMockStore(s.T()), nil, hierarchy, enumerator,
+		inlineTx(s.T()), visibilityMock, nil, false)
+	svc.RegisterResourceType(&testDeclaration{})
+
+	// Two resources, each with a cached answer for a unit that cannot see it.
+	for _, resource := range []string{testResource, "another-resource"} {
+		visible, svcErr := svc.IsVisible(ctx, testType, resource, otherOU)
+		s.Require().Nil(svcErr)
+		s.False(visible)
+	}
+	s.Require().Equal(2, visibility.size(), "both answers were cached")
+
+	_, svcErr := svc.CreatePolicy(ctx, testType, testResource, ownerOU,
+		PolicyRequest{TargetOUScope: TargetOUScope{RootOUIDs: []string{rootOU}}})
+	s.Require().Nil(svcErr)
+
+	s.Equal(1, visibility.groupDeletes, "the write invalidated one resource")
+	_, stillCached := visibility.values[resourceCacheGroup(testType, testResource)]
+	s.False(stillCached, "the written resource's answers survived the write")
+	s.Len(visibility.values["role:another-resource"], 1,
+		"another resource's answers were dropped by a write that cannot have changed them")
 }
 
 // A wrong answer that gets cached stays wrong for the life of the cache, so the owner's result must
