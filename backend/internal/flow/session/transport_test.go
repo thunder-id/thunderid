@@ -50,6 +50,61 @@ func (s *TransportTestSuite) TestInbound_ContextRoundTrip() {
 	s.False(ok)
 }
 
+func (s *TransportTestSuite) TestClientInfo_ContextRoundTrip() {
+	in := ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0"}
+
+	s.Equal(in, ClientInfoFrom(WithClientInfo(context.Background(), in)))
+	s.Equal(ClientInfo{}, ClientInfoFrom(context.Background()))
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest() {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		userAgent  string
+		want       ClientInfo
+	}{
+		{"IPv4 with port", "203.0.113.10:54321", "Mozilla/5.0",
+			ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0"}},
+		{"IPv6 with port", "[2001:db8::1]:443", "curl/8.0",
+			ClientInfo{IP: "2001:db8::1", UserAgent: "curl/8.0"}},
+		{"address without port", "203.0.113.10", "",
+			ClientInfo{IP: "203.0.113.10"}},
+		{"no address", "", "", ClientInfo{}},
+		{"invalid UTF-8 in User-Agent", "203.0.113.10:54321", "Mozilla/5.0 \xff\xfe(Test)",
+			ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0 (Test)"}},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+			r.RemoteAddr = tc.remoteAddr
+			r.Header.Set("User-Agent", tc.userAgent)
+
+			s.Equal(tc.want, ClientInfoFromRequest(r))
+		})
+	}
+}
+
+func (s *TransportTestSuite) TestClientInfoFromRequest_TruncatesToColumnSize() {
+	r := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	r.RemoteAddr = strings.Repeat("a", 60)
+	r.Header.Set("User-Agent", strings.Repeat("x", 600))
+
+	got := ClientInfoFromRequest(r)
+
+	s.Len(got.IP, maxIPLength)
+	s.Len(got.UserAgent, maxUserAgentLength)
+}
+
+func (s *TransportTestSuite) TestTruncate_KeepsCharactersWhole() {
+	// "é" is two bytes, so a five-byte limit falls inside the third character and must back off to
+	// the character boundary rather than leave invalid UTF-8.
+	got := truncate("ééé", 5)
+
+	s.Equal("éé", got)
+	s.Equal("abc", truncate("abc", 5), "a string within the limit is returned unchanged")
+}
+
 func (s *TransportTestSuite) TestCookieTransport_Read() {
 	transport := NewCookieTransport(false)
 

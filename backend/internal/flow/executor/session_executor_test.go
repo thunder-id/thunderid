@@ -343,6 +343,46 @@ func ssoLoadCtx() *providers.NodeContext {
 	}
 }
 
+// TestFreshSave_PassesClientInfo verifies the save path hands the request's client metadata to the
+// service so a newly established session records its device and IP.
+func (suite *SessionExecutorTestSuite) TestFreshSave_PassesClientInfo() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	client := session.ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0"}
+	ctx := freshCtx()
+	ctx.Context = session.WithClientInfo(ctx.Context, client)
+
+	_, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+
+	suite.Equal(client, in.ClientInfo)
+}
+
+// TestSSOLoad_PassesClientInfo verifies the load path hands the request's client metadata to the
+// service so a reused session records where it was last active.
+func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesClientInfo() {
+	client := session.ClientInfo{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (iPhone) Safari/17.0"}
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
+		return in.ClientInfo == client
+	})).Return(
+		&session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
+		&session.SessionContext{
+			SessionID: "sess-1",
+			AuthUser: json.RawMessage(
+				`{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"}}}`),
+			ContextVersion: 1,
+		}, nil)
+	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
+	ctx := ssoLoadCtx()
+	ctx.Context = session.WithClientInfo(ctx.Context, client)
+
+	_, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+}
+
 // TestSSOLoad verifies the load path rehydrates the subject from the service-returned context, replays
 // the snapshotted RuntimeData, and overrides auth_time from the lean session.
 func (suite *SessionExecutorTestSuite) TestSSOLoad() {

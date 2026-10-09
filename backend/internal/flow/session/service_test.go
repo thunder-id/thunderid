@@ -176,6 +176,7 @@ func saveInput() SaveCheckpointInput {
 		SubjectID: "user-1", FlowID: "flow-1", FlowVersion: 3, ExecutionID: "exec-1",
 		Checkpoint: "session", AuthUser: json.RawMessage(`{"entityReference":{"entityId":"user-1"}}`),
 		RuntimeData: map[string]string{"email": "alice@example.com"}, AppID: "app-123",
+		ClientInfo: ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0"},
 	}
 }
 
@@ -204,11 +205,17 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Establishes() {
 	suite.Equal(StateActive, created.State)
 	suite.True(created.IdleExpiresAt.After(created.CreatedAt))
 	suite.True(created.AbsoluteExpiresAt.After(created.IdleExpiresAt))
+	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", created.Properties.UserAgent)
+	suite.Equal("203.0.113.10", created.Properties.LastActiveIP, "a new session records the IP it was created from")
 }
 
 func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	svc, m := suite.newService()
-	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	existing := liveStoreSession()
+	existing.Properties = SessionProperties{
+		UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0", LastActiveIP: "192.0.2.1",
+	}
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(existing, nil)
 	runTx(m)
 	var savedCtx SessionContext
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
@@ -217,9 +224,10 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	// Saving a checkpoint into an existing session means the subject just authenticated again, so the
 	// session's authentication time moves forward with it.
 	var touchedAt, touchedIdle time.Time
-	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, at, idle time.Time) error {
-			touchedAt, touchedIdle = at, idle
+	var touched SessionProperties
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, at, idle time.Time, properties SessionProperties) error {
+			touchedAt, touchedIdle, touched = at, idle, properties
 			return nil
 		})
 
@@ -236,6 +244,9 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	suite.Equal("step_up", savedCtx.CheckpointID)
 	suite.False(touchedAt.IsZero(), "the re-authentication must refresh the session's auth time")
 	suite.True(touchedIdle.After(touchedAt), "the idle deadline must slide past the new auth time")
+	suite.Equal("203.0.113.10", touched.LastActiveIP, "the re-authentication records the client's IP as last active")
+	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", touched.UserAgent,
+		"rewriting the properties must keep the recorded User-Agent")
 }
 
 // TestSaveCheckpoint_ReauthRefreshFailureStillSaves pins the degradation: a failure to refresh the
@@ -246,7 +257,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_ReauthRefreshFailureStillSaves
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("db down"))
 
 	in := saveInput()
@@ -277,7 +288,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
 	suite.Require().NoError(err)
 	suite.True(res.Created, "no existing session means this call minted one")
 	m.store.AssertNotCalled(suite.T(), "TouchAuthenticatedAt",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
@@ -538,6 +549,56 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_WritesAfterRefreshWindow() {
 	suite.Require().NotNil(updated, "an activity refresh past the throttle window must persist")
 	suite.True(updated.LastActiveAt.After(stale), "last-active slides forward")
 	suite.True(updated.IdleExpiresAt.After(originalIdle), "idle deadline slides forward")
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshRecordsClientIP() {
+	svc, m := suite.newService()
+	stale := time.Now().UTC().Add(-2 * defaultActivityRefreshInterval)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(&Session{
+		SessionID: "sess-1", HandleID: "handle-abc", State: StateActive,
+		LastActiveAt: stale,
+		Properties: SessionProperties{
+			UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0", LastActiveIP: "203.0.113.10",
+		},
+	}, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	var updated *Session
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s *Session) error { updated = s; return nil })
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	in := noTFIDLoadInput()
+	in.ClientInfo = ClientInfo{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (iPhone) Safari/17.0"}
+	_, _, err := svc.LoadCheckpoint(context.Background(), in)
+	suite.Require().NoError(err)
+
+	suite.Require().NotNil(updated)
+	suite.Equal("198.51.100.7", updated.Properties.LastActiveIP,
+		"the refresh records where the session was reused from")
+	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", updated.Properties.UserAgent, "the User-Agent is write-once")
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshKeepsKnownIPWhenClientHasNone() {
+	svc, m := suite.newService()
+	stale := time.Now().UTC().Add(-2 * defaultActivityRefreshInterval)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(&Session{
+		SessionID: "sess-1", HandleID: "handle-abc", State: StateActive,
+		LastActiveAt: stale, Properties: SessionProperties{LastActiveIP: "203.0.113.10"},
+	}, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	var updated *Session
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s *Session) error { updated = s; return nil })
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	_, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	suite.Require().NoError(err)
+
+	suite.Require().NotNil(updated)
+	suite.Equal("203.0.113.10", updated.Properties.LastActiveIP,
+		"a request without client info must not erase a known IP")
 }
 
 // --- Terminate ---

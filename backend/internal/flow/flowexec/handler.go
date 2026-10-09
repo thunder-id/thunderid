@@ -59,6 +59,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	// Read the inbound SSO transport inputs (per-flow handle cookies) and make
 	// them available to the flow service, which selects the handle once the flow is known.
 	ctx := session.WithInbound(r.Context(), h.ssoTransport.Read(r))
+	// Carry the client's IP and User-Agent so a session established or reused by this request
+	// records where it was used from.
+	ctx = session.WithClientInfo(ctx, session.ClientInfoFromRequest(r))
 
 	var flowStep *FlowStep
 	var flowErr *tidcommon.ServiceError

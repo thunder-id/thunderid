@@ -87,6 +87,9 @@ type Session struct {
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
 
+	// Properties is the client metadata recorded on the session, stored as JSON in the PROPERTIES column.
+	Properties SessionProperties
+
 	// State is the lifecycle state of the session.
 	State State
 	// Version is the optimistic-lock token, incremented on every successful update.
@@ -138,4 +141,39 @@ func SSOInputsFrom(ctx context.Context) SSOInputs {
 		return in
 	}
 	return SSOInputs{}
+}
+
+// SessionProperties is the client metadata recorded on a session so it can be recognized later. It is
+// stored as one JSON document, so a new field needs no schema change.
+type SessionProperties struct {
+	// UserAgent is the User-Agent of the client that established the session, recorded once at creation.
+	UserAgent string `json:"userAgent,omitempty"`
+	// LastActiveIP is the client IP address of the most recent activity: recorded at creation and
+	// refreshed with LastActiveAt.
+	LastActiveIP string `json:"lastActiveIp,omitempty"`
+}
+
+// ClientInfo is the request-scoped client metadata recorded on a session so it can be recognized
+// later (the device and the network location it was used from). Like SSOInputs it rides on the
+// context.Context and is never persisted with the flow context.
+type ClientInfo struct {
+	// IP is the client IP address.
+	IP string
+	// UserAgent is the client's User-Agent header.
+	UserAgent string
+}
+
+type clientInfoContextKey struct{}
+
+// WithClientInfo returns a context carrying the client metadata for the current request.
+func WithClientInfo(ctx context.Context, in ClientInfo) context.Context {
+	return context.WithValue(ctx, clientInfoContextKey{}, in)
+}
+
+// ClientInfoFrom returns the client metadata carried on the context, or the zero value if none was set.
+func ClientInfoFrom(ctx context.Context) ClientInfo {
+	if in, ok := ctx.Value(clientInfoContextKey{}).(ClientInfo); ok {
+		return in
+	}
+	return ClientInfo{}
 }
