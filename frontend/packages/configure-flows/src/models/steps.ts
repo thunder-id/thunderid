@@ -115,6 +115,7 @@ export const ExecutionTypes = {
   ClientSecret: 'ClientSecretExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
+  AccountLinking: 'AccountLinkingExecutor',
 } as const;
 
 export const ExecutionStepViewTypes = {

@@ -6,6 +6,7 @@ package user
 import (
 	"encoding/json"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -112,6 +113,16 @@ func userToEntity(u *providers.User) *providers.Entity {
 		State:      providers.EntityStateActive,
 		Attributes: u.Attributes,
 	}
+}
+
+// buildLinkedAccountSystemAttributes encodes link as the linkedIds system attribute the entity layer
+// indexes.
+func buildLinkedAccountSystemAttributes(link *providers.LinkedAccount) (json.RawMessage, error) {
+	return json.Marshal(map[string]interface{}{
+		authnprovidercm.SystemAttrLinkedIDs: map[string]interface{}{
+			link.IdpID: map[string]interface{}{link.Sub: map[string]interface{}{}},
+		},
+	})
 }
 
 // credentialsToJSON marshals user Credentials to JSON for entity storage.

@@ -15,6 +15,7 @@ import (
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -218,6 +219,33 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_Success_RegistrationF
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.False(suite.T(), resp.AuthUser.IsAuthenticated())
 	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_RegistrationFlow_LinkingVerificationAuthenticates() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs: map[string]string{
+			userAttributeUsername: "testuser",
+			userAttributePassword: "password123",
+		},
+		RuntimeData: map[string]string{common.RuntimeKeyLinkingVerificationRequested: dataValueTrue},
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
+		userAttributeUsername: "testuser",
+	}, map[string]interface{}{
+		userAttributePassword: "password123",
+	}, mock.Anything, mock.Anything, mock.Anything).
+		Return(newCredentialsAuthAuthenticatedUser(), providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
 }
 
 func (suite *CredentialsAuthExecutorTestSuite) TestExecute_Success_WithMultipleAttributes() {

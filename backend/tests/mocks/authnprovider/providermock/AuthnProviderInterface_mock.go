@@ -518,3 +518,144 @@ func (_c *AuthnProviderInterfaceMock_InitiateEnrollment_Call) RunAndReturn(run f
 	_c.Call.Return(run)
 	return _c
 }
+
+// SearchEntityReferences provides a mock function for the type AuthnProviderInterfaceMock
+func (_mock *AuthnProviderInterfaceMock) SearchEntityReferences(ctx context.Context, filters map[string]interface{}) ([]providers.EntityReference, *common.ServiceError) {
+	ret := _mock.Called(ctx, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchEntityReferences")
+	}
+
+	var r0 []providers.EntityReference
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) ([]providers.EntityReference, *common.ServiceError)); ok {
+		return returnFunc(ctx, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}) []providers.EntityReference); ok {
+		r0 = returnFunc(ctx, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.EntityReference)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderInterfaceMock_SearchEntityReferences_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchEntityReferences'
+type AuthnProviderInterfaceMock_SearchEntityReferences_Call struct {
+	*mock.Call
+}
+
+// SearchEntityReferences is a helper method to define mock.On call
+//   - ctx context.Context
+//   - filters map[string]interface{}
+func (_e *AuthnProviderInterfaceMock_Expecter) SearchEntityReferences(ctx interface{}, filters interface{}) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	return &AuthnProviderInterfaceMock_SearchEntityReferences_Call{Call: _e.mock.On("SearchEntityReferences", ctx, filters)}
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) Run(run func(ctx context.Context, filters map[string]interface{})) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) Return(entityReferences []providers.EntityReference, serviceError *common.ServiceError) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Return(entityReferences, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_SearchEntityReferences_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}) ([]providers.EntityReference, *common.ServiceError)) *AuthnProviderInterfaceMock_SearchEntityReferences_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// StoreAccountLink provides a mock function for the type AuthnProviderInterfaceMock
+func (_mock *AuthnProviderInterfaceMock) StoreAccountLink(ctx context.Context, entityReferenceToken any, idpID string, sub string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityReferenceToken, idpID, sub)
+
+	if len(ret) == 0 {
+		panic("no return value specified for StoreAccountLink")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, any, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityReferenceToken, idpID, sub)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AuthnProviderInterfaceMock_StoreAccountLink_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreAccountLink'
+type AuthnProviderInterfaceMock_StoreAccountLink_Call struct {
+	*mock.Call
+}
+
+// StoreAccountLink is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityReferenceToken any
+//   - idpID string
+//   - sub string
+func (_e *AuthnProviderInterfaceMock_Expecter) StoreAccountLink(ctx interface{}, entityReferenceToken interface{}, idpID interface{}, sub interface{}) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	return &AuthnProviderInterfaceMock_StoreAccountLink_Call{Call: _e.mock.On("StoreAccountLink", ctx, entityReferenceToken, idpID, sub)}
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) Run(run func(ctx context.Context, entityReferenceToken any, idpID string, sub string)) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 any
+		if args[1] != nil {
+			arg1 = args[1].(any)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) Return(serviceError *common.ServiceError) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderInterfaceMock_StoreAccountLink_Call) RunAndReturn(run func(ctx context.Context, entityReferenceToken any, idpID string, sub string) *common.ServiceError) *AuthnProviderInterfaceMock_StoreAccountLink_Call {
+	_c.Call.Return(run)
+	return _c
+}

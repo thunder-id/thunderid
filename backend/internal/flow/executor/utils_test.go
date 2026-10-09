@@ -483,6 +483,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 	tests := []struct {
 		name                 string
 		idpID                string
+		attributeConfig      *providers.AttributeConfiguration
 		federatedIdentifiers map[string]interface{}
 		existingIdentifiers  map[string]interface{}
 		ctx                  *providers.NodeContext
@@ -724,11 +725,108 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			},
 			expectedValid: false,
 		},
+		{
+			name: "Mismatch on the local attribute a custom linking attribute maps to returns false",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking:     &providers.AccountLinking{Attributes: []string{"phone_number"}},
+				UserTypeResolution: &providers.UserTypeResolution{Default: "customer"},
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+					UserType: "customer",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+					},
+				}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"phone_number": "+15550001",
+				"mobileNumber": "+15550001",
+				"sub":          "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"mobileNumber": "+15550002",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: false,
+		},
+		{
+			name: "Match on the local attribute a custom linking attribute maps to returns true",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking:     &providers.AccountLinking{Attributes: []string{"phone_number"}},
+				UserTypeResolution: &providers.UserTypeResolution{Default: "customer"},
+				UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+					UserType: "customer",
+					Attributes: []providers.AttributeMapping{
+						{ExternalAttribute: "phone_number", LocalAttribute: "mobileNumber"},
+					},
+				}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"phone_number": "+15550001",
+				"mobileNumber": "+15550001",
+				"sub":          "sub123",
+			},
+			ctx: &providers.NodeContext{
+				UserInputs: map[string]string{"mobileNumber": "+15550001"},
+			},
+			expectedValid: true,
+		},
+		{
+			name: "Email mismatch is ignored when email is not a linking attribute",
+			attributeConfig: &providers.AttributeConfiguration{
+				AccountLinking: &providers.AccountLinking{Attributes: []string{"username"}},
+			},
+			federatedIdentifiers: map[string]interface{}{
+				"email":    "user1@example.com",
+				"username": "user1",
+				"sub":      "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email":    "user2@example.com",
+				"username": "user1",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: true,
+		},
+		{
+			name:            "Email mismatch is ignored when the connection has no account linking",
+			attributeConfig: &providers.AttributeConfiguration{},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
+			},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
+			},
+			ctx:           &providers.NodeContext{},
+			expectedValid: true,
+		},
+		{
+			name:            "Sub mismatch still fails when the connection has no account linking",
+			idpID:           "idp-first",
+			attributeConfig: &providers.AttributeConfiguration{},
+			federatedIdentifiers: map[string]interface{}{
+				"sub": "sub-second",
+			},
+			ctx: &providers.NodeContext{
+				RuntimeData: map[string]string{
+					common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-first", "sub-first", nil),
+				},
+			},
+			expectedValid: false,
+		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.idpID, tt.federatedIdentifiers,
+			// Unless a case says otherwise, the connection links on email, as seeded connections do.
+			attributeConfig := tt.attributeConfig
+			if attributeConfig == nil {
+				attributeConfig = &providers.AttributeConfiguration{
+					AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
+				}
+			}
+			idpDTO := &providers.IDPDTO{ID: tt.idpID, AttributeConfiguration: attributeConfig}
+			valid := validateFederatedIdentifierConsistency(tt.ctx, idpDTO, tt.federatedIdentifiers,
 				tt.existingIdentifiers)
 			s.Equal(tt.expectedValid, valid)
 		})
@@ -784,8 +882,8 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_KeepsClaimsOutOfFlowState() {
 	s.Equal("victim-id", identity.Claims[userAttributeUserID])
 }
 
-// Token metadata describes the token, not the user, so it is never kept as a claim. The caller's map
-// is left untouched.
+// Token metadata describes the token, not the user, so it is never kept as a claim. The sub claim
+// is dropped only when it is set as the subject, and the caller's map is left untouched.
 func (s *UtilsTestSuite) TestSetExternalIdentity_DropsTokenMetadata() {
 	claims := map[string]interface{}{
 		"sub": "sub-123", "aud": "client", "exp": float64(1), "iat": float64(1), "nbf": float64(1),
@@ -798,8 +896,11 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_DropsTokenMetadata() {
 
 	identity := core.GetExternalIdentity(execResp.RuntimeData)
 	s.Equal("sub-123", identity.Sub)
-	s.Equal(map[string]interface{}{"sub": "sub-123", "email": "user@example.com"}, identity.Claims)
+	s.Equal(map[string]interface{}{"email": "user@example.com"}, identity.Claims)
 	s.Len(claims, 12)
+
+	s.NoError(setExternalIdentity(execResp, "", "", map[string]interface{}{"sub": "holder"}))
+	s.Equal("holder", core.GetExternalIdentity(execResp.RuntimeData).Claims["sub"])
 }
 
 // A later sign-in replaces the earlier entry whole, so claims from two providers never mix.

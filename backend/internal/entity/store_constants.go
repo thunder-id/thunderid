@@ -25,6 +25,16 @@ const (
 	// maxIndexedValuesPerAttribute is the maximum number of values an entity may index under one
 	// attribute name. It keeps a full identifier insert within the database bind parameter limits.
 	maxIndexedValuesPerAttribute = 100
+
+	// identifierSourceSystem marks an ENTITY_IDENTIFIER row derived from system attributes.
+	identifierSourceSystem = "system"
+	// identifierSourceAttribute marks an ENTITY_IDENTIFIER row derived from schema attributes.
+	identifierSourceAttribute = "attribute"
+
+	// linkedIDIndexName is the unique index that holds a linked subject to one entity, and
+	// linkedIDIndexColumns is its column list as SQLite reports it.
+	linkedIDIndexName    = "idx_entity_identifier_linked_id"
+	linkedIDIndexColumns = "ENTITY_IDENTIFIER.DEPLOYMENT_ID, ENTITY_IDENTIFIER.NAME, ENTITY_IDENTIFIER.VALUE"
 )
 
 var (
@@ -120,6 +130,17 @@ var (
 	QueryDeleteIdentifiersByEntity = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-17",
 		Query: `DELETE FROM "ENTITY_IDENTIFIER" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+	// QueryResolveIdentifier resolves entities by an exact identifier name, value, and source.
+	QueryResolveIdentifier = model.DBQuery{
+		ID: "ASQ-ENTITY_MGT-30",
+		Query: `SELECT ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ` +
+			`WHERE NAME = $1 AND VALUE = $2 AND SOURCE = $3 AND DEPLOYMENT_ID = $4`,
+	}
+	// QueryLockEntity takes the entity's write lock for the rest of the transaction with a no-op write.
+	QueryLockEntity = model.DBQuery{
+		ID:    "ASQ-ENTITY_MGT-31",
+		Query: `UPDATE "ENTITY" SET UPDATED_AT = UPDATED_AT WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 )
 

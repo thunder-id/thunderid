@@ -723,29 +723,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Federated Auth Resolver",
-      "label": "Resolve Federated User",
-      "description": "Match a federated identity to a local account",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "FederatedAuthResolverExecutor"
-        },
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "OU Resolver Executor",
       "label": "Resolve OU",
       "description": "Resolve the organization unit for the flow",
@@ -1206,6 +1183,29 @@
         "executor": {"name": "ClientSecretExecutor"},
         "onSuccess": "",
         "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Account Linking Executor",
+      "label": "Account Linking",
+      "description": "Decide whether this federated identity is new, already signed in, or needs the account verified first",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AccountLinkingExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
       }
     }
   }

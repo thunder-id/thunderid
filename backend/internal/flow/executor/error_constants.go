@@ -1308,6 +1308,66 @@ var (
 			DefaultValue: "An agent is created by an administrator and cannot register itself",
 		},
 	}
+
+	// ErrNonCandidateVerified is returned when the entity that completed a verification step is not
+	// one of the candidates the linking executor sent to it.
+	ErrNonCandidateVerified = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1093",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.non_candidate_verified",
+			DefaultValue: "Verification completed by a different account",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.non_candidate_verified_desc",
+			DefaultValue: "The account that verified is not the account being linked",
+		},
+	}
+
+	// ErrVerificationNotCompleted is returned when the linking executor is reached a second time
+	// with nobody authenticated.
+	ErrVerificationNotCompleted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1094",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_not_completed",
+			DefaultValue: "Account verification was not completed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.verification_not_completed_desc",
+			DefaultValue: "The account being linked was not verified, so nothing was linked",
+		},
+	}
+
+	// ErrUnverifiedLinkingCandidate is returned when provisioning is reached with a linking
+	// candidate resolved and nobody authenticated.
+	ErrUnverifiedLinkingCandidate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1095",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.unverified_linking_candidate",
+			DefaultValue: "Account verification is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.unverified_linking_candidate_desc",
+			DefaultValue: "An existing account matched this identity but was not verified",
+		},
+	}
+
+	// ErrLinkingWriteFailed is returned when recording the federated identity against the account
+	// the linking executor settled on fails.
+	ErrLinkingWriteFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1096",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.linking_write_failed",
+			DefaultValue: "Failed to link the account",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.linking_write_failed_desc",
+			DefaultValue: "The federated identity could not be recorded against the account",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

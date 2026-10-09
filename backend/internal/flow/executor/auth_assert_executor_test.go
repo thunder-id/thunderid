@@ -1495,6 +1495,28 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_E
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetTransitiveEntityGroups")
 }
 
+// A linked sign-in resolves to a local user, so the stored profile wins over a conflicting claim from
+// the identity provider. The claim still fills an attribute the profile does not hold.
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_StoredProfileWinsOverExternalClaim() {
+	execResp := &providers.ExecutorResponse{}
+	suite.Require().NoError(setExternalIdentity(execResp, "idp-a", "sub-1", map[string]interface{}{
+		"email":   "alice.personal@gmail.com",
+		"picture": "https://example.com/alice.png",
+	}))
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: execResp.RuntimeData,
+	}
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{"email", "picture"},
+		map[string]interface{}{"email": "alice@corp.com"}, "user-123", "", "")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "alice@corp.com", attrs["email"])
+	assert.Equal(suite.T(), "https://example.com/alice.png", attrs["picture"])
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithUserType() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",

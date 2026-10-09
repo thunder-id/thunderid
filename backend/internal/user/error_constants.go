@@ -128,6 +128,20 @@ var (
 			DefaultValue: "A user with the same unique attribute value already exists",
 		},
 	}
+	// ErrorLinkedAccountConflict is the error returned when the federated identity a new user is
+	// created with is already linked to another user.
+	ErrorLinkedAccountConflict = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.linked_account_conflict",
+			DefaultValue: "Linked account conflict",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.linked_account_conflict_description",
+			DefaultValue: "The federated identity is already linked to another user",
+		},
+	}
 	// ErrorMissingRequiredFields is the error returned when required fields are missing.
 	ErrorMissingRequiredFields = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

@@ -125,7 +125,7 @@ func (s *FederatedMappingSuite) TestFederatedNodeWithMismatchedConnectionType() 
 // and the redirect is issued first, so the guard is shown holding while an exchange is genuinely in
 // flight rather than merely at rest.
 func (s *FederatedMappingSuite) TestConnectionInUseCannotBeDeletedMidExchange() {
-	fixture := s.idpFixture(nil)
+	fixture := s.idpFixture(linkOn([]string{"email"}, pair("email", "email")))
 	fixture.Name = "Federated Throwaway Connection " + s.nextSubject()
 	throwaway, err := testutils.CreateIDP(fixture)
 	s.Require().NoError(err, "failed to create the throwaway connection")
@@ -135,8 +135,13 @@ func (s *FederatedMappingSuite) TestConnectionInUseCannotBeDeletedMidExchange() 
 			map[string]interface{}{"idpId": throwaway}),
 		"deleted-conn")
 
-	user := s.knownOIDCIdentity()
-	s.activeSub = user.Sub
+	// A link is held against the connection that recorded it, so record it through the throwaway one.
+	user := s.baseUser(s.nextSubject())
+	s.createLocalUser(map[string]interface{}{
+		"username": user.Email, "email": user.Email, "password": linkPassword,
+	})
+	s.mockOIDC.AddUser(user)
+	s.recordLink("OIDCAuthExecutor", throwaway, user.Sub, user.Email)
 
 	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
 	s.Require().NoError(err, "the flow should start")

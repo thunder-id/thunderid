@@ -113,6 +113,8 @@ func (s *FileBasedStoreTestSuite) TestUnsupportedMutations() {
 	s.Error(s.store.UpdateCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateSystemCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.DeleteEntity(s.ctx, "e4"))
+	_, err := s.store.LockEntity(s.ctx, "e4")
+	s.Error(err)
 }
 
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_NoMatch() {
@@ -158,6 +160,37 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 
 	_, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "dup@test.com"})
 	s.Error(err)
+}
+
+func (s *FileBasedStoreTestSuite) seedLinkedEntity(id, linkedIDs string) {
+	s.seedEntity(providers.Entity{ID: id, Category: providers.EntityCategoryUser,
+		SystemAttributes: json.RawMessage(`{"linkedIds":` + linkedIDs + `}`)})
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_OneMatch() {
+	s.seedLinkedEntity("linked1", `{"idp-a":{"sub-1":{}}}`)
+	s.seedLinkedEntity("other1", `{"idp-a":{"sub-2":{}}}`)
+
+	id, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.Equal("linked1", *id)
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_NoMatch() {
+	s.seedEntity(makeTestEntity("plain1", "user", "ou1"))
+	s.seedLinkedEntity("linked2", `{"idp-b":{"sub-1":{}}}`)
+	s.seedLinkedEntity("malformed1", `"not-an-object"`)
+
+	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_MultipleMatches() {
+	s.seedLinkedEntity("linked3", `{"idp-a":{"sub-1":{}}}`)
+	s.seedLinkedEntity("linked4", `{"idp-a":{"sub-1":{}}}`)
+
+	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.ErrorIs(err, ErrAmbiguousEntity)
 }
 
 func (s *FileBasedStoreTestSuite) TestGetEntityListCount_WithCategoryAndFilter() {

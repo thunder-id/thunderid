@@ -128,4 +128,19 @@ var (
 			DefaultValue: "The authenticated subject is not allowed to sign in to this application",
 		},
 	}
+
+	// ErrorLinkAccountFailed is returned when the provider rejects recording a federated
+	// identity link for a client-side reason other than not supporting the operation.
+	ErrorLinkAccountFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.link_account_failed",
+			DefaultValue: "Failed to link account",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.link_account_failed_description",
+			DefaultValue: "The account could not be linked to the user",
+		},
+	}
 )

@@ -7,6 +7,7 @@ import ButtonAdapter from './adapters/ButtonAdapter';
 import CaptchaAdapter from './adapters/CaptchaAdapter';
 import ChoiceAdapter from './adapters/ChoiceAdapter';
 import ConsentAdapter from './adapters/ConsentAdapter';
+import CopyableTextAdapter from './adapters/CopyableTextAdapter';
 import CustomAdapter from './adapters/CustomAdapter';
 import DividerAdapter from './adapters/DividerAdapter';
 import DynamicInputPlaceholderAdapter from './adapters/DynamicInputPlaceholderAdapter';
@@ -18,6 +19,7 @@ import DefaultInputAdapter from './adapters/input/DefaultInputAdapter';
 import OTPInputAdapter from './adapters/input/OTPInputAdapter';
 import PhoneNumberInputAdapter from './adapters/input/PhoneNumberInputAdapter';
 import SelectAdapter from './adapters/input/SelectAdapter';
+import KeyValueListAdapter from './adapters/KeyValueListAdapter';
 import QrCodeAdapter from './adapters/QrCodeAdapter';
 import ResendButtonAdapter from './adapters/ResendButtonAdapter';
 import RichTextAdapter from './adapters/RichTextAdapter';
@@ -161,6 +163,14 @@ function CommonElementFactory({
   }
   if (resource.type === ElementTypes.DynamicInputPlaceholder) {
     return <DynamicInputPlaceholderAdapter resource={resource} />;
+  }
+
+  if (resource.type === ElementTypes.KeyValueList) {
+    return <KeyValueListAdapter resource={resource} />;
+  }
+
+  if (resource.type === ElementTypes.CopyableText) {
+    return <CopyableTextAdapter resource={resource} />;
   }
 
   return null;

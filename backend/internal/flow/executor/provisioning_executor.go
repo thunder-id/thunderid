@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -134,6 +136,42 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
+	// A resolved user needs no provisioning. Checked before required inputs so the user is not
+	// prompted for attributes they already have. Registration flows still apply the existing-user
+	// rules.
+	if ctx.FlowType == providers.FlowTypeAuthentication {
+		if resolvedID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider); resolvedID != "" {
+			logger.Debug(ctx.Context, "User already exists, skipping provisioning")
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+	}
+
+	// A federated identity resolves a user only through its recorded link, and no input can change
+	// which user that is, so registration applies the existing-user rules before prompting for
+	// attributes. Cross-OU provisioning needs those attributes, so it keeps the longer path.
+	if ctx.FlowType == providers.FlowTypeRegistration && federatedIdentityFrom(ctx) != nil &&
+		!isCrossOUProvisioningAllowed(ctx) {
+		if resolvedID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider); resolvedID != "" {
+			logger.Debug(ctx.Context, "Federated identity is already linked to a user")
+			if isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx) {
+				execResp.Status = providers.ExecComplete
+			} else {
+				execResp.Status = providers.ExecFailure
+				execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, category)
+			}
+			return execResp, nil
+		}
+	}
+
+	// Unsettled linking candidates mean provisioning would duplicate one of those accounts.
+	if ctx.RuntimeData[common.RuntimeKeyLinkingCandidateUserIDs] != "" {
+		logger.Debug(ctx.Context, "Linking candidate was never verified, refusing to provision")
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrUnverifiedLinkingCandidate
+		return execResp, nil
+	}
+
 	// Authentication only auto-provisions the categories it can authenticate, and only when it
 	// marked the entity eligible.
 	if ctx.FlowType == providers.FlowTypeAuthentication && traitsFor(category).autoProvisionedAtAuthentication {
@@ -160,7 +198,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
-	return p.completeProvisioning(ctx, category, entityID, execResp, logger)
+	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil
 }
 
 // categoryFromMode maps the node's mode property onto the entity category it works on. A mode is
@@ -194,7 +232,7 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 		return nil, false, nil
 	}
 
-	identifyingAttrs, credentialAttrs, err := p.getAttributesForProvisioning(ctx, category)
+	identifyingAttrs, credentialAttrs, uniqueAttrs, err := p.getAttributesForProvisioning(ctx, category)
 	if err != nil {
 		return nil, false, err
 	}
@@ -206,7 +244,7 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 		return nil, false, nil
 	}
 
-	proceed, err := p.resolveExistingEntity(ctx, category, identifyingAttrs, execResp, logger)
+	proceed, err := p.resolveExistingEntity(ctx, category, identifyingAttrs, uniqueAttrs, execResp, logger)
 	if err != nil || !proceed {
 		return nil, false, err
 	}
@@ -222,39 +260,52 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 	return attributes, true, nil
 }
 
-// resolveExistingEntity identifies an entity that already matches the provisioning attributes and
-// decides whether provisioning can still go ahead. A false return means execResp already carries
-// the outcome of the node.
-//
-// With no attributes to match on there is nothing to identify by, which is reachable whenever a
-// schema declares every attribute optional and none is supplied. Identification is skipped rather
-// than attempted, since an empty filter matches on nothing rather than on everything.
+// resolveExistingEntity identifies an entity that already exists for the provisioning attributes and
+// decides whether provisioning can still go ahead. Users resolve through the context user or the
+// schema-unique attributes, and a federated identity skips the attribute lookup. Other categories
+// use the combined attribute lookup. A false return means execResp already carries the outcome.
 func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
-	category entitytype.TypeCategory, identifyingAttrs map[string]interface{},
+	category entitytype.TypeCategory, identifyingAttrs, uniqueAttrs map[string]interface{},
 	execResp *providers.ExecutorResponse, logger *log.Logger,
 ) (bool, error) {
-	if len(identifyingAttrs) == 0 {
-		logger.Debug(ctx.Context, "No identifying attributes provided, skipping identification")
-		return true, nil
-	}
-
-	entityID, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp, category)
-	if err != nil {
-		logger.Error(ctx.Context, "Failed to identify the entity", log.Error(err))
-		execResp.Status = providers.ExecFailure
-		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, category)
-		return false, nil
-	}
-	if execResp.Status == providers.ExecFailure &&
-		execResp.Error != nil && execResp.Error.Code == ErrAmbiguousEntityIdentity.Code &&
-		isCrossOUProvisioningAllowed(ctx) {
-		resolved, resolveErr := p.resolveAmbiguousEntityForProvisioning(ctx, category, identifyingAttrs)
-		if resolveErr != nil {
-			return false, resolveErr
+	var entityID *string
+	if category == entitytype.TypeCategoryUser {
+		// A federated identity resolves an existing user only through its recorded link, so it is
+		// never matched on attributes.
+		lookupAttrs := uniqueAttrs
+		if federatedIdentityFrom(ctx) != nil {
+			lookupAttrs = nil
+		}
+		resolved, err := p.identifyExistingEntity(ctx, lookupAttrs, execResp, logger)
+		if err != nil {
+			return false, err
 		}
 		entityID = resolved
-		execResp.Status = ""
-		execResp.Error = nil
+	} else {
+		// With no attributes to match on there is nothing to identify by, which is reachable
+		// whenever a schema declares every attribute optional and none is supplied. Identification
+		// is skipped rather than attempted, since an empty filter matches on nothing rather than on
+		// everything.
+		if len(identifyingAttrs) == 0 {
+			logger.Debug(ctx.Context, "No identifying attributes provided, skipping identification")
+			return true, nil
+		}
+
+		resolved, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp, category)
+		if err != nil {
+			return false, err
+		}
+		if execResp.Status == providers.ExecFailure &&
+			execResp.Error != nil && execResp.Error.Code == ErrAmbiguousEntityIdentity.Code &&
+			isCrossOUProvisioningAllowed(ctx) {
+			resolved, err = p.resolveAmbiguousEntityForProvisioning(ctx, category, identifyingAttrs)
+			if err != nil {
+				return false, err
+			}
+			execResp.Status = ""
+			execResp.Error = nil
+		}
+		entityID = resolved
 	}
 	if execResp.Status == providers.ExecFailure &&
 		(execResp.Error == nil || execResp.Error.Code != ErrEntityNotFound.Code) {
@@ -268,6 +319,72 @@ func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
 	}
 
 	return true, nil
+}
+
+// identifyExistingEntity returns the user that would conflict with the one about to be provisioned,
+// or nil when there is none. A user this execution already resolved wins over the attribute lookup,
+// which resolves on a broader set and can pick a different user or none. Only unique attributes
+// identify a user, one lookup each.
+func (p *provisioningExecutor) identifyExistingEntity(ctx *providers.NodeContext,
+	uniqueAttrs map[string]interface{},
+	execResp *providers.ExecutorResponse, logger *log.Logger) (*string, error) {
+	if resolvedID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider); resolvedID != "" {
+		return &resolvedID, nil
+	}
+
+	if len(uniqueAttrs) == 0 {
+		logger.Debug(ctx.Context, "No unique attributes to identify an existing entity with")
+		return nil, nil
+	}
+
+	// One lookup per attribute: a combined filter is conjunctive, while the store rejects the write
+	// when any single value is taken. Name order keeps the reported conflict stable.
+	for _, attr := range slices.Sorted(maps.Keys(uniqueAttrs)) {
+		filter := map[string]interface{}{attr: uniqueAttrs[attr]}
+		execResp.Status = ""
+		execResp.Error = nil
+
+		entityID, err := p.IdentifyEntity(ctx.Context, filter, execResp, entitytype.TypeCategoryUser)
+		if err != nil {
+			return nil, err
+		}
+
+		if execResp.Status == providers.ExecFailure {
+			code := ""
+			if execResp.Error != nil {
+				code = execResp.Error.Code
+			}
+			switch code {
+			case ErrEntityNotFound.Code:
+				// Free; a later unique attribute can still conflict.
+				continue
+			case ErrAmbiguousEntityIdentity.Code:
+				if !isCrossOUProvisioningAllowed(ctx) {
+					return nil, nil
+				}
+				resolved, err := p.resolveAmbiguousEntityForProvisioning(ctx, entitytype.TypeCategoryUser, filter)
+				if err != nil {
+					return nil, err
+				}
+				execResp.Status = ""
+				execResp.Error = nil
+				if resolved != nil {
+					return resolved, nil
+				}
+				continue
+			default:
+				return nil, nil
+			}
+		}
+
+		if entityID != nil && *entityID != "" {
+			logger.Debug(ctx.Context, "An existing entity already holds a unique attribute value",
+				log.String("attribute", attr))
+			return entityID, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // createEntity provisions the entity through the management service its category owns, and returns
@@ -315,19 +432,19 @@ func (p *provisioningExecutor) createEntity(ctx *providers.NodeContext, category
 // authentication as the provisioned entity, and the runtime flags the rest of the flow reads.
 func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse,
-	logger *log.Logger) (*providers.ExecutorResponse, error) {
+	logger *log.Logger) *providers.ExecutorResponse {
 	if err := p.assignGroupsAndRoles(ctx, category, entityID); err != nil {
 		logger.Error(ctx.Context, "Failed to assign groups and roles to the provisioned entity",
 			log.MaskedString(log.LoggerKeyEntityID, entityID),
 			log.Error(err))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrProvisioningAssignmentFailed, category)
-		return execResp, nil
+		return execResp
 	}
 
 	p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
 	if execResp.Status == providers.ExecFailure {
-		return execResp, nil
+		return execResp
 	}
 
 	execResp.Status = providers.ExecComplete
@@ -337,7 +454,7 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 		execResp.RuntimeData[common.RuntimeKeyUserAutoProvisioned] = dataValueTrue
 	}
 
-	return execResp, nil
+	return execResp
 }
 
 // authenticateProvisionedEntity authenticates the newly provisioned entity and updates the
@@ -738,24 +855,26 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extId
 }
 
 // getAttributesForProvisioning collects entity attributes from context in a single schema pass,
-// returning identifying (non-credential) and credential attributes as separate maps.
-// Schema is the whitelist for both maps.
+// returning identifying (non-credential), credential, and unique attributes as separate maps.
+// Schema is the whitelist for all three maps. uniqueAttrs is the subset of identifyingAttrs the
+// schema declares unique, and is the only set that can identify a conflicting entity.
 // Values are resolved from non-empty UserInputs then non-empty RuntimeData. Non-credential values
 // are converted from the engine's string representation to the type declared by the schema
 // attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext, category entitytype.TypeCategory,
-) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
+) (identifyingAttrs, credentialAttrs, uniqueAttrs map[string]interface{}, err error) {
 	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, category, true, true)
 	if fetchErr != nil {
-		return nil, nil, fetchErr
+		return nil, nil, nil, fetchErr
 	}
 
 	identifyingAttrs = make(map[string]interface{})
 	credentialAttrs = make(map[string]interface{})
+	uniqueAttrs = make(map[string]interface{})
 
 	if len(schemaAttrs) == 0 {
-		return identifyingAttrs, credentialAttrs, nil
+		return identifyingAttrs, credentialAttrs, uniqueAttrs, nil
 	}
 
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
@@ -776,10 +895,15 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 				claimValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
 			}
+			if a.Unique {
+				if value, exists := identifyingAttrs[a.Attribute]; exists {
+					uniqueAttrs[a.Attribute] = value
+				}
+			}
 		}
 	}
 
-	return identifyingAttrs, credentialAttrs, nil
+	return identifyingAttrs, credentialAttrs, uniqueAttrs, nil
 }
 
 // createUserInStore provisions a user through the user management provider. The organization unit
@@ -806,11 +930,16 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryUser)
 	}
 
-	createdUser, svcErr := p.userMgtProvider.CreateUser(nodeCtx.Context, &providers.User{
+	user := &providers.User{
 		OUID:       targetRef.ouID,
 		Type:       targetRef.entityType,
 		Attributes: attributesJSON,
-	})
+	}
+	// The user service records a federated sign-in's link in the same write that creates the user.
+	if federated := federatedIdentityFrom(nodeCtx); federated != nil {
+		user.LinkedAccount = &providers.LinkedAccount{IdpID: federated.idpID, Sub: federated.sub}
+	}
+	createdUser, svcErr := p.userMgtProvider.CreateUser(nodeCtx.Context, user)
 	if svcErr != nil {
 		return nil, svcErr
 	}

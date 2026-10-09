@@ -1037,7 +1037,7 @@ func (suite *CredentialsAuthTestSuite) TestAuthenticateWithProvisionedEntityIDRe
 func (suite *CredentialsAuthTestSuite) TestAuthenticateWithReservedCredentialTypesRejected() {
 	reservedTypes := []string{
 		"provisionedEntityID", "passkey", "otp", "federated", "magiclink", "openid4vp",
-		"sub", "clientSecret", "flowSecret",
+		"clientSecret", "flowSecret",
 	}
 
 	for _, reserved := range reservedTypes {

@@ -393,3 +393,76 @@ func (suite *RestAuthnProviderTestSuite) TestEnroll_Failure() {
 	suite.Equal(tidcommon.ClientErrorType, err.Type)
 	suite.Equal(authnprovidercm.ErrorCodeEnrollmentFailed, err.Code)
 }
+
+// --- SearchEntityReferences ---
+
+// The REST contract has no search, so an ambiguous lookup at an external provider fails closed.
+func (suite *RestAuthnProviderTestSuite) TestSearchEntityReferences_NotImplemented() {
+	provider := newRestAuthnProvider("http://unused", "", "X-Correlation-ID",
+		httpmock.NewHTTPClientInterfaceMock(suite.T()))
+	refs, svcErr := provider.SearchEntityReferences(context.Background(), map[string]interface{}{"email": "a"})
+
+	suite.Nil(refs)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(authnprovidercm.ErrorCodeNotImplemented, svcErr.Code)
+}
+
+// --- StoreAccountLink ---
+
+func (suite *RestAuthnProviderTestSuite) TestStoreAccountLink_PostsTheDocumentedBody() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("/link-account", r.URL.Path)
+		suite.Equal(http.MethodPost, r.Method)
+
+		var req storeAccountLinkRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		suite.Equal("idp-a", req.IDPID)
+		suite.Equal("sub-1", req.Sub)
+		token, _ := req.EntityReferenceToken.(map[string]interface{})
+		suite.Equal("user123", token["userID"])
+
+		// The success response carries no body.
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "apikey123", "X-Correlation-ID", suite.setupMockClient())
+	token := map[string]interface{}{"userID": "user123"}
+
+	suite.Nil(provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1"))
+}
+
+func (suite *RestAuthnProviderTestSuite) TestStoreAccountLink_ClientErrorDecodes() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"code":        authnprovidercm.ErrorCodeInvalidRequest,
+			"message":     "Unsupported",
+			"description": "This provider does not store account links",
+		})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
+	svcErr := provider.StoreAccountLink(context.Background(),
+		map[string]interface{}{"userID": "user123"}, "idp-a", "sub-1")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest, svcErr.Code)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestStoreAccountLink_ServerErrorIsInternal() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"code": "SOME-500", "message": "boom"})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", "X-Correlation-ID", suite.setupMockClient())
+	svcErr := provider.StoreAccountLink(context.Background(),
+		map[string]interface{}{"userID": "user123"}, "idp-a", "sub-1")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
+}

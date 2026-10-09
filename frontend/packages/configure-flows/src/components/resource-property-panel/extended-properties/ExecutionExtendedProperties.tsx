@@ -134,6 +134,7 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:
+    case ExecutionTypes.AccountLinking:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

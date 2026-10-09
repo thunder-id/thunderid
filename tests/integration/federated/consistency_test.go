@@ -17,9 +17,6 @@ import (
 // identity other than the one the flow holds.
 const errCodeInvalidFederatedUser = "FET-1014"
 
-// consistencyPassword is the password of the local users these scenarios sign in first.
-const consistencyPassword = "Consistency@123"
-
 // passwordThenSignInFlow signs a local user in with a password and then signs in through the
 // connection with the given executor, the shape of a flow that steps up with a federated sign-in.
 func passwordThenSignInFlow(handle, idpID, executor string) testutils.Flow {
@@ -104,23 +101,14 @@ func emailThenSignInFlow(handle, idpID string) testutils.Flow {
 	}
 }
 
-// createPasswordUser creates a local user with a password, linked to sub, and returns its username.
-func (s *FederatedMappingSuite) createPasswordUser(sub string) string {
-	s.T().Helper()
-	email := sub + "@example.com"
-	s.createLocalUser(map[string]interface{}{
-		"username": email, "email": email, "sub": sub, "password": consistencyPassword})
-	return email
-}
-
-// signInAfterPassword signs username in with its password and then signs in at the identity provider
+// signInAfterPassword signs username in with the password of a linked local user and then signs in at the identity provider
 // as sub, returning the step the federated callback leads to.
 func (s *FederatedMappingSuite) signInAfterPassword(appID, username, sub string) *common.FlowStep {
 	s.T().Helper()
 	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
 	s.Require().NoError(err, "failed to initiate the authentication flow")
 	step, err = common.CompleteFlow(step.ExecutionID,
-		map[string]string{"username": username, "password": consistencyPassword}, "action_credentials",
+		map[string]string{"username": username, "password": linkPassword}, "action_credentials",
 		step.ChallengeToken)
 	s.Require().NoError(err, "failed to submit the credentials")
 	s.Require().Equal("REDIRECTION", step.Type, "expected the federated sign-in to redirect, got %+v %+v",
@@ -148,12 +136,9 @@ func (s *FederatedMappingSuite) assertRejectedAsAnotherIdentity(step *common.Flo
 func (s *FederatedMappingSuite) TestSignInAfterPasswordAsTheSameUserCompletes() {
 	appID := s.createScenarioApp(
 		passwordThenSignInFlow("auth_flow_fed_pwd_same", s.idpID, "OIDCAuthExecutor"), "fed_pwd_same")
-	user := s.baseUser(s.nextSubject())
-	username := s.createPasswordUser(user.Sub)
-	s.applyConfig(mapping(fedPersonType.Handle, pair("email", "email")))
-	s.mockOIDC.AddUser(user)
+	user := s.knownOIDCIdentity()
 
-	step := s.signInAfterPassword(appID, username, user.Sub)
+	step := s.signInAfterPassword(appID, user.Email, user.Sub)
 
 	s.Equal("COMPLETE", step.FlowStatus, "got %+v %+v", step, step.Error)
 	s.NotEmpty(step.Assertion, "a completed authentication should carry an assertion")
@@ -163,10 +148,9 @@ func (s *FederatedMappingSuite) TestSignInAfterPasswordAsTheSameUserCompletes() 
 func (s *FederatedMappingSuite) TestSignInAfterPasswordWithAnotherEmailIsRejected() {
 	appID := s.createScenarioApp(
 		passwordThenSignInFlow("auth_flow_fed_pwd_email", s.idpID, "OIDCAuthExecutor"), "fed_pwd_email")
-	user := s.baseUser(s.nextSubject())
-	username := s.createPasswordUser(user.Sub)
+	user := s.knownOIDCIdentity()
+	username := user.Email
 	user.Email = "other-" + user.Email
-	s.applyConfig(mapping(fedPersonType.Handle, pair("email", "email")))
 	s.mockOIDC.AddUser(user)
 
 	s.assertRejectedAsAnotherIdentity(s.signInAfterPassword(appID, username, user.Sub))
@@ -176,12 +160,10 @@ func (s *FederatedMappingSuite) TestSignInAfterPasswordWithAnotherEmailIsRejecte
 func (s *FederatedMappingSuite) TestOAuthSignInAfterPasswordWithAnotherEmailIsRejected() {
 	appID := s.createScenarioApp(
 		passwordThenSignInFlow("auth_flow_fed_pwd_oauth", s.oauthIDPID, "OAuthExecutor"), "fed_pwd_oauth")
-	sub := s.nextSubject()
-	username := s.createPasswordUser(sub)
-	s.mockOAuth.AddUser(&testutils.OAuthUserInfo{Sub: sub, Email: "other-" + username, Name: "OAuth User"})
-	s.applyConfigTo("oauth", s.oauthIDPID, mapping(fedPersonType.Handle, pair("email", "email")))
+	user := s.knownOAuthIdentity()
+	s.mockOAuth.AddUser(&testutils.OAuthUserInfo{Sub: user.Sub, Email: "other-" + user.Email, Name: "OAuth User"})
 
-	s.assertRejectedAsAnotherIdentity(s.signInAfterPassword(appID, username, sub))
+	s.assertRejectedAsAnotherIdentity(s.signInAfterPassword(appID, user.Email, user.Sub))
 }
 
 // An email the user entered earlier in the flow has to match the email the identity provider asserts.

@@ -6,6 +6,7 @@ package idp
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/url"
 	"slices"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -327,6 +329,106 @@ func ApplyAttributeMappings(
 	return result
 }
 
+// BuildAccountLinkingFilters returns one filter per combination of the local attributes each linking
+// attribute matches on, or nil when there is nothing to match on. claims are the mapped claims. An
+// attribute with a value and no local attribute yields nil, since dropping it would widen the match.
+func BuildAccountLinkingFilters(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []map[string]interface{} {
+	if linking == nil {
+		return nil
+	}
+
+	filters := []map[string]interface{}{{}}
+	for _, attr := range linking.Attributes {
+		targets := accountLinkingTargets(attr, claims, mappings)
+		if len(targets) == 0 {
+			if value, _ := sysutils.GetNestedValue(claims, attr); sysutils.ConvertInterfaceValueToString(value) != "" {
+				return nil
+			}
+			continue
+		}
+
+		// Every value is read from the one claims map, so two linking attributes that land on the
+		// same local attribute always agree on it, and a filter that already holds it is kept as is.
+		combined := make([]map[string]interface{}, 0, len(filters)*len(targets))
+		for _, filter := range filters {
+			kept := false
+			for _, target := range targets {
+				if _, ok := filter[target]; ok {
+					if !kept {
+						combined = append(combined, filter)
+						kept = true
+					}
+					continue
+				}
+				next := maps.Clone(filter)
+				next[target] = sysutils.ConvertInterfaceValueToString(claims[target])
+				combined = append(combined, next)
+			}
+		}
+		filters = combined
+	}
+
+	if len(filters[0]) == 0 {
+		return nil
+	}
+	return filters
+}
+
+// GetAccountLinkingLocalAttributes returns the local attributes with a value that the linking
+// attributes match on, in linking order and without duplicates. claims are the mapped claims.
+func GetAccountLinkingLocalAttributes(linking *providers.AccountLinking, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []string {
+	if linking == nil {
+		return nil
+	}
+
+	var attributes []string
+	for _, attr := range linking.Attributes {
+		for _, target := range accountLinkingTargets(attr, claims, mappings) {
+			if !slices.Contains(attributes, target) {
+				attributes = append(attributes, target)
+			}
+		}
+	}
+	return attributes
+}
+
+// accountLinkingTargets returns the valued local attributes a linking attribute may match on: its
+// mapped targets in order, then the same-named attribute when queryable and not fed by another claim.
+func accountLinkingTargets(attr string, claims map[string]interface{},
+	mappings []providers.AttributeMapping) []string {
+	targets := make([]string, 0, len(mappings)+1)
+	mapped, shadowed := false, false
+	for _, m := range mappings {
+		switch {
+		case m.ExternalAttribute == attr:
+			mapped = true
+			if !authnprovidercm.IsReservedLookupAttribute(m.LocalAttribute) &&
+				!slices.Contains(targets, m.LocalAttribute) &&
+				sysutils.ConvertInterfaceValueToString(claims[m.LocalAttribute]) != "" {
+				targets = append(targets, m.LocalAttribute)
+			}
+		case m.LocalAttribute == attr:
+			shadowed = true
+		}
+	}
+
+	if (!mapped || !shadowed) && isPlainAttributeName(attr) && !authnprovidercm.IsReservedLookupAttribute(attr) &&
+		!slices.Contains(targets, attr) && sysutils.ConvertInterfaceValueToString(claims[attr]) != "" {
+		targets = append(targets, attr)
+	}
+	return targets
+}
+
+// isPlainAttributeName reports whether name is a top-level attribute name the entity store accepts
+// as a lookup key: letters, digits and underscores only.
+func isPlainAttributeName(name string) bool {
+	return name != "" && strings.IndexFunc(name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_')
+	}) == -1
+}
+
 // validateAttributeMappingShape validates the external→local mappings independently of any user type
 // schema: non-empty source/target names and no duplicate targets. A single external attribute may map
 // to multiple local attributes, but two external attributes mapping to the same local attribute is a
@@ -353,6 +455,95 @@ func validateAttributeMappingShape(mappings []providers.AttributeMapping) *tidco
 		seenTargets[local] = true
 	}
 	return nil
+}
+
+// validateAccountLinking rejects linking attributes that are empty, resolve to a reserved name, or
+// cannot match by name and are not mapped for every user type.
+func validateAccountLinking(profile *providers.AttributeConfiguration) *tidcommon.ServiceError {
+	if profile.AccountLinking == nil {
+		return nil
+	}
+	for _, attr := range profile.AccountLinking.Attributes {
+		if strings.TrimSpace(attr) == "" {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key:          "error.idpservice.attribute_configuration_linking_empty_description",
+				DefaultValue: "account linking attributes must not be empty",
+			})
+		}
+		if authnprovidercm.IsReservedLookupAttribute(attr) {
+			return newReservedLinkingAttributeError(attr)
+		}
+		for i := range profile.UserTypeAttributeMappings {
+			for _, m := range profile.UserTypeAttributeMappings[i].Attributes {
+				if m.ExternalAttribute == attr && authnprovidercm.IsReservedLookupAttribute(m.LocalAttribute) {
+					return newReservedLinkingAttributeError(m.LocalAttribute)
+				}
+			}
+		}
+		if !isPlainAttributeName(attr) && !isMappedForEveryUserType(attr, profile.UserTypeAttributeMappings) {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_linking_unmatchable_description",
+				DefaultValue: "'{{param(attribute)}}' must be mapped to a local attribute for every user " +
+					"type, since only names made of letters, digits and underscores match by name",
+				Params: map[string]string{"attribute": attr},
+			})
+		}
+	}
+	for i := range profile.UserTypeAttributeMappings {
+		entry := profile.UserTypeAttributeMappings[i]
+		if count := maxAccountLinkingFilterCount(profile.AccountLinking, entry.Attributes); count >
+			authnprovidercm.MaxAccountLinkingFilters {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_linking_too_many_lookups_description",
+				DefaultValue: "account linking attributes combine into {{param(count)}} lookups for user type " +
+					"'{{param(userType)}}', more than the {{param(max)}} allowed",
+				Params: map[string]string{
+					"count":    strconv.Itoa(count),
+					"userType": entry.UserType,
+					"max":      strconv.Itoa(authnprovidercm.MaxAccountLinkingFilters),
+				},
+			})
+		}
+	}
+	return nil
+}
+
+// maxAccountLinkingFilterCount returns how many filters BuildAccountLinkingFilters builds under
+// mappings when every attribute it could match on has a value, which is the most it can build.
+func maxAccountLinkingFilterCount(linking *providers.AccountLinking, mappings []providers.AttributeMapping) int {
+	claims := make(map[string]interface{}, len(mappings)+len(linking.Attributes))
+	for _, m := range mappings {
+		claims[m.LocalAttribute] = "x"
+	}
+	for _, attr := range linking.Attributes {
+		claims[attr] = "x"
+	}
+	return len(BuildAccountLinkingFilters(linking, claims, mappings))
+}
+
+// isMappedForEveryUserType reports whether attr is mapped to a local attribute in every user type's
+// mappings, and there is at least one.
+func isMappedForEveryUserType(attr string, userTypeMappings []providers.UserTypeAttributeMapping) bool {
+	if len(userTypeMappings) == 0 {
+		return false
+	}
+	for i := range userTypeMappings {
+		if !slices.ContainsFunc(userTypeMappings[i].Attributes, func(m providers.AttributeMapping) bool {
+			return m.ExternalAttribute == attr
+		}) {
+			return false
+		}
+	}
+	return true
+}
+
+// newReservedLinkingAttributeError reports an account-linking attribute that resolves to a reserved name.
+func newReservedLinkingAttributeError(attr string) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+		Key:          "error.idpservice.attribute_configuration_linking_reserved_description",
+		DefaultValue: "'{{param(attribute)}}' is reserved and cannot be used for account linking",
+		Params:       map[string]string{"attribute": attr},
+	})
 }
 
 // validateIDP validates the identity provider details.

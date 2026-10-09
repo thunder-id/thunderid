@@ -26,12 +26,20 @@ type AuthnProviderManager interface {
 		authUser AuthUser) (AuthUser, AuthenticatedClaims, *common.ServiceError)
 	GetEntityReference(ctx context.Context, authUser AuthUser) (
 		AuthUser, *EntityReference, *common.ServiceError)
+	// ResolveLinkCandidates returns the entities the AuthUser's pending identity matches on its
+	// account-linking attributes, or nil when nothing matches.
+	ResolveLinkCandidates(ctx context.Context, authUser AuthUser) (
+		*LinkCandidates, *common.ServiceError)
 	GetUserAvailableAttributes(ctx context.Context,
 		authUser AuthUser) (*AttributesResponse, *common.ServiceError)
 	GetUserAttributes(ctx context.Context,
 		requestedAttributes *RequestedAttributes,
 		metadata *GetAttributesMetadata,
 		authUser AuthUser) (AuthUser, *AttributesResponse, *common.ServiceError)
+	// LinkAccount records a linked account against the user the AuthUser names, on the provider
+	// that authenticated that user.
+	LinkAccount(ctx context.Context, authUser AuthUser,
+		idpID, sub string) *common.ServiceError
 }
 
 // AuthnProviderInterface defines the interface for authentication providers.
@@ -49,6 +57,15 @@ type AuthnProviderInterface interface {
 		metadata *AuthnMetadata) (any, *common.ServiceError)
 	Enroll(ctx context.Context, identifiers, credentials map[string]interface{},
 		metadata *AuthnMetadata) (*AuthnResult, *common.ServiceError)
+	// StoreAccountLink records that the referenced entity authenticates as the given subject at the
+	// given connection. The token is this provider's entity reference token, or {"userID": "<entity id>"}
+	// once the entity is resolved. A provider that does not store links returns ErrorCodeNotImplemented.
+	StoreAccountLink(ctx context.Context, entityReferenceToken any,
+		idpID, sub string) *common.ServiceError
+	// SearchEntityReferences returns every entity an attribute lookup matches. A provider that cannot
+	// list the matches returns ErrorCodeNotImplemented.
+	SearchEntityReferences(ctx context.Context, filters map[string]interface{}) (
+		[]EntityReference, *common.ServiceError)
 }
 
 // ActorProvider resolves inbound actors and exposes their OAuth and membership data.
