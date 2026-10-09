@@ -724,9 +724,22 @@ const sidebars: SidebarsConfig = {
           ],
         },
         {
-          type: 'doc',
-          id: 'guides/organization-units',
+          type: 'category',
           label: 'Organization Units',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/organization-units/manage-organization-units',
+              label: 'Manage Organization Units',
+            },
+            {
+              type: 'doc',
+              id: 'guides/organization-units/machine-to-machine-access',
+              label: 'Machine-to-Machine (M2M) Access for Organization Units',
+            },
+          ],
         },
         {
           type: 'category',

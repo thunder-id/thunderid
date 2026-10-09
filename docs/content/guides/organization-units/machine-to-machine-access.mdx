@@ -1,0 +1,162 @@
+---
+title: Machine-to-Machine (M2M) Access for Organization Units
+docType: guide
+sidebar_position: 2
+persona: iam
+description: Let one machine-to-machine application act on behalf of many organization units, using a single set of credentials and a sharing policy.
+---
+
+import { OrganizationScopedClientCredentialsDiagram } from '@site/src/components/OAuthFlowDiagrams';
+
+# Machine-to-Machine (M2M) Access for Organization Units
+
+If one service works for several customer or partner organizations, each request still needs to access data for the correct organization unit.
+
+You could register a separate copy of the service in every organization unit. That works, but each copy comes with its own client ID and secret. As the number of organization units grows, so does the number of credentials you need to manage and rotate.
+
+Instead, register the service once in the organization unit that owns it, then specify which other organization units it can act for. The service keeps one client ID and secret and requests a token for the organization unit it is acting for.
+
+The resource server uses the organization unit in that access token to scope the request. If the token does not contain the expected organization unit, the service cannot access that organization unit's data.
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
+- An application that uses the `client_credentials` grant. See [Client Credentials](../protocols/oauth-oidc/client-credentials.mdx).
+- The organization units the application will act for. See [Manage Organization Units](manage-organization-units.mdx).
+
+## How It Works
+
+The application belongs to one organization unit. A sharing policy names the others it may act for, and the token endpoint takes the chosen one in its path.
+
+<OrganizationScopedClientCredentialsDiagram />
+
+:::note
+When the application asks for the organization claims, `ouId`, `ouName`, and `ouHandle`, they come from
+the organization unit the request named rather than the one that owns the application. An application
+that asks for none receives a token carrying none. See
+[Emit the Organization Unit in the Token](#emit-the-organization-unit-in-the-token).
+:::
+
+## Grant an Application Access to Organization Units
+
+Declare a sharing policy in one of three places:
+
+- **The application's resource file**, shown below.
+- **Management API** (coming soon)
+- **Console** (coming soon)
+
+Add a `sharingPolicies` list to the application document:
+
+```yaml title="applications/billing-service.yaml"
+resource_type: application
+id: billing-service
+name: Billing Service
+ouId: acme-root
+type: m2m
+sharingPolicies:
+  - id: billing-service-all-customers
+    targets:
+      - scope: allChildren
+```
+
+### Choose What the Policy Reaches
+
+A policy carries a list of targets. Each target names one scope, and the policy reaches everything its targets reach.
+
+| Scope | `ouId` | Reaches |
+|---|---|---|
+| `allOus` | omit | Every organization unit in the deployment, including organization units created later. |
+| `allChildren` | omit | Everything beneath the owning organization unit, at any depth, including organization units created later. |
+| `allRoots` | omit | The root organization unit of every tree. |
+| `root` | required | The named root organization unit. |
+| `child` | required | The named organization unit directly beneath the owner, and nothing below it. |
+| `childSubtree` | required | The named organization unit directly beneath the owner, and everything below it at any depth. |
+
+List several targets to name customers one at a time:
+
+```yaml
+sharingPolicies:
+  - id: billing-service-named-customers
+    targets:
+      - scope: child
+        ouId: acme-customer-a
+      - scope: child
+        ouId: acme-customer-b
+```
+
+Two targets of one policy must not reach the same organization unit. A policy that names a customer already covered by a broader target beside it is refused.
+
+### Withhold an Organization Unit
+
+Add `excludedOuIds` to a target to carve organization units, and everything beneath them, out of that target:
+
+```yaml
+sharingPolicies:
+  - id: billing-service-except-one
+    targets:
+      - scope: allChildren
+        excludedOuIds:
+          - acme-trial-customers
+```
+
+Exclusions belong to the target that states them, not to the policy. A target reaching into the owner's own tree, which means `allChildren`, `child` or `childSubtree`, may only exclude organization units directly beneath the owner.
+
+The owning organization unit needs no sharing policy. A policy only extends access to the others.
+
+### Emit the Organization Unit in the Token
+
+By default, an access token does not name the organization unit it was issued for. Add the organization claims to the application's access token configuration, so the resource server receiving the token knows which organization unit the service is acting for:
+
+```yaml title="applications/billing-service.yaml"
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: billing-service-client
+      grantTypes:
+        - client_credentials
+      token:
+        accessToken:
+          clientConfig:
+            attributes:
+              - ouId
+              - ouName
+              - ouHandle
+```
+
+## Request a Token for an Organization Unit
+
+Name the organization unit by its id in the token endpoint's path. The path does not resolve handles:
+
+```bash
+curl -X POST https://localhost:8090/ou/019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7/oauth2/token \
+  -u 'billing-service-client:<client-secret>' \
+  -d 'grant_type=client_credentials'
+```
+
+The bare `/oauth2/token` request without the `ou` prefix issues a token for the application's own organization unit.
+
+The organization claims resolve to the organization unit named in the path:
+
+```json
+{
+  "sub": "billing-service",
+  "ouId": "019f8c21-4b7e-7a39-b5d0-6e2c91f4a8b7",
+  "ouName": "Acme Customer A",
+  "ouHandle": "acme-customer-a",
+  "aud": "https://api.example.com"
+}
+```
+
+## Refusals
+
+| Response | Cause |
+|---|---|
+| `401 invalid_client` | The client credentials are wrong. Credentials are checked before anything about the organization unit, so this answer says nothing about which organization units exist. |
+| `400 unauthorized_client` | The organization unit does not exist, or no policy lets this application act for it. The two answer identically, so a caller cannot use the endpoint to discover which organization units exist. |
+| `400 invalid_request` | A grant other than `client_credentials` was sent to the `/ou/{ouId}` path. Only `client_credentials` acts for an organization unit. |
+
+## Related Guides
+
+- [Manage Organization Units](manage-organization-units.mdx)
+- [Client Credentials](../protocols/oauth-oidc/client-credentials.mdx)
+- [Import Resources](../declarative-configurations/import-resources.mdx)
