@@ -14,7 +14,7 @@ ThunderID uses four logically separated databases. Each database owns a specific
 | `config`              | Identity configuration data Ex: applications, authentication flows, roles, identity providers |
 | `runtime_transient`   | Short-lived runtime state: authorization codes, authorization/PAR requests, JTI records, WebAuthn/VCI state, flow contexts |
 | `entitydb`                | Identity data: users, groups, indexed user attributes         |
-| `runtime_persistent`  | Long-lived operational state that must survive restarts: revoked tokens, SSO sessions, consent records |
+| `runtime_persistent`  | Long-lived operational state that must survive restarts: revoked tokens, SSO sessions, consent records, entity runtime data (lifecycle state and access state) |
 
 Although the databases are logically separated, they share consistent schema design principles documented here.
 

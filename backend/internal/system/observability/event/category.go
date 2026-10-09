@@ -36,6 +36,9 @@ const (
 	// CategoryFlows groups all flow orchestration events for tracing end-to-end flows.
 	CategoryFlows EventCategory = "observability.flows"
 
+	// CategoryAdministration groups administrative changes such as identity lifecycle operations.
+	CategoryAdministration EventCategory = "observability.administration"
+
 	// CategoryAll is a special category that matches all events.
 	// Subscribers to this category receive all events regardless of type.
 	CategoryAll EventCategory = "observability.all"
@@ -65,6 +68,14 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeBackchannelLogoutDelivered:     CategoryAuthentication,
 	EventTypeBackchannelLogoutFailed:        CategoryAuthentication,
 
+	// Administration events
+	EventTypeIdentitySuspended:          CategoryAdministration,
+	EventTypeIdentitySuspensionFailed:   CategoryAdministration,
+	EventTypeIdentityUnsuspended:        CategoryAdministration,
+	EventTypeIdentityUnsuspensionFailed: CategoryAdministration,
+	EventTypeIdentityUnlocked:           CategoryAdministration,
+	EventTypeIdentityUnlockFailed:       CategoryAdministration,
+
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,
 	EventTypeFlowNodeExecutionStarted:   CategoryFlows,
@@ -92,6 +103,7 @@ func GetAllCategories() []EventCategory {
 		CategoryAuthentication,
 		CategoryAuthorization,
 		CategoryFlows,
+		CategoryAdministration,
 	}
 }
 

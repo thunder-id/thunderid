@@ -15,6 +15,8 @@ const (
 	ComponentAuthHandler = "AuthHandler"
 	// ComponentBackchannelLogout identifies the back-channel logout dispatcher.
 	ComponentBackchannelLogout = "BackchannelLogout"
+	// ComponentIdentityGovernance identifies the identity governance service.
+	ComponentIdentityGovernance = "IdentityGovernance"
 )
 
 // Authentication and Authorization Event Types
@@ -36,6 +38,21 @@ const (
 	// EventTypeRuntimePersistentDBUnavailable is triggered when the runtime persistent database backing the
 	// deny-list (revocation) check becomes unavailable and enforcement fails closed.
 	EventTypeRuntimePersistentDBUnavailable providers.EventType = "RUNTIME_PERSISTENT_DB_UNAVAILABLE"
+
+	// Administration Events. Each carries the operator as act_sub and the target identity as sub.
+
+	// EventTypeIdentitySuspended is triggered when a suspension is placed or repeated.
+	EventTypeIdentitySuspended providers.EventType = "IDENTITY_SUSPENDED"
+	// EventTypeIdentitySuspensionFailed is triggered when a suspension is refused or cannot be written.
+	EventTypeIdentitySuspensionFailed providers.EventType = "IDENTITY_SUSPENSION_FAILED"
+	// EventTypeIdentityUnsuspended is triggered when a suspension is released.
+	EventTypeIdentityUnsuspended providers.EventType = "IDENTITY_UNSUSPENDED"
+	// EventTypeIdentityUnsuspensionFailed is triggered when a release is refused or cannot be written.
+	EventTypeIdentityUnsuspensionFailed providers.EventType = "IDENTITY_UNSUSPENSION_FAILED"
+	// EventTypeIdentityUnlocked is triggered when every automatic lock on an identity is released.
+	EventTypeIdentityUnlocked providers.EventType = "IDENTITY_UNLOCKED"
+	// EventTypeIdentityUnlockFailed is triggered when an unlock is refused or cannot be written.
+	EventTypeIdentityUnlockFailed providers.EventType = "IDENTITY_UNLOCK_FAILED"
 
 	// Back-Channel Logout Events
 	// EventTypeBackchannelLogoutDelivered is triggered when a relying party accepts a logout token.

@@ -10,6 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,9 +26,10 @@ const (
 	failClosedClientSecret = "introspect_fail_closed_secret"
 	failClosedResourceID   = "https://introspect-fail-closed.example.com"
 
-	// unreadableDenyListPath points database.runtime_persistent at a SQLite file that does not exist
-	// yet. The driver creates it on connect, so the server boots normally, but the file carries none
-	// of the runtime-persistent schema: every deny-list read fails at query time. Pointing at a
+	// unreadableDenyListPath points database.runtime_persistent at a SQLite file that carries only the
+	// account runtime table (ENTITY_RUNTIME_DATA), which client authentication reads when it loads
+	// the client's entity. Every other runtime-persistent table is missing, so client
+	// authentication works and every deny-list read fails at query time. Pointing at a
 	// genuinely unopenable target instead is not usable here, because the SSO session service aborts
 	// startup when it cannot get a runtime-persistent transactioner. The path has no directory
 	// component so it resolves against the server home, which exists under every database profile.
@@ -39,7 +43,7 @@ const (
 // revocation status is unknown). It has to surface a server error instead.
 //
 // The fail-closed test deliberately breaks the shared deployment: it repoints
-// database.runtime_persistent at a database with no schema and restarts the server. While that
+// database.runtime_persistent at a database without the revocation tables and restarts the server. While that
 // config is in place /oauth2/revoke, the refresh and token-exchange grants, and /oauth2/userinfo are
 // broken too, so the test restores the original database section, restarts, and re-obtains the admin
 // token from a deferred block that runs even if an assertion aborts the test.
@@ -134,6 +138,7 @@ func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 	for key, value := range originalMap {
 		broken[key] = value
 	}
+	ts.createDatabaseWithoutDenyList()
 	broken["runtime_persistent"] = map[string]interface{}{
 		"type": "sqlite",
 		"sqlite": map[string]interface{}{
@@ -146,6 +151,25 @@ func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 		"failed to point runtime_persistent at a schema-less database")
 	ts.Require().NoError(testutils.RestartServer(),
 		"the server must still boot when the runtime-persistent schema is missing")
+}
+
+// createDatabaseWithoutDenyList writes the broken database: the shipped runtime-persistent schema's
+// ENTITY_RUNTIME_DATA table and nothing else, through the sqlite3 CLI the harness already requires.
+func (ts *IntrospectFailClosedTestSuite) createDatabaseWithoutDenyList() {
+	home := testutils.GetExtractedProductHome()
+	schema, err := os.ReadFile(filepath.Join(home, "dbscripts", "runtime_persistent", "sqlite.sql"))
+	ts.Require().NoError(err, "failed to read the runtime-persistent schema")
+	start := strings.Index(string(schema), `CREATE TABLE "ENTITY_RUNTIME_DATA"`)
+	ts.Require().GreaterOrEqual(start, 0, "the runtime-persistent schema has no ENTITY_RUNTIME_DATA table")
+	end := strings.Index(string(schema[start:]), ");")
+	ts.Require().Greater(end, 0, "unterminated ENTITY_RUNTIME_DATA definition")
+
+	dbPath := filepath.Join(home, unreadableDenyListPath)
+	_ = os.Remove(dbPath)
+	cmd := exec.Command("sqlite3", dbPath)
+	cmd.Stdin = strings.NewReader(string(schema[start:start+end+2]) + "\n")
+	out, err := cmd.CombinedOutput()
+	ts.Require().NoError(err, "failed to create the database without a deny list: %s", string(out))
 }
 
 // restoreRuntimePersistentDB puts the captured database section back, restarts, and re-obtains the

@@ -1899,3 +1899,19 @@ func (suite *ConfigTestSuite) TestMergeConfigs_RejectPrivateAddressesCanBeTurned
 	var unset engineconfig.BackchannelLogoutConfig
 	assert.True(suite.T(), unset.RejectsPrivateAddresses(), "unset fails safe")
 }
+
+func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {
+	threshold, other := 5, 3
+	base := &Config{AccountAccess: AccountAccessConfig{User: CategoryAccessConfig{
+		LockGranularity: "authentication_method",
+		Default:         ScopeAccessConfig{Threshold: &threshold},
+	}}}
+	user := &Config{AccountAccess: AccountAccessConfig{User: CategoryAccessConfig{
+		Default: ScopeAccessConfig{Threshold: &other},
+	}}}
+
+	mergeConfigs(base, user)
+
+	suite.Equal(3, *base.AccountAccess.User.Default.Threshold)
+	suite.Equal("authentication_method", base.AccountAccess.User.LockGranularity)
+}

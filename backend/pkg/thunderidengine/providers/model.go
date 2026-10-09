@@ -691,6 +691,43 @@ type OAuthProfile struct {
 	AcrValues                          []string            `json:"acrValues,omitempty"`
 }
 
+// AccessLockedScope is one live automatic lock: the scope it holds and when it lifts. An entity can
+// hold several at once.
+type AccessLockedScope struct {
+	// Scope is the authentication method the lock holds, or the entity key when it holds every
+	// authentication method. Never empty.
+	Scope string `json:"scope" yaml:"-"`
+	// ExpiresAt is when the lock lifts on its own. Empty when it does not lift on its own.
+	ExpiresAt string `json:"expiresAt,omitempty" yaml:"-"`
+}
+
+// AccessStatusDetails describes a status on a management read. Every field is optional.
+type AccessStatusDetails struct {
+	// Reason is what produced the status.
+	Reason AccessHoldReason `json:"reason,omitempty" yaml:"-"`
+	// Since is when a suspension was placed. Empty for an automatic lock.
+	Since string `json:"since,omitempty" yaml:"-"`
+	// OperatorNote is the operator's free-text note for the suspension, if any. Never disclosed on a
+	// refusal.
+	OperatorNote string `json:"operatorNote,omitempty" yaml:"-"`
+	// LockedScopes lists the live automatic locks in registry order. Empty unless the status is
+	// LOCKED.
+	LockedScopes []AccessLockedScope `json:"lockedScopes,omitempty" yaml:"-"`
+}
+
+// IsEmpty reports whether no field is set.
+func (d AccessStatusDetails) IsEmpty() bool {
+	return d.Reason == "" && d.Since == "" && d.OperatorNote == "" && len(d.LockedScopes) == 0
+}
+
+// AccessStatusReport is the access status a management read returns, with its details.
+type AccessStatusReport struct {
+	// Value is the effective status: SUSPENDED, LOCKED or ACTIVE.
+	Value AccessStatus `json:"value" yaml:"-"`
+	// Details describes the status. Nil when there is nothing to add.
+	Details *AccessStatusDetails `json:"details,omitempty" yaml:"-"`
+}
+
 // User represents a user in the system.
 type User struct {
 	ID         string          `json:"id,omitempty"`
@@ -764,7 +801,10 @@ type Entity struct {
 	OUHandle         string          `json:"ouHandle,omitempty"`
 	Attributes       json.RawMessage `json:"attributes,omitempty"`
 	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
-	IsReadOnly       bool            `json:"isReadOnly"`
+	// RuntimeAttributes is the runtime data read from ENTITY_RUNTIME_DATA. It is not serialized or cached
+	// with the profile.
+	RuntimeAttributes json.RawMessage `json:"-"`
+	IsReadOnly        bool            `json:"isReadOnly"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.

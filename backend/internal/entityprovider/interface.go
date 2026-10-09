@@ -21,7 +21,7 @@ type EntityProviderInterface interface {
 	// GetEntity retrieves an entity by ID. Credentials are never returned.
 	GetEntity(entityID string) (*providers.Entity, *EntityProviderError)
 
-	// UpdateEntity updates an existing entity's core fields.
+	// UpdateEntity updates an existing entity's core fields. The entity's state is not written.
 	UpdateEntity(entityID string, entity *providers.Entity) (*providers.Entity, *EntityProviderError)
 
 	// DeleteEntity deletes an entity by ID. Cascades to identifiers.

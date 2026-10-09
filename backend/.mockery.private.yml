@@ -197,6 +197,27 @@ packages:
       pkgname: entity
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    interfaces:
+      EntityStateProvider:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      LockNotifier:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      PolicyResolver:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/user:
     config:
       all: true
@@ -523,3 +544,30 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: resourcedependency
       filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/identitygovernance/notification:
+    interfaces:
+      ProfileReader:
+        config:
+          dir: internal/identitygovernance/notification
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: notification
+          filename: "{{.InterfaceName}}_mock_test.go"
+      EmailSender:
+        config:
+          dir: internal/identitygovernance/notification
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: notification
+          filename: "{{.InterfaceName}}_mock_test.go"
+      SenderSource:
+        config:
+          dir: internal/identitygovernance/notification
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: notification
+          filename: "{{.InterfaceName}}_mock_test.go"
+      TemplateRenderer:
+        config:
+          dir: internal/identitygovernance/notification
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: notification
+          filename: "{{.InterfaceName}}_mock_test.go"

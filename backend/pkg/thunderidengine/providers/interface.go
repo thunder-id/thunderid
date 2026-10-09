@@ -316,3 +316,63 @@ type RuntimeCryptoProvider interface {
 	// GetSupportedEncryptionAlgorithms returns the list of algorithms supported by Encrypt and Decrypt.
 	GetSupportedEncryptionAlgorithms() []string
 }
+
+// AccessPlane is the point at which access is checked. The caller names the plane and the
+// governance service decides which holds apply there.
+type AccessPlane string
+
+const (
+	// AccessPlaneAuthentication is right after an authentication method verifies its input. It is
+	// the only plane scoped to an authentication method. An authentication hold applies here and at
+	// dispatch only.
+	AccessPlaneAuthentication AccessPlane = "authentication"
+
+	// AccessPlaneDispatch is before a challenge (a one-time password, a magic link, a passkey
+	// request) is sent. Sending a challenge never counts as a failure.
+	AccessPlaneDispatch AccessPlane = "dispatch"
+
+	// AccessPlaneRecovery is self-service recovery. A suspension applies here; an automatic lock
+	// never does, since recovery is how a locked account is released.
+	AccessPlaneRecovery AccessPlane = "recovery"
+
+	// AccessPlaneSession is a subject being resolved at the grant, from a session or a flow.
+	AccessPlaneSession AccessPlane = "session"
+
+	// AccessPlaneIssuance is the refresh grant issuing tokens from an existing grant.
+	AccessPlaneIssuance AccessPlane = "issuance"
+
+	// AccessPlaneApplication is an application being resolved at runtime.
+	AccessPlaneApplication AccessPlane = "application"
+)
+
+// AccessHoldLevel is how much a hold withholds. Callers act on the level, not on the stored state.
+type AccessHoldLevel string
+
+const (
+	// AccessHoldNone withholds nothing.
+	AccessHoldNone AccessHoldLevel = ""
+
+	// AccessHoldAuthentication withholds new authentication through the held authentication method
+	// and its challenge dispatch. Existing sessions, grants, refresh and self-service recovery are
+	// kept.
+	AccessHoldAuthentication AccessHoldLevel = "authentication"
+
+	// AccessHoldIdentity withholds authentication, existing sessions, new tokens from an existing
+	// grant, refresh, and self-service.
+	AccessHoldIdentity AccessHoldLevel = "identity"
+)
+
+// AccessDecision is the result of an access check. HoldLevel and Scope are for internal use and
+// are not returned to the client, so a held identity looks the same as a wrong credential.
+type AccessDecision struct {
+	// Admitted reports whether access is allowed.
+	Admitted bool
+	// HoldLevel is the level that refused, or AccessHoldNone when admitted.
+	HoldLevel AccessHoldLevel
+	// Scope is the authentication method scope that refused, for an authentication hold. Empty for an
+	// identity hold.
+	Scope string
+	// Reason is set only when the policy allows disclosing the hold. When set, the caller may say the
+	// account is locked or suspended (chosen by HoldLevel), but nothing more. Empty by default.
+	Reason string
+}

@@ -26,7 +26,8 @@ func Initialize(
 		return nil, err
 	}
 
-	svc := newEntityService(store, hashService, entityTypeService, ouService, transactioner)
+	svc := newEntityService(store, newEntityRuntimeDBStore(), hashService, entityTypeService, ouService,
+		transactioner)
 	return svc, nil
 }
 

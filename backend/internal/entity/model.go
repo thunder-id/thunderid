@@ -66,3 +66,11 @@ type entityStoreEntry struct {
 	Credentials       json.RawMessage
 	SystemCredentials json.RawMessage
 }
+
+// entityRuntimeData is an entity's row in ENTITY_RUNTIME_DATA. It is not cached with the profile.
+type entityRuntimeData struct {
+	ID         string
+	State      providers.EntityState
+	Attributes json.RawMessage
+	Revision   int64
+}

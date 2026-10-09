@@ -32,6 +32,9 @@ var (
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
 
+	// errInvalidAccessScope is returned when a lock write names a scope outside the registry.
+	errInvalidAccessScope = errors.New("invalid access state scope")
+
 	// errResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )

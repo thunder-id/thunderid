@@ -154,7 +154,6 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		es.scope(ctx),
 		string(entity.Category),
 		entity.Type,
-		string(entity.State),
 		entity.OUID,
 		string(attributes),
 		systemAttrs,
@@ -249,11 +248,12 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		systemAttrs = string(entity.SystemAttributes)
 	}
 
+	// entity.State is not written; it lives in the runtime store.
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
 		QueryUpdateEntity,
 		entity.ID, entity.OUID, entity.Type,
-		string(entity.State), string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
+		string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute update entity query: %w", err)
@@ -826,11 +826,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		return providers.Entity{}, fmt.Errorf("failed to parse type as string")
 	}
 
-	state, ok := row["state"].(string)
-	if !ok {
-		return providers.Entity{}, fmt.Errorf("failed to parse state as string")
-	}
-
 	var attributes string
 	switch v := row["attributes"].(type) {
 	case string:
@@ -845,7 +840,6 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		ID:       entityID,
 		Category: providers.EntityCategory(category),
 		Type:     entityType,
-		State:    providers.EntityState(state),
 		OUID:     ouID,
 	}
 

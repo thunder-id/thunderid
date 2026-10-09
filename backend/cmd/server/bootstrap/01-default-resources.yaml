@@ -6192,3 +6192,22 @@ displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
   body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+---
+resource_type: notification_template
+channel: email
+handle: account-locked
+displayName: Account Locked Email
+description: Sent when repeated failed sign-ins lock an account.
+content:
+  subject: "Sign-in was locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in locked</h2>
+      <p>{{ctx(lockedAccess)}} due to multiple failed attempts.</p>
+      <p><strong>{{ctx(lockDuration)}}</strong></p>
+      <p>{{ctx(recoveryAdvice)}}</p>
+      <p><strong>Didn't attempt to sign in?</strong> We recommend reviewing your account security and updating your credentials once you regain access.</p>
+    </body>
+    </html>

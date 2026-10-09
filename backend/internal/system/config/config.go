@@ -733,11 +733,64 @@ type Config struct {
 	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
 	ResourceSharing      ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
+	AccountAccess        AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.
 type ResourceSharingConfig struct {
 	AllowChildOUCrossTreeSharing bool `yaml:"allow_child_ou_cross_tree_sharing" json:"allow_child_ou_cross_tree_sharing"` //nolint:lll
+}
+
+// AccountAccessConfig holds the default automatic-lockout policy, keyed by entity category. It is the
+// base of the accountAccess server-config section. An absent category block means disabled.
+type AccountAccessConfig struct {
+	User  CategoryAccessConfig `yaml:"user"  json:"user"`
+	Agent CategoryAccessConfig `yaml:"agent" json:"agent"`
+}
+
+// CategoryAccessConfig is the lockout policy for one entity category.
+type CategoryAccessConfig struct {
+	// LockGranularity is "authentication_method" (the default) or "entity".
+	LockGranularity string `yaml:"lock_granularity" json:"lock_granularity"`
+	// RecordLastLogin turns on the lastLoginAt write when access is granted. Unset resolves to false.
+	RecordLastLogin *bool `yaml:"record_last_login" json:"record_last_login"`
+	// LastLoginResolutionSeconds skips the write when the stored value is newer than this. 0 writes
+	// every time; unset is an hour.
+	LastLoginResolutionSeconds *int `yaml:"last_login_resolution_seconds" json:"last_login_resolution_seconds"`
+	// Default is the policy for every authentication method in this category.
+	Default ScopeAccessConfig `yaml:"default" json:"default"`
+	// Scopes holds per-method overrides, overlaid on Default field by field.
+	Scopes map[string]ScopeAccessConfig `yaml:"scopes" json:"scopes"`
+	// Notifications configures the notices sent to the account holder.
+	Notifications AccessNotificationsConfig `yaml:"notifications" json:"notifications"`
+}
+
+// AccessNotificationsConfig is the notices one category sends, keyed by event.
+type AccessNotificationsConfig struct {
+	OnLock LockNotificationConfig `yaml:"on_lock" json:"on_lock"`
+}
+
+// LockNotificationConfig is what is sent when an automatic lock forms, keyed by channel.
+type LockNotificationConfig struct {
+	Email LockEmailConfig `yaml:"email" json:"email"`
+}
+
+// LockEmailConfig is the automatic-lock email for one category. It is sent through the default
+// email sender of the notification server-config section.
+type LockEmailConfig struct {
+	Enabled            *bool   `yaml:"enabled" json:"enabled"`
+	RecipientAttribute *string `yaml:"recipient_attribute" json:"recipient_attribute"`
+}
+
+// ScopeAccessConfig is a lockout policy, used as a category default or a per-method override. Fields
+// are pointers or slices so unset is distinguishable from zero.
+type ScopeAccessConfig struct {
+	Enabled              *bool   `yaml:"enabled" json:"enabled"`
+	Threshold            *int    `yaml:"threshold" json:"threshold"`
+	FailureWindowSeconds *int    `yaml:"failure_window_seconds" json:"failure_window_seconds"`
+	LockDurationsSeconds []int   `yaml:"lock_durations_seconds" json:"lock_durations_seconds"`
+	LockDecaySeconds     *int    `yaml:"lock_decay_seconds" json:"lock_decay_seconds"`
+	DiscloseAccountHold  *string `yaml:"disclose_account_hold" json:"disclose_account_hold"`
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.

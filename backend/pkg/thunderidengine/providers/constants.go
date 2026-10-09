@@ -300,11 +300,58 @@ type EntityState string
 const (
 	// EntityStateActive represents an active entity.
 	EntityStateActive EntityState = "ACTIVE"
+
+	// EntityStateSuspended represents an entity placed on an administrative security hold.
+	EntityStateSuspended EntityState = "SUSPENDED"
 )
 
 // String returns the string representation of the entity state.
 func (es EntityState) String() string {
 	return string(es)
+}
+
+// AccessStatus is the status a management read reports for an entity. LOCKED is derived at read
+// time from the stored unlock time and is never stored.
+type AccessStatus string
+
+const (
+	// AccessStatusActive means nothing is withheld.
+	AccessStatusActive AccessStatus = "ACTIVE"
+
+	// AccessStatusLocked means an automatic lock is live.
+	AccessStatusLocked AccessStatus = "LOCKED"
+
+	// AccessStatusSuspended means an administrator has suspended the entity. The record stays
+	// writable. It is stored in the runtime row's STATE and in the access-state document, and
+	// either one reports here.
+	AccessStatusSuspended AccessStatus = "SUSPENDED"
+)
+
+// String returns the string representation of the access status.
+func (as AccessStatus) String() string {
+	return string(as)
+}
+
+// AccessHoldReason says what put an entity into the status it reports. Reported only on a
+// management read, never on a refusal.
+type AccessHoldReason string
+
+const (
+	// AccessHoldReasonFailedAttempts is an automatic lock formed by failed attempts. It lifts at
+	// the reported expiry.
+	AccessHoldReasonFailedAttempts AccessHoldReason = "FAILED_ATTEMPTS"
+
+	// AccessHoldReasonSuspensionReleaseLock is the entity-wide lock left when a suspension is
+	// cleared. It reports as LOCKED with no expiry and does not lift on its own.
+	AccessHoldReasonSuspensionReleaseLock AccessHoldReason = "SUSPENSION_RELEASE_LOCK"
+
+	// AccessHoldReasonAdministrativeSuspension is a suspension an administrator placed.
+	AccessHoldReasonAdministrativeSuspension AccessHoldReason = "ADMINISTRATIVE_SUSPENSION"
+)
+
+// String returns the string representation of the hold reason.
+func (r AccessHoldReason) String() string {
+	return string(r)
 }
 
 // ConsentStatus defines the possible statuses for a consent record.
