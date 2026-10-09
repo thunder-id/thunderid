@@ -38,6 +38,7 @@ schema:
     type: string
     displayName: Mobile Number
     required: false
+    regex: "^\\+[1-9]\\d{1,14}$"
   sub:
     type: string
     displayName: Subject

@@ -59,7 +59,7 @@ The general-purpose user type, with the handle `person` and the display name `Pe
 | `email` | `string` | required, unique, regex | Validated against email format |
 | `given_name` | `string` | - | |
 | `family_name` | `string` | - | |
-| `mobile_number` | `string` | - | |
+| `mobile_number` | `string` | regex | Validated against E.164 format, for example `+14155552671` |
 | `sub` | `string` | - | |
 | `name` | `string` | - | |
 | `picture` | `string` | - | |

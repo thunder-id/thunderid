@@ -201,6 +201,16 @@ const ATTRIBUTES: LibraryAttribute[] = [
     regex: '',
   },
   {
+    name: 'mobile_number',
+    displayName: 'Mobile Number',
+    type: 'string',
+    required: false,
+    unique: false,
+    credential: false,
+    enum: [],
+    regex: '^\\+[1-9]\\d{1,14}$',
+  },
+  {
     name: 'phone_verified',
     displayName: 'Phone Verified',
     type: 'boolean',
