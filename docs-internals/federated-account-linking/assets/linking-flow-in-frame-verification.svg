@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1290 510" width="1290" height="510" role="img"
+     aria-label="Flow canvas: Account Linking, its Link Prompt View, and verification steps in the same flow">
+  <title>Linking with in-frame verification steps</title>
+  <desc>The linking node's incomplete handle leads to the Link Prompt View. The Link account button leads to a Username and Password view and an Identifier and Password executor, whose success returns to the linking node. The separate account button returns to the linking node.</desc>
+
+  <defs>
+    <style>
+      .sans { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .hdr  { font-size: 10px; font-weight: 500; fill: #ffffff; }
+      .lbl  { font-size: 11px; fill: #101828; }
+      .cap  { font-size: 8px; font-weight: 600; letter-spacing: 0.4px; fill: #2f6fe4; }
+      .h    { font-size: 15px; fill: #101828; }
+      .t    { font-size: 9.5px; fill: #344054; }
+      .fld  { font-size: 9px; fill: #475467; }
+      .btn  { font-size: 9.5px; font-weight: 500; }
+      .add  { font-size: 8.5px; fill: #2f6fe4; }
+      .leg  { font-size: 11px; fill: #475467; }
+    </style>
+    <pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.8" fill="#cfd5e0"/>
+    </pattern>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f8fb"/>
+      <stop offset="1" stop-color="#eef3fb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#06060e" flood-opacity="0.10"/>
+    </filter>
+    <marker id="aGrey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#c1c7d3"/></marker>
+    <marker id="aBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#2f6fe4"/></marker>
+    <marker id="aDark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#667085"/></marker>
+  </defs>
+
+  <rect width="1290" height="510" fill="url(#canvas)"/>
+  <rect width="1290" height="510" fill="url(#dots)"/>
+
+  <!-- upstream federated executor, faded: outside the linking wiring -->
+  <g opacity="0.5">
+  <rect x="30" y="290" width="150" height="66" rx="6" fill="#f2f3f5" stroke="#e4e7ec" filter="url(#shadow)"/>
+  <path d="M30 314 V296 Q30 290 36 290 H174 Q180 290 180 296 V314 z" fill="#1d1e22"/>
+  <text x="40" y="305.5" class="sans hdr">github_auth</text>
+  <path d="M162.5 299 h7 M163.5 299 v6.5 h5 v-6.5 M165 297.5 h2" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="150" cy="302" r="3.6" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.6 1.2"/><circle cx="150" cy="302" r="1.3" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="134" cy="302" r="4" fill="none" stroke="#ffffff" stroke-width="1"/><path d="M134 301.5 v2.6 M134 299.8 v0.2" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="48" cy="335" r="5.5" fill="#344054"/><circle cx="48" cy="335.5" r="2.4" fill="#f2f3f5"/>
+  <text x="60" y="339" class="sans lbl">GitHub Login</text>
+  <circle cx="30" cy="335" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="180" cy="335" r="5" fill="#22c55e" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="105.0" cy="356" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
+  </g>
+  <path d="M185 335 H254" fill="none" stroke="#c1c7d3" stroke-width="2" stroke-linejoin="round" marker-end="url(#aGrey)"/>
+
+  <!-- TASK_EXECUTION, AccountLinkingExecutor -->
+  <rect x="260" y="290" width="150" height="66" rx="6" fill="#f2f3f5" stroke="#e4e7ec" filter="url(#shadow)"/>
+  <path d="M260 314 V296 Q260 290 266 290 H404 Q410 290 410 296 V314 z" fill="#1d1e22"/>
+  <text x="270" y="305.5" class="sans hdr">linking</text>
+  <path d="M392.5 299 h7 M393.5 299 v6.5 h5 v-6.5 M395 297.5 h2" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="380" cy="302" r="3.6" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.6 1.2"/><circle cx="380" cy="302" r="1.3" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="364" cy="302" r="4" fill="none" stroke="#ffffff" stroke-width="1"/><path d="M364 301.5 v2.6 M364 299.8 v0.2" stroke="#ffffff" stroke-width="1"/>
+  <rect x="272" y="332" width="7" height="6" rx="3" fill="none" stroke="#344054" stroke-width="1.2"/><rect x="277" y="332" width="7" height="6" rx="3" fill="none" stroke="#344054" stroke-width="1.2"/>
+  <text x="290" y="339" class="sans lbl">Account Linking</text>
+  <circle cx="260" cy="335" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="410" cy="335" r="5" fill="#22c55e" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="335.0" cy="356" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="335.0" cy="290" r="5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+
+  <!-- VIEW, Link Prompt View -->
+  <rect x="500" y="70" width="250" height="300" rx="6" fill="#ffffff" stroke="#e4e7ec" filter="url(#shadow)"/>
+  <path d="M500 94 V76 Q500 70 506 70 H744 Q750 70 750 76 V94 z" fill="#1d1e22"/>
+  <text x="510" y="85.5" class="sans hdr">linking_prompt</text>
+  <path d="M732.5 79 h7 M733.5 79 v6.5 h5 v-6.5 M735 77.5 h2" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="720" cy="82" r="3.6" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.6 1.2"/><circle cx="720" cy="82" r="1.3" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="704" cy="82" r="4" fill="none" stroke="#ffffff" stroke-width="1"/><path d="M704 81.5 v2.6 M704 79.8 v0.2" stroke="#ffffff" stroke-width="1"/>
+  <rect x="506" y="344" width="238" height="20" rx="4" fill="#f5f6f8"/>
+  <text x="625.0" y="357.5" class="sans add" text-anchor="middle">+ Add Component</text>
+  <text x="625.0" y="132" class="sans h" text-anchor="middle">Link your account</text>
+  <text x="625.0" y="156" class="sans t" text-anchor="middle">Your details matched the account below.</text>
+  <text x="625.0" y="169" class="sans t" text-anchor="middle">Do you want to link to it permanently?</text>
+  <!-- KEY_VALUE_LIST: the canvas shows the element label (empty by default) and the bound key -->
+  <rect x="516" y="186" width="218" height="54" rx="4" fill="#f9fafb" stroke="#d0d5dd" stroke-dasharray="3 3"/>
+  <text x="625.0" y="217" class="sans t" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">{{linkingPromptDetails}}</text>
+  <rect x="516" y="266" width="218" height="22" rx="11" fill="#2f6fe4"/>
+  <text x="625.0" y="280.5" class="sans btn" fill="#ffffff" text-anchor="middle">Link account</text>
+  <rect x="516" y="302" width="218" height="22" rx="11" fill="#ffffff" stroke="#d0d5dd"/>
+  <text x="625.0" y="316.5" class="sans btn" fill="#101828" text-anchor="middle">No, I want a separate account</text>
+  <circle cx="500" cy="110" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="736" cy="277" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="736" cy="313" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <path d="M335 285 V118 Q335 110 343 110 H494" fill="none" stroke="#c1c7d3" stroke-width="2" stroke-linejoin="round" marker-end="url(#aGrey)"/>
+
+  <!-- VIEW, Username + Password -->
+  <rect x="820" y="110" width="200" height="250" rx="6" fill="#ffffff" stroke="#e4e7ec" filter="url(#shadow)"/>
+  <path d="M820 134 V116 Q820 110 826 110 H1014 Q1020 110 1020 116 V134 z" fill="#1d1e22"/>
+  <text x="830" y="125.5" class="sans hdr">linking_verify_prompt</text>
+  <path d="M1002.5 119 h7 M1003.5 119 v6.5 h5 v-6.5 M1005 117.5 h2" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="990" cy="122" r="3.6" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.6 1.2"/><circle cx="990" cy="122" r="1.3" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="974" cy="122" r="4" fill="none" stroke="#ffffff" stroke-width="1"/><path d="M974 121.5 v2.6 M974 119.8 v0.2" stroke="#ffffff" stroke-width="1"/>
+  <rect x="826" y="334" width="188" height="20" rx="4" fill="#f5f6f8"/>
+  <text x="920.0" y="347.5" class="sans add" text-anchor="middle">+ Add Component</text>
+  <text x="920.0" y="168" class="sans h" text-anchor="middle">Verify it's you</text>
+  <text x="834" y="194" class="sans fld">Form</text>
+  <rect x="834" y="202" width="172" height="22" rx="4" fill="#ffffff" stroke="#d0d5dd"/>
+  <text x="842" y="216" class="sans fld">Username *</text>
+  <rect x="834" y="234" width="172" height="22" rx="4" fill="#ffffff" stroke="#d0d5dd"/>
+  <text x="842" y="248" class="sans fld">Password *</text>
+  <rect x="834" y="274" width="172" height="22" rx="11" fill="#2f6fe4"/>
+  <text x="920.0" y="288.5" class="sans btn" fill="#ffffff" text-anchor="middle">Continue</text>
+  <circle cx="820" cy="150" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="1008" cy="285" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+
+  <!-- TASK_EXECUTION, CredentialsAuthExecutor -->
+  <rect x="1070" y="240" width="170" height="66" rx="6" fill="#f2f3f5" stroke="#e4e7ec" filter="url(#shadow)"/>
+  <path d="M1070 264 V246 Q1070 240 1076 240 H1234 Q1240 240 1240 246 V264 z" fill="#1d1e22"/>
+  <text x="1080" y="255.5" class="sans hdr">linking_verify_auth</text>
+  <path d="M1222.5 249 h7 M1223.5 249 v6.5 h5 v-6.5 M1225 247.5 h2" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="1210" cy="252" r="3.6" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="1.6 1.2"/><circle cx="1210" cy="252" r="1.3" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="1194" cy="252" r="4" fill="none" stroke="#ffffff" stroke-width="1"/><path d="M1194 251.5 v2.6 M1194 249.8 v0.2" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="1084" cy="285" r="1.3" fill="#344054"/>
+  <circle cx="1088" cy="285" r="1.3" fill="#344054"/>
+  <circle cx="1092" cy="285" r="1.3" fill="#344054"/>
+  <text x="1100" y="289" class="sans lbl">Identifier + Password</text>
+  <circle cx="1070" cy="285" r="3.5" fill="#1d1e22" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="1240" cy="285" r="5" fill="#22c55e" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="1155.0" cy="306" r="5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
+
+  <!-- CONFIRM starts verification at the first in-frame step -->
+  <path d="M740 277 H772 Q780 277 780 269 V158 Q780 150 788 150 H814" fill="none" stroke="#2f6fe4" stroke-width="2" stroke-linejoin="round" marker-end="url(#aBlue)"/>
+  <path d="M1008 285 H1040 Q1048 285 1056 285 H1064" fill="none" stroke="#2f6fe4" stroke-width="2" stroke-linejoin="round" marker-end="url(#aBlue)"/>
+
+  <!-- onSuccess returns to the linking node for its second pass -->
+  <path d="M1245 285 H1266 Q1272 285 1272 279 V38 Q1272 30 1264 30 H234 Q226 30 226 38 V327 Q226 335 234 335 H254" fill="none" stroke="#2f6fe4" stroke-width="2" stroke-linejoin="round" marker-end="url(#aBlue)"/>
+
+  <!-- REJECT returns to the linking node -->
+  <path d="M740 313 H760 Q766 313 766 319 V452 Q766 460 758 460 H244 Q238 460 238 452 V345 Q238 337 246 337 H254" fill="none" stroke="#667085" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round" marker-end="url(#aDark)"/>
+
+  <!-- legend: colours are for the reader, the canvas draws every edge grey -->
+  <path d="M24 486 H52" stroke="#2f6fe4" stroke-width="2"/>
+  <text x="60" y="490" class="sans leg">Verification</text>
+  <path d="M150 486 H178" stroke="#667085" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="186" y="490" class="sans leg">Refusal</text>
+  <path d="M252 486 H280" stroke="#c1c7d3" stroke-width="2"/>
+  <text x="288" y="490" class="sans leg">Other edges</text>
+</svg>
