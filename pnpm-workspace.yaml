@@ -45,14 +45,14 @@ catalog:
   '@playwright/test': 1.60.0
   '@vitejs/plugin-basic-ssl': 2.3.0
   '@vitejs/plugin-react': 6.0.2
-  '@vitest/browser-playwright': 4.1.10
-  '@vitest/coverage-istanbul': 4.1.10
+  '@vitest/browser-playwright': 4.1.11
+  '@vitest/coverage-istanbul': 4.1.11
   '@wso2/oxygen-ui': 0.13.1
   '@wso2/oxygen-ui-icons-react': 0.13.1
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
-  dompurify: 3.4.12
+  dompurify: 3.4.16
   eslint: 9.39.5
   framer-motion: 12.39.0
   globals: 16.4.0
@@ -77,7 +77,7 @@ catalog:
   typescript-eslint: 8.57.2
   vite: 8.0.16
   vite-plugin-svgr: 5.2.0
-  vitest: 4.1.10
+  vitest: 4.1.11
   zod: 4.3.6
 
 overrides:
@@ -111,7 +111,9 @@ overrides:
   defu: 6.1.5
   # JUSTIFICATION: i18next 26 breaks compatibility, gives a white screen issue on Console when navigating with "TypeError: n.getResourceBundle"
   i18next: '25.6.0'
-  dompurify: '>=3.4.13'
+  # JUSTIFICATION: Fixes GHSA-p98j-92pf-mc4p and GHSA-6688-9rhm-gjv2, DOM XSS
+  # through IN_PLACE sanitization. Keep transitive consumers on the patched 3.x line.
+  dompurify: '>=3.4.16 <4'
   follow-redirects: 1.16.0
   unhead: 2.1.13
   minimatch@>=5.0.0 <5.1.8: '>=5.1.8'
@@ -184,8 +186,9 @@ overrides:
   undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
-  # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
-  vitest: '>=4.1.0'
+  # JUSTIFICATION: Fixes arbitrary file read in the Vitest UI server and
+  # GHSA-82fw-gwwq-j7x9, redirect-mock path traversal. Keep the 4.x tooling aligned.
+  vitest: '>=4.1.11 <5'
   # JUSTIFICATION: Fixes command injection vulnerability via -c/--cmd flag in glob CLI.
   glob: '>=11.1.0'
   # JUSTIFICATION: Fixes environment variable exposure in Storybook manager bundle.
@@ -224,8 +227,9 @@ overrides:
   # JUSTIFICATION: Fixes GHSA-w9m9-85wc-3x92 — DoS via uncontrolled AST recursion in
   # postcss-selector-parser. Transitive via Docusaurus css-loader and postcss-preset-env chains.
   postcss-selector-parser@>=6.1.0 <6.1.3: '>=6.1.3'
-  postcss-selector-parser@>=7.0.0 <7.1.3: '>=7.1.3'
-  postcss-discard-unused>postcss-selector-parser: '>=7.1.3'
+  # 7.1.6 also fixes GHSA-rj75-hqrm-r3gf, quadratic complexity in flat selectors.
+  postcss-selector-parser@>=7.0.0 <7.1.6: '>=7.1.6 <8'
+  postcss-discard-unused>postcss-selector-parser: '>=7.1.6 <8'
   # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth / OOM via distinct query
   # results) and GHSA-73wf-gq98-2v4g (uncaught crash / prototype write via untrusted custom stats).
   # Transitive via @babel/helper-compilation-targets in the Docusaurus build chain.
@@ -262,18 +266,9 @@ peerDependencyRules:
 
 auditConfig:
   ignoreGhsas:
-    # JUSTIFICATION: image-size ICNS parser infinite-loop DoS, transitive via docusaurus mdx-loader.
-    # No patched release exists on npm yet (advisory lists "Patched: None"); revisit and add an
-    # override once image-size ships a fix.
-    - GHSA-w3rx-r6r6-pgpr
-    # JUSTIFICATION: image-size JXL/HEIF parser infinite-loop DoS, transitive via docusaurus
-    # mdx-loader. No patched release exists on npm yet (advisory lists "Patched: None"); revisit
-    # and add an override once image-size ships a fix.
-    - GHSA-5p2g-fcmc-qvqq
     # JUSTIFICATION: GHSA-qxc2-j82w-r537 — arbitrary code execution via faker's `helpers.fake`.
     # Transitive via docs -> openapi-to-postmanv2 -> postman-collection, which depends on the
-    # deprecated @faker-js/faker@5.5.3. Not overridable: the fix landed in faker 10.5.0 (the
-    # advisory names 10.4.1, which was never published to npm), and faker 8 renamed the modules
+    # deprecated @faker-js/faker@5.5.3. The published fix is faker 10.5.0, but faker 8 renamed the modules
     # postman-collection binds at require time (`faker.address.*` -> `faker.location.*`). Forcing
     # any >=8 release makes postman-collection throw on import, breaking
     # `pnpm --dir docs generate:postman-collections`. Upstream has not migrated — the latest
@@ -282,17 +277,9 @@ auditConfig:
     # `helpers.fake`, and postman-collection never calls it (it only binds individual generators
     # such as `faker.address.city` for dynamic-variable substitution). The code is also
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
-    # upgrades its faker dependency.
+    # upgrades its faker dependency. Rechecked 2026-10-09: forcing faker 10.5.0 with the latest
+    # postman-collection 5.3.1 throws on import when it reads faker.address.city.
     - GHSA-qxc2-j82w-r537
-    # JUSTIFICATION: http-cache-semantics max-stale handling can disclose a cached response to
-    # another user of a shared cache. Transitive via docs -> @docusaurus/core -> update-notifier ->
-    # latest-version -> package-json -> got -> cacheable-request. No patched release exists on npm
-    # yet (the advisory lists "Patched: None"; 4.2.0 is the latest), and the latest Docusaurus
-    # (3.10.2) still depends on update-notifier, so neither an upgrade nor an override can fix it.
-    # Not exploitable here: the only use is the Docusaurus CLI's own update check on a developer
-    # machine or CI runner, never a cache shared between users. Revisit once http-cache-semantics
-    # ships a fix.
-    - GHSA-ch52-4w7c-c8xp
     # JUSTIFICATION: braces stack exhaustion through deeply nested brace patterns. Transitive via
     # docs -> @docusaurus/core -> chokidar@3 and webpack-dev-server -> http-proxy-middleware ->
     # micromatch. No patched release exists on npm yet (the advisory lists "Patched: None"; 3.0.3
