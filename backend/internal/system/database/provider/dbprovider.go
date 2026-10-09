@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 const (
 	dataSourceTypePostgres = "postgres"
 	dataSourceTypeSQLite   = "sqlite"
+
+	// sqliteForeignKeysPragma enables foreign key enforcement for a SQLite connection.
+	sqliteForeignKeysPragma = "_pragma=foreign_keys(1)"
 
 	dbNameConfig            = "config"
 	dbNameRuntimeTransient  = "runtime_transient"
@@ -314,10 +318,16 @@ func (d *dbProvider) getDBConfig(dataSource config.DataSource) dbConfig {
 	case dataSourceTypeSQLite:
 		sl := dataSource.SQLite
 		dbConfig.driverName = dataSourceTypeSQLite
-		options := sl.Options
-		if options != "" && options[0] != '?' {
-			options = "?" + options
+		options := strings.TrimPrefix(sl.Options, "?")
+		// The PRAGMA in initializeClient reaches only one pooled connection, so the cascades the
+		// schema relies on need the pragma on every connection, even when custom options omit it.
+		if !strings.Contains(options, "foreign_keys") {
+			if options != "" {
+				options += "&"
+			}
+			options += sqliteForeignKeysPragma
 		}
+		options = "?" + options
 		dbConfig.dsn = fmt.Sprintf("%s%s", path.Join(config.GetServerRuntime().ServerHome, sl.Path), options)
 	}
 
