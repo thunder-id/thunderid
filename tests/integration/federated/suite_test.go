@@ -19,6 +19,7 @@ package federated
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -55,14 +56,20 @@ var fedPersonType = testutils.UserType{
 	DisplayName:           "Fed Person",
 	AllowSelfRegistration: true,
 	Schema: map[string]interface{}{
-		"username":   map[string]interface{}{"type": "string", "required": true, "unique": true},
-		"email":      map[string]interface{}{"type": "string", "required": true, "unique": true},
+		// The linking prompt labels a matched attribute with its display name.
+		"username": map[string]interface{}{
+			"type": "string", "required": true, "unique": true, "displayName": "Username"},
+		"email": map[string]interface{}{
+			"type": "string", "required": true, "unique": true, "displayName": "Email"},
 		"firstName":  map[string]interface{}{"type": "string"},
 		"lastName":   map[string]interface{}{"type": "string"},
 		"city":       map[string]interface{}{"type": "string"},
-		"costCenter": map[string]interface{}{"type": "string"},
+		"costCenter": map[string]interface{}{"type": "string", "displayName": "Cost center"},
 		"sub":        map[string]interface{}{"type": "string"},
-		// Optional; signs a user in before a federated sign-in in the same flow.
+		// Optional, and only the OTP linking scenario sets it, to prove an account with.
+		"mobile_number": map[string]interface{}{"type": "string"},
+		// Optional; signs a user in before a federated sign-in, and proves an account when a link is
+		// recorded.
 		"password": map[string]interface{}{"type": "string", "credential": true},
 	},
 }
@@ -606,6 +613,16 @@ func (s *FederatedMappingSuite) createAuthApp(
 	return appID
 }
 
+// createVerifyFlow creates a verification flow a scenario's linking flow calls, removed with the
+// scenario, and returns its id.
+func (s *FederatedMappingSuite) createVerifyFlow(flow testutils.Flow) string {
+	s.T().Helper()
+	flowID, err := testutils.CreateFlow(flow)
+	s.Require().NoError(err, "failed to create verification flow %s", flow.Handle)
+	s.perTestFlowIDs = append(s.perTestFlowIDs, flowID)
+	return flowID
+}
+
 // createScenarioApp creates a flow and an application that runs it, for scenarios whose whole point is a
 // graph the shared flows cannot express. Both are torn down after the test. The assertion carries the
 // user type, the OU and any assertionAttributes.
@@ -662,7 +679,8 @@ func (s *FederatedMappingSuite) TearDownTest() {
 		}
 	}
 	s.perTestAppIDs = nil
-	for _, flowID := range s.perTestFlowIDs {
+	// Newest first, so a flow is deleted before the verification flow it calls.
+	for _, flowID := range slices.Backward(s.perTestFlowIDs) {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			s.T().Logf("failed to delete scenario flow: %v", err)
 		}
@@ -861,6 +879,17 @@ func (s *FederatedMappingSuite) nextSubject() string {
 func (s *FederatedMappingSuite) register(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) map[string]interface{} {
 	s.T().Helper()
+	var attributes map[string]interface{}
+	s.Require().NoError(json.Unmarshal(s.registerEntity(config, user).Attributes, &attributes),
+		"failed to decode the provisioned user's attributes")
+	return attributes
+}
+
+// registerEntity drives the registration flow like register, and returns the user the flow's
+// assertion was issued for.
+func (s *FederatedMappingSuite) registerEntity(
+	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) *testutils.User {
+	s.T().Helper()
 	s.applyConfig(config)
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
@@ -879,15 +908,10 @@ func (s *FederatedMappingSuite) register(
 	s.Require().Equal("COMPLETE", completed.FlowStatus,
 		"expected the flow to complete, got %+v", completed)
 
-	provisioned, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned user")
-	s.Require().NotNil(provisioned, "no user was provisioned for subject %s", user.Sub)
+	provisioned, err := testutils.GetUserFromAssertion(completed.Assertion)
+	s.Require().NoError(err, "failed to look up the user provisioned for subject %s", user.Sub)
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
-
-	var attributes map[string]interface{}
-	s.Require().NoError(json.Unmarshal(provisioned.Attributes, &attributes),
-		"failed to decode the provisioned user's attributes")
-	return attributes
+	return provisioned
 }
 
 // registerExpectingPrompt drives the flow for a configuration under which no mapping supplies a

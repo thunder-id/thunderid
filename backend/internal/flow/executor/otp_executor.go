@@ -131,7 +131,7 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	recipientAttr := authnprovidercm.UserAttributeUserID
 
 	if recipient == "" && execResp.Status == providers.ExecFailure {
-		if ctx.FlowType != providers.FlowTypeRegistration {
+		if !isRegistrationFlow(ctx) {
 			logger.Debug(ctx.Context, "OTP generate: user not found, non-registration flow — aborting")
 			return execResp, nil
 		}
@@ -204,7 +204,7 @@ func (e *otpExecutor) resolveUserID(ctx *providers.NodeContext,
 	if e.authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
 		authUser, entityRef, err := e.authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
 		execResp.AuthUser = authUser
-		if err == nil && entityRef.EntityID != "" {
+		if err == nil && entityRef != nil && entityRef.EntityID != "" {
 			execResp.RuntimeData[userAttributeUserID] = entityRef.EntityID
 			return entityRef.EntityID, nil
 		}

@@ -17,6 +17,9 @@ import (
 // services those constructors need. TestCatalogMatchesRegistry in the executor package holds the
 // two together: it registers the real executors and fails on any difference.
 var catalog = map[string]providers.ExecutorMeta{
+	ExecutorNameAccountLinking: {
+		SupportedFlowTypes: []providers.FlowType{"AUTHENTICATION", "REGISTRATION"},
+	},
 	ExecutorNameApplicationActionValidator: {
 		SupportedModes:     []string{"revoke_all", "revoke_before_action"},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
@@ -57,7 +60,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "senderId"},
 		},
 	},
-	ExecutorNameFederatedAuthResolver: {},
 	ExecutorNameGitHubAuth: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "idpId", IsRequired: true},

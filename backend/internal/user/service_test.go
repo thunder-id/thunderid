@@ -431,6 +431,58 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 	storeMock.AssertNumberOfCalls(t, "CreateEntity", 1)
 }
 
+// A user created with a federated link carries it to the entity layer as the linkedIds system
+// attribute, so the user and its link are written together.
+func TestUserService_CreateUser_WritesLinkedAccount(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return string(e.SystemAttributes) == `{"linkedIds":{"idp-a":{"sub-1":{}}}}`
+	}), mock.Anything).Return(&providers.Entity{Attributes: json.RawMessage(`{}`)}, nil).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+		uuidGenerator:     utils.GenerateUUIDv7,
+	}
+
+	created, svcErr := service.CreateUser(context.Background(), &providers.User{
+		Type:          testUserType,
+		OUID:          testOrgID,
+		Attributes:    json.RawMessage(`{}`),
+		LinkedAccount: &providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"},
+	})
+	require.Nil(t, svcErr)
+	require.NotNil(t, created)
+}
+
+// A federated link missing its connection or subject names nothing, so the create is rejected
+// before anything is written.
+func TestUserService_CreateUser_RejectsIncompleteLinkedAccount(t *testing.T) {
+	for name, link := range map[string]providers.LinkedAccount{
+		"no connection": {Sub: "sub-1"},
+		"no subject":    {IdpID: "idp-a"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := &userService{}
+
+			created, svcErr := service.CreateUser(context.Background(), &providers.User{
+				Type: testUserType, OUID: testOrgID, LinkedAccount: &link,
+			})
+			require.Nil(t, created)
+			require.NotNil(t, svcErr)
+			require.Equal(t, ErrorInvalidRequestFormat.Code, svcErr.Code)
+		})
+	}
+}
+
 func TestUserService_CreateUser_UUIDGenerationError(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
@@ -1963,6 +2015,7 @@ func TestUserService_CreateUser_EntityErrors(t *testing.T) {
 	}{
 		{"SchemaNotFound", entitypkg.ErrSchemaValidationFailed, ErrorSchemaValidationFailed},
 		{"AttributeConflict", entitypkg.ErrAttributeConflict, ErrorAttributeConflict},
+		{"FederatedIdentityConflict", entitypkg.ErrLinkedAccountConflict, ErrorLinkedAccountConflict},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

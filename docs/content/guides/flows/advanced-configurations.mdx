@@ -365,7 +365,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Verify Magic Link** | Verifies the magic link token submitted by the user. | Generate Magic Link must have run |
 | **Identify User** | Looks up a user by identifier in the user store. | - |
 | **Resolve User** | Handles disambiguation when multiple users match an identifier. | - |
-| **Resolve Federated User** | Resolves ambiguous federated user after social login. | OAuth/OIDC executor must have run; Identify User must have run |
+| **Account Linking** | Matches a federated identity that has no recorded link to existing accounts and links it after the user verifies one. | A federated executor must run first |
 | **User Type Resolver** | Resolves the user type based on configured rules. | User type configured on the application |
 | **Provisioning** | Creates or updates the user record in the store. | - |
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | - |
@@ -455,6 +455,7 @@ Some Executors run entirely in the background and do not need a preceding View t
 | **Provisioning** | After identity collection in registration flows | - |
 | **Identify User** | Early in the flow, after the user submits an identifier | - |
 | **User Type Resolver** | After Identify User | - |
+| **Account Linking** | Immediately after a federated executor, with `onIncomplete` pointing to the linking prompt | A federated executor must run first |
 | **OU Creation** | After Provisioning in registration flows | OU name and handle inputs must be present in the flow context. Accepts an optional `parentOuId` property (see below). |
 
 ### Executor Details and Configuration
@@ -557,7 +558,7 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 
 #### Federated Authentication
 
-After a successful federated authentication, these executors set the `entityState` runtime key from the account-linking result: `exists` when the federated identity resolves to a unique existing local user. A later node can branch on `{{ctx(entityState)}}`.
+A federated executor signs in a local user only through a link already recorded for the connection. A matching attribute never signs a user in directly. Follow the federated node with an [Account Linking](#identity-and-user-resolution) node, which matches the connection's account-linking attributes against existing accounts and has the user verify one of the matched accounts before linking it.
 
 To sign in a first-time federated user who has no local account, enable `allowAuthenticationWithoutLocalUser` on the executor and place a [Provisioning](#user-provisioning-and-attributes) executor downstream. The application must allow exactly one user type with self-registration enabled.
 
@@ -1127,6 +1128,8 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Prompt batching:** If `maxPerPrompt` is set, the executor forwards only that many missing inputs per prompt cycle, cycling through them across multiple flow iterations.
 
+**How existing users are detected:** Before creating the record, the executor checks whether a conflicting user already exists. It matches only on the attributes that the user type schema marks `unique` and that were collected for the new user, so a changed non-unique attribute does not hide an existing account. Credential attributes are never used for this check. When the user type declares no unique attributes, the executor skips the check and creates the record. It also skips the check for a federated sign-in, where the connection's linking configuration already decided whether an existing account may be matched. The user store validates uniqueness on write in every case.
+
 **Cross-OU provisioning:** When `allowCrossOUProvisioning` is set and the user exists in a different OU, the executor creates the user in the target OU instead of failing.
 
 **Seeding from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, `seedGroupsFromMapping` and `seedRolesFromMapping` assign whatever groups and roles that mapping resolves for the asserted attributes, as ordinary direct assignments at account-creation time, alongside anything named in `assignGroup`/`assignRole`. This is a one-time snapshot: it does not keep the account in sync with the provider afterward the way the mapping does on every subsequent sign-in, and it has nothing to resolve when the executor runs outside a federated context.
@@ -1334,53 +1337,66 @@ Resolves an ambiguous user match by presenting disambiguation options to the use
 </details>
 
 <details>
-<summary>Resolve Federated User</summary>
+<summary>Account Linking</summary>
 
-Resolves an ambiguous user after federated authentication (OAuth/OIDC). Reads candidate users stored by Identify User and filters them based on user-selected attributes, then authenticates the matched user.
+Links a federated identity that has no recorded link to an existing account, after the user verifies that account. The federated executor does not look for matching accounts: this node matches the connection's account-linking attributes against existing accounts. Every outcome where it settles an unlinked identity onto an account that already exists records the link here; [Provisioning](#user-provisioning-and-attributes) records only the link of a user it just created.
 
-**When to use:** After federated auth (Google, GitHub, OAuth, OIDC) when Identify User found multiple candidates. This executor reuses the federated identity verified by the auth step rather than re-authenticating.
-
-**Prerequisites:**
-- `sub` (required): the federated subject verified by a prior OAuth/OIDC executor (Google, GitHub, OAuth, OIDC). Set in runtime data by the federated auth executor; not a configurable node input.
-- Candidate users (required): must be stored in runtime data from a prior Identify User execution that returned an ambiguous match.
-
-**View pairing:** Pair with a **Blank View** configured with disambiguation inputs (e.g., OU handle, user type).
+**When to use:** Immediately after every federated executor whose connection has account-linking attributes configured.
 
 **How it works:**
-1. Reads the federated subject set by the OAuth/OIDC executor
-2. Reads candidate users from the prior Identify User execution
-3. Filters candidates using user-provided selection criteria (from View)
-4. On successful match, links the federated identity to the resolved user without re-authenticating
+1. If somebody is already authenticated, the node completes. This is a returning user whose link is already recorded, so there is nothing to decide and nothing to record.
+2. Otherwise the node matches the connection's account-linking attributes against existing accounts. If none matches, this identity has no local account. The node completes and provisioning creates the account and records the link.
+3. If one or more accounts matched, the node holds them as candidates, publishes the matched attribute values for the prompt, and forwards to whatever is wired on `onIncomplete`. The prompt offers to link the matched account (`CONFIRM`) or to continue with a separate one (`REJECT`), as described in the action table below.
+4. When verification comes back, the node checks that the account that verified is one of the candidates, then records the link to that account before completing. If the account that verified is not a candidate, the node discards that sign-in and shows the prompt once more, so the user can verify another account or refuse. On refusal the candidates are dropped and the flow continues as a new user for provisioning to create.
 
-**Input Configuration:** No registered defaults. Configure disambiguation attribute identifiers (e.g., `ouHandle`, `userType`) as node inputs.
+When the identity is already linked (step 1) or the node has just recorded the link (step 4), it sets `entityState` to `exists` in runtime data.
+
+The prompt details go into `AdditionalData` as `linkingPromptDetails`, a JSON array of `{"label","value"}` objects. There is one row for each local attribute that matched, so an `email` claim mapped to `username` that matches on both shows a `Username` row and an `Email` row. Each row is labeled with the attribute's display name in the matched accounts' user type schema, or with the attribute name when the schema gives none, and rows are ordered by attribute name. The values are the ones the connection supplied, so the prompt shows nothing about the matched accounts beyond the fact that one exists. It does not say how many matched. A view renders the list with a `KEY_VALUE_LIST` component whose `source` is `linkingPromptDetails`.
+
+Several accounts can match, for example when two users share a non-unique linking value, or when `email` matches one user's `username` and another user's `email`. The user does not pick one on the prompt. The account they verify is the one linked. If more than 10 accounts match, the node fails.
+
+The node does not care how the account is proved. The called flow is an ordinary sign-in flow: a password prompt, a passkey, an OTP, another connection, or a `LOGIN_OPTIONS` chooser offering several of those all satisfy it. Which methods it offers is the flow author's call, so call a flow the matched account can actually complete. The called flow runs with runtime data of its own, so its steps see neither the candidates nor the claims the connection supplied, and the user identifies the account themselves. When it returns, this flow's runtime data is restored, so a verification at another connection never replaces the identity being linked.
+
+The node has no properties. What the prompt shows follows from the connection's account-linking attributes.
+
+`onIncomplete` is required and must point to the prompt that offers the match. Flow validation rejects a node without it.
+
+`onFailure` must not lead back to this node unless the path signs in at a connection again on the way, for example an `onFailure` that points at the sign-in prompt, where the federated node signs in again before the flow returns here. A failure leaves whoever verified signed in, so a node reached straight from its own failure would complete as that account with no link written. Flow validation rejects such a path.
+
+The prompt's two buttons are the answer, so it collects no field. Each one carries an action `type` that the `PROMPT` node forwards to whatever that action points at, and this node reads it there.
+
+| Action `type` | Wire it to | Meaning |
+|---|---|---|
+| `CONFIRM` | A **Flow** (`CALL`) node that runs the verification sign-in flow, or the first of the verification steps in this flow | The user accepts the match. It only routes: the verification steps are what prove the account. |
+| `REJECT` | This node | The user wants a separate account. The candidates are dropped and the flow continues as a new user. |
+
+A forwarded action type survives exactly one node, so the `REJECT` action must point straight at this node. Flow validation rejects one that points anywhere else: routed through an intermediate node the answer is lost, and the node would read the pass as a verification nobody completed. The `CONFIRM` action can verify the account in one of two ways:
+
+- **Call a verification flow.** Point it at a **Flow** (`CALL`) node whose `onSuccess` points back at this node.
+- **Verify in this flow.** Point it at the first verification step. Every path from there must lead back to this node without reaching an **End** node or an Account Linking, Provisioning, or Auth Assertion Generator node.
+
+Flow validation rejects any other wiring, since the account that verified is checked and linked only when the flow comes back to this node. When it comes back, this node restores the flow's runtime data, so anything the verification steps in this flow wrote is discarded.
 
 **Example:**
 
 ```json
 {
-  "id": "resolve_federated_user",
+  "id": "account_linking",
   "type": "TASK_EXECUTION",
   "executor": {
-    "name": "FederatedAuthResolverExecutor",
-    "inputs": [
-      {
-        "identifier": "ouHandle",
-        "type": "TEXT_INPUT",
-        "required": true
-      }
-    ]
+    "name": "AccountLinkingExecutor"
   },
-  "onSuccess": "auth_assert",
+  "onSuccess": "provisioning",
   "onFailure": "end",
-  "onIncomplete": "prompt_disambiguate"
+  "onIncomplete": "prompt_link_account"
 }
 ```
 
 **Failure conditions:**
-- No federated subject found (OAuth/OIDC executor did not run)
-- No candidate users available (Identify User did not find multiple matches)
-- User selection does not match any candidate
-- User found but federated identity cannot be linked
+- More than 10 accounts match the account-linking attributes, or one attribute matches several users held by a custom authn provider
+- The account that completed verification is not one of the candidates, and the identity saved before verification cannot be restored to prompt again
+- Recording the link is rejected
+- The node is reached a second time with nobody authenticated and no `REJECT` action forwarded, meaning the verification branch authenticated no one
 
 </details>
 

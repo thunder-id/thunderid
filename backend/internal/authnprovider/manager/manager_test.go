@@ -357,6 +357,32 @@ func (s *ManagerTestSuite) TestAuthenticateUser_AgentAllowedWhenNoConstraintsOnC
 	s.True(returnedAuthUser.IsAuthenticated())
 }
 
+// Two entities holding one recorded link is reported as ambiguity, not as a failed exchange.
+func (s *ManagerTestSuite) TestAuthenticateUser_FederatedAmbiguousLink() {
+	credentials := map[string]interface{}{authnprovidercm.CredentialTypeFederated: "code"}
+	meta := &providers.AuthnMetadata{}
+	s.mockProvider.On("Authenticate", context.Background(), map[string]interface{}(nil), credentials, meta).
+		Return((*providers.AuthnResult)(nil), &tidcommon.ServiceError{
+			Code: authnprovidercm.ErrorCodeAmbiguousUser, Type: tidcommon.ClientErrorType,
+		})
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
+}
+
+// Other credentials keep reading an ambiguous result as a failed authentication.
+func (s *ManagerTestSuite) TestAuthenticateUser_NonFederatedAmbiguousIsAuthenticationFailure() {
+	s.assertAuthenticateUserClientErrorMapping(
+		authnprovidercm.ErrorCodeAmbiguousUser,
+		"ambiguous user",
+		"several users match",
+		ErrorAuthenticationFailed.Code,
+	)
+}
+
 func (s *ManagerTestSuite) assertAuthenticateUserClientErrorMapping(
 	providerErrorCode, providerError, providerErrorDescription, expectedServiceErrorCode string,
 ) {
@@ -433,151 +459,6 @@ func (s *ManagerTestSuite) TestAuthenticateUser_ReAuth() {
 	s.True(au2.IsAuthenticated())
 	st, _ := au2.StateFor(defaultProviderName)
 	s.Equal("tok-second", st.AttributeToken, "second call must overwrite attribute token")
-}
-
-// --- Disambiguation (sub in credentials) tests ---
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_Success() {
-	identifiers := map[string]interface{}{"userID": "user-123"}
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		AttributeToken:       "some-token",
-	})
-
-	returnedAuthUser, rtAttrs, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
-		nil, nil, authUser)
-
-	s.Nil(svcErr)
-	s.Nil(rtAttrs)
-	st, ok := returnedAuthUser.StateFor(defaultProviderName)
-	s.True(ok)
-	s.Equal(map[string]interface{}{"userID": "user-123"}, st.EntityReferenceToken)
-	s.Equal(map[string]interface{}{"userID": "user-123"}, st.AttributeToken)
-	s.Nil(st.EntityReference)
-	s.Nil(st.Attributes)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_EmptySub() {
-	credentials := map[string]interface{}{"sub": ""}
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, providers.AuthUser{})
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonStringSub() {
-	credentials := map[string]interface{}{"sub": 123}
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, providers.AuthUser{})
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NotAuthenticated() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, providers.AuthUser{})
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NilEntityRefToken() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReference: &providers.EntityReference{EntityID: "user-1"},
-		Attributes:      &providers.AttributesResponse{},
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonMapEntityRefToken() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: "not-a-map",
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_MissingSubInEntityRefToken() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"other": "value"},
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_SubMismatch() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-different"},
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_MissingUserID() {
-	identifiers := map[string]interface{}{}
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonStringUserID() {
-	identifiers := map[string]interface{}{"userID": 12345}
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_EmptyUserID() {
-	identifiers := map[string]interface{}{"userID": ""}
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	authUser := authUserWithDefaultState(providers.AuthState{
-		EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		AttributeToken:       "tok",
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
 }
 
 // --- GetEntityReference tests ---
@@ -682,6 +563,37 @@ func (s *ManagerTestSuite) TestGetEntityReference_UserNotFound() {
 
 	_, _, svcErr := s.mgr.GetEntityReference(context.Background(), authUser)
 	s.NotNil(svcErr)
+	s.Equal(ErrorUserNotFound.Code, svcErr.Code)
+}
+
+// A pending federated identity at one provider next to a verified user at another resolves nobody,
+// so a verification that authenticates through a different provider cannot settle a link.
+func (s *ManagerTestSuite) TestGetEntityReference_PendingStateAtAnotherProviderResolvesNobody() {
+	custom := providermock.NewAuthnProviderInterfaceMock(s.T())
+	mgr, err := Initialize(s.mockProvider, map[string]providers.CustomAuthnProvider{
+		"corp": {Instance: custom, Creds: []string{"password"}},
+	})
+	s.Require().NoError(err)
+
+	pending := map[string]interface{}{"federatedIdpId": "idp-a", "sub": "sub-1"}
+	s.mockProvider.On("GetEntityReference", mock.Anything, pending).
+		Return((*providers.EntityReference)(nil), &tidcommon.ServiceError{
+			Code: authnprovidercm.ErrorCodeUserNotFound, Type: tidcommon.ClientErrorType,
+		}).Maybe()
+	custom.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(&providers.EntityReference{EntityID: "corp-user"}, (*tidcommon.ServiceError)(nil)).Maybe()
+
+	au := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {EntityReferenceToken: pending, AttributeToken: pending},
+		"corp": {
+			EntityReferenceToken: map[string]interface{}{"userID": "corp-user"},
+			AttributeToken:       map[string]interface{}{"userID": "corp-user"},
+		},
+	})
+
+	_, ref, svcErr := mgr.GetEntityReference(context.Background(), au)
+	s.Nil(ref)
+	s.Require().NotNil(svcErr)
 	s.Equal(ErrorUserNotFound.Code, svcErr.Code)
 }
 
@@ -1156,22 +1068,6 @@ func TestEnroll_MultipleCredentialKeysDifferentProviders(t *testing.T) {
 	}
 	defaultMock.AssertNotCalled(t, "Enroll")
 	acmeMock.AssertNotCalled(t, "Enroll")
-}
-
-func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NoDefaultProviderState() {
-	credentials := map[string]interface{}{"sub": "ext-sub-1"}
-	// Authenticated, but only under a non-default provider.
-	authUser := authUserWithStates(map[string]providers.AuthState{
-		"acme": {
-			EntityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-			AttributeToken:       "tok",
-		},
-	})
-
-	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
-
-	s.NotNil(svcErr)
-	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
 }
 
 func TestGetEntityReference_StateForUnregisteredProvider(t *testing.T) {
@@ -1691,6 +1587,24 @@ func (s *ManagerTestSuite) TestResolveLinkCandidates_StopsLookingUpPastTheCap() 
 		s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
 	}
 	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", context.Background(), second)
+}
+
+// A connection that skipped save validation can build more filters than the bound, and none of
+// them is looked up.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_TooManyFiltersFailWithoutLookups() {
+	filters := make([]map[string]interface{}, 0, authnprovidercm.MaxAccountLinkingFilters+1)
+	for i := 0; i <= authnprovidercm.MaxAccountLinkingFilters; i++ {
+		filters = append(filters, map[string]interface{}{"costCenter": "CC-" + string(rune('a'+i))})
+	}
+	authUser := pendingFederatedAuthUser(filters)
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	}
+	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", mock.Anything, mock.Anything)
 }
 
 // Exactly the cap is still a choice verification can make.

@@ -23,15 +23,25 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// federatedIdentity is the connection and subject the current federated authentication established.
+type federatedIdentity struct {
+	idpID string
+	sub   string
+}
+
 // setExternalIdentity stores what an external party (a federated identity provider or a
 // credential issuer) asserted as one RuntimeData entry, replacing any earlier one whole so the claims of
 // two sign-ins never mix. Claims never reach RuntimeData under their own names, so none can stand in
-// for flow control state. Token metadata is dropped.
+// for flow control state. Token metadata is dropped, and so is the sub claim when it is set as
+// the subject.
 func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string,
 	claims map[string]interface{}) error {
 	claims = maps.Clone(claims)
 	for _, key := range tokenMetadataClaims {
 		delete(claims, key)
+	}
+	if sub != "" {
+		delete(claims, userAttributeSub)
 	}
 	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
 	if err != nil {
@@ -254,6 +264,12 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
 	authnProvider providers.AuthnProviderManager) {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+
+	// An unauthenticated AuthUser names nobody, and GetEntityReference would log it as an error.
+	if !execResp.AuthUser.IsAuthenticated() {
+		return
+	}
+
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr == nil && entityRef != nil {
@@ -264,24 +280,18 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
 // unions their targets, and stores the result as runtime data for later executors. Logs and continues
-// without the affected targets when the IDP or direct targets can't be resolved, rather than failing
-// the federated login over what is best-effort enrichment of its runtime state.
+// without the direct targets when they can't be resolved, rather than failing the federated login over
+// what is best-effort enrichment of its runtime state.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
-	idpService providers.IDPProvider, idpID string, federatedAttributes map[string]interface{},
+	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
 	logger *log.Logger,
 ) {
-	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
-	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve IDP for authorization mapping, skipping",
-			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
-		return
-	}
 	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
 	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
+			log.String("idpId", idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
 	} else {
 		targets = append(targets, directTargets...)
 	}
@@ -305,6 +315,14 @@ func setMappedAuthorizationTargets(execResp *providers.ExecutorResponse, targets
 	execResp.RuntimeData[common.RuntimeKeyMappedPermissions] = string(encoded)
 }
 
+// isRegistrationFlow reports whether executors should apply their registration behavior. A linking
+// verification segment verifies an existing account, so it runs with authentication behavior even
+// inside a registration flow.
+func isRegistrationFlow(ctx *providers.NodeContext) bool {
+	return ctx.FlowType == providers.FlowTypeRegistration &&
+		ctx.RuntimeData[common.RuntimeKeyLinkingVerificationRequested] != dataValueTrue
+}
+
 // isAllowAuthenticationWithoutLocalUserRuntimeFlagSet checks if the runtime flag for allowing authentication without
 // a local user is set in the context.
 func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *providers.NodeContext) bool {
@@ -315,38 +333,59 @@ func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *providers.NodeContex
 // validateFederatedIdentifierConsistency checks if the federated identity from the authentication result
 // is consistent with what the flow already holds. An earlier federated sign-in must be the same
 // identity: subjects are unique only within a connection, so the connection and subject are compared
-// together. The email is compared with runtime data, the earlier external identity's claims, user
-// inputs and the authenticated user's attributes.
-func validateFederatedIdentifierConsistency(ctx *providers.NodeContext, idpID string,
+// together. The local attributes the connection's account-linking attributes match on are compared with
+// runtime data, the earlier external identity's claims, user inputs and the authenticated user's
+// attributes. A connection without account linking has no such attributes to compare.
+func validateFederatedIdentifierConsistency(ctx *providers.NodeContext, idpDTO *providers.IDPDTO,
 	federatedIdentifiers, existingIdentifiers map[string]interface{}) bool {
 	if len(federatedIdentifiers) == 0 {
 		return true
 	}
 
 	sub := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[userAttributeSub])
-	if earlier := core.GetExternalIdentity(ctx.RuntimeData); earlier != nil && earlier.Sub != "" &&
-		(earlier.IdpID != idpID || earlier.Sub != sub) {
+	earlier := core.GetExternalIdentity(ctx.RuntimeData)
+	if earlier != nil && earlier.Sub != "" && (earlier.IdpID != idpDTO.ID || earlier.Sub != sub) {
 		return false
 	}
 
-	// TODO: Refine this well-known-key comparison when IDP-to-local attribute mapping is supported
-	email := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[userAttributeEmail])
-	if email == "" {
+	if idpDTO.AttributeConfiguration == nil {
 		return true
 	}
-	if value := ctx.RuntimeData[userAttributeEmail]; value != "" && value != email {
-		return false
-	}
-	if value, _ := core.GetExternalClaim(ctx.RuntimeData, userAttributeEmail); value != "" && value != email {
-		return false
-	}
-	if value := ctx.UserInputs[userAttributeEmail]; value != "" && value != email {
-		return false
-	}
-	if value := systemutils.ConvertInterfaceValueToString(existingIdentifiers[userAttributeEmail]); value != "" &&
-		value != email {
-		return false
+	mappings := idp.GetAttributeMappings(idpDTO, federatedIdentifiers)
+	for _, attr := range idp.GetAccountLinkingLocalAttributes(idpDTO.AttributeConfiguration.AccountLinking,
+		federatedIdentifiers, mappings) {
+		federated := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[attr])
+		if value := ctx.RuntimeData[attr]; value != "" && value != federated {
+			return false
+		}
+		if value, _ := earlier.Claim(attr); value != "" && value != federated {
+			return false
+		}
+		if value := ctx.UserInputs[attr]; value != "" && value != federated {
+			return false
+		}
+		if value := systemutils.ConvertInterfaceValueToString(existingIdentifiers[attr]); value != "" &&
+			value != federated {
+			return false
+		}
 	}
 
 	return true
+}
+
+// consumeFederatedCallbackInputs removes the code and state from UserInputs and returns the state.
+func consumeFederatedCallbackInputs(ctx *providers.NodeContext) string {
+	returnedState := ctx.UserInputs[userInputState]
+	delete(ctx.UserInputs, userInputCode)
+	delete(ctx.UserInputs, userInputState)
+	return returnedState
+}
+
+// federatedIdentityFrom returns nil when no federated connection set an external identity.
+func federatedIdentityFrom(ctx *providers.NodeContext) *federatedIdentity {
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+	if extIdentity == nil || extIdentity.IdpID == "" || extIdentity.Sub == "" {
+		return nil
+	}
+	return &federatedIdentity{idpID: extIdentity.IdpID, sub: extIdentity.Sub}
 }

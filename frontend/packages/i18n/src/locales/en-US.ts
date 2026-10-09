@@ -2099,7 +2099,8 @@ const translations = {
     'attributeMapping.mappings.remove': 'Remove',
     // Section 3 — account linking
     'attributeMapping.linking.title': 'Account Linking',
-    'attributeMapping.linking.description': 'The attributes used to find the associated local user.',
+    'attributeMapping.linking.description':
+      'The attributes used to find the associated local user. Each one matches on every local attribute it is mapped to, and on a local attribute of the same name.',
     'attributeMapping.linking.label': 'External Attribute',
     'attributeMapping.linking.labelCombo': 'External Attributes',
     'attributeMapping.linking.placeholder': 'e.g. email',

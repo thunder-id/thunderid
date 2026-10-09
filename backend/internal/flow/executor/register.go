@@ -289,10 +289,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(
 				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
 		},
-		ExecutorNameFederatedAuthResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameFederatedAuthResolver, newFederatedAuthResolverExecutor(deps.FlowFactory,
-				deps.AuthnProvider))
-		},
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
 				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.AuthnProvider))
@@ -347,6 +343,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameClientSecret,
 				newClientSecretExecutor(deps.FlowFactory))
+		},
+		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAccountLinking,
+				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService))
 		},
 	}
 }

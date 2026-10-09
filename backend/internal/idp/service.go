@@ -616,11 +616,9 @@ func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID st
 	})
 }
 
-// validateAttributeConfiguration validates the IDP's attribute configuration: a default user type is
-// required only when user-type attribute mappings are configured (it selects which mapping profile
-// applies), and for each user type's attributes a valid claim-mapping shape with every local (target)
-// claim a non-credential attribute defined in that user type's schema. No-op when no profile is
-// configured.
+// validateAttributeConfiguration validates the IDP's attribute configuration: a default user type
+// when user-type mappings are configured, mappings whose local claims are non-credential schema
+// attributes, and account linking per validateAccountLinking. No-op when no profile is configured.
 func (is *idpService) validateAttributeConfiguration(
 	ctx context.Context,
 	idp *providers.IDPDTO,
@@ -707,7 +705,7 @@ func (is *idpService) validateAttributeConfiguration(
 			}
 		}
 	}
-	return nil
+	return validateAccountLinking(profile)
 }
 
 // validateUserTypeResolution validates claim-driven user-type resolution. A value mapping requires an

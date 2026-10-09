@@ -170,6 +170,9 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Enti
 
 	var created providers.Entity
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.checkLinkedAccountsFree(txCtx, entity.ID, entity.SystemAttributes); err != nil {
+			return err
+		}
 		if err := s.store.CreateEntity(txCtx, *entity, schemaCredsJSON, hashedSysCreds); err != nil {
 			return err
 		}
@@ -422,14 +425,8 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 			return err
 		}
 
-		holder, err := s.store.ResolveLinkedAccount(txCtx, idpID, sub)
-		switch {
-		case errors.Is(err, ErrAmbiguousEntity):
-			return ErrLinkedAccountConflict
-		case err != nil && !errors.Is(err, ErrEntityNotFound):
+		if err := s.checkLinkedSubjectFree(txCtx, entityID, idpID, sub); err != nil {
 			return err
-		case holder != nil && *holder != entityID:
-			return ErrLinkedAccountConflict
 		}
 
 		attrs := map[string]interface{}{}
@@ -940,6 +937,46 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 		}
 		return s.store.UpdateSystemAttributes(txCtx, entityID, markedAttrs)
 	})
+}
+
+// checkLinkedAccountsFree refuses a new entity whose linkedIds name a subject another entity holds.
+func (s *entityService) checkLinkedAccountsFree(ctx context.Context, entityID string,
+	systemAttributes json.RawMessage) error {
+	if len(systemAttributes) == 0 {
+		return nil
+	}
+	attrs := map[string]interface{}{}
+	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+		return fmt.Errorf("failed to unmarshal system attributes: %w", err)
+	}
+	links, err := objectAt(attrs, authnprovidercm.SystemAttrLinkedIDs)
+	if err != nil {
+		return err
+	}
+	for idpID, subjects := range links {
+		bySub, _ := subjects.(map[string]interface{})
+		for sub := range bySub {
+			if err := s.checkLinkedSubjectFree(ctx, entityID, idpID, sub); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkLinkedSubjectFree returns ErrLinkedAccountConflict when an entity other than entityID
+// holds the subject at the connection.
+func (s *entityService) checkLinkedSubjectFree(ctx context.Context, entityID, idpID, sub string) error {
+	holder, err := s.store.ResolveLinkedAccount(ctx, idpID, sub)
+	switch {
+	case errors.Is(err, ErrAmbiguousEntity):
+		return ErrLinkedAccountConflict
+	case err != nil && !errors.Is(err, ErrEntityNotFound):
+		return err
+	case holder != nil && *holder != entityID:
+		return ErrLinkedAccountConflict
+	}
+	return nil
 }
 
 // hasLinkedSubject reports whether a subject is already recorded for a connection.

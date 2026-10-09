@@ -12,12 +12,10 @@ import (
 Federated authentication through a flow.
 
 Phase 3 covers mapping and resolution on the registration path, where a mapped claim populates a new
-user. On the authentication path the same mapped claims resolve an *existing* user instead, and that
-resolution-through-a-flow is exercised nowhere else: the linking scenarios use the direct
-/auth/{provider}/finish endpoints, which bypass the flow executors entirely.
+user. On the authentication path the same mapped claims match an *existing* user instead, which the
+linking scenarios cover.
 
-The mapping computation is shared between the two paths, so what these assert is the consumption. BA2
-and BA3 additionally cover the only branch in the executor that depends on the flow type at all.
+BA2 and BA3 cover the only branch in the executor that depends on the flow type at all.
 */
 
 // authenticate drives an authentication flow for a mock identity and returns the terminal step.
@@ -44,47 +42,6 @@ func (s *FederatedMappingSuite) authenticate(
 	return step, err
 }
 
-// BA1: an identity with no matching sub resolves to an existing local user through the configured
-// linking attribute, and the assertion is issued for that user rather than a new one.
-func (s *FederatedMappingSuite) TestAuthenticationFlowLinksToExistingUserByMappedAttribute() {
-	linkEmail := s.nextSubject() + "@example.com"
-	existingID, err := testutils.CreateUser(testutils.User{
-		Type: fedPersonType.Handle,
-		OUID: s.ouID,
-		Attributes: mustJSON(map[string]interface{}{
-			"username": linkEmail,
-			"email":    linkEmail,
-		}),
-	})
-	s.Require().NoError(err, "failed to create the user the identity should link to")
-	defer func() {
-		if err := testutils.DeleteUser(existingID); err != nil {
-			s.T().Logf("failed to delete the linked user: %v", err)
-		}
-	}()
-
-	// The identity's own subject matches nobody; only the mapped email can resolve it.
-	user := s.baseUser(s.nextSubject())
-	user.Email = linkEmail
-
-	config := mapping(fedPersonType.Handle, pair("email", "email"))
-	config.AccountLinking = &testutils.AccountLinking{Attributes: []string{"email"}}
-
-	// The strict flow carries no provisioning step, so a completed run proves the identity resolved to
-	// the existing user rather than being created.
-	step, err := s.authenticate(s.strictAuthAppID, config, user)
-	s.Require().NoError(err, "the linked identity should authenticate cleanly")
-
-	s.Require().Equal("COMPLETE", step.FlowStatus,
-		"the identity should have linked to the existing user, got %+v", step)
-	s.Require().NotEmpty(step.Assertion, "a completed authentication should carry an assertion")
-
-	claims, err := testutils.DecodeJWT(step.Assertion)
-	s.Require().NoError(err, "failed to decode the assertion")
-	s.Equal(existingID, claims.Sub,
-		"the assertion should be issued for the pre-existing user, not a newly created one")
-}
-
 // BA2: an identity matching no local user proceeds past the federated node when the node allows
 // authentication without one. This is the only executor branch that depends on the flow type.
 func (s *FederatedMappingSuite) TestAuthenticationFlowWithoutLocalUserProceedsWhenAllowed() {
@@ -100,9 +57,8 @@ func (s *FederatedMappingSuite) TestAuthenticationFlowWithoutLocalUserProceedsWh
 	s.Require().Equal("COMPLETE", step.FlowStatus,
 		"the identity should have been provisioned just in time, got %+v", step)
 
-	provisioned, err := testutils.FindUserByAttribute("sub", user.Sub)
-	s.Require().NoError(err, "failed to look up the provisioned user")
-	s.Require().NotNil(provisioned, "the allowance should have provisioned a user for %s", user.Sub)
+	provisioned, err := testutils.GetUserFromAssertion(step.Assertion)
+	s.Require().NoError(err, "the allowance should have provisioned a user for %s", user.Sub)
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
 }
 
@@ -123,7 +79,7 @@ func (s *FederatedMappingSuite) TestAuthenticationFlowWithoutLocalUserFailsWhenN
 	s.Require().NotNil(step.Error, "expected the terminal step to carry its error, got %+v", step)
 	s.Equal("FET-1002", step.Error.Code, "expected the client error for an unidentifiable user, got %+v", step.Error)
 
-	unexpected, lookupErr := testutils.FindUserByAttribute("sub", user.Sub)
+	unexpected, lookupErr := testutils.FindUserByAttribute("email", user.Email)
 	s.Require().NoError(lookupErr, "failed to check whether a user was created")
 	s.Nil(unexpected, "no user should be created when the flow does not allow authentication without one")
 }

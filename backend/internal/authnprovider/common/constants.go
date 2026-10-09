@@ -4,6 +4,8 @@
 // Package common defines shared constants for authentication providers.
 package common
 
+import "strings"
+
 const (
 	// UserAttributeUserID is the attribute key used to identify the user ID.
 	UserAttributeUserID = "userID"
@@ -41,6 +43,21 @@ const SystemAttrCredentialUpdatedAt = "credentialUpdatedAt" // #nosec G101 -- at
 //	{"linkedIds": {"<idpId>": {"<sub>": {}}}}
 const SystemAttrLinkedIDs = "linkedIds"
 
+// MaxAccountLinkingFilters bounds the lookup filters one federated sign-in's account linking may
+// build, and so the provider lookups it runs. Each linking attribute multiplies the count by the
+// local attributes it matches on.
+const MaxAccountLinkingFilters = 10
+
+// IsReservedLookupAttribute reports whether an attribute name is server-owned and must never come
+// from external input into an entity lookup.
+func IsReservedLookupAttribute(name string) bool {
+	switch name {
+	case UserAttributeUserID, UserAttributeFederatedIdpID, SystemAttrCredentialUpdatedAt, SystemAttrLinkedIDs:
+		return true
+	}
+	return strings.HasPrefix(name, SystemAttrLinkedIDs+".")
+}
+
 // Credential type keys used in the credentials map passed to the authentication providers.
 const (
 	// CredentialTypeProvisionedEntityID identifies an entity provisioned earlier in the same flow.
@@ -71,8 +88,6 @@ var InternalCredentialTypes = []string{
 	CredentialTypeFederated,
 	CredentialTypeMagicLink,
 	CredentialTypeOpenID4VP,
-	// The provider manager dispatches on sub to disambiguate after a federated step.
-	UserAttributeSub,
 }
 
 // SystemCredentialTypes are machine credentials of an application or agent. The entity layer

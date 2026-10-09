@@ -305,6 +305,9 @@ func (us *userService) CreateUser(
 	if user == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
+	if user.LinkedAccount != nil && (user.LinkedAccount.IdpID == "" || user.LinkedAccount.Sub == "") {
+		return nil, &ErrorInvalidRequestFormat
+	}
 
 	// Check if caller is authorized to create users in the target OU.
 	if svcErr := us.checkUserAccess(ctx, security.ActionCreateUser, user.OUID, ""); svcErr != nil {
@@ -327,6 +330,11 @@ func (us *userService) CreateUser(
 	}
 
 	e := userToEntity(user)
+	if user.LinkedAccount != nil {
+		if e.SystemAttributes, err = buildLinkedAccountSystemAttributes(user.LinkedAccount); err != nil {
+			return nil, logErrorAndReturnServerError(ctx, logger, "Failed to encode the federated link", err)
+		}
+	}
 	created, err := us.entityService.CreateEntity(ctx, e, nil)
 	if err != nil {
 		if svcErr := mapEntityError(err); svcErr != nil {
@@ -1169,6 +1177,8 @@ func mapEntityError(err error) *tidcommon.ServiceError {
 		return &ErrorAttributeConflict
 	case errors.Is(err, entity.ErrInvalidCredential):
 		return &ErrorInvalidCredential
+	case errors.Is(err, entity.ErrLinkedAccountConflict):
+		return &ErrorLinkedAccountConflict
 	default:
 		return nil
 	}

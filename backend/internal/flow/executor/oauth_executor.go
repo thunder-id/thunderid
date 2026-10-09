@@ -191,10 +191,12 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return nil
 	}
 
+	returnedState := consumeFederatedCallbackInputs(ctx)
+
 	// Validate the OAuth state parameter to prevent CSRF attacks.
 	// State is validated only when the client sends it back. Clients that handle CSRF
 	// protection client-side (e.g., via sessionStorage) may omit it.
-	if returnedState, ok := ctx.UserInputs[userInputState]; ok && returnedState != "" {
+	if returnedState != "" {
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
 			logger.Debug(ctx.Context, "OAuth state mismatch")
@@ -253,7 +255,14 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 	execResp.AuthUser = authUser
 
-	if !validateFederatedIdentifierConsistency(ctx, idpID, federatedAttributes, existingCtxUserAttributes) {
+	// The consistency check compares the identity on the connection's account-linking attributes, so
+	// it cannot be skipped when the connection fails to load.
+	idpDTO, svcErr := o.idpService.GetIdentityProvider(ctx.Context, idpID)
+	if svcErr != nil {
+		return fmt.Errorf("failed to retrieve identity provider %s: %s", idpID, svcErr.Code)
+	}
+
+	if !validateFederatedIdentifierConsistency(ctx, idpDTO, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
@@ -267,7 +276,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return err
 	}
 
-	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
+	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 

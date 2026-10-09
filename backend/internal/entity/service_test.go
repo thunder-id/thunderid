@@ -97,6 +97,44 @@ func (s *ServiceTestSuite) TestCreateEntity_Success() {
 	s.Equal(e.ID, got.ID)
 }
 
+// A new entity whose linkedIds name a subject another entity holds is refused before anything is
+// written, and a subject nobody holds lets the create through.
+func (s *ServiceTestSuite) TestCreateEntity_LinkedAccount() {
+	other := "someone-else"
+	for name, tc := range map[string]struct {
+		holder  *string
+		lookErr error
+		wantErr error
+	}{
+		"free":      {lookErr: ErrEntityNotFound},
+		"held":      {holder: &other, wantErr: ErrLinkedAccountConflict},
+		"ambiguous": {lookErr: ErrAmbiguousEntity, wantErr: ErrLinkedAccountConflict},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			e := testEntity("e-linked")
+			e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+			s.store.On("ResolveLinkedAccount", mock.Anything, "idp-a", "sub-1").
+				Return(tc.holder, tc.lookErr).Once()
+			if tc.wantErr == nil {
+				s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).
+					Return(nil).Once()
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+			}
+
+			_, err := s.svc.CreateEntity(s.ctx, e, nil)
+
+			if tc.wantErr == nil {
+				s.NoError(err)
+				return
+			}
+			s.ErrorIs(err, tc.wantErr)
+			s.store.AssertNotCalled(s.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
 func (s *ServiceTestSuite) TestGetEntity_Success() {
 	e := testEntity("e4")
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)

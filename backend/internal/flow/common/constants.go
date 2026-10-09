@@ -100,6 +100,9 @@ const (
 	DataOTPNumericOnly = "otpNumericOnly"
 	// DataClientSecret carries a regenerated client secret back to the caller.
 	DataClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
+	// DataLinkingPromptDetails holds the matched account-linking attribute values for the linking
+	// prompt, as a JSON array of {"label","value"} objects.
+	DataLinkingPromptDetails = "linkingPromptDetails"
 )
 
 // Error assertion claims.
@@ -241,13 +244,23 @@ const (
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"
 	// RuntimeKeyEntityState holds the entity existence state, set by the IdentifyingExecutor in
-	// check_state mode or by the federated auth executors from their account-linking result.
+	// check_state mode, or by the federated auth executors and the linking executor once the
+	// identity resolves to an entity.
 	RuntimeKeyEntityState = "entityState"
 	// RuntimeKeyExternalIdentity holds what an external party asserted, as the JSON encoding of
 	// core.ExternalIdentity: the connection and subject of a federated authentication, and the claims.
 	// Set by the federated auth executors and the OpenID4VP verifier. Claims live only here, never
 	// under their own names, so no claim can stand in for the state executors keep in RuntimeData.
 	RuntimeKeyExternalIdentity = "externalIdentity"
+	// RuntimeKeyLinkingCandidateUserIDs holds the entity ids the linking executor sent to verification,
+	// as a JSON array. Set when verification is requested and cleared once linking settles.
+	RuntimeKeyLinkingCandidateUserIDs = "linkingCandidateUserIds"
+	// RuntimeKeyLinkingVerificationRequested marks that the linking executor asked for verification.
+	// Set when it asks, kept while the prompt is offered again, and cleared when linking settles.
+	RuntimeKeyLinkingVerificationRequested = "linkingVerificationRequested"
+	// RuntimeKeyLinkingCheckpoint holds, as JSON, the RuntimeData and AuthUser from when the linking
+	// executor asked for verification. It lives as long as RuntimeKeyLinkingVerificationRequested.
+	RuntimeKeyLinkingCheckpoint = "linkingCheckpoint"
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"

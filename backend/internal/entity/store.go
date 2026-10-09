@@ -444,12 +444,17 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	// Categorize filters into indexed and non-indexed for the fast path and the JSONB fallback.
 	indexedFilters := make(map[string]interface{})
 	nonIndexedFilters := make(map[string]interface{})
+	// A key with no identifier rows makes the fast path match nothing, so it is skipped.
+	allHaveIdentifierRows := true
 
 	for key, value := range filters {
 		if es.indexedAttributes[key] {
 			indexedFilters[key] = value
 		} else {
 			nonIndexedFilters[key] = value
+			if !strings.HasPrefix(key, authnprovidercm.SystemAttrLinkedIDs+".") {
+				allHaveIdentifierRows = false
+			}
 		}
 	}
 
@@ -457,7 +462,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	// This covers both schema-indexed attributes (email, username) and
 	// system identifiers without requiring config.
 	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.scope(ctx))
-	if err == nil {
+	if err == nil && allHaveIdentifierRows {
 		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
 		if qErr == nil && len(results) == 1 {
 			if entityID, ok := results[0]["id"].(string); ok {

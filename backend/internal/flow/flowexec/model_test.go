@@ -144,6 +144,46 @@ func (s *ModelTestSuite) TestFromEngineContext_WithEmptyAuthenticatedUser() {
 	s.Nil(content.Token)
 }
 
+// An unlinked federated identity must survive the pause between the linking executor and the step
+// that settles it. Dropping it leaves the resumed flow with no identity to link or provision.
+func (s *ModelTestSuite) TestFromEngineContext_PersistsPendingFederatedAuthUser() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+
+	var pendingAuthUser providers.AuthUser
+	err := pendingAuthUser.UnmarshalJSON([]byte(
+		`{"default":{"entityReferenceToken":{"federatedIdpId":"idp-1","sub":"sub-1"},` +
+			`"attributeToken":{"federatedIdpId":"idp-1","sub":"sub-1"}}}`))
+	s.NoError(err)
+
+	ctx := EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "test-flow-id",
+		AppID:            "test-app-id",
+		FlowType:         providers.FlowTypeAuthentication,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{},
+		AuthUser:         pendingAuthUser,
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Graph:            mockGraph,
+	}
+
+	dbModel := &FlowContextDB{}
+	err = dbModel.FromEngineContext(ctx)
+	s.NoError(err)
+
+	content := s.getContextContent(dbModel)
+	s.NotNil(content.AuthUser)
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+	s.NoError(err)
+
+	state, ok := resultCtx.AuthUser.StateFor("default")
+	s.True(ok)
+	s.Equal(map[string]interface{}{"federatedIdpId": "idp-1", "sub": "sub-1"}, state.EntityReferenceToken)
+}
+
 func (s *ModelTestSuite) TestToEngineContext_WithToken() {
 	testToken := "test-token-xyz789"
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())

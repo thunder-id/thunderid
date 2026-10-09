@@ -532,6 +532,7 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_SingleResult() {
 }
 
 func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_Empty_FallbackToJSON() {
+	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
 	// Fast path returns no results
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()
@@ -543,6 +544,7 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_Empty_FallbackToJSON() {
 }
 
 func (s *DBStoreTestSuite) TestIdentifyEntity_NotFound() {
+	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()
@@ -551,6 +553,7 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_NotFound() {
 }
 
 func (s *DBStoreTestSuite) TestIdentifyEntity_MultipleResults() {
+	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()
 	rows := []map[string]interface{}{{"id": "e1"}, {"id": "e2"}}
@@ -570,19 +573,27 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_MultipleEntitiesIndexed_A
 	s.ErrorIs(err, ErrAmbiguousEntity)
 }
 
-func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_MultipleEntitiesNonIndexed_FallsBack() {
+func (s *DBStoreTestSuite) TestIdentifyEntity_NonIndexedFilter_SkipsIdentifierTable() {
 	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
-	// A filter on a non-indexed name may match leftover identifier rows, so the JSON query decides.
-	rows := []map[string]interface{}{{"id": "e1"}, {"id": "e2"}}
-	s.onQueryAny(rows, nil).Once()
+	// A non-indexed name has no current identifier rows, so only the hybrid query runs.
 	s.onQueryAny([]map[string]interface{}{{"id": "e1"}}, nil).Once()
 	got, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "a@b.com", "username": "u1"})
 	s.NoError(err)
 	s.Equal("e1", *got)
 }
 
+func (s *DBStoreTestSuite) TestIdentifyEntity_LinkedIdentifier_UsesIdentifierTable() {
+	s.expectClient()
+	// Link rows are written whatever indexed_attributes holds, so the identifier table answers.
+	s.onQueryAny([]map[string]interface{}{{"id": "e1"}}, nil).Once()
+	got, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"linkedIds.idp-1": "sub-1"})
+	s.NoError(err)
+	s.Equal("e1", *got)
+}
+
 func (s *DBStoreTestSuite) TestIdentifyEntity_BadIDType() {
+	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()
 	s.onQueryAny([]map[string]interface{}{{"id": 123}}, nil).Once()
@@ -593,8 +604,6 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_BadIDType() {
 func (s *DBStoreTestSuite) TestIdentifyEntity_HybridQuery_IndexedAndNonIndexed() {
 	s.store.indexedAttributes = map[string]bool{"email": true}
 	s.expectClient()
-	// fast path via identifier table fails (empty)
-	s.onQueryAny([]map[string]interface{}{}, nil).Once()
 	// hybrid query
 	s.onQueryAny([]map[string]interface{}{{"id": "e1"}}, nil).Once()
 	filters := map[string]interface{}{"email": "a@b.com", "username": "u1"}
@@ -604,6 +613,7 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_HybridQuery_IndexedAndNonIndexed()
 }
 
 func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_Empty_FallbackSearchesBothColumns() {
+	s.store.indexedAttributes = map[string]bool{"clientId": true}
 	s.expectClient()
 	// Fast path (ENTITY_IDENTIFIER table) returns nothing.
 	s.onQueryAny([]map[string]interface{}{}, nil).Once()

@@ -1823,13 +1823,23 @@ components:
     AccountLinking:
       type: object
       description: >
-        Configures how an incoming federated identity is resolved to an existing local user when the
-        subject identifier does not resolve one. All configured attributes that have a value are
-        combined into a single lookup filter.
+        Configures how an incoming federated identity is matched to an existing local user when it
+        has no recorded link. Every configured attribute that has a value must match.
       properties:
         attributes:
           type: array
-          description: External attribute names used together to resolve the local user.
+          description: >
+            External attribute names used together to find the local user. Each one matches on
+            every local attribute it is mapped to, and on the local attribute of the same name.
+            A name that is not made of letters, digits and underscores matches only through its
+            mappings, so it must be mapped for every user type, and saving the connection rejects it
+            otherwise. The reserved names userID, federatedIdpId, credentialUpdatedAt and linkedIds
+            are rejected, both as linking attributes and as the local attributes they are mapped to.
+            If an attribute has a value but no local attribute to match on, the connection matches
+            no one. This can still happen at sign-in when the identity resolves to a user type that
+            has no attribute mappings. Each attribute's local attributes are combined with every
+            other's, one lookup per combination, and saving rejects a configuration that needs more
+            than 10 lookups for any user type.
           items:
             type: string
           example:
