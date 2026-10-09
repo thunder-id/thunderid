@@ -17,19 +17,29 @@ import (
 // serverConfigAdapter is the subset of the server-config service used to import a section's value into
 // the writable (db) layer.
 type serverConfigAdapter interface {
-	SetConfig(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage) *common.ServiceError
+	SetConfig(ctx context.Context, name serverconfig.ConfigName,
+		value json.RawMessage, merge ...bool) *common.ServiceError
 }
 
-// serverConfigDeclarativeYAML is a server-config section document as produced by export: a section name
-// and its value.
+// importBehaviorReplace and importBehaviorMerge are the values a document's importBehavior field can ask
+// for; replace is the default when the field is omitted.
+const (
+	importBehaviorReplace = "replace"
+	importBehaviorMerge   = "merge"
+)
+
+// serverConfigDeclarativeYAML is a server-config section document as produced by export: a section name,
+// its value, and an optional import behavior ("merge"/"replace").
 type serverConfigDeclarativeYAML struct {
-	Name  string    `yaml:"name"`
-	Value yaml.Node `yaml:"value"`
+	Name           string    `yaml:"name"`
+	Value          yaml.Node `yaml:"value"`
+	ImportBehavior string    `yaml:"importBehavior,omitempty"`
 }
 
 // importServerConfig applies a server-config section to the writable layer via SetConfig. The section is
-// identified by name; SetConfig upserts the writable layer and the declarative layer (if any) is left
-// untouched. There is no create/update distinction, so the operation is always reported as an update.
+// identified by name; with importBehavior "merge" the write adds to the current writable value for a
+// section that owns a collection and otherwise replaces it, the same as SetConfig with merge always false.
+// There is no create/update distinction, so the operation is always reported as an update.
 func (s *importService) importServerConfig(ctx context.Context, doc parsedDocument, dryRun bool) ImportItemOutcome {
 	if s.serverConfigService == nil {
 		return unsupportedAdapterOutcome(resourceTypeServerConfig, "server config")
@@ -57,6 +67,18 @@ func (s *importService) importServerConfig(ctx context.Context, doc parsedDocume
 		}
 	}
 
+	// A typo would otherwise silently replace the writable layer and drop entries the document never
+	// mentioned.
+	if b := req.ImportBehavior; b != "" && b != importBehaviorReplace && b != importBehaviorMerge {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeServerConfig,
+			ResourceName: req.Name,
+			Status:       statusFailed,
+			Code:         ErrorInvalidYAMLContent.Code,
+			Message:      `server config importBehavior must be "replace" or "merge"`,
+		}
+	}
+
 	value, err := serverConfigValueToJSON(req.Value)
 	if err != nil {
 		return decodeErrorOutcome(resourceTypeServerConfig, "", req.Name, err)
@@ -66,7 +88,8 @@ func (s *importService) importServerConfig(ctx context.Context, doc parsedDocume
 		return successOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate)
 	}
 
-	if svcErr := s.serverConfigService.SetConfig(ctx, serverconfig.ConfigName(req.Name), value); svcErr != nil {
+	merge := req.ImportBehavior == importBehaviorMerge
+	if svcErr := s.serverConfigService.SetConfig(ctx, serverconfig.ConfigName(req.Name), value, merge); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate, svcErr)
 	}
 	return successOutcome(resourceTypeServerConfig, req.Name, req.Name, operationUpdate)
