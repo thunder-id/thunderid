@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useGetApplications} from '@thunderid/configure-applications';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useEnvironment} from '@thunderid/contexts';
 import {alpha, Box, Button, Card, Stack, Typography, useMediaQuery, useTheme} from '@wso2/oxygen-ui';
 import {ArrowRight} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
@@ -18,6 +18,8 @@ export default function StartBuildingSection(): JSX.Element {
   const {t} = useTranslation('home');
   const {data} = useGetApplications({limit: 1});
   const {config} = useConfig();
+  // An environment is only viewed: its applications are seen, not made.
+  const {selected: environment} = useEnvironment();
 
   const showFrameworks = useMediaQuery(theme.breakpoints.up('lg'));
   const showAllFrameworkSlots = useMediaQuery(theme.breakpoints.up('xl'));
@@ -95,7 +97,19 @@ export default function StartBuildingSection(): JSX.Element {
                 )}
               </Typography>
               <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5}}>
-                {hasApps ? (
+                {environment ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={goToApplicationList}
+                    sx={{textTransform: 'none', whiteSpace: 'nowrap'}}
+                  >
+                    {t('start_building.hero.actions.view_environment.label', {
+                      count: totalApps,
+                      defaultValue: 'View {{count}} application',
+                    })}
+                  </Button>
+                ) : hasApps ? (
                   <>
                     <Button
                       variant="contained"
@@ -143,7 +157,7 @@ export default function StartBuildingSection(): JSX.Element {
             </Stack>
           </Box>
 
-          {showFrameworks && (
+          {showFrameworks && !environment && (
             <Box
               sx={{
                 display: 'flex',

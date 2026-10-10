@@ -12,6 +12,7 @@ export type {
 } from './Administration/AdministrationContext';
 export type {AdministrationMode} from './Administration/constants';
 export type {RuntimeContextType} from './Runtime/RuntimeContext';
+export type {Environment, EnvironmentContextType} from './Environment/EnvironmentContext';
 
 // Export React components and hooks
 export {default as ConfigContext, type ConfigContextType} from './Config/ConfigContext';
@@ -38,3 +39,6 @@ export {
 export {default as RuntimeContext} from './Runtime/RuntimeContext';
 export {default as RuntimeProvider, type RuntimeProviderProps} from './Runtime/RuntimeProvider';
 export {default as useRuntimeUrl} from './Runtime/useRuntimeUrl';
+export {default as EnvironmentContext} from './Environment/EnvironmentContext';
+export {default as EnvironmentProvider, type EnvironmentProviderProps} from './Environment/EnvironmentProvider';
+export {default as useEnvironment} from './Environment/useEnvironment';

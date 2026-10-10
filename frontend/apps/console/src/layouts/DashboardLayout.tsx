@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useEnvironment} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
@@ -40,6 +40,8 @@ import {
 import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
+import EnvironmentView from '../components/environment-view/EnvironmentView';
+import EnvironmentSelect from '../components/EnvironmentSelect';
 import RouteConfig from '../configs/RouteConfig';
 
 const ICON_BUTTON_SX = {
@@ -143,6 +145,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
   const {clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();
+  const {selected} = useEnvironment();
   const logger = useLogger();
   const navigate = useNavigate();
 
@@ -376,6 +379,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           </Header.Brand>
           <Header.Spacer />
           <Header.Actions>
+            <EnvironmentSelect />
             <ColorSchemeToggle />
             <Divider orientation="vertical" flexItem sx={{mx: 1, display: {xs: 'none', sm: 'block'}}} />
             <User>
@@ -446,7 +450,13 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       </AppShell.Sidebar>
 
       <AppShell.Main>
-        <Outlet />
+        {selected ? (
+          <EnvironmentView key={selected.id} environment={selected}>
+            <Outlet />
+          </EnvironmentView>
+        ) : (
+          <Outlet />
+        )}
       </AppShell.Main>
 
       <AppShell.Footer>

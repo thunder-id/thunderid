@@ -3,6 +3,7 @@
 
 import {getInitials, ResourceAvatar} from '@thunderid/components';
 import {UserConstants, useGetUsers} from '@thunderid/configure-users';
+import {useEnvironment} from '@thunderid/contexts';
 import {Box, Skeleton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
@@ -117,6 +118,7 @@ function MembersPreview({isLoading, isEmpty, users, extraCount, emptyLabel}: Mem
 export default function InviteMembersCard(): JSX.Element {
   const {t} = useTranslation('home');
   const {data, isLoading} = useGetUsers({limit: AVATAR_LIMIT});
+  const {selected: environment} = useEnvironment();
 
   const totalResults = data?.totalResults ?? 0;
   const users = data?.users ?? [];
@@ -143,8 +145,12 @@ export default function InviteMembersCard(): JSX.Element {
         'next_steps.invite_members.description',
         'Add or invite collaborators to help manage your organization.',
       )}
-      primaryLabel={t('next_steps.invite_members.actions.primary.label', 'Add User')}
-      primaryRoute={RouteConfig.users.add()}
+      primaryLabel={
+        environment
+          ? t('next_steps.invite_members.actions.view.label', 'View Users')
+          : t('next_steps.invite_members.actions.primary.label', 'Add User')
+      }
+      primaryRoute={environment ? RouteConfig.users.list() : RouteConfig.users.add()}
       preview={preview}
     />
   );

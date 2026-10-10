@@ -3,7 +3,8 @@
 
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {render, screen, waitFor} from '@testing-library/react';
-import {ConfigProvider, useRuntimeUrl} from '@thunderid/contexts';
+import userEvent from '@testing-library/user-event';
+import {ConfigProvider, useEnvironment, useRuntimeUrl} from '@thunderid/contexts';
 import type {ProductConfig} from '@thunderid/contexts';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import withRuntimeUrl from '../hocs/withRuntimeUrl';
@@ -25,7 +26,18 @@ const config: ProductConfig = {
 };
 
 function TokenEndpoint() {
-  return <span data-testid="token-endpoint">{`${useRuntimeUrl()}/oauth2/token`}</span>;
+  const {environments, selected, select} = useEnvironment();
+  return (
+    <>
+      <span data-testid="token-endpoint">{`${useRuntimeUrl()}/oauth2/token`}</span>
+      <span data-testid="shown">{selected?.name ?? 'configuration'}</span>
+      {environments.map((environment) => (
+        <button key={environment.id} type="button" onClick={() => select(environment.id)}>
+          {environment.name}
+        </button>
+      ))}
+    </>
+  );
 }
 
 const WithRuntimeUrl = withRuntimeUrl(TokenEndpoint);
@@ -175,5 +187,37 @@ describe('withRuntimeUrl', () => {
       expect(screen.getByTestId('token-endpoint').textContent).toBe('https://cp.example.com:8090/oauth2/token');
     });
     expect(queryClient.getQueryData(['gateways'])).toBeUndefined();
+  });
+
+  it('shows the configuration until an environment is chosen, and that environment runtime after', async () => {
+    request.mockResolvedValue({
+      data: [
+        {id: 'gw-1', name: 'Dev', baseUrl: 'https://dev.example.com', isDefault: true},
+        {id: 'gw-2', name: 'Prod', baseUrl: 'https://prod.example.com'},
+      ],
+    });
+    renderProvider();
+
+    expect(await screen.findByRole('button', {name: 'Prod'})).toBeInTheDocument();
+    expect(screen.getByTestId('shown').textContent).toBe('configuration');
+    expect(screen.getByTestId('token-endpoint').textContent).toBe('https://dev.example.com/oauth2/token');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Prod'}));
+    expect(screen.getByTestId('shown').textContent).toBe('Prod');
+    expect(screen.getByTestId('token-endpoint').textContent).toBe('https://prod.example.com/oauth2/token');
+  });
+
+  it('starts whoever signs in next on the configuration', async () => {
+    request.mockResolvedValue({data: [{id: 'gw-2', name: 'Prod', baseUrl: 'https://prod.example.com'}]});
+    const {queryClient, rerender} = renderProvider();
+    await userEvent.click(await screen.findByRole('button', {name: 'Prod'}));
+    expect(screen.getByTestId('shown').textContent).toBe('Prod');
+
+    isSignedIn = false;
+    rerender(tree(queryClient));
+    isSignedIn = true;
+    rerender(tree(queryClient));
+
+    expect(screen.getByTestId('shown').textContent).toBe('configuration');
   });
 });

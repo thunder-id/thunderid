@@ -1,13 +1,14 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useConfig} from '@thunderid/contexts';
+import {useEnvironment, useConfig} from '@thunderid/contexts';
 import {Layers} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import HomeNextStepCard from './HomeNextStepCard';
 
 export default function ConnectionsCard(): JSX.Element {
+  const {selected: environment} = useEnvironment();
   const {t} = useTranslation('home');
   const {config} = useConfig();
   const {product_name: productName} = config.brand || {};
@@ -21,7 +22,11 @@ export default function ConnectionsCard(): JSX.Element {
         defaultValue:
           'Manage the external services {{product}} connects to for social login, enterprise OIDC, SMS delivery, and more.',
       })}
-      primaryLabel={t('next_steps.connections.actions.primary.label', 'Manage Connections')}
+      primaryLabel={
+        environment
+          ? t('next_steps.connections.actions.view.label', 'View Connections')
+          : t('next_steps.connections.actions.primary.label', 'Manage Connections')
+      }
       primaryRoute="/connections"
     />
   );

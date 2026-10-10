@@ -26,6 +26,15 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+let mockSelected: {id: string; name: string} | undefined;
+
+vi.mock('../../components/environment-view/EnvironmentView', () => ({
+  default: ({environment, children}: {environment: {name: string}; children: React.ReactNode}) => (
+    <div data-testid="environment-view" data-environment={environment.name}>
+      {children}
+    </div>
+  ),
+}));
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -49,6 +58,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useEnvironment: () => ({
+      environments: mockSelected ? [mockSelected] : [],
+      selected: mockSelected,
+      select: vi.fn(),
+    }),
     useConfig: () => ({
       config: {
         brand: {
@@ -102,6 +116,7 @@ describe('DashboardLayout', () => {
     sessionStorage.clear();
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
+    mockSelected = undefined;
     mockDiscovery = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
@@ -115,6 +130,21 @@ describe('DashboardLayout', () => {
 
     // Check that the outlet is rendered
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
+  });
+
+  it('shows the configuration pages while no environment is shown', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    expect(screen.queryByTestId('environment-view')).not.toBeInTheDocument();
+  });
+
+  it('shows the environment view, and the dropdown, while an environment is shown', () => {
+    mockSelected = {id: 'gw-2', name: 'Prod'};
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('environment-view')).toHaveAttribute('data-environment', 'Prod');
+    expect(screen.getByRole('combobox', {name: 'common:environment.label'})).toBeInTheDocument();
   });
 
   it('renders Outlet for nested routes', () => {

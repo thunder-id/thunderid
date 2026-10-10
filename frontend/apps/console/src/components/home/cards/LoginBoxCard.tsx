@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useEnvironment} from '@thunderid/contexts';
 import {Box, Stack} from '@wso2/oxygen-ui';
 import {Palette} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
@@ -11,6 +12,7 @@ import HomeNextStepCard from './HomeNextStepCard';
 const SWATCH_COLORS = ['#FF6B00', '#6366F1', '#0EA5E9', '#10B981'];
 
 export default function LoginBoxCard(): JSX.Element {
+  const {selected: environment} = useEnvironment();
   const {t} = useTranslation('home');
 
   const preview = (
@@ -44,7 +46,11 @@ export default function LoginBoxCard(): JSX.Element {
         'next_steps.login_box.description',
         'Build themes and attach them to your applications to personalise the sign-in experience.',
       )}
-      primaryLabel={t('next_steps.login_box.actions.primary.label', 'Open Design Studio')}
+      primaryLabel={
+        environment
+          ? t('next_steps.login_box.actions.view.label', 'View Design')
+          : t('next_steps.login_box.actions.primary.label', 'Open Design Studio')
+      }
       primaryRoute="/design"
       preview={preview}
     />
