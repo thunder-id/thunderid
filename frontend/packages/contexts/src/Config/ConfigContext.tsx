@@ -114,6 +114,15 @@ export interface ConfigContextType {
   isTrustedIssuerGenericOidc: () => boolean;
 
   /**
+   * Indicates whether this console is served by the control plane, so control-plane features
+   * such as gateway management are shown. Returns false when `mode` is not configured, and when
+   * it is `standalone`.
+   *
+   * @returns True if the configured mode is `control_plane`
+   */
+  isControlPlane: () => boolean;
+
+  /**
    * Resolves the "Learn more" documentation link for a given section key.
    * Returns undefined when the documentation block, its base URL, or the key's entry in
    * `links` is not configured, so callers can hide the link entirely.

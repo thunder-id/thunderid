@@ -6,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const mockNavigate = vi.fn();
 const mockSessionStorageSetItem = vi.fn();
+let mockIsControlPlane = false;
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
@@ -22,6 +23,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
           releasesUrl: 'https://docs.example.com/data/releases.json',
         },
       },
+      isControlPlane: () => mockIsControlPlane,
     }),
   };
 });
@@ -89,6 +91,7 @@ describe('WelcomePage', () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+    mockIsControlPlane = false;
   });
 
   it('renders without crashing', () => {
@@ -273,5 +276,25 @@ describe('WelcomePage', () => {
   it('renders sections headings', () => {
     render(<WelcomePage />);
     expect(screen.getByText('common:welcome.sections.start')).toBeInTheDocument();
+  });
+
+  it('hides the tryout journeys on a control plane, which runs no flows', () => {
+    mockIsControlPlane = true;
+    render(<WelcomePage />);
+
+    expect(screen.queryByText('common:welcome.sections.tryoutProduct:ThunderID')).not.toBeInTheDocument();
+    expect(screen.queryByText('common:welcome.tryoutProduct.securingApplication')).not.toBeInTheDocument();
+    expect(screen.queryByText('common:welcome.tryoutProduct.aiAgents')).not.toBeInTheDocument();
+    expect(screen.queryByText('common:welcome.tryoutProduct.mcp')).not.toBeInTheDocument();
+    // What a control plane does serve stays.
+    expect(screen.getByText('common:welcome.start.newProject')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.walkthrough.learnFundamentals')).toBeInTheDocument();
+  });
+
+  it('shows the tryout journeys when not on a control plane', () => {
+    render(<WelcomePage />);
+
+    expect(screen.getByText('common:welcome.sections.tryoutProduct:ThunderID')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.tryoutProduct.mcp')).toBeInTheDocument();
   });
 });

@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Export types
-export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig} from './Config/types';
+export type {
+  ProductConfig,
+  ServerConfig,
+  TrustedIssuerConfig,
+  BrandConfig,
+  SdkConfig,
+  ConsoleMode,
+} from './Config/types';
 export type {ToastContextType, ToastSeverity} from './Toast/ToastContext';
 export type {RoutePaths} from './Routes/RoutesContext';
 export type {

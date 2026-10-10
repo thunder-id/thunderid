@@ -49,6 +49,7 @@ function ConfigConsumer() {
       <span data-testid="server-hostname">{ctx.getServerHostname()}</span>
       <span data-testid="server-port">{ctx.getServerPort()}</span>
       <span data-testid="is-http-only">{String(ctx.isHttpOnly())}</span>
+      <span data-testid="is-control-plane">{String(ctx.isControlPlane())}</span>
       <span data-testid="documentation-base-url">{ctx.config.documentation?.baseUrl}</span>
       <span data-testid="releases-url">{ctx.config.documentation?.releasesUrl}</span>
       <span data-testid="documentation-link-users">{ctx.getDocumentationLink('users')}</span>
@@ -306,6 +307,25 @@ describe('ConfigProvider', () => {
     it('returns empty when not configured', () => {
       renderWithConfig(buildConfig(), ConfigConsumer);
       expect(getTestId('resource-identifier')).toBe('');
+    });
+  });
+
+  // isControlPlane
+
+  describe('isControlPlane', () => {
+    it('is false when no mode is configured', () => {
+      renderWithConfig(buildConfig(), ConfigConsumer);
+      expect(getTestId('is-control-plane')).toBe('false');
+    });
+
+    it('is false in standalone mode', () => {
+      renderWithConfig(buildConfig({mode: 'standalone'}), ConfigConsumer);
+      expect(getTestId('is-control-plane')).toBe('false');
+    });
+
+    it('is true in control plane mode', () => {
+      renderWithConfig(buildConfig({mode: 'control_plane'}), ConfigConsumer);
+      expect(getTestId('is-control-plane')).toBe('true');
     });
   });
 

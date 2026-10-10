@@ -9,7 +9,14 @@ import {OrganizationUnitProvider} from '@thunderid/configure-organization-units'
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
 import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
-import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
+import {
+  AdministrationModes,
+  AdministrationProvider,
+  RoutesProvider,
+  ToastProvider,
+  useConfig,
+  type AdministrationConfig,
+} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
@@ -166,8 +173,17 @@ const ViewUserTypePage = lazy(() =>
 const CreateProjectPage = lazy(() => import('./pages/CreateProjectPage'));
 const WelcomePage = lazy(() => import('./pages/WelcomePage'));
 
+/**
+ * A control plane executes no flows, so every administration operation calls the management API
+ * directly rather than running a flow.
+ */
+const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: AdministrationModes.NATIVE};
+
 export default function App(): JSX.Element {
-  return (
+  const {isControlPlane} = useConfig();
+  const controlPlane: boolean = isControlPlane();
+
+  const app: JSX.Element = (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <RoutesProvider paths={RouteConfig}>
         <ToastProvider>
@@ -456,9 +472,14 @@ export default function App(): JSX.Element {
                   <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
                 </Route>
                 <Route path="get-started/agents/create" element={<AgentOnboardPage />} />
-                <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
-                <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
-                <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />
+                {/* The tryouts run onboarding flows, which a control plane does not execute. */}
+                {!controlPlane && (
+                  <>
+                    <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
+                    <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
+                    <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />
+                  </>
+                )}
               </Route>
               <Route
                 path={RouteConfig.design.list()}
@@ -532,5 +553,11 @@ export default function App(): JSX.Element {
         </ToastProvider>
       </RoutesProvider>
     </BrowserRouter>
+  );
+
+  return controlPlane ? (
+    <AdministrationProvider administration={CONTROL_PLANE_ADMINISTRATION}>{app}</AdministrationProvider>
+  ) : (
+    app
   );
 }

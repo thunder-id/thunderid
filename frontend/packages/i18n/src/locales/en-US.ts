@@ -735,6 +735,15 @@ const translations = {
     'createUser.title': 'Create User',
     'createUser.subtitle': 'Add a new user to your organization',
 
+    // Add form (native creation, no onboarding flow)
+    'addForm.creating': 'Creating...',
+    'addForm.noUserTypes': 'No user types are defined yet. Create one before adding a user.',
+    'addForm.organizationUnit': 'Organization unit',
+    'addForm.selectUserType': 'Select a user type',
+    'addForm.submit': 'Create user',
+    'addForm.subtitle': 'Choose a user type, then fill in what it requires.',
+    'addForm.userType': 'User type',
+
     'create.success': 'User created successfully.',
     'create.error': 'Failed to create user. Please try again.',
     'update.success': 'User updated successfully.',
@@ -1091,6 +1100,20 @@ const translations = {
     'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
     'onboarding.selectPlaceholder': 'Select an option',
     'onboarding.addAnother': 'Add Another Agent',
+
+    // Add form (native creation, no onboarding flow)
+    'addForm.agentType': 'Agent type',
+    'addForm.creating': 'Creating...',
+    'addForm.description': 'Description',
+    'addForm.descriptionPlaceholder': 'What this agent does',
+    'addForm.name': 'Name',
+    'addForm.noAgentTypes': 'No agent types are defined yet. Create one before adding an agent.',
+    'addForm.organizationUnit': 'Organization unit',
+    'addForm.selectAgentType': 'Select an agent type',
+    'addForm.submit': 'Create agent',
+    'addForm.subtitle': 'Name the agent, choose its type, then fill in what the type requires.',
+    'create.error': 'Failed to create agent. Please try again.',
+    'create.success': 'Agent created successfully.',
 
     // Client secret (creation)
     'clientSecret.saveTitle': 'Save your client secret',

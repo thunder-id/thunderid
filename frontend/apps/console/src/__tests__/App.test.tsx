@@ -5,6 +5,25 @@ import {render, screen, waitFor} from '@testing-library/react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
+let mockIsControlPlane = false;
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({isControlPlane: () => mockIsControlPlane}),
+}));
+
+vi.mock('../pages/TryoutSecuringApplicationPage', () => ({
+  default: () => <div data-testid="tryout-securing-application-page" />,
+}));
+
+vi.mock('../pages/TryoutSecuringAIAgentsPage', () => ({
+  default: () => <div data-testid="tryout-ai-agents-page" />,
+}));
+
+vi.mock('../pages/TryoutSecuringMCPPage', () => ({
+  default: () => <div data-testid="tryout-mcp-page" />,
+}));
+
 vi.mock('@thunderid/react-router', () => ({
   ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
 }));
@@ -42,11 +61,23 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   TrustedIssuerDetailPage: () => <div data-testid="trusted-issuer-detail-page">Trusted Issuer Detail Page</div>,
 }));
 
-vi.mock('@thunderid/configure-agents', () => ({
-  AgentEditPage: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
-  AgentOnboardPage: () => <div data-testid="agent-onboard-page">Agent Onboard Page</div>,
-  AgentsListPage: () => <div data-testid="agents-list-page">Agents List Page</div>,
-}));
+vi.mock('@thunderid/configure-agents', async () => {
+  const {useAdministrationOperation} = await import('@thunderid/contexts');
+
+  return {
+    AgentEditPage: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
+    // Reports how agent creation runs beneath it, so a test can see which administration mode the
+    // console mounted.
+    AgentOnboardPage: function AgentOnboardPage() {
+      return (
+        <div data-testid="agent-onboard-page" data-mode={String(useAdministrationOperation('agents', 'create'))}>
+          Agent Onboard Page
+        </div>
+      );
+    },
+    AgentsListPage: () => <div data-testid="agents-list-page">Agents List Page</div>,
+  };
+});
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -134,6 +165,7 @@ vi.mock('../components/welcome/WelcomeRedirect', () => ({
 describe('App', () => {
   afterEach(() => {
     window.history.pushState({}, '', '/');
+    mockIsControlPlane = false;
   });
 
   it('renders without crashing', () => {
@@ -419,6 +451,50 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('agent-onboard-page')).toBeInTheDocument();
+    });
+  });
+
+  describe('administration mode', () => {
+    it('leaves operations on the flow default when not on a control plane', async () => {
+      window.history.pushState({}, '', '/agents/create');
+      render(<App />);
+
+      expect(await screen.findByTestId('agent-onboard-page')).toHaveAttribute('data-mode', 'flow');
+    });
+
+    it('runs operations natively on a control plane', async () => {
+      mockIsControlPlane = true;
+      window.history.pushState({}, '', '/agents/create');
+      render(<App />);
+
+      expect(await screen.findByTestId('agent-onboard-page')).toHaveAttribute('data-mode', 'native');
+    });
+  });
+
+  describe('tryout journeys', () => {
+    const tryouts: [string, string][] = [
+      ['/welcome/tryout/securing-application', 'tryout-securing-application-page'],
+      ['/welcome/tryout/ai-agents', 'tryout-ai-agents-page'],
+      ['/welcome/tryout/mcp', 'tryout-mcp-page'],
+    ];
+
+    it.each(tryouts)('serves %s when not on a control plane', async (path, testId) => {
+      window.history.pushState({}, '', path);
+      render(<App />);
+
+      expect(await screen.findByTestId(testId)).toBeInTheDocument();
+    });
+
+    it.each(tryouts)('does not serve %s on a control plane', async (path, testId) => {
+      mockIsControlPlane = true;
+      window.history.pushState({}, '', path);
+      render(<App />);
+
+      // The tryout pages are not lazy, so a matching route would render them synchronously.
+      await waitFor(() => {
+        expect(screen.queryByTestId(testId)).not.toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('protected-route')).not.toBeInTheDocument();
     });
   });
 });

@@ -98,6 +98,7 @@ describe('WelcomeRedirect', () => {
       getTrustedIssuerClientId: () => '',
       getTrustedIssuerScopes: () => [],
       isTrustedIssuerGenericOidc: () => false,
+      isControlPlane: () => false,
       getDocumentationLink: () => undefined,
     });
     mockIsSignedIn.mockReturnValue(true);
@@ -175,6 +176,7 @@ describe('WelcomeRedirect', () => {
         getTrustedIssuerClientId: () => '',
         getTrustedIssuerScopes: () => [],
         isTrustedIssuerGenericOidc: () => false,
+        isControlPlane: () => false,
         getDocumentationLink: () => undefined,
       });
 
@@ -207,6 +209,7 @@ describe('WelcomeRedirect', () => {
         getTrustedIssuerClientId: () => '',
         getTrustedIssuerScopes: () => [],
         isTrustedIssuerGenericOidc: () => false,
+        isControlPlane: () => false,
         getDocumentationLink: () => undefined,
       });
       mockSessionStorage.set('welcomeDismissed-ProductB', 'true');

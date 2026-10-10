@@ -28,7 +28,7 @@ export default function WelcomePage(): JSX.Element {
   const {t} = useTranslation(['common']);
   const navigate = useNavigate();
   const theme = useTheme();
-  const {config} = useConfig();
+  const {config, isControlPlane} = useConfig();
   const productName = config.brand.product_name;
   const docsBaseUrl = (config.documentation?.baseUrl ?? '').replace(/\/$/, '');
   const handleClose = useWelcomeClose();
@@ -319,97 +319,102 @@ export default function WelcomePage(): JSX.Element {
               </MotionBox>
             </Box>
 
-            {/* Divider */}
-            <Box sx={{width: '1px', bgcolor: 'divider', display: {xs: 'none', md: 'block'}, alignSelf: 'stretch'}} />
+            {/* The tryouts run onboarding flows, which a control plane does not execute. */}
+            {!isControlPlane() && (
+              <>
+                {/* Divider */}
+                <Box sx={{width: '1px', bgcolor: 'divider', display: {xs: 'none', md: 'block'}, alignSelf: 'stretch'}} />
 
-            {/* Right Column - Tryout scenarios */}
-            <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', gap: 2}}>
-              <Typography
-                variant="overline"
-                color="text.secondary"
-                sx={{letterSpacing: 1.5, display: 'block', mb: 0.5}}
-              >
-                {t('common:welcome.sections.tryoutProduct', {productName})}
-              </Typography>
-              <MotionBox
-                initial={{opacity: 0, y: 10}}
-                animate={{opacity: 1, y: 0}}
-                transition={{duration: 0.3, delay: 0.2}}
-                sx={{border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden'}}
-              >
-                {learnProduct.map((item, index) => (
-                  <Box
-                    key={item.id}
-                    onClick={item.action}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        item.action();
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 2,
-                      cursor: 'pointer',
-                      px: 2.5,
-                      py: 2,
-                      borderBottom: index < learnProduct.length - 1 ? '1px solid' : 'none',
-                      borderColor: 'divider',
-                      transition: 'background 0.15s',
-                      '&:hover': {
-                        bgcolor: 'action.hover',
-                        '& .tryout-label': {color: 'primary.main'},
-                        '& .tryout-end-icon': {opacity: 1},
-                      },
-                    }}
+                {/* Right Column - Tryout scenarios */}
+                <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', gap: 2}}>
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{letterSpacing: 1.5, display: 'block', mb: 0.5}}
                   >
-                    <Box
-                      sx={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 1.5,
-                        bgcolor: 'action.selected',
-                        color: 'text.secondary',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {item.icon}
-                    </Box>
-                    <Stack spacing={0.25} sx={{flex: 1, minWidth: 0}}>
-                      <Typography
-                        className="tryout-label"
-                        variant="body2"
-                        fontWeight={600}
-                        sx={{transition: 'color 0.2s'}}
+                    {t('common:welcome.sections.tryoutProduct', {productName})}
+                  </Typography>
+                  <MotionBox
+                    initial={{opacity: 0, y: 10}}
+                    animate={{opacity: 1, y: 0}}
+                    transition={{duration: 0.3, delay: 0.2}}
+                    sx={{border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden'}}
+                  >
+                    {learnProduct.map((item, index) => (
+                      <Box
+                        key={item.id}
+                        onClick={item.action}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            item.action();
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          cursor: 'pointer',
+                          px: 2.5,
+                          py: 2,
+                          borderBottom: index < learnProduct.length - 1 ? '1px solid' : 'none',
+                          borderColor: 'divider',
+                          transition: 'background 0.15s',
+                          '&:hover': {
+                            bgcolor: 'action.hover',
+                            '& .tryout-label': {color: 'primary.main'},
+                            '& .tryout-end-icon': {opacity: 1},
+                          },
+                        }}
                       >
-                        {item.label}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {item.description}
-                      </Typography>
-                    </Stack>
-                    <Box
-                      className="tryout-end-icon"
-                      sx={{
-                        color: 'text.disabled',
-                        display: 'flex',
-                        flexShrink: 0,
-                        opacity: 0.5,
-                        transition: 'opacity 0.2s',
-                      }}
-                    >
-                      <ChevronRight size={14} />
-                    </Box>
-                  </Box>
-                ))}
-              </MotionBox>
-            </Box>
+                        <Box
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 1.5,
+                            bgcolor: 'action.selected',
+                            color: 'text.secondary',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {item.icon}
+                        </Box>
+                        <Stack spacing={0.25} sx={{flex: 1, minWidth: 0}}>
+                          <Typography
+                            className="tryout-label"
+                            variant="body2"
+                            fontWeight={600}
+                            sx={{transition: 'color 0.2s'}}
+                          >
+                            {item.label}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {item.description}
+                          </Typography>
+                        </Stack>
+                        <Box
+                          className="tryout-end-icon"
+                          sx={{
+                            color: 'text.disabled',
+                            display: 'flex',
+                            flexShrink: 0,
+                            opacity: 0.5,
+                            transition: 'opacity 0.2s',
+                          }}
+                        >
+                          <ChevronRight size={14} />
+                        </Box>
+                      </Box>
+                    ))}
+                  </MotionBox>
+                </Box>
+              </>
+            )}
           </Box>
         </Box>
       </Box>
