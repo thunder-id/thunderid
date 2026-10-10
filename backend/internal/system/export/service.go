@@ -254,6 +254,9 @@ func (es *exportService) ExportResources(
 // payload, populating each entry with its original value where available.
 func (es *exportService) generateEnvFile(files []ExportFile, variables map[string]string) *EnvironmentFile {
 	variablesSet := make(map[string]struct{})
+	// A list the resource does not have is still a range over its variable, which an import cannot
+	// range over as no value, so it is written as an empty list.
+	ranged := make(map[string]bool)
 
 	for _, file := range files {
 		matches := templateVariablePattern.FindAllStringSubmatch(file.Content, -1)
@@ -263,6 +266,9 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 					continue
 				}
 				variablesSet[match[i]] = struct{}{}
+				if i == 2 {
+					ranged[match[i]] = true
+				}
 			}
 		}
 	}
@@ -281,7 +287,11 @@ func (es *exportService) generateEnvFile(files []ExportFile, variables map[strin
 	for _, varName := range varNames {
 		contentBuilder.WriteString(varName)
 		contentBuilder.WriteString("=")
-		contentBuilder.WriteString(variables[varName])
+		value := variables[varName]
+		if value == "" && ranged[varName] {
+			value = "[]"
+		}
+		contentBuilder.WriteString(value)
 		contentBuilder.WriteString("\n")
 	}
 

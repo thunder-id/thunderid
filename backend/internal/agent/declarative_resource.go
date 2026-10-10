@@ -119,6 +119,25 @@ func (e *agentExporter) ValidateResource(ctx context.Context,
 	return a.Name, nil
 }
 
+// ViewResource shows an exported agent as a read of it returns it. The read carries the agent's
+// client ID at its top level and never its client secret, so the view does the same.
+func (e *agentExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(a *model.AgentGetResponse) (interface{}, error) {
+		var err error
+		if len(a.AttributesYAML) > 0 {
+			a.Attributes, err = json.Marshal(a.AttributesYAML)
+		}
+		for _, inbound := range a.InboundAuthConfig {
+			if inbound.OAuthConfig == nil {
+				continue
+			}
+			a.ClientID = inbound.OAuthConfig.ClientID
+			inbound.OAuthConfig.ClientSecret = ""
+		}
+		return a, err
+	})
+}
+
 // GetResourceRules returns parameterization rules for agents with OAuth.
 func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{

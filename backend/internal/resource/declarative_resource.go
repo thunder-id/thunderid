@@ -23,6 +23,11 @@ import (
 const (
 	resourceTypeResourceServer = "resource_server"
 	paramTypeResourceServer    = "ResourceServer"
+
+	// resourceServerPartResources and resourceServerPartActions name the collections a resource
+	// server's API serves under /resource-servers/{id}.
+	resourceServerPartResources = "resources"
+	resourceServerPartActions   = "actions"
 )
 
 // resourceServerExporter implements declarativeresource.ResourceExporter for resource servers.
@@ -181,6 +186,95 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 // and correctly quotes fields tagged with yamlfmt:"quoted" (e.g. Delimiter).
 func (e *resourceServerExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return nil
+}
+
+// ViewResource shows an exported resource server as a read of it returns it.
+func (e *resourceServerExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(rs *providers.ResourceServer) (interface{}, error) {
+		return toResourceServerResponse(rs), nil
+	})
+}
+
+// ViewResourceParts shows the collections a resource server's API serves under it: "resources" (the
+// top-level resources) and "actions", and for each resource "resources/{id}", its children at
+// "resources/{id}/resources" and its actions at "resources/{id}/actions". A list part shows every item
+// on one page. An export carries no database ids, so a resource and an action are given the ids a
+// declarative resource server serves them by, built from the server id and their handles. An export
+// carries no actions at the resource server level, so "actions" is an empty list.
+func (e *resourceServerExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
+	map[string]interface{}, error) {
+	return declarativeresource.DecodeView(document, func(rs *providers.ResourceServer) (
+		map[string]interface{}, error) {
+		resources, err := viewResources(rs)
+		if err != nil {
+			return nil, err
+		}
+		parts := map[string]interface{}{
+			resourceServerPartActions: toActionListResponse(&ActionList{StartIndex: 1, Actions: []providers.Action{}}),
+		}
+		topLevel := make([]providers.Resource, 0, len(resources))
+		for i := range resources {
+			res := &resources[i]
+			if res.Parent == nil {
+				topLevel = append(topLevel, *res)
+			}
+			// A resource's children, which the live API lists with ?parentId=.
+			children := make([]providers.Resource, 0, len(resources))
+			for _, child := range resources {
+				if child.Parent != nil && *child.Parent == res.ID {
+					children = append(children, child)
+				}
+			}
+			base := resourceServerPartResources + "/" + res.ID
+			parts[base] = toResourceResponse(res)
+			parts[base+"/"+resourceServerPartResources] = toResourceListResponse(&ResourceList{
+				TotalResults: len(children), StartIndex: 1, Count: len(children), Resources: children,
+			})
+			parts[base+"/"+resourceServerPartActions] = toActionListResponse(&ActionList{
+				TotalResults: len(res.Actions), StartIndex: 1, Count: len(res.Actions), Actions: res.Actions,
+			})
+		}
+		parts[resourceServerPartResources] = toResourceListResponse(&ResourceList{
+			TotalResults: len(topLevel), StartIndex: 1, Count: len(topLevel), Resources: topLevel,
+		})
+		return parts, nil
+	})
+}
+
+// viewResources gives the resources of an exported resource server, and their actions, the ids,
+// parents and permissions a read of them returns.
+func viewResources(rs *providers.ResourceServer) ([]providers.Resource, error) {
+	delimiter := rs.Delimiter
+	if delimiter == "" {
+		delimiter = ":"
+	}
+	handles := make(map[string]*providers.Resource, len(rs.Resources))
+	for i := range rs.Resources {
+		handles[rs.Resources[i].Handle] = &rs.Resources[i]
+	}
+
+	resources := make([]providers.Resource, 0, len(rs.Resources))
+	for i := range rs.Resources {
+		res := rs.Resources[i]
+		permission, err := buildPermissionString(&res, handles, delimiter)
+		if err != nil {
+			return nil, err
+		}
+		res.ID = fmt.Sprintf("%s_%s", rs.ID, res.Handle)
+		res.Permission = permission
+		if res.ParentHandle != "" {
+			parentID := fmt.Sprintf("%s_%s", rs.ID, res.ParentHandle)
+			res.Parent = &parentID
+		}
+		res.Actions = make([]providers.Action, len(rs.Resources[i].Actions))
+		for j, action := range rs.Resources[i].Actions {
+			action.ID = fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
+			action.Permission = permission + delimiter + action.Handle
+			res.Actions[j] = action
+		}
+		resources = append(resources, res)
+	}
+	return resources, nil
 }
 
 // loadDeclarativeResources loads resource server resources from declarative files.

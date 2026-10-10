@@ -41,6 +41,9 @@ var (
 	resourceTypeField = topLevelScalar("resource_type")
 	idField           = topLevelScalar("id")
 	nameField         = topLevelScalar("name")
+	// languageField names a translation, which has neither an id nor a name: one document holds one
+	// language's translations.
+	languageField = topLevelScalar("language")
 	// valueReference reads a reference a document holds in place of a value. A reference is a whole
 	// scalar, a mapping's value or a list's item, quoted or not, so the same text inside a longer
 	// value is not one.
@@ -62,11 +65,19 @@ func parseBundle(content string) []bundleResource {
 		resources = append(resources, bundleResource{
 			Type:    resourceType,
 			ID:      firstMatch(idField, document),
-			Name:    firstMatch(nameField, document),
+			Name:    nameOf(document),
 			Content: document,
 		})
 	}
 	return resources
+}
+
+// nameOf reads a resource's name, or a translation's language in its place.
+func nameOf(document string) string {
+	if name := firstMatch(nameField, document); name != "" {
+		return name
+	}
+	return firstMatch(languageField, document)
 }
 
 // joinBundle writes documents back as one version.

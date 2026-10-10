@@ -154,7 +154,6 @@ func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter
 // HandleApplicationGetRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationHandler"))
 
 	id := r.PathValue("id")
 	if id == "" {
@@ -168,12 +167,25 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 	}
 
 	appDTO, svcErr := ah.service.GetApplication(ctx, id)
+	var returnApp *model.ApplicationGetResponse
+	if svcErr == nil {
+		returnApp, svcErr = toApplicationGetResponse(ctx, appDTO)
+	}
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
-	returnApp := model.ApplicationGetResponse{
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, returnApp)
+}
+
+// toApplicationGetResponse builds what a read of the application returns. An application whose
+// inbound authentication is not OAuth, or has no OAuth configuration, cannot be shown.
+func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application) (
+	*model.ApplicationGetResponse, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationHandler"))
+
+	returnApp := &model.ApplicationGetResponse{
 		ID:          appDTO.ID,
 		OUID:        appDTO.OUID,
 		Name:        appDTO.Name,
@@ -210,38 +222,20 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 			logger.Error(ctx, "Unsupported inbound authentication type returned",
 				log.String("type", string(appDTO.InboundAuthConfig[0].Type)))
 
-			errResp := apierror.ErrorResponse{
-				Code:        tidcommon.InternalServerError.Code,
-				Message:     tidcommon.InternalServerError.Error,
-				Description: tidcommon.InternalServerError.ErrorDescription,
-			}
-			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
-			return
+			return nil, &tidcommon.InternalServerError
 		}
 
 		if appDTO.InboundAuthConfig[0].OAuthConfig == nil {
 			logger.Error(ctx, "OAuth application configuration is nil")
 
-			errResp := apierror.ErrorResponse{
-				Code:        tidcommon.InternalServerError.Code,
-				Message:     tidcommon.InternalServerError.Error,
-				Description: tidcommon.InternalServerError.ErrorDescription,
-			}
-			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
-			return
+			return nil, &tidcommon.InternalServerError
 		}
 
 		returnInboundAuthConfigs := make([]inboundmodel.InboundAuthConfig, 0, len(appDTO.InboundAuthConfig))
 		for _, config := range appDTO.InboundAuthConfig {
 			if config.OAuthConfig == nil {
 				logger.Error(ctx, "OAuth application configuration is nil")
-				errResp := apierror.ErrorResponse{
-					Code:        tidcommon.InternalServerError.Code,
-					Message:     tidcommon.InternalServerError.Error,
-					Description: tidcommon.InternalServerError.ErrorDescription,
-				}
-				sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
-				return
+				return nil, &tidcommon.InternalServerError
 			}
 			redirectURIs := config.OAuthConfig.RedirectURIs
 			if len(redirectURIs) == 0 {
@@ -285,7 +279,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 		returnApp.ClientID = appDTO.InboundAuthConfig[0].OAuthConfig.ClientID
 	}
 
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, returnApp)
+	return returnApp, nil
 }
 
 // HandleApplicationPutRequest handles the application request.

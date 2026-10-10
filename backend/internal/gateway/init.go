@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
@@ -27,8 +28,9 @@ import (
 // capture is bound here when given. Only a control plane gives one: its export refers to values the
 // default gateway has to hold, while a plane exporting template placeholders carries the values
 // itself and has nothing to put anywhere.
+// The exporters it was built from are what show a gateway's applied resources as their own reads do.
 func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
-	capture *ValueCapture) (ServiceInterface, error) {
+	capture *ValueCapture, exporters []declarativeresource.ResourceExporter) (ServiceInterface, error) {
 	var (
 		gatewayStore storeInterface
 		fileStore    *gatewayFileStore
@@ -55,6 +57,8 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 	}
 	registerRoutes(mux, h)
 	registerVersionRoutes(mux, newVersionHandler(versions))
+	registerAppliedConfigurationRoutes(mux,
+		newAppliedConfigurationHandler(newAppliedConfigurationService(versions, exporters)))
 	registerStoreRoutes(mux, newStoreHandler(stores))
 
 	// A gateway can also be declared in a file rather than registered through the API. The files are
@@ -132,6 +136,22 @@ func registerVersionRoutes(mux *http.ServeMux, h *versionHandler) {
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/apply", noContent, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("POST /gateways/{id}/revert", h.handleRevert, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/revert", noContent, writeOpts))
+}
+
+// registerAppliedConfigurationRoutes serves the configuration a gateway runs.
+func registerAppliedConfigurationRoutes(mux *http.ServeMux, h *appliedConfigurationHandler) {
+	noContent := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+	readOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /gateways/{id}/applied-configuration",
+		h.handleGetAppliedConfiguration, readOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/applied-configuration", noContent, readOpts))
 }
 
 // registerStoreRoutes serves a gateway's variables and secrets, managed through this plane with the

@@ -142,6 +142,14 @@ func (e *ouExporter) ValidateResource(ctx context.Context,
 	return ou.Name, nil
 }
 
+// ViewResource shows an exported organization unit as a read of it returns it. Its children, users
+// and groups are resources of their own, so an organization unit has no parts.
+func (e *ouExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(ou *OrganizationUnit) (interface{}, error) {
+		return *ou, nil
+	})
+}
+
 // GetResourceRules returns the parameterization rules for organization units.
 func (e *ouExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	// OUs typically don't have parameterizable fields

@@ -102,7 +102,7 @@ func (l *gatewayLocks) lock(gatewayID string) func() {
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
-	exporter export.ExportServiceInterface, client gatewayClientInterface) VersionServiceInterface {
+	exporter export.ExportServiceInterface, client gatewayClientInterface) *versionService {
 	return &versionService{
 		gateways: gateways,
 		versions: versions,

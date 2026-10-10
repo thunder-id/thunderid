@@ -6,6 +6,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -100,6 +101,17 @@ func (e *applicationExporter) ValidateResource(ctx context.Context,
 	}
 
 	return app.Name, nil
+}
+
+// ViewResource shows an exported application as a read of it returns it.
+func (e *applicationExporter) ViewResource(ctx context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(app *providers.Application) (interface{}, error) {
+		view, svcErr := toApplicationGetResponse(ctx, app)
+		if svcErr != nil {
+			return nil, errors.New(svcErr.Error.DefaultValue)
+		}
+		return view, nil
+	})
 }
 
 // makeAppInboundConfig creates the inbound client declarative loader config for applications.

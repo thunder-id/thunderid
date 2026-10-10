@@ -14,11 +14,15 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
 	resourceTypeRole = "role"
 	paramTypeRole    = "Role"
+
+	// rolePartAssignments names the assignments of a role, served under /roles/{id}/assignments.
+	rolePartAssignments = "assignments"
 )
 
 // roleExporter implements declarativeresource.ResourceExporter for roles.
@@ -129,6 +133,44 @@ func (e *roleExporter) GetResourceRules() *declarativeresource.ResourceRules {
 		Variables:      []string{},
 		ArrayVariables: []string{},
 	}
+}
+
+// ViewResource shows an exported role as a read of it returns it.
+func (e *roleExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(role *roleDeclarativeResource) (interface{}, error) {
+		permissions := make([]ResourcePermissions, 0, len(role.Permissions))
+		for _, perm := range role.Permissions {
+			permissions = append(permissions, toResourcePermissions(perm))
+		}
+		return (&roleHandler{}).toHTTPRoleResponse(&RoleWithPermissions{
+			ID:          role.ID,
+			Name:        role.Name,
+			Description: role.Description,
+			OUID:        role.OUID,
+			OUHandle:    role.OUHandle,
+			Permissions: permissions,
+		}), nil
+	})
+}
+
+// ViewResourceParts shows a role's one part, "assignments", as a read of them returns them, all on
+// one page.
+func (e *roleExporter) ViewResourceParts(_ context.Context, document *yaml.Node) (
+	map[string]interface{}, error) {
+	return declarativeresource.DecodeView(document, func(role *roleDeclarativeResource) (
+		map[string]interface{}, error) {
+		assignments := make([]AssignmentResponse, len(role.Assignments))
+		for i, a := range role.Assignments {
+			assignments[i] = AssignmentResponse{ID: a.ID, Type: a.Type}
+		}
+		return map[string]interface{}{rolePartAssignments: &AssignmentListResponse{
+			TotalResults: len(assignments),
+			StartIndex:   1,
+			Count:        len(assignments),
+			Assignments:  assignments,
+			Links:        []utils.Link{},
+		}}, nil
+	})
 }
 
 // loadDeclarativeResources loads immutable role resources from files.

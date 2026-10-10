@@ -107,6 +107,35 @@ func (e *layoutExporter) ValidateResource(ctx context.Context,
 	return layout.DisplayName, nil
 }
 
+// ViewResource shows an exported layout as a read of it returns it. The export writes the layout
+// configuration as a JSON string, which is read back as the layout loader reads it.
+func (e *layoutExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *exportedLayout) (interface{}, error) {
+		layoutJSON, err := layoutJSONFromValue(exported.Layout)
+		if err != nil {
+			return nil, err
+		}
+		return toLayoutGetResponse(&Layout{
+			ID:          exported.ID,
+			Handle:      exported.Handle,
+			DisplayName: exported.DisplayName,
+			Description: exported.Description,
+			Layout:      layoutJSON,
+			CreatedAt:   exported.CreatedAt,
+			UpdatedAt:   exported.UpdatedAt,
+			IsReadOnly:  exported.IsReadOnly,
+		}), nil
+	})
+}
+
+// exportedLayout is a layout as its export writes it.
+type exportedLayout struct {
+	layoutRequestWithID `yaml:",inline"`
+	CreatedAt           string `yaml:"createdAt"`
+	UpdatedAt           string `yaml:"updatedAt"`
+	IsReadOnly          bool   `yaml:"isReadOnly"`
+}
+
 // GetResourceRules returns the parameterization rules for layouts.
 func (e *layoutExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{}
@@ -149,6 +178,28 @@ func parseToLayoutWrapper(data []byte) (interface{}, error) {
 	return parseToLayout(data)
 }
 
+// layoutJSONFromValue converts a document's layout value, a JSON string or a map structure, into
+// JSON bytes.
+func layoutJSONFromValue(value interface{}) (json.RawMessage, error) {
+	var layoutJSON json.RawMessage
+	if value != nil {
+		// Handle both map structure and string format
+		switch v := value.(type) {
+		case string:
+			// JSON string format
+			layoutJSON = []byte(v)
+		default:
+			// Map structure - marshal to JSON
+			layoutBytes, err := json.Marshal(value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal layout to JSON: %w", err)
+			}
+			layoutJSON = layoutBytes
+		}
+	}
+	return layoutJSON, nil
+}
+
 // parseToLayout converts YAML data into a Layout object.
 func parseToLayout(data []byte) (*Layout, error) {
 	var layoutRequest layoutRequestWithID
@@ -158,22 +209,9 @@ func parseToLayout(data []byte) (*Layout, error) {
 		return nil, err
 	}
 
-	// Convert layout to JSON bytes
-	var layoutJSON json.RawMessage
-	if layoutRequest.Layout != nil {
-		// Handle both map structure and string format
-		switch v := layoutRequest.Layout.(type) {
-		case string:
-			// JSON string format
-			layoutJSON = []byte(v)
-		default:
-			// Map structure - marshal to JSON
-			layoutBytes, err := json.Marshal(layoutRequest.Layout)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal layout to JSON: %w", err)
-			}
-			layoutJSON = layoutBytes
-		}
+	layoutJSON, err := layoutJSONFromValue(layoutRequest.Layout)
+	if err != nil {
+		return nil, err
 	}
 
 	layout := &Layout{

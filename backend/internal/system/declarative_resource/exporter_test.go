@@ -5,9 +5,12 @@ package declarativeresource
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -106,4 +109,43 @@ func TestValidateResourceName(t *testing.T) {
 			assert.Equal(t, tt.wantError, got)
 		})
 	}
+}
+
+func decodeViewDocument(t *testing.T, content string) *yaml.Node {
+	t.Helper()
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(content), &root))
+	return root.Content[0]
+}
+
+type decodeViewTarget struct {
+	Name string `yaml:"name"`
+}
+
+// DecodeView shows what the document decodes to, and returns what the view returns.
+func TestDecodeViewShowsTheDecodedDocument(t *testing.T) {
+	view, err := DecodeView(decodeViewDocument(t, "name: orders"), func(d *decodeViewTarget) (interface{}, error) {
+		return "shown " + d.Name, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "shown orders", view)
+
+	viewErr := errors.New("cannot show")
+	_, err = DecodeView(decodeViewDocument(t, "name: orders"), func(*decodeViewTarget) (interface{}, error) {
+		return nil, viewErr
+	})
+	assert.ErrorIs(t, err, viewErr)
+}
+
+// A document that does not decode is refused without being shown.
+func TestDecodeViewRefusesADocumentThatDoesNotDecode(t *testing.T) {
+	shown := false
+	view, err := DecodeView(decodeViewDocument(t, "name: [not, a, name]"),
+		func(*decodeViewTarget) (map[string]interface{}, error) {
+			shown = true
+			return map[string]interface{}{}, nil
+		})
+	assert.Error(t, err)
+	assert.Nil(t, view)
+	assert.False(t, shown)
 }

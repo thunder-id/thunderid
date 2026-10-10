@@ -94,6 +94,15 @@ func (e *flowGraphExporter) GetResourceRules() *declarativeresource.ResourceRule
 	return &declarativeresource.ResourceRules{}
 }
 
+// ViewResource shows an exported flow as a read of it returns it. A flow has no parts: an export
+// carries only the active version and nothing of what uses the flow.
+func (e *flowGraphExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(flow *providers.CompleteFlowDefinition) (
+		interface{}, error) {
+		return flow, nil
+	})
+}
+
 // loadDeclarativeResources loads immutable flow graph resources from files.
 func loadDeclarativeResources(flowStore flowStoreInterface, flowValidator FlowValidatorInterface) error {
 	// Type assert to access Storer interface for resource loading

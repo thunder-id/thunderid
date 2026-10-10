@@ -135,4 +135,29 @@ var (
 				"control plane's key, and that its certificate verifies.",
 		},
 	}
+	// ErrorResourceNotViewable names an applied resource whose type cannot be shown from a version.
+	ErrorResourceNotViewable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_viewable",
+			DefaultValue: "This resource type cannot be shown from a version",
+		},
+	}
+	// ErrorResourceNotReadable names an applied document that does not read as its resource: one
+	// that is not YAML as it stands, as a document captured with template placeholders is not until its
+	// values are filled in, or one its exporter cannot show.
+	ErrorResourceNotReadable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.resource_not_readable",
+			DefaultValue: "The version's document cannot be read as a resource",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.resource_not_readable.description",
+			DefaultValue: "A document captured with template placeholders, as a deployment that is not a " +
+				"control plane captures it, is not YAML until its values are filled in.",
+		},
+	}
 )

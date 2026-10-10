@@ -221,6 +221,40 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+  /gateways/{id}/applied-configuration:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+    get:
+      tags: [Gateways]
+      summary: Get the configuration a gateway runs
+      description: |
+        Returns every resource of the version last applied to the gateway, each in the shape the
+        resource's own read returns, for example what `GET /applications/{id}` returns for an
+        application. A console shows the configuration as the gateway runs it from this, rather than
+        as this deployment holds it now, which may have moved on since the apply.
+
+        A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the
+        reference: the version does not hold the value. A secret the resource's own read masks is
+        masked the same way, and user credentials are never returned. A gateway nothing was applied to
+        runs nothing: `resources` is empty and there is no `version`.
+
+        This is the version recorded as applied, whole. An apply is recorded even when the gateway
+        refused to write some of its resources, since every later apply sends the version whole and
+        tries them again (see `ApplyResult.recorded`), so a resource the gateway refused on the last
+        apply is listed here all the same. The apply's own result names what the gateway refused.
+      responses:
+        "200":
+          description: The version recorded as applied to the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppliedConfiguration'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /gateways/{id}/diff:
     parameters:
       - $ref: '#/components/parameters/GatewayID'
@@ -740,6 +774,77 @@ components:
         updatedAt:
           type: string
           format: date-time
+    AppliedConfiguration:
+      type: object
+      required: [gatewayId, resources]
+      properties:
+        gatewayId:
+          type: string
+        version:
+          type: string
+          description: The hash of the version the gateway applied. Absent when nothing was applied.
+        appliedAt:
+          type: string
+          format: date-time
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppliedResource'
+        skipped:
+          type: array
+          description: The version's documents that cannot be shown as their resource.
+          items:
+            $ref: '#/components/schemas/SkippedResource'
+    AppliedResource:
+      type: object
+      required: [resourceType, id, resource]
+      properties:
+        resourceType:
+          type: string
+          description: The resource type, as a version's document names it in `resource_type`.
+          example: group
+        id:
+          type: string
+          description: The resource's id, or its name for a resource exported without one.
+        resource:
+          type: object
+          additionalProperties: true
+          description: What the resource's own read returns.
+        parts:
+          type: object
+          additionalProperties: true
+          description: |
+            The collections the resource's own API serves apart from it, keyed by the path below the
+            resource they are served at, each in the shape that path returns, as one page holding
+            every item:
+
+            | Resource type | Parts |
+            |---|---|
+            | `group` | `members` |
+            | `role` | `assignments` |
+            | `resource_server` | `resources` (top level), `actions`, and for each resource `resources/{resourceId}`, `resources/{resourceId}/resources` (its children) and `resources/{resourceId}/actions` |
+            | `translation` | `ns/{namespace}` for each namespace |
+
+            A version names a resource server's resources `{resourceServerId}_{handle}`, since an
+            export does not carry the ids this deployment gave them. Server-level actions are not
+            exported, so `actions` is empty.
+    SkippedResource:
+      type: object
+      required: [resourceType, code, reason]
+      properties:
+        resourceType:
+          type: string
+        id:
+          type: string
+        code:
+          type: string
+          description: |
+            `GTW-1021` the resource type cannot be shown from a version; `GTW-1022` the document does
+            not read as its resource: it is not YAML as it stands, as a document captured with a
+            template range is not until its values are filled in, or it does not read as the resource
+            its type names.
+        reason:
+          type: string
     AppliedVersion:
       type: object
       properties:

@@ -228,6 +228,21 @@ func (e *userExporter) ValidateResource(ctx context.Context,
 	return username, nil
 }
 
+// ViewResource shows an exported user as a read of it returns it. A read never returns a user's
+// credentials, so the view leaves out the ones the export carries.
+func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	return declarativeresource.DecodeView(document, func(exported *userDeclarativeResource) (
+		interface{}, error) {
+		attributes, err := json.Marshal(exported.Attributes)
+		return &providers.User{
+			ID:         exported.ID,
+			OUID:       exported.OUID,
+			Type:       exported.Type,
+			Attributes: attributes,
+		}, err
+	})
+}
+
 // GetResourceRules returns the parameterization rules for users.
 func (e *userExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{

@@ -649,3 +649,54 @@ func loadDeclarativeResources(idpService idp.IDPServiceInterface) error {
 	}
 	return nil
 }
+
+// ViewResource shows an exported connection as the read of its vendor's
+// /connections/{type}/{id} route returns it, with secret properties masked as that read masks
+// them. The vendor is taken from the document's type.
+func (e *connectionExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
+	pdpConnection, err := ParseAuthZENPDPConnectionFromNode(document)
+	if err != nil {
+		return nil, err
+	}
+	if pdpConnection != nil {
+		return authzenpdp.ToResponse(*pdpConnection), nil
+	}
+	idpDTO, senderDTO, err := ParseConnectionFromNode(document)
+	if err != nil {
+		return nil, err
+	}
+	if idpDTO != nil {
+		return viewIDPConnection(*idpDTO)
+	}
+	return viewSMSConnection(*senderDTO)
+}
+
+// viewIDPConnection maps an identity-provider DTO with the mapper its vendor's read uses.
+func viewIDPConnection(dto providers.IDPDTO) (interface{}, error) {
+	switch dto.Type {
+	case providers.IDPTypeGoogle:
+		return googleFromIDPDTO(dto)
+	case providers.IDPTypeGitHub:
+		return githubFromIDPDTO(dto)
+	case providers.IDPTypeOIDC:
+		return oidcFromIDPDTO(dto)
+	case providers.IDPTypeOAuth:
+		return oauthFromIDPDTO(dto)
+	default:
+		return nil, fmt.Errorf("unsupported identity provider type for connection view: %s", dto.Type)
+	}
+}
+
+// viewSMSConnection maps a notification-sender DTO with the mapper its vendor's read uses.
+func viewSMSConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
+	switch dto.Provider {
+	case ncommon.NotificationProviderTypeTwilio:
+		return twilioFromSenderDTO(dto)
+	case ncommon.NotificationProviderTypeVonage:
+		return vonageFromSenderDTO(dto)
+	case ncommon.NotificationProviderTypeCustom:
+		return smsGatewayFromSenderDTO(dto)
+	default:
+		return nil, fmt.Errorf("unsupported message provider for connection view: %s", dto.Provider)
+	}
+}

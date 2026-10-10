@@ -25,7 +25,9 @@ Use the export API to retrieve <ProductName /> resources:
 Field behavior:
 
 - `resources`: Combined YAML output for all exported resources, with `# File:` headers and `---` separators.
-- `environment_variables`: environment file content with one empty assignment per detected template variable.
+- `environment_variables`: environment file content with one assignment per detected template variable. A
+  variable is left empty, except one for a list the resource does not have, such as an application's
+  `redirectUris` when it has none, which is written as `[]` so the file imports as it is.
 
 If the export has no template variables, `environment_variables` is an empty string.
 

@@ -28,7 +28,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	handler := newServerConfigHandler(service)
 	registerRoutes(mux, handler)
 
-	return service, newServerConfigExporter(service), nil
+	return service, newServerConfigExporter(service, handlers), nil
 }
 
 // initializeStore selects the backing store based on the configured store mode: a mutable (db) store, a
