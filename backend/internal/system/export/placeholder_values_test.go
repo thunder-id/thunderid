@@ -123,8 +123,8 @@ func TestPlaceholderValuesOfAnAgent(t *testing.T) {
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeAgent,
 		&agentmodel.AgentGetResponse{
-			ID:   "agent-1",
-			Name: "My App",
+			ID:      "agent-1",
+			Display: "My App",
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
 				Type: providers.OAuthInboundAuthType,
 				OAuthConfig: &providers.OAuthConfigWithSecret{
@@ -154,7 +154,7 @@ func TestPlaceholderValuesRefuseAResourceOfTheWrongShape(t *testing.T) {
 	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil))
 
 	_, _, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
-		&agentmodel.AgentGetResponse{Name: "My App"})
+		&agentmodel.AgentGetResponse{Display: "My App"})
 
 	assert.Error(t, err)
 }

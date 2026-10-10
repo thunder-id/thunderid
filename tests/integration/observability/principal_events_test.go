@@ -156,6 +156,7 @@ func (ts *PrincipalEventsTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -615,9 +616,9 @@ func (ts *PrincipalEventsTestSuite) createApplication(
 // createAgent creates an agent with a client_credentials OAuth profile and returns its resource ID.
 func (ts *PrincipalEventsTestSuite) createAgent() string {
 	agent := map[string]interface{}{
-		"name": "Observability Principal Agent",
-		"type": "default",
-		"ouId": ts.ouID,
+		"type":       "default",
+		"ouId":       ts.ouID,
+		"attributes": map[string]interface{}{"name": "Observability Principal Agent"},
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",

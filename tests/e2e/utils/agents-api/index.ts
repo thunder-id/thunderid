@@ -17,7 +17,7 @@ import { send, sendOk } from "../api-request";
 /** An agent as returned by `/agents`. */
 export type ApiAgent = {
   id: string;
-  name?: string;
+  display?: string;
   clientId?: string;
   owner?: string;
   type?: string;
@@ -29,7 +29,7 @@ export class AgentsApi {
   constructor(private readonly request: APIRequestContext) {}
 
   /**
-   * Every agent in the system. The list endpoint has no name filter and `limit` caps at 100,
+   * Every agent in the system. The list endpoint has no name filter (agents are matched on their display value) and `limit` caps at 100,
    * so this pages until every page has been read.
    */
   async list(): Promise<ApiAgent[]> {
@@ -37,7 +37,7 @@ export class AgentsApi {
     const all: ApiAgent[] = [];
 
     for (let offset = 0; ; offset += pageSize) {
-      const response = await sendOk(this.request, "GET", `/agents?limit=${pageSize}&offset=${offset}`);
+      const response = await sendOk(this.request, "GET", `/agents?limit=${pageSize}&offset=${offset}&include=display`);
       const body = (await response.json()) as { agents?: ApiAgent[]; totalResults?: number };
       const agents = body.agents ?? [];
       all.push(...agents);
@@ -48,7 +48,7 @@ export class AgentsApi {
 
   /** Resolve an agent by name, the way a test names the one it just created. */
   async findByName(name: string): Promise<ApiAgent | undefined> {
-    return (await this.list()).find(agent => agent.name === name);
+    return (await this.list()).find(agent => agent.display === name);
   }
 
   /**

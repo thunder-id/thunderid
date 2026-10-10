@@ -266,7 +266,8 @@ func (us *userService) GetUsersByPath(
 			for _, u := range fetchedUsers {
 				userTypes = append(userTypes, u.Type)
 			}
-			displayAttrPaths := ResolveDisplayAttributePaths(ctx, userTypes, us.entityTypeService, logger)
+			displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
+				ctx, entitytype.TypeCategoryUser, userTypes, us.entityTypeService, logger)
 
 			users = make([]providers.User, len(ouResponse.Users))
 			for i, ouUser := range ouResponse.Users {
@@ -415,8 +416,8 @@ func (us *userService) GetUser(
 	}
 
 	if includeDisplay {
-		displayAttrPaths := ResolveDisplayAttributePaths(
-			ctx, []string{user.Type}, us.entityTypeService, logger)
+		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
+			ctx, entitytype.TypeCategoryUser, []string{user.Type}, us.entityTypeService, logger)
 		user.Display = utils.ResolveDisplay(
 			user.ID, user.Type, user.Attributes, displayAttrPaths)
 
@@ -997,8 +998,8 @@ func (us *userService) populateUserDisplayNames(ctx context.Context, users []pro
 		userTypes = append(userTypes, u.Type)
 	}
 
-	displayAttrPaths := ResolveDisplayAttributePaths(
-		ctx, userTypes, us.entityTypeService, logger)
+	displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
+		ctx, entitytype.TypeCategoryUser, userTypes, us.entityTypeService, logger)
 
 	// Resolve display for each user.
 	for i := range users {

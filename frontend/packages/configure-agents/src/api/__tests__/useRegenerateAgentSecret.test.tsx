@@ -32,7 +32,7 @@ describe('useRegenerateAgentSecret', () => {
     id: agentId,
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     type: 'default',
-    name: 'Billing Service',
+    display: 'Billing Service',
     inboundAuthConfig: [
       {
         type: 'oauth2',
@@ -51,7 +51,7 @@ describe('useRegenerateAgentSecret', () => {
     id: agentId,
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     type: 'default',
-    name: 'Entity-only agent',
+    display: 'Entity-only agent',
     inboundAuthConfig: [],
   };
 

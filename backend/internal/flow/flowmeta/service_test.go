@@ -57,7 +57,7 @@ func (suite *FlowMetaServiceTestSuite) SetupTest() {
 	suite.mockDesignResolve = resolvemock.NewDesignResolveServiceInterfaceMock(suite.T())
 	suite.mockI18nService = mgtmock.NewI18nServiceInterfaceMock(suite.T())
 	suite.service = newFlowMetaService(
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
 		suite.mockOUService,
 		suite.mockDesignResolve,
 		suite.mockI18nService,

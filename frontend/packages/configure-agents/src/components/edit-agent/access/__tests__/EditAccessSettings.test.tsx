@@ -10,7 +10,7 @@ vi.mock('../AgentGroupsSection', () => ({default: () => <div data-testid="agent-
 vi.mock('../AgentRolesSection', () => ({default: () => <div data-testid="agent-roles" />}));
 
 describe('EditAccessSettings', () => {
-  const mockAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', name: 'Test Agent'};
+  const mockAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', display: 'Test Agent'};
 
   it('renders groups and roles directly, with no sub-tab experience', () => {
     render(<EditAccessSettings agent={mockAgent} />);

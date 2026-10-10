@@ -41,6 +41,10 @@ const getImportConfigurationButton = (): HTMLElement =>
 const getImportConfigurationBreadcrumb = (): HTMLElement =>
   screen.getAllByRole('button', {name: 'Import Configuration'}).find((el) => el.tagName !== 'BUTTON')!;
 
+const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return {
@@ -107,6 +111,7 @@ import ImportConfigurationSummaryPage from '../ImportConfigurationSummaryPage';
 
 afterEach(() => {
   vi.clearAllMocks();
+  mockUseGetAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ImportConfigurationSummaryPage', () => {
@@ -165,6 +170,61 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.getByText(/Server Configurations.*1/i)).toBeInTheDocument();
 
       mockLocationState.configData = original;
+    });
+  });
+
+  describe('agent labels', () => {
+    const withConfig = (configData: ProductConfig, run: () => void): void => {
+      const original = mockLocationState.configData;
+      mockLocationState.configData = configData;
+      try {
+        run();
+      } finally {
+        mockLocationState.configData = original;
+      }
+    };
+
+    it('labels agents with the display attribute of the bundled agent type', () => {
+      withConfig(
+        {
+          agent: [{id: 'agent-1', type: 'default', attributes: {name: 'Calendar Agent'}}],
+          agent_type: [{handle: 'default', systemAttributes: {display: 'name'}}],
+        } as ProductConfig,
+        () => {
+          render(<ImportConfigurationSummaryPage />);
+
+          expect(screen.getByText('Calendar Agent')).toBeInTheDocument();
+        },
+      );
+    });
+
+    it('labels agents from a server type when the bundle contains only agents', () => {
+      mockUseGetAgentTypes.mockReturnValue({
+        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      } as never);
+
+      withConfig(
+        {agent: [{id: 'agent-1', type: 'default', attributes: {name: 'Server Resolved'}}]} as ProductConfig,
+        () => {
+          render(<ImportConfigurationSummaryPage />);
+
+          expect(screen.getByText('Server Resolved')).toBeInTheDocument();
+          expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+        },
+      );
+    });
+
+    it('falls back to the agent id, then to the unnamed label', () => {
+      withConfig(
+        {agent: [{type: 'default'}, {id: 'agent-1', type: 'default', attributes: {name: 'Hidden'}}]} as ProductConfig,
+        () => {
+          render(<ImportConfigurationSummaryPage />);
+
+          expect(screen.getByText('agent-1')).toBeInTheDocument();
+          expect(screen.getByText('Unnamed Agent')).toBeInTheDocument();
+          expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
+        },
+      );
     });
   });
 

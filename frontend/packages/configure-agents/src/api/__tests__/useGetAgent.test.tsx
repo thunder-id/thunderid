@@ -29,7 +29,7 @@ describe('useGetAgent', () => {
     id: '550e8400-e29b-41d4-a716-446655440000',
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     type: 'default',
-    name: 'Billing Service',
+    display: 'Billing Service',
     description: 'Service-to-service billing agent',
   };
 

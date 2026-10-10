@@ -481,6 +481,7 @@ func (as *roleAssignmentService) resolveAssignments(
 
 	// Always batch-fetch entities to resolve their category (user vs app) for the API response type.
 	var entityMap map[string]*providers.Entity
+	var displays map[string]string
 	if len(entityIDs) > 0 {
 		entities, err := as.entityService.GetEntitiesByIDs(ctx, entityIDs)
 		if err != nil {
@@ -491,6 +492,9 @@ func (as *roleAssignmentService) resolveAssignments(
 		for i := range entities {
 			entityMap[entities[i].ID] = &entities[i]
 		}
+		if includeDisplay {
+			displays = entitytype.ResolveEntityDisplays(ctx, entities, as.entityTypeService, logger)
+		}
 	}
 
 	var groupsMap map[string]*group.Group
@@ -500,18 +504,6 @@ func (as *roleAssignmentService) resolveAssignments(
 		if svcErr != nil {
 			logger.Warn(ctx, "Failed to batch fetch groups for display names", log.Any("error", svcErr))
 		}
-	}
-
-	// Resolve display attribute paths for user-category entities.
-	var displayAttrPaths map[string]string
-	if includeDisplay && entityMap != nil {
-		var userTypes []string
-		for _, e := range entityMap {
-			if e.Category == providers.EntityCategoryUser {
-				userTypes = append(userTypes, e.Type)
-			}
-		}
-		displayAttrPaths = resolveDisplayAttributePaths(ctx, userTypes, as.entityTypeService, logger)
 	}
 
 	// Build the result slice, skipping orphaned entity assignments.
@@ -527,9 +519,10 @@ func (as *roleAssignmentService) resolveAssignments(
 			}
 			ra.Type = AssigneeType(e.Category)
 			if includeDisplay {
-				if e.Category == providers.EntityCategoryUser {
-					ra.Display = utils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayAttrPaths)
-				} else {
+				switch e.Category {
+				case providers.EntityCategoryUser, providers.EntityCategoryAgent:
+					ra.Display = displays[e.ID]
+				default:
 					ra.Display = resolveAppDisplay(*e)
 				}
 			}
@@ -566,33 +559,6 @@ func resolveAppDisplay(e providers.Entity) string {
 		}
 	}
 	return e.ID
-}
-
-// resolveDisplayAttributePaths collects unique user types and resolves their display
-// attribute paths from the entity type service.
-func resolveDisplayAttributePaths(
-	ctx context.Context, userTypes []string, schemaService entitytype.EntityTypeServiceInterface,
-	logger *log.Logger,
-) map[string]string {
-	if schemaService == nil || len(userTypes) == 0 {
-		return nil
-	}
-
-	uniqueTypes := utils.UniqueNonEmptyStrings(userTypes)
-	if len(uniqueTypes) == 0 {
-		return nil
-	}
-
-	displayPaths, svcErr := schemaService.GetDisplayAttributesByHandles(ctx, entitytype.TypeCategoryUser, uniqueTypes)
-	if svcErr != nil {
-		if logger != nil {
-			logger.Warn(ctx, "Failed to resolve display attribute paths, skipping display resolution",
-				log.Any("error", svcErr))
-		}
-		return nil
-	}
-
-	return displayPaths
 }
 
 // normalizeAssignments converts public 'user'/'app'/'agent' types to the internal 'entity' type.

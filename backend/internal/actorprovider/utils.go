@@ -56,9 +56,7 @@ func assembleApplication(
 	}
 
 	entityAttrs := readEntitySystemAttributes(entity)
-	if name, ok := entityAttrs["name"].(string); ok {
-		app.Name = name
-	}
+	app.Name = entityDisplayName(entity, entityAttrs)
 	if metadata, ok := client.Properties["metadata"].(map[string]interface{}); ok {
 		app.Metadata = metadata
 	}
@@ -85,14 +83,12 @@ func BuildApplicationMetadata(
 	if entity != nil && len(entity.SystemAttributes) > 0 {
 		var attrs map[string]interface{}
 		if err := json.Unmarshal(entity.SystemAttributes, &attrs); err == nil && attrs != nil {
-			if name, ok := attrs["name"].(string); ok {
-				meta.Name = name
-			}
 			if desc, ok := attrs["description"].(string); ok {
 				meta.Description = desc
 			}
 		}
 	}
+	meta.Name = entityDisplayName(entity, readEntitySystemAttributes(entity))
 	if props != nil {
 		if v, ok := props["logo_url"].(string); ok {
 			meta.LogoURL = v
@@ -120,4 +116,15 @@ func readEntitySystemAttributes(entity *providers.Entity) map[string]interface{}
 		return map[string]interface{}{}
 	}
 	return attrs
+}
+
+// entityDisplayName returns the entity's display name. An agent's is the display value the actor
+// provider resolved from its type's display attribute; every other category keeps its name in the
+// system attributes passed in.
+func entityDisplayName(entity *providers.Entity, sysAttrs map[string]interface{}) string {
+	if entity != nil && entity.Category == providers.EntityCategoryAgent {
+		return entity.Display
+	}
+	name, _ := sysAttrs["name"].(string)
+	return name
 }

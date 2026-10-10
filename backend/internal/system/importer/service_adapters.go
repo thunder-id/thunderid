@@ -927,7 +927,7 @@ func (s *importService) importAgent(
 
 	var req agentmodel.AgentRequestWithID
 	if err := doc.Node.Decode(&req); err != nil {
-		return decodeErrorOutcome(resourceTypeAgent, req.ID, req.Name, err)
+		return decodeErrorOutcome(resourceTypeAgent, req.ID, "", err)
 	}
 
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
@@ -944,7 +944,6 @@ func (s *importService) importAgent(
 			return ImportItemOutcome{
 				ResourceType: resourceTypeAgent,
 				ResourceID:   req.ID,
-				ResourceName: req.Name,
 				Status:       statusFailed,
 				Code:         ErrorInvalidYAMLContent.Code,
 				Message:      fmt.Sprintf("failed to marshal agent attributes: %v", err),
@@ -960,7 +959,6 @@ func (s *importService) importAgent(
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
 		Type:        req.Type,
-		Name:        req.Name,
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
@@ -991,7 +989,6 @@ func (s *importService) importAgent(
 		OUID:                  req.OUID,
 		OUHandle:              req.OUHandle,
 		Type:                  req.Type,
-		Name:                  req.Name,
 		Description:           req.Description,
 		LogoURL:               req.LogoURL,
 		Owner:                 req.Owner,
@@ -1004,15 +1001,15 @@ func (s *importService) importAgent(
 		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 			if svcErr == nil {
-				return successOutcome(resourceTypeAgent, req.ID, req.Name, operationUpdate)
+				return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
 			}
 
 			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, req.Name, operationUpdate, svcErr)
+				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
 			}
 		}
 
-		return successOutcome(resourceTypeAgent, req.ID, req.Name, operationCreate)
+		return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
@@ -1020,21 +1017,21 @@ func (s *importService) importAgent(
 		if svcErr == nil {
 			updated, updateErr := s.agentService.UpdateAgent(ctx, req.ID, updateReq)
 			if updateErr != nil {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, req.Name, operationUpdate, updateErr)
+				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, updateErr)
 			}
-			return successOutcome(resourceTypeAgent, updated.ID, updated.Name, operationUpdate)
+			return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
 		}
 
 		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(resourceTypeAgent, req.ID, req.Name, operationUpdate, svcErr)
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
 		}
 	}
 
 	created, svcErr := s.agentService.CreateAgent(ctx, createReq)
 	if svcErr != nil {
-		return serviceErrorOutcome(resourceTypeAgent, req.ID, req.Name, operationCreate, svcErr)
+		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
-	return successOutcome(resourceTypeAgent, created.ID, created.Name, operationCreate)
+	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
 }
 
 func getAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) *providers.OAuthConfigWithSecret {
@@ -1063,7 +1060,6 @@ func normalizeAgentOAuthConfigForImport(ctx context.Context, req *agentmodel.Age
 		log.GetLogger().Debug(ctx,
 			"Dropping client_secret for public agent import with token endpoint auth method 'none'",
 			log.String("agentID", req.ID),
-			log.String("name", req.Name),
 			log.String("clientID", oauthConfig.ClientID))
 		oauthConfig.ClientSecret = ""
 	}

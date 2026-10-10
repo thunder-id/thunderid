@@ -45,7 +45,7 @@ const delegationLockMessage = /does not receive tokens on behalf of a user/i;
 
 describe('EditTokensSettings', () => {
   const mockOnFieldChange = vi.fn();
-  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', name: 'Test Agent'};
+  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', display: 'Test Agent'};
 
   it('shows both "Agent" and "User" audiences, defaulting to Agent', () => {
     render(

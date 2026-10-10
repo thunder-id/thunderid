@@ -80,25 +80,32 @@ func TestInitializeTestSuite(t *testing.T) {
 	suite.Run(t, new(InitializeTestSuite))
 }
 
-func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_EntityLoadError() {
-	setupAgentConfig(suite.T(), string(serverconst.StoreModeDeclarative), false)
+func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeModes() {
+	for _, storeMode := range []serverconst.StoreMode{
+		serverconst.StoreModeDeclarative,
+		serverconst.StoreModeComposite,
+	} {
+		suite.Run(string(storeMode), func() {
+			setupAgentConfig(suite.T(), string(storeMode), false)
 
-	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
-	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
-	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
+			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
+			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
-	mockEntity.On("LoadDeclarativeResources", mock.Anything).
-		Return(errors.New("entity load error")).Once()
+			mockEntity.On("LoadDeclarativeResources", mock.Anything).
+				Return(errors.New("entity load error")).Once()
 
-	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil)
+			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
+				newAllowAllAuthz(suite.T()), nil, nil)
 
-	suite.Error(err)
-	suite.Equal("entity load error", err.Error())
-	suite.Nil(svc)
-	suite.Nil(exporter)
-	mockEntity.AssertExpectations(suite.T())
+			suite.EqualError(err, "entity load error")
+			suite.Nil(svc)
+			suite.Nil(exporter)
+			mockEntity.AssertExpectations(suite.T())
+		})
+	}
 }
 
 func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarativeModes() {
@@ -110,6 +117,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 			setupAgentConfig(suite.T(), string(storeMode), false)
 
 			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
 			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
@@ -120,7 +128,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil)
+				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -136,6 +144,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	setupAgentConfig(suite.T(), string(serverconst.StoreModeDeclarative), false)
 
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
@@ -144,7 +153,8 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil)
+	svc, exporter, err := Initialize(
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -153,37 +163,18 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mockInbound.AssertExpectations(suite.T())
 }
 
-func (suite *InitializeTestSuite) TestInitialize_CompositeMode_EntityLoadError() {
-	setupAgentConfig(suite.T(), string(serverconst.StoreModeComposite), false)
-
-	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
-	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
-	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
-
-	mockEntity.On("LoadDeclarativeResources", mock.Anything).
-		Return(errors.New("entity composite load error")).Once()
-
-	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil)
-
-	suite.Error(err)
-	suite.Equal("entity composite load error", err.Error())
-	suite.Nil(svc)
-	suite.Nil(exporter)
-	mockEntity.AssertExpectations(suite.T())
-}
-
 func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoading() {
 	setupAgentConfig(suite.T(), string(serverconst.StoreModeMutable), false)
 
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil)
+	svc, exporter, err := Initialize(
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -191,4 +182,22 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	// No LoadDeclarativeResources calls expected in mutable mode.
 	mockEntity.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockInbound.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
+}
+
+func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
+	setupAgentConfig(suite.T(), string(serverconst.StoreModeMutable), false)
+
+	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
+	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+
+	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
+
+	svc, exporter, err := Initialize(
+		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
+
+	suite.EqualError(err, "indexed load error")
+	suite.Nil(svc)
+	suite.Nil(exporter)
 }

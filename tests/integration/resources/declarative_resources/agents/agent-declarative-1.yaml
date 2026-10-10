@@ -2,11 +2,11 @@ resource_type: agent
 id: decl-agent-1
 ouId: decl-ou-1
 type: default
-name: Declarative Test Agent
 description: A declarative test agent for integration testing
 authFlowId: decl-flow-1
 registrationFlowId: decl-reg-flow-1
 recoveryFlowId: decl-recovery-flow-1
 attributes:
+  name: Declarative Test Agent
   department: engineering
   environment: test

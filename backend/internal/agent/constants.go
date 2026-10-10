@@ -13,7 +13,6 @@ const (
 
 // Field keys stored in the entity SystemAttributes JSON blob.
 const (
-	fieldName         = "name"
 	fieldDescription  = "description"
 	fieldOwner        = "owner"
 	fieldClientID     = "clientId"

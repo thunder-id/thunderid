@@ -75,8 +75,17 @@ type Agent struct {
 	ID         string          `json:"id,omitempty"`
 	OUID       string          `json:"ouId,omitempty"`
 	Type       string          `json:"type,omitempty"`
-	Name       string          `json:"name,omitempty"`
 	Attributes json.RawMessage `json:"attributes,omitempty"`
+}
+
+// AttrName returns the agent name, which is carried in attributes.name.
+func (a Agent) AttrName() string {
+	var m map[string]interface{}
+	if err := json.Unmarshal(a.Attributes, &m); err != nil {
+		return ""
+	}
+	name, _ := m["name"].(string)
+	return name
 }
 
 // AgentListResponse is the response from listing agents.

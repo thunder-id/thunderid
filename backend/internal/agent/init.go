@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -29,9 +30,14 @@ func Initialize(
 	roleService role.RoleServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		valueCapturer)
+		valueCapturer, entityTypeService)
+
+	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
+		return nil, nil, err
+	}
 
 	storeMode := getAgentStoreMode()
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {

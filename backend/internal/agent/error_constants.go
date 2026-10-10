@@ -93,20 +93,6 @@ var (
 		},
 	}
 
-	// ErrorInvalidAgentName is returned when name is empty.
-	ErrorInvalidAgentName = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGT-1009",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_agent_name",
-			DefaultValue: "Invalid agent name",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_agent_name_description",
-			DefaultValue: "The agent name must be provided and non-empty",
-		},
-	}
-
 	// ErrorInvalidAgentType is returned when type is empty.
 	ErrorInvalidAgentType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -146,20 +132,6 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.agentservice.invalid_offset_description",
 			DefaultValue: "The offset parameter must be a non-negative integer",
-		},
-	}
-
-	// ErrorAgentAlreadyExistsWithName is returned when another agent already has the same name.
-	ErrorAgentAlreadyExistsWithName = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGT-1013",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentservice.agent_already_exists_with_name",
-			DefaultValue: "Agent already exists",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.agent_already_exists_with_name_description",
-			DefaultValue: "An agent with the same name already exists",
 		},
 	}
 

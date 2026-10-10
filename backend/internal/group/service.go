@@ -721,7 +721,7 @@ func (gs *groupService) resolveMembers(
 
 	// Batch-fetch entities to resolve category and optionally display names.
 	var entityMap map[string]*providers.Entity
-	var displayAttrPaths map[string]string
+	var displays map[string]string
 	if len(entityIDs) > 0 {
 		entities, err := gs.entityService.GetEntitiesByIDs(ctx, entityIDs)
 		if err != nil {
@@ -733,13 +733,7 @@ func (gs *groupService) resolveMembers(
 			entityMap[entities[i].ID] = &entities[i]
 		}
 		if includeDisplay {
-			var userTypes []string
-			for _, e := range entities {
-				if e.Category == providers.EntityCategoryUser {
-					userTypes = append(userTypes, e.Type)
-				}
-			}
-			displayAttrPaths = resolveDisplayAttributePaths(ctx, userTypes, gs.entityTypeService, logger)
+			displays = entitytype.ResolveEntityDisplays(ctx, entities, gs.entityTypeService, logger)
 		}
 	}
 
@@ -768,9 +762,9 @@ func (gs *groupService) resolveMembers(
 			members[i].Type = MemberType(e.Category)
 			if includeDisplay {
 				switch e.Category {
-				case providers.EntityCategoryUser:
-					members[i].Display = utils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayAttrPaths)
-				case providers.EntityCategoryApp, providers.EntityCategoryAgent:
+				case providers.EntityCategoryUser, providers.EntityCategoryAgent:
+					members[i].Display = displays[e.ID]
+				case providers.EntityCategoryApp:
 					members[i].Display = resolveAppDisplay(*e)
 				}
 			}
@@ -1095,33 +1089,6 @@ func (gs *groupService) validateOU(ctx context.Context, ouID string) *tidcommon.
 	}
 
 	return nil
-}
-
-// resolveDisplayAttributePaths collects unique user types and resolves their display
-// attribute paths from the entity type service.
-func resolveDisplayAttributePaths(
-	ctx context.Context, userTypes []string, schemaService entitytype.EntityTypeServiceInterface,
-	logger *log.Logger,
-) map[string]string {
-	if schemaService == nil || len(userTypes) == 0 {
-		return nil
-	}
-
-	uniqueTypes := utils.UniqueNonEmptyStrings(userTypes)
-	if len(uniqueTypes) == 0 {
-		return nil
-	}
-
-	displayPaths, svcErr := schemaService.GetDisplayAttributesByHandles(ctx, entitytype.TypeCategoryUser, uniqueTypes)
-	if svcErr != nil {
-		if logger != nil {
-			logger.Warn(ctx, "Failed to resolve display attribute paths, skipping display resolution",
-				log.Any("error", svcErr))
-		}
-		return nil
-	}
-
-	return displayPaths
 }
 
 // resolveAppDisplay extracts a display name for an app entity from its system attributes.

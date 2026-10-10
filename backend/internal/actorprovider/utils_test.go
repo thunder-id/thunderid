@@ -41,7 +41,7 @@ func (s *UtilsTestSuite) SetupTest() {
 	s.mockInbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.provider = Initialize(s.mockInbound, s.mockEntity, managermock.NewAuthnProviderManagerMock(s.T()),
-		rolemock.NewRoleServiceInterfaceMock(s.T()))
+		rolemock.NewRoleServiceInterfaceMock(s.T()), nil)
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_Success() {
@@ -224,7 +224,7 @@ func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntity := entityprovidermock.NewEntityProviderInterfaceMock(t)
 	provider := Initialize(mockInbound, mockEntity, managermock.NewAuthnProviderManagerMock(t),
-		rolemock.NewRoleServiceInterfaceMock(t))
+		rolemock.NewRoleServiceInterfaceMock(t), nil)
 
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, "app-1").
 		Return((*inboundmodel.InboundClient)(nil), errors.New("db error"))
@@ -234,4 +234,33 @@ func TestBuildApplication_InboundClientStoreError(t *testing.T) {
 	assert.Nil(t, app)
 	assert.NotNil(t, svcErr)
 	assert.NotEqual(t, ErrorActorNotFound.Code, svcErr.Code)
+}
+
+func (s *UtilsTestSuite) TestAgentName_ComesFromResolvedDisplay() {
+	entity := &providers.Entity{
+		Category:         providers.EntityCategoryAgent,
+		Display:          "Ledger Agent",
+		SystemAttributes: []byte(`{"name":"stale","description":"d","clientId":"cid"}`),
+	}
+
+	app := assembleApplication(&providers.InboundClient{ID: "agent-1"}, entity)
+	meta := BuildApplicationMetadata("agent-1", entity, nil)
+
+	s.Equal("Ledger Agent", app.Name)
+	s.Equal("Ledger Agent", meta.Name)
+	s.Equal("d", meta.Description)
+}
+
+func (s *UtilsTestSuite) TestApplicationName_ComesFromSystemAttributes() {
+	entity := &providers.Entity{
+		Category:         providers.EntityCategoryApp,
+		Attributes:       []byte(`{"name":"ignored"}`),
+		SystemAttributes: []byte(`{"name":"My App"}`),
+	}
+
+	app := assembleApplication(&providers.InboundClient{ID: "app-1"}, entity)
+	meta := BuildApplicationMetadata("app-1", entity, nil)
+
+	s.Equal("My App", app.Name)
+	s.Equal("My App", meta.Name)
 }

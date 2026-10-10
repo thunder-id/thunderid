@@ -254,10 +254,11 @@ export default function AddMemberDialog({
         ),
       },
       {
-        field: 'name',
+        field: 'display',
         headerName: t('groups:addMember.columns.displayName'),
         flex: 1,
         minWidth: 200,
+        valueGetter: (_value, row): string => row.display ?? row.id,
       },
       {
         field: 'id',

@@ -100,5 +100,5 @@ func resolveOUUserDisplayPaths(
 	}
 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OUUserResolver"))
-	return ResolveDisplayAttributePaths(ctx, userTypes, schemaService, logger)
+	return entitytype.ResolveDisplayAttributePaths(ctx, entitytype.TypeCategoryUser, userTypes, schemaService, logger)
 }

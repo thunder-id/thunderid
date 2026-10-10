@@ -51,9 +51,9 @@ const RESOURCE_MANIFEST: Array<{
   },
   {
     label: "Agents",
-    path: "/agents?limit=100",
+    path: "/agents?limit=100&include=display",
     listKey: "agents",
-    getName: a => a.name,
+    getName: a => a.display,
     expected: ["WAYFINDER-CONCIERGE", "WAYFINDER-UPGRADE-AGENT"],
   },
   {

@@ -13,8 +13,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -343,6 +345,32 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_WithDisplay_
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(testUserID1, result.Assignments[0].Display)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_IncludeDisplay_AgentUsesDisplayAttribute() {
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRoleAssignmentsCount", mock.Anything, "role1").Return(2, nil)
+	suite.mockStore.On("GetRoleAssignments", mock.Anything, "role1", 10, 0).Return([]RoleAssignment{
+		{ID: "agent-1", Type: assigneeTypeEntity},
+		{ID: "agent-2", Type: assigneeTypeEntity},
+	}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything,
+		mock.MatchedBy(func(ids []string) bool { return len(ids) == 2 })).Return([]providers.Entity{
+		{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
+			Attributes: json.RawMessage(`{"name":"Ledger Agent"}`)},
+		{ID: "agent-2", Category: providers.EntityCategoryAgent, Type: "default",
+			Attributes: json.RawMessage(`{"model":"x"}`)},
+	}, nil).Once()
+	suite.mockEntityTypeService.On("GetDisplayAttributesByHandles", mock.Anything,
+		entitytype.TypeCategoryAgent, []string{"default"}).Return(
+		map[string]string{"default": "name"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	result, err := suite.service.GetRoleAssignments(context.Background(), "role1", 10, 0, true)
+
+	suite.Nil(err)
+	suite.Require().Len(result.Assignments, 2)
+	suite.Equal("Ledger Agent", result.Assignments[0].Display)
+	suite.Equal("agent-2", result.Assignments[1].Display, "falls back to the ID when the name is absent")
 }
 
 // GetRoleAssignmentsByType Tests
@@ -776,4 +804,14 @@ func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_Group
 
 	suite.NoError(err)
 	suite.Equal(1, deleted)
+}
+
+func TestResolveAppDisplay_AppUsesSystemAttributesName(t *testing.T) {
+	app := providers.Entity{
+		ID:               "app-1",
+		Category:         providers.EntityCategoryApp,
+		Attributes:       json.RawMessage(`{"name":"ignored"}`),
+		SystemAttributes: json.RawMessage(`{"name":"My App"}`),
+	}
+	require.Equal(t, "My App", resolveAppDisplay(app))
 }

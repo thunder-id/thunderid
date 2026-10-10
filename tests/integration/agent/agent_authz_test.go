@@ -129,6 +129,7 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        ts.agentOU1ID,
 		Schema: map[string]interface{}{
+			"name":    map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"purpose": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -148,28 +149,25 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 
 	// ---- 5. Create target agents ----
 	targetOU1ID, err := testutils.CreateAgent(testutils.Agent{
-		Name:       "authz-target-agent-ou1",
 		Type:       agentTypeName,
 		OUID:       ts.agentOU1ID,
-		Attributes: map[string]interface{}{"purpose": "target in OU1"},
+		Attributes: map[string]interface{}{"name": "authz-target-agent-ou1", "purpose": "target in OU1"},
 	})
 	ts.Require().NoError(err, "create target agent in OU1")
 	ts.targetAgentOU1ID = targetOU1ID
 
 	deletableID, err := testutils.CreateAgent(testutils.Agent{
-		Name:       "authz-deletable-agent-ou1",
 		Type:       agentTypeName,
 		OUID:       ts.agentOU1ID,
-		Attributes: map[string]interface{}{"purpose": "deletable in OU1"},
+		Attributes: map[string]interface{}{"name": "authz-deletable-agent-ou1", "purpose": "deletable in OU1"},
 	})
 	ts.Require().NoError(err, "create deletable agent in OU1")
 	ts.deletableAgentOU1ID = deletableID
 
 	targetOU2ID, err := testutils.CreateAgent(testutils.Agent{
-		Name:       "authz-target-agent-ou2",
 		Type:       agentTypeName,
 		OUID:       ts.agentOU2ID,
-		Attributes: map[string]interface{}{"purpose": "target in OU2"},
+		Attributes: map[string]interface{}{"name": "authz-target-agent-ou2", "purpose": "target in OU2"},
 	})
 	ts.Require().NoError(err, "create target agent in OU2")
 	ts.targetAgentOU2ID = targetOU2ID
@@ -364,10 +362,9 @@ func (ts *AgentAuthzTestSuite) TestGetAgentRolesInOtherOU() {
 // TestCreateAgentInOwnOU verifies the agent-manager can create an agent in their own OU.
 func (ts *AgentAuthzTestSuite) TestCreateAgentInOwnOU() {
 	payload, err := json.Marshal(map[string]interface{}{
-		"name":       "authz-created-agent",
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU1ID,
-		"attributes": map[string]interface{}{"purpose": "created by agent-manager"},
+		"attributes": map[string]interface{}{"name": "authz-created-agent", "purpose": "created by agent-manager"},
 	})
 	ts.Require().NoError(err)
 
@@ -389,10 +386,9 @@ func (ts *AgentAuthzTestSuite) TestCreateAgentInOwnOU() {
 // TestCreateAgentInOtherOU verifies the agent-manager is denied creating an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestCreateAgentInOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{
-		"name":       "authz-denied-agent",
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"purpose": "denied"},
+		"attributes": map[string]interface{}{"name": "authz-denied-agent", "purpose": "denied"},
 	})
 	ts.Require().NoError(err)
 
@@ -406,10 +402,9 @@ func (ts *AgentAuthzTestSuite) TestCreateAgentInOtherOU() {
 // TestUpdateAgentInOwnOU verifies the agent-manager can update an agent in their own OU.
 func (ts *AgentAuthzTestSuite) TestUpdateAgentInOwnOU() {
 	payload, err := json.Marshal(map[string]interface{}{
-		"name":       "authz-target-agent-ou1",
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU1ID,
-		"attributes": map[string]interface{}{"purpose": "updated purpose"},
+		"attributes": map[string]interface{}{"name": "authz-target-agent-ou1", "purpose": "updated purpose"},
 	})
 	ts.Require().NoError(err)
 
@@ -423,10 +418,9 @@ func (ts *AgentAuthzTestSuite) TestUpdateAgentInOwnOU() {
 // TestUpdateAgentInOtherOU verifies the agent-manager is denied updating an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestUpdateAgentInOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{
-		"name":       "authz-target-agent-ou2",
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"purpose": "denied update"},
+		"attributes": map[string]interface{}{"name": "authz-target-agent-ou2", "purpose": "denied update"},
 	})
 	ts.Require().NoError(err)
 
@@ -442,10 +436,9 @@ func (ts *AgentAuthzTestSuite) TestUpdateAgentInOtherOU() {
 // into an OU it does not administer.
 func (ts *AgentAuthzTestSuite) TestMoveAgentToOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{
-		"name":       "authz-target-agent-ou1",
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"purpose": "attempted move"},
+		"attributes": map[string]interface{}{"name": "authz-target-agent-ou1", "purpose": "attempted move"},
 	})
 	ts.Require().NoError(err)
 

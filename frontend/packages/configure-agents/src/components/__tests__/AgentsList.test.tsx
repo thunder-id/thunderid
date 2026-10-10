@@ -156,7 +156,7 @@ describe('AgentsList', () => {
         ouId: 'ou-1',
         ouHandle: 'engineering',
         type: 'default',
-        name: 'Test Agent 1',
+        display: 'Test Agent 1',
         description: 'First test agent',
         clientId: 'client_id_1',
       },
@@ -164,7 +164,7 @@ describe('AgentsList', () => {
         id: 'agent-2',
         ouId: 'ou-2',
         type: 'default',
-        name: 'Test Agent 2',
+        display: 'Test Agent 2',
         description: 'Second test agent',
         clientId: 'client_id_2',
       },
@@ -234,6 +234,19 @@ describe('AgentsList', () => {
     expect(screen.getByText('Test Agent 2')).toBeInTheDocument();
     expect(screen.getByText('First test agent')).toBeInTheDocument();
     expect(screen.getByText('Second test agent')).toBeInTheDocument();
+  });
+
+  it('should fall back to the agent id when an agent has no display value', () => {
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {...mockAgentsData, agents: [{...mockAgentsData.agents[0], display: undefined}]},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    expect(screen.getAllByText('agent-1').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Test Agent 1')).not.toBeInTheDocument();
   });
 
   it('should display agent ids', () => {

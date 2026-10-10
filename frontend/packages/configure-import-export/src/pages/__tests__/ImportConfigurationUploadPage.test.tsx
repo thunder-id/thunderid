@@ -282,9 +282,10 @@ describe('ImportConfigurationUploadPage', () => {
       '---\n' +
       'resource_type: agent\n' +
       'id: claims-demo-agent\n' +
-      'name: Claims Demo Agent\n' +
       'ouHandle: default\n' +
-      'type: default\n';
+      'type: default\n' +
+      'attributes:\n' +
+      '  name: Claims Demo Agent\n';
     const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
     Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
 

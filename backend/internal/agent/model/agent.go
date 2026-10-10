@@ -23,7 +23,6 @@ type AgentRequestWithID struct {
 	OUID        string                 `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
 	OUHandle    string                 `json:"ouHandle,omitempty"    yaml:"ouHandle,omitempty"`
 	Type        string                 `json:"type"                  yaml:"type"`
-	Name        string                 `json:"name"                  yaml:"name"`
 	Description string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
@@ -38,7 +37,6 @@ type CreateAgentRequest struct {
 	OUID        string          `json:"ouId" native:"required"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type" native:"required"`
-	Name        string          `json:"name" native:"required,min=1,max=100"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
@@ -53,7 +51,6 @@ type UpdateAgentRequest struct {
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
@@ -70,7 +67,6 @@ type AgentCompleteResponse struct {
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
@@ -86,7 +82,7 @@ type AgentGetResponse struct {
 	OUID        string `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
 	OUHandle    string `json:"ouHandle,omitempty"    yaml:"-"`
 	Type        string `json:"type,omitempty"        yaml:"type,omitempty"`
-	Name        string `json:"name,omitempty"        yaml:"name,omitempty"`
+	Display     string `json:"display,omitempty"     yaml:"-"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	LogoURL     string `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	ClientID    string `json:"clientId,omitempty"    yaml:"-"`
@@ -106,7 +102,7 @@ type BasicAgentResponse struct {
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
+	Display     string          `json:"display,omitempty"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	ClientID    string          `json:"clientId,omitempty"`

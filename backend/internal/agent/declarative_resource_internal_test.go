@@ -35,7 +35,6 @@ func (s *ParseToAgentRequestTestSuite) TestParseToAgentRequest_AllFieldsParsed()
 id: test-agent-001
 ouId: ou-123
 type: service-agent
-name: Test Agent
 description: A test agent
 owner: owner-id-123
 authFlowId: flow-abc
@@ -46,6 +45,7 @@ allowedUserTypes:
   - person
   - external
 attributes:
+  name: Test Agent
   department: engineering
 `
 	var req model.AgentRequestWithID
@@ -55,7 +55,7 @@ attributes:
 	assert.Equal(s.T(), "test-agent-001", req.ID)
 	assert.Equal(s.T(), "ou-123", req.OUID)
 	assert.Equal(s.T(), "service-agent", req.Type)
-	assert.Equal(s.T(), "Test Agent", req.Name)
+	assert.Equal(s.T(), "Test Agent", req.Attributes["name"])
 	assert.Equal(s.T(), "A test agent", req.Description)
 	assert.Equal(s.T(), "owner-id-123", req.Owner)
 	assert.Equal(s.T(), "flow-abc", req.AuthFlowID)
@@ -71,7 +71,8 @@ func (s *ParseToAgentRequestTestSuite) TestParseToAgentRequest_MinimalFields() {
 id: min-agent
 ouId: ou-1
 type: bot
-name: Minimal Agent
+attributes:
+  name: Minimal Agent
 `
 	var req model.AgentRequestWithID
 	err := yaml.Unmarshal([]byte(yamlData), &req)
@@ -80,7 +81,7 @@ name: Minimal Agent
 	assert.Equal(s.T(), "min-agent", req.ID)
 	assert.Equal(s.T(), "ou-1", req.OUID)
 	assert.Equal(s.T(), "bot", req.Type)
-	assert.Equal(s.T(), "Minimal Agent", req.Name)
+	assert.Equal(s.T(), "Minimal Agent", req.Attributes["name"])
 	assert.Empty(s.T(), req.Description)
 	assert.Empty(s.T(), req.AuthFlowID)
 	assert.Empty(s.T(), req.ThemeID)
@@ -92,7 +93,6 @@ func (s *ParseToAgentRequestTestSuite) TestParseToAgentRequest_WithOAuthConfig()
 id: oauth-agent
 ouId: ou-1
 type: service-agent
-name: OAuth Agent
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -118,7 +118,6 @@ inboundAuthConfig:
 func (s *ParseToAgentRequestTestSuite) TestParseToAgentRequest_InvalidYAML() {
 	yamlData := `
 id: bad-agent
-name: Bad Agent
 invalid: [unclosed bracket
 `
 	var req model.AgentRequestWithID
@@ -140,7 +139,8 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_NoOAuthConfig
 id: no-oauth-agent
 ouId: ou-1
 type: service-agent
-name: No OAuth Agent
+attributes:
+  name: No OAuth Agent
 `)
 	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
 	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "no-oauth-agent").
@@ -153,10 +153,10 @@ name: No OAuth Agent
 	assert.NotNil(s.T(), e)
 	assert.Nil(s.T(), sysCredsJSON)
 
-	var sysAttrs map[string]interface{}
-	assert.NoError(s.T(), json.Unmarshal(e.SystemAttributes, &sysAttrs))
-	assert.Equal(s.T(), "No OAuth Agent", sysAttrs[fieldName])
-	assert.Empty(s.T(), sysAttrs[fieldClientID])
+	var attrs map[string]interface{}
+	assert.NoError(s.T(), json.Unmarshal(e.Attributes, &attrs))
+	assert.Equal(s.T(), "No OAuth Agent", attrs["name"])
+	assert.Empty(s.T(), e.SystemAttributes)
 }
 
 func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthPublicClient() {
@@ -164,7 +164,6 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthPubl
 id: public-agent
 ouId: ou-1
 type: service-agent
-name: Public Agent
 inboundAuthConfig:
   - type: oauth2
     config:
@@ -195,7 +194,6 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthConf
 id: conf-agent
 ouId: ou-1
 type: service-agent
-name: Confidential Agent
 inboundAuthConfig:
   - type: oauth2
     config:

@@ -57,7 +57,6 @@ describe('EditAgentAttributes', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test',
     attributes: {email: 'a@b.com', count: 5},
   };
 

@@ -66,6 +66,7 @@ func (s *AgentClientAttributesTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        s.ouID,
 		Schema: map[string]interface{}{
+			"name":          map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"modelProvider": map[string]interface{}{"type": "string"},
 			"description":   map[string]interface{}{"type": "string"},
 			// Named after a reserved claim, so a test can store a conflicting value.
@@ -152,9 +153,8 @@ func (s *AgentClientAttributesTestSuite) createAgentWithClientConfig(
 	return createAgent(Agent{
 		OUID:       s.ouID,
 		Type:       "default",
-		Name:       "Client Attrs Agent " + clientID,
 		Owner:      owner,
-		Attributes: attributes,
+		Attributes: withName("Client Attrs Agent "+clientID, attributes),
 		InboundAuthConfig: []InboundAuthConfig{
 			{
 				Type: "oauth2",
@@ -182,9 +182,8 @@ func (s *AgentClientAttributesTestSuite) updateClientAttributes(
 	body := Agent{
 		OUID:       s.ouID,
 		Type:       "default",
-		Name:       "Client Attrs Agent " + clientID,
 		Owner:      s.ownerUserID,
-		Attributes: attrs,
+		Attributes: withName("Client Attrs Agent "+clientID, attrs),
 		InboundAuthConfig: []InboundAuthConfig{
 			{
 				Type: "oauth2",
@@ -246,7 +245,7 @@ func (s *AgentClientAttributesTestSuite) requestToken(clientID string) (int, map
 }
 
 // TestAgentClientAttrs_SchemaAndSystemAndGroupsAndRoles verifies that an agent's schema
-// attribute (modelProvider), system attributes (name, owner), ouId, groups, and roles are
+// attribute (modelProvider), system attribute (owner), ouId, groups, and roles are
 // all present in the client_credentials access token when allow-listed.
 func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SchemaAndSystemAndGroupsAndRoles() {
 	clientID := agentClientAttrsClientID + "_full"
@@ -293,7 +292,8 @@ func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SchemaAndSystemAnd
 	s.Require().NoError(err)
 
 	s.Assert().Equal("anthropic", claims.Additional["modelProvider"], "agent schema attribute should be surfaced")
-	s.Assert().Equal("Client Attrs Agent "+clientID, claims.Additional["name"], "agent system attribute name should be surfaced")
+	s.Assert().Equal("Client Attrs Agent "+clientID, claims.Additional["name"],
+		"agent schema attribute name should be surfaced")
 	s.Assert().Equal(s.ownerUserID, claims.Additional["owner"], "agent system attribute owner should be surfaced")
 	s.Assert().Equal(s.ouID, claims.Additional["ouId"])
 	s.Assert().NotContains(claims.Additional, "description", "non-allow-listed schema attribute must be excluded")

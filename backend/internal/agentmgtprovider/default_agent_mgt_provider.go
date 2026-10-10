@@ -120,7 +120,6 @@ func toProviderAgent(resp *model.AgentCompleteResponse) *providers.Agent {
 		OUID:        resp.OUID,
 		OUHandle:    resp.OUHandle,
 		Type:        resp.Type,
-		Name:        resp.Name,
 		Description: resp.Description,
 		LogoURL:     resp.LogoURL,
 		Owner:       resp.Owner,

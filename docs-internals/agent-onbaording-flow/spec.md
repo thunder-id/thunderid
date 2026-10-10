@@ -19,7 +19,7 @@ Agent self-registration, changes to agent editing, and the complete replacement 
 
 The entity provider exposes operations on the common entity representation. Using its creation operation from a flow is sufficient to persist an entity, but does not establish that the complete category-specific resource has been created.
 
-For an agent, provisioning must also create and configure its inbound client and authentication profile. It must apply agent rules such as name validation, owner resolution, credential generation, and inbound authentication validation. Calling the entity provider alone would bypass that work. Calling the inbound services separately from the executor would make the executor another owner of the agent creation process, including its failure handling.
+For an agent, provisioning must also create and configure its inbound client and authentication profile. It must apply agent rules such as owner resolution, credential generation, and inbound authentication validation. Calling the entity provider alone would bypass that work. Calling the inbound services separately from the executor would make the executor another owner of the agent creation process, including its failure handling.
 
 The same problem applies to users even though their creation does not require the agent's inbound resources. ThunderID already has a user management service. Keeping flow creation below that service would require user-specific rules to be repeated in executors or would leave different creation entry points with different validation.
 
@@ -170,32 +170,26 @@ The flow builder's input-type picker for executor inputs does not offer `USER_SE
 
 ### Collect and validate agent information
 
-Agent information has two sources of definition. System attributes, including the agent name, belong to the agent management model. Schema attributes belong to the selected agent type and may differ between deployments. The flow will collect these through separate prompts so that each has a correction path appropriate to its validation owner.
-
-#### Agent name and system-attribute validation
-
-The flow will collect the required agent name in a dedicated name prompt. The name is an agent system attribute, not an attribute defined by the agent schema. It must therefore be collected independently of the schema-driven details prompt.
-
-After the name is submitted, the flow will proceed to `ProvisioningExecutor`. Once the required information is available, that executor will call the agent management provider, which will delegate creation to the agent service. The agent service will validate system attributes, including the name and its uniqueness. These rules will remain in the service so that flow-based and direct API creation use the same business validation.
-
-The provisioning node's failure connection will return to the name prompt. This gives the administrator a place to correct a name rejected by the agent service and resubmit it. The flow must preserve the service error and previously collected details. This connection is the default flow's correction route; it does not mean every provisioning failure is a name error or can be resolved by editing the name.
+Agent information is defined by the selected agent type's schema, which may differ between deployments. The agent name is one of those schema attributes: the `default` agent type declares `name` as a required, unique string and as its display attribute. A few management fields, such as the owner, description and logo, are not schema attributes and are collected separately. Because `name` is the display attribute, the agent APIs return it as `display` when `include=display` is requested, and every consumer shows `display` and falls back to the agent ID when the schema declares no display attribute or the agent has no value for it, exactly as for users.
 
 #### Schema attributes and their correction path
 
-A separate details prompt will collect attributes defined by the resolved agent schema. Required attributes must be supplied before creation. The flow may also request optional attributes, and schema enumeration values will supply choices where appropriate. Changing an agent schema must not require changing the Console page's field definitions.
+One details prompt will collect every attribute defined by the resolved agent schema, including the name. Required attributes must be supplied before creation. The flow may also request optional attributes, and schema enumeration values will supply choices where appropriate. Changing an agent schema must not require changing the Console page's field definitions.
 
-When provisioning needs schema information, its incomplete connection will lead to the details prompt. Submission from that prompt will pass through `AttributeUniquenessValidator` before returning to provisioning. The validator will check supplied values for attributes marked unique in the selected schema. A conflict will return to the details prompt so the administrator can correct the affected schema attribute separately from the agent name.
+When provisioning needs schema information, its incomplete connection will lead to the details prompt. Submission from that prompt will pass through `AttributeUniquenessValidator` before provisioning. The validator will check supplied values for attributes marked unique in the selected schema, which includes the name. A conflict will return to the details prompt with the conflicting attribute identified, so the administrator can correct it, the name included, together with the other details.
 
-The validator is a schema-attribute uniqueness check, not a replacement for all schema validation. The management-service creation path will remain responsible for accepting or rejecting the complete request, including conflicts that arise after the preliminary check.
+The validator is a schema-attribute uniqueness check, not a replacement for all schema validation. `ProvisioningExecutor` will call the agent management provider, which will delegate creation to the agent service. The entity service validates the attributes against the agent type, so required and unique attributes are enforced the same way for flow-based and direct API creation, including conflicts that arise after the preliminary check.
+
+The provisioning node's failure connection will return to the details prompt. This gives the administrator a place to correct values rejected during creation and resubmit them. The flow must preserve the service error and previously collected details. This connection is the default flow's correction route; it does not mean every provisioning failure can be resolved by editing the details.
 
 | Connection | Purpose |
 |---|---|
-| Name prompt to provisioning | Submit the system attribute and attempt to advance creation. |
+| Owner resolution to provisioning | Let provisioning resolve the schema inputs and their enum choices before any prompt is shown. |
 | Provisioning incomplete to details prompt | Collect outstanding schema information. |
 | Details prompt to attribute uniqueness validator | Check unique schema attributes before creation. |
 | Uniqueness validator incomplete to details prompt | Correct a conflicting schema attribute. |
 | Uniqueness validator success to provisioning | Continue creation with the collected details. |
-| Provisioning failure to name prompt | Present service validation errors and support correction of the agent name. |
+| Provisioning failure to details prompt | Present service validation errors and support correction of the details. |
 
 #### Other collected information
 
@@ -203,7 +197,7 @@ Owner selection will use the separate verification step described above. Descrip
 
 A custom flow may also collect delegation intent and callback URIs. A delegated agent must supply callback URIs before creation; an absent delegation choice will mean a non-delegated agent. An unreadable delegation value must produce an error rather than silently change the requested behavior. Inbound configuration validation will remain with the management services.
 
-The schema details prompt may be unnecessary when no schema information is outstanding. An agent with a valid name and no supplied optional schema attributes must still be eligible for creation. The flow must not require an artificial schema attribute merely to establish that agent information has been collected.
+An agent that supplies its required attributes and no optional schema attributes must still be eligible for creation. The flow must not require an artificial schema attribute merely to establish that agent information has been collected.
 
 ### Uniqueness and existing entities
 
@@ -213,7 +207,7 @@ This is an early correction step. Management-service validation will remain auth
 
 Existing-entity and cross-OU provisioning behavior will remain shared. With cross-OU provisioning disabled, an existing identity must follow the existing skip, correction, or failure behavior for the flow type. With it enabled, provisioning must resolve a target OU and refuse another matching identity in that target.
 
-The retained entity provider's identification methods do not receive a category or OU argument. Selecting agent mode changes the schema and error context; it does not, by itself, make those lookups category- or OU-scoped. This feature does not promise a new uniqueness namespace or complete the wider entity-identification refactor.
+Identification in agent mode is scoped to the agent category: the uniqueness validator and the provisioning node look up existing entities through the entity provider's category-scoped identification, so an agent name can equal an application name while two agents cannot share one. User mode keeps the category-neutral lookup. Lookups are not scoped by OU.
 
 ### Create the complete resource
 
@@ -264,10 +258,8 @@ flowchart TD
 
     OWNER -->|Input required| OWNER_PROMPT[Select owner]
     OWNER_PROMPT -.-> OWNER
-    OWNER -->|Resolved or omitted| NAME[Enter agent name]
-
-    NAME --> PROVISION[Provisioning Executor]
-    PROVISION -->|Schema input required| DETAILS[Enter schema attributes]
+    OWNER -->|Resolved or omitted| PROVISION[Provisioning Executor]
+    PROVISION -->|Schema input required| DETAILS[Enter name and schema attributes]
     DETAILS --> UNIQUE[Attribute Uniqueness Validator]
     UNIQUE -->|Conflict| DETAILS
     UNIQUE -->|Valid| PROVISION
@@ -288,7 +280,7 @@ flowchart TD
     ENTITY --> INBOUND
     INBOUND --> RESULT{Creation result}
 
-    RESULT -.->|Failure| NAME
+    RESULT -.->|Failure| DETAILS
     RESULT -->|Success| CREDENTIALS[Show agent ID and client credentials]
     CREDENTIALS --> END([Complete])
 
@@ -301,7 +293,7 @@ flowchart TD
     classDef terminal fill:#eceff1,stroke:#546e7a,color:#263238,stroke-width:2px
 
     class PERM,TYPE,OU,OWNER,PROVISION,UNIQUE execution
-    class TYPE_PROMPT,OU_PROMPT,OWNER_PROMPT,NAME,DETAILS prompt
+    class TYPE_PROMPT,OU_PROMPT,OWNER_PROMPT,DETAILS prompt
     class PROVIDER,SERVICE management
     class ENTITY,INBOUND resource
     class RESULT decision
@@ -309,17 +301,17 @@ flowchart TD
     class START,END terminal
 ```
 
-The flow keeps orchestration in the executor layer and creation ownership in the management layer. `ProvisioningExecutor` collects the flow result and calls `AgentMgtProvider` only when the required information is available. The provider delegates to the agent service, which validates the system attributes and coordinates the entity, inbound client, and authentication profile. A successful service result supplies the identifiers and secret used by the credentials prompt.
+The flow keeps orchestration in the executor layer and creation ownership in the management layer. `ProvisioningExecutor` collects the flow result and calls `AgentMgtProvider` only when the required information is available. The provider delegates to the agent service, which validates the management fields and coordinates the entity, inbound client, and authentication profile. A successful service result supplies the identifiers and secret used by the credentials prompt.
 
 1. Validate the administrator's permission.
 2. Resolve the agent schema type, initially restricted to the `default` agent type.
 3. Resolve the target OU.
 4. Resolve the owner.
-5. Collect the agent name.
-6. Run agent provisioning, requesting outstanding schema attributes through the details prompt and checking submitted unique attributes before retrying creation.
+5. Run agent provisioning, which asks for the name and the other schema attributes through the details prompt, carrying the choices of enumerated attributes.
+6. Check the submitted unique attributes before creation and create the agent.
 7. Display the created agent's identifiers and client secret, then finish the flow.
 
-The provisioning node will set `mode: agent` and `includeOptional: true`. Its incomplete path will return to the details prompt, and its failure path will return to the separate name prompt with the service error, supporting correction of system attributes validated during agent creation. The uniqueness validator will also use agent mode. The details prompt will submit through that validator, whose incomplete path will return to the same details prompt for schema-attribute correction and whose success path will return to provisioning. The validator will declare no failure connection of its own.
+The provisioning node will set `mode: agent` and `includeOptional: true`. Its incomplete path will return to the details prompt, and its failure path will return to the details prompt with the service error, supporting correction of the attributes validated during agent creation. The uniqueness validator will also use agent mode. The details prompt will submit through that validator, whose incomplete path will return to the same details prompt for schema-attribute correction and whose success path will return to provisioning. The validator will declare no failure connection of its own.
 
 The default flow will create a non-delegated agent unless delegation input is added. Flow authors will be able to add the delegation widget and collect callback URIs without changing the Console creation page. The flow will determine screen order, branching, and which optional details are requested.
 
@@ -351,7 +343,7 @@ The owner step will follow this layout:
 
 ![Owner selection screen with a heading, a user selector defaulted to the signed-in user, and a Continue action.](assets/agent-onboarding-owner-step.png)
 
-The name and details prompts will use the same page shell, with fields and labels supplied by the flow. Their number and order will not be hardcoded into a wizard model. Read failures will appear where the missing content belongs, and submission failures will remain visible beside the current step. A submission failure will show the message the flow engine returned, which arrives with its parameters already substituted and therefore already names the agent category. The page will not re-resolve that message from the error code. A response carrying no readable message will fall back to a generic step-failure string from the Console catalog.
+The details prompt will use the same page shell, with fields and labels supplied by the flow. Their number and order will not be hardcoded into a wizard model. Read failures will appear where the missing content belongs, and submission failures will remain visible beside the current step. A submission failure will show the message the flow engine returned, which arrives with its parameters already substituted and therefore already names the agent category. The page will not re-resolve that message from the error code. A response carrying no readable message will fall back to a generic step-failure string from the Console catalog.
 
 Breadcrumbs will derive from visited step headings. Returning to a previously visited heading will trim the trail. Only the first breadcrumb will restart the run; other breadcrumbs will not imply that the engine supports backward navigation. Since branches and dynamic prompts can change the number of screens, progress will be an activity indication rather than a fixed step count.
 
@@ -374,7 +366,7 @@ The builder will expose the flow capabilities through its existing resource pane
 | Attribute Uniqueness Validator | Select the category whose schema defines the unique attributes. |
 | Owner Resolution widget | Compose the owner prompt and resolver. |
 | Agent Delegation widget | Collect delegation intent and callback information. |
-| Agent Onboarding Flow template | Start a flow from the permission check, owner resolution, name and details prompts, provisioning node, and credentials screen. |
+| Agent Onboarding Flow template | Start a flow from the permission check, owner resolution, details prompt, provisioning node, and credentials screen. |
 
 Canvas metadata must distinguish the two provisioning resources by their mode as well as their executor name. Reopening an agent provisioning node must retain its agent label and settings. These resources will use the existing builder panels; a separate agent-specific flow editor is not required.
 
@@ -456,18 +448,18 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC5.4:** Given no selected owner, when creation succeeds, then the authenticated caller owns the agent.
 - **AC5.5:** Given a flow declaring a `USER_SELECT` input, when the flow is validated, then the input type is accepted; and when the Console renders that step, then it lists candidates it sourced itself and submits the selected user's identifier rather than a display value.
 
-### R6. Collect and validate system and schema attributes separately
+### R6. Collect and validate schema attributes, including the name
 
-**Requirement:** The flow must collect the agent name separately from schema attributes and provide correction paths that reflect their different validation responsibilities.
+**Requirement:** The flow must collect the agent name together with the other schema attributes and return to the same prompt to correct any of them.
 
 **Acceptance criteria:**
 
-- **AC6.1:** Given agent onboarding, when information is collected, then the required name is requested through a dedicated prompt and outstanding schema attributes through a separate details prompt.
+- **AC6.1:** Given agent onboarding, when information is collected, then the required name and the other schema attributes are requested through one details prompt.
 - **AC6.2:** Given optional collection is enabled and a string schema attribute has enumerated values, when the details prompt renders, then it offers those values.
-- **AC6.3:** Given a valid agent name and no supplied optional schema attributes, when provisioning runs, then an empty attribute payload alone does not prevent creation.
+- **AC6.3:** Given a valid agent name and no supplied optional schema attributes, when provisioning runs, then creation proceeds with the name as the only attribute.
 - **AC6.4:** Given a submitted details prompt, when the schema uniqueness validator detects a conflict, then its incomplete path returns to the details prompt with the conflicting attribute identified.
 - **AC6.5:** Given a conflict arising after the precheck, when creation runs, then management-service validation rejects it.
-- **AC6.6:** Given a name rejected by the agent service, when the error returns through the provider and provisioning executor, then the provisioning failure path leads to the name prompt with the error and previously collected details preserved.
+- **AC6.6:** Given a name rejected during creation, when the error returns through the provider and provisioning executor, then the provisioning failure path leads to the details prompt with the error and previously collected details preserved.
 - **AC6.7:** Given outstanding schema information, when provisioning cannot proceed, then its incomplete path leads to the details prompt; successful uniqueness validation then returns to provisioning.
 
 ### R7. Create the requested inbound authentication configuration

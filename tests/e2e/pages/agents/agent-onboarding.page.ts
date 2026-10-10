@@ -6,8 +6,8 @@
  *
  * Encapsulates the Console's agent creation page, which has no built-in steps of its own: it runs
  * the administration flow named by `flow.agentOnboardingFlow.defaultHandle` and renders what that
- * flow returns. The shipped flow is owner -> name -> details -> credentials, which is what the
- * methods below step through.
+ * flow returns. The shipped flow is owner -> details -> credentials, where the details step also
+ * collects the name, which is what the methods below step through.
  *
  * Field locators key off the input's `ref`, because the flow adapters set `id={ref}` on the
  * rendered control (see SelectAdapter/TextInputAdapter in frontend/packages/design). That stays
@@ -17,8 +17,7 @@
  * const onboarding = new AgentOnboardingPage(page, baseUrl);
  * await onboarding.open();
  * await onboarding.submitOwnerStep();
- * await onboarding.submitNameStep('zz_e2e_agent_1');
- * await onboarding.submitDetailsStep({ model: 'claude-opus-5' });
+ * await onboarding.submitDetailsStep({ name: 'zz_e2e_agent_1', model: 'claude-opus-5' });
  */
 
 import { expect, Locator, Page } from "@playwright/test";
@@ -105,15 +104,10 @@ export class AgentOnboardingPage extends BasePage {
     await this.submitStep(/^continue$/i);
   }
 
-  async submitNameStep(name: string) {
-    await this.expectStep(/name your agent/i);
-    await this.nameInput.fill(name);
-    await this.submitStep(/^continue$/i);
-  }
-
-  /** Fill the schema-driven detail step. Every field on it is optional. */
-  async submitDetailsStep({ modelProvider, model }: { modelProvider?: RegExp; model?: string }) {
+  /** Fill the schema-driven detail step. The name is required; every other field on it is optional. */
+  async submitDetailsStep({ name, modelProvider, model }: { name: string; modelProvider?: RegExp; model?: string }) {
     await this.expectStep(/agent details/i);
+    await this.nameInput.fill(name);
     if (modelProvider) await this.chooseOption(this.modelProviderSelect, modelProvider);
     if (model) await this.modelInput.fill(model);
     await this.submitStep(/^create agent$/i);

@@ -108,7 +108,9 @@ func (suite *ProvisioningExecutorTestSuite) expectSchemaForProvisioning() {
 func (suite *ProvisioningExecutorTestSuite) expectSchemaForAgentProvisioning() {
 	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
 		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
-		Return([]model.AttributeInfo{{Attribute: "model", Required: false}}, nil).Maybe()
+		Return([]model.AttributeInfo{
+			{Attribute: "name", Required: true}, {Attribute: "model", Required: false},
+		}, nil).Maybe()
 }
 
 func (suite *ProvisioningExecutorTestSuite) createMockIdentifyingExecutor() providers.Executor {
@@ -1364,7 +1366,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 		},
 		UserInputs: map[string]string{
 			"model":        "claude",
-			nameKey:        "support-bot",
+			"name":         "support-bot",
 			descriptionKey: "Handles support tickets",
 			logoURLKey:     "https://example.com/logo.png",
 		},
@@ -1386,12 +1388,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	require.NotNil(suite.T(), received)
 	assert.Equal(suite.T(), testOUID, received.OUID)
 	assert.Equal(suite.T(), testAgentType, received.Type)
-	assert.Equal(suite.T(), "support-bot", received.Name)
 	assert.Equal(suite.T(), "Handles support tickets", received.Description)
 	assert.Equal(suite.T(), "https://example.com/logo.png", received.LogoURL)
 	assert.Equal(suite.T(), "user-owner-1", received.Owner)
-	// Only schema attributes reach the attributes payload.
-	assert.JSONEq(suite.T(), `{"model":"claude"}`, string(received.Attributes))
+	// Only schema attributes reach the attributes payload, and the name is one of them.
+	assert.JSONEq(suite.T(), `{"model":"claude","name":"support-bot"}`, string(received.Attributes))
 
 	assert.Equal(suite.T(), testNewAgentID, resp.AdditionalData[common.DataAgentID])
 	assert.Equal(suite.T(), "client-abc", resp.AdditionalData[common.DataAgentClientID])
@@ -1399,11 +1400,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
 }
 
-// Every attribute on the default agent type is optional, and an agent's name is a column on its
-// record rather than a schema attribute. An agent given only a name therefore reaches the create
-// call with an empty attributes payload, and must not be rejected as having supplied nothing.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOnlyIsNotEmptyProvisioning() {
+// An agent given only a name still provisions: the name is a schema attribute, so it reaches the
+// create call in the attributes payload and is checked for an existing agent first.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOnlyProvisionsWithNameAttribute() {
 	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	var received *providers.Agent
 	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything, mock.Anything).
@@ -1418,7 +1420,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOn
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs: map[string]string{nameKey: "support-bot"},
+		UserInputs: map[string]string{"name": "support-bot"},
 		RuntimeData: map[string]string{
 			ouIDKey:         testOUID,
 			categoryTypeKey: testAgentType,
@@ -1428,14 +1430,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOn
 
 	resp, err := suite.executor.Execute(ctx)
 
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
-
 	assert.NoError(suite.T(), err)
 	require.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	require.NotNil(suite.T(), received)
-	assert.Equal(suite.T(), "support-bot", received.Name)
-	assert.JSONEq(suite.T(), `{}`, string(received.Attributes))
+	assert.JSONEq(suite.T(), `{"name":"support-bot"}`, string(received.Attributes))
 }
 
 // An attribute the schema restricts to a fixed set is offered as a choice. A prompt node that
@@ -1490,7 +1489,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserProvisioning_NoAttri
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeRegistration,
-		UserInputs:  map[string]string{nameKey: "not-a-user-field"},
+		UserInputs:  map[string]string{"name": "not-a-user-field"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testUserType},
 		NodeInputs:  []providers.Input{},
 	}
@@ -1509,6 +1508,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserProvisioning_NoAttri
 // mapping wired to the wrong call would still hand the services a user principal.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_AssignsAsAnAgentPrincipal() {
 	suite.expectSchemaForAgentProvisioning()
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockAgentMgtProvider.On("CreateAgent", mock.Anything, mock.Anything, mock.Anything).
 		Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
 
@@ -1527,14 +1528,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Assign
 			propertyKeyAssignGroup:      "agent-group-id",
 			propertyKeyAssignRole:       "agent-role-id",
 		},
-		UserInputs:  map[string]string{nameKey: "support-bot"},
+		UserInputs:  map[string]string{"name": "support-bot"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 		NodeInputs:  []providers.Input{},
 	}
 
 	resp, err := suite.executor.Execute(ctx)
-
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
@@ -1573,7 +1572,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 				}).
 				Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
 
-			userInputs := map[string]string{"model": "claude", nameKey: "support-bot"}
+			userInputs := map[string]string{"model": "claude", "name": "support-bot"}
 			if tt.input != "" {
 				userInputs[redirectURIsKey] = tt.input
 			}
@@ -1620,7 +1619,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
 		UserInputs: map[string]string{
-			"model": "claude", nameKey: "support-bot", delegatedKey: "yes",
+			"model": "claude", "name": "support-bot", delegatedKey: "yes",
 		},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 	}
@@ -1650,7 +1649,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot", delegatedKey: dataValueTrue},
+		UserInputs:  map[string]string{"model": "claude", "name": "support-bot", delegatedKey: dataValueTrue},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 	}
 
@@ -1690,7 +1689,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot", delegatedKey: dataValueFalse},
+		UserInputs:  map[string]string{"model": "claude", "name": "support-bot", delegatedKey: dataValueFalse},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 	}
 
@@ -1703,7 +1702,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 // Record fields are what provisioning reads off the entity rather than out of its schema, so a
 // flow that collected only one of them still has something to provision.
 func (suite *ProvisioningExecutorTestSuite) TestHasRecordValues() {
-	for _, key := range []string{nameKey, ownerIDKey, delegatedKey, redirectURIsKey} {
+	for _, key := range []string{ownerIDKey, delegatedKey, redirectURIsKey} {
 		suite.Run(key, func() {
 			ctx := &providers.NodeContext{UserInputs: map[string]string{key: "value"}}
 
@@ -1756,7 +1755,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 			// Delegation requires a redirect URI, so it is always supplied here and the table
 			// stays about how the flag itself is parsed.
 			userInputs := map[string]string{
-				"model": "claude", nameKey: "support-bot", redirectURIsKey: "https://example.com/cb",
+				"model": "claude", "name": "support-bot", redirectURIsKey: "https://example.com/cb",
 			}
 			if tt.delegated != "" {
 				userInputs[delegatedKey] = tt.delegated
@@ -1778,7 +1777,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 			require.NotNil(suite.T(), received)
 			assert.Equal(suite.T(), tt.expected, receivedDelegated)
 			// The flag steers the agent's auth shape; it is not one of its attributes.
-			assert.JSONEq(suite.T(), `{"model":"claude"}`, string(received.Attributes))
+			assert.JSONEq(suite.T(), `{"model":"claude","name":"support-bot"}`, string(received.Attributes))
 		})
 	}
 }
@@ -1805,7 +1804,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Surfac
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot"},
+		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 		NodeInputs:  []providers.Input{{Identifier: "model", Type: "string", Required: true}},
 	}
@@ -1848,7 +1847,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentAlreadyExists_Error
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{"username": "newagent", nameKey: "support-bot"},
+		UserInputs:  map[string]string{"username": "newagent", "name": "support-bot"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 		NodeInputs:  []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
@@ -4513,8 +4512,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SystemError_NoSe
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
 }
 
-// The agent service refuses a create without a name, so provisioning asks for one rather than
-// letting the create fail.
+// The name is a required schema attribute, so provisioning asks for it rather than letting the
+// create fail.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameIsRequired() {
 	suite.expectSchemaForAgentProvisioning()
 
@@ -4538,7 +4537,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameIs
 	for _, input := range execResp.Inputs {
 		identifiers = append(identifiers, input.Identifier)
 	}
-	assert.Contains(suite.T(), identifiers, nameKey)
+	assert.Contains(suite.T(), identifiers, "name")
 	// Not delegated, so the redirect URI is not asked for alongside it.
 	assert.NotContains(suite.T(), identifiers, redirectURIsKey)
 }
@@ -4557,7 +4556,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Descri
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{"model": "claude", nameKey: "support-bot"},
+		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 	}
 
@@ -4588,7 +4587,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Ignore
 		// Both the input identifier and the runtime slot are submitted, which the engine merges
 		// verbatim. Neither may stand in for a resolved owner.
 		UserInputs: map[string]string{
-			"model": "claude", nameKey: "support-bot",
+			"model": "claude", "name": "support-bot",
 			ownerKey: "injected-owner", ownerIDKey: "injected-owner-id",
 		},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
@@ -4619,7 +4618,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesRe
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
 		UserInputs: map[string]string{
-			"model": "claude", nameKey: "support-bot", ownerKey: "injected-owner",
+			"model": "claude", "name": "support-bot", ownerKey: "injected-owner",
 		},
 		RuntimeData: map[string]string{
 			ouIDKey: testOUID, categoryTypeKey: testAgentType, ownerIDKey: "resolved-owner",
@@ -4642,7 +4641,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Refuse
 		NodeProperties: map[string]interface{}{
 			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
 		},
-		UserInputs:  map[string]string{nameKey: "support-bot"},
+		UserInputs:  map[string]string{"name": "support-bot"},
 		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
 	}
 

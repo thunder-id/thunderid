@@ -36,9 +36,11 @@ var (
 	// agentSchema is reused from the entity type subsystem. Agents need a type that maps
 	// to a user type so attribute validation and credential extraction work correctly.
 	agentSchema = testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
+		Handle:           "default",
+		DisplayName:      "Default",
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	}
@@ -46,21 +48,21 @@ var (
 	// entityOnlyAgent has no inbound auth fields — only the entity row is created.
 	entityOnlyAgent = Agent{
 		Type:        "default",
-		Name:        "entity-only-agent",
+		Attributes:  agentAttrs("entity-only-agent", nil),
 		Description: "Agent with entity row only",
 	}
 
 	// inboundAgent has an auth flow ID — entity + inbound client rows are created.
 	inboundAgent = Agent{
 		Type:        "default",
-		Name:        "inbound-agent",
+		Attributes:  agentAttrs("inbound-agent", nil),
 		Description: "Agent with inbound auth profile",
 	}
 
 	// oauthAgent has an inbound auth config with CC grant — entity + inbound + OAuth profile rows.
 	oauthAgent = Agent{
 		Type:        "default",
-		Name:        "oauth-agent",
+		Attributes:  agentAttrs("oauth-agent", nil),
 		Description: "Agent with OAuth client credentials profile",
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -132,7 +134,7 @@ func (ts *AgentAPITestSuite) SetupSuite() {
 	id, err := createAgent(primaryAgent)
 	ts.Require().NoError(err, "Failed to create primary entity-only agent")
 	createdAgentID = id
-	createdAgentName = entityOnlyAgent.Name
+	createdAgentName = entityOnlyAgent.AttrName()
 }
 
 // TearDownSuite removes all resources created during the suite.
@@ -190,7 +192,7 @@ func (ts *AgentAPITestSuite) TestAgentListing() {
 	for _, a := range listResp.Agents {
 		if a.ID == createdAgentID {
 			found = true
-			ts.Assert().Equal(createdAgentName, a.Name)
+			ts.Assert().Equal(createdAgentName, a.AttrName())
 			break
 		}
 	}
@@ -233,7 +235,7 @@ func (ts *AgentAPITestSuite) TestAgentGetByID() {
 	var agent Agent
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&agent))
 	ts.Assert().Equal(createdAgentID, agent.ID)
-	ts.Assert().Equal(createdAgentName, agent.Name)
+	ts.Assert().Equal(createdAgentName, agent.AttrName())
 	ts.Assert().Equal(testOUID, agent.OUID)
 	ts.Assert().Equal("default", agent.Type)
 	// GET must never return clientSecret
@@ -250,13 +252,69 @@ func (ts *AgentAPITestSuite) TestAgentGetByID_NotFound() {
 	ts.Assert().Equal(http.StatusNotFound, resp.StatusCode)
 }
 
+// TestAgentDisplay verifies that include=display resolves the agent's display value from the
+// schema's display attribute (name on the default agent type), as it does for users.
+func (ts *AgentAPITestSuite) TestAgentDisplay() {
+	resp, err := doGet(testServerURL + agentBasePath + "/" + createdAgentID + "?include=display")
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+	var agent Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&agent))
+	ts.Assert().Equal(createdAgentName, agent.Display)
+
+	plain, err := doGet(testServerURL + agentBasePath + "/" + createdAgentID)
+	ts.Require().NoError(err)
+	defer plain.Body.Close()
+	var withoutDisplay Agent
+	ts.Require().NoError(json.NewDecoder(plain.Body).Decode(&withoutDisplay))
+	ts.Assert().Empty(withoutDisplay.Display, "display is only returned when requested")
+
+	listResp, err := doGet(testServerURL + agentBasePath + "?include=display&limit=100")
+	ts.Require().NoError(err)
+	defer listResp.Body.Close()
+	var list struct {
+		Agents []Agent `json:"agents"`
+	}
+	ts.Require().NoError(json.NewDecoder(listResp.Body).Decode(&list))
+	found := false
+	for _, a := range list.Agents {
+		if a.ID == createdAgentID {
+			found = true
+			ts.Assert().Equal(createdAgentName, a.Display)
+		}
+	}
+	ts.Assert().True(found, "the created agent must be listed")
+}
+
+// TestAgentDisplay_FallsBackToIDWithoutDisplayAttribute verifies the user-like fallback: when the
+// agent type no longer declares a display attribute, the agent's display value is its ID.
+func (ts *AgentAPITestSuite) TestAgentDisplay_FallsBackToIDWithoutDisplayAttribute() {
+	noDisplay := agentSchema
+	noDisplay.SystemAttributes = nil
+	_, err := testutils.CreateAgentType(noDisplay)
+	ts.Require().NoError(err, "Failed to remove the display attribute from the agent type")
+	defer func() {
+		_, restoreErr := testutils.CreateAgentType(agentSchema)
+		ts.Require().NoError(restoreErr, "Failed to restore the display attribute")
+	}()
+
+	resp, err := doGet(testServerURL + agentBasePath + "/" + createdAgentID + "?include=display")
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+	var agent Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&agent))
+	ts.Assert().Equal(createdAgentID, agent.Display)
+}
+
 func (ts *AgentAPITestSuite) TestAgentUpdate() {
 	ts.Require().NotEmpty(createdAgentID)
 
 	updatePayload := Agent{
 		OUID:        testOUID,
 		Type:        "default",
-		Name:        "entity-only-agent-updated",
+		Attributes:  agentAttrs("entity-only-agent-updated", nil),
 		Description: "Updated description",
 	}
 	body, _ := json.Marshal(updatePayload)
@@ -272,11 +330,16 @@ func (ts *AgentAPITestSuite) TestAgentUpdate() {
 
 	var updated Agent
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
-	ts.Assert().Equal("entity-only-agent-updated", updated.Name)
+	ts.Assert().Equal("entity-only-agent-updated", updated.AttrName())
 	ts.Assert().Equal("Updated description", updated.Description)
 
 	// Restore the name so subsequent tests see the expected state.
-	restore := Agent{OUID: testOUID, Type: "default", Name: createdAgentName, Description: "Agent with entity row only"}
+	restore := Agent{
+		OUID:        testOUID,
+		Type:        "default",
+		Attributes:  agentAttrs(createdAgentName, nil),
+		Description: "Agent with entity row only",
+	}
 	restoreBody, _ := json.Marshal(restore)
 	req2, err := http.NewRequest("PUT", testServerURL+agentBasePath+"/"+createdAgentID, bytes.NewReader(restoreBody))
 	ts.Require().NoError(err)
@@ -288,12 +351,12 @@ func (ts *AgentAPITestSuite) TestAgentUpdate() {
 
 func (ts *AgentAPITestSuite) TestAgentUpdate_NameConflict() {
 	// Create a second agent, then try to rename it to the primary agent's name.
-	other := Agent{OUID: testOUID, Type: "default", Name: "agent-conflict-temp"}
+	other := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("agent-conflict-temp", nil)}
 	otherID, err := createAgent(other)
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(otherID) }()
 
-	updatePayload := Agent{Type: "default", Name: createdAgentName}
+	updatePayload := Agent{Type: "default", Attributes: agentAttrs(createdAgentName, nil)}
 	body, _ := json.Marshal(updatePayload)
 	client := testutils.GetHTTPClient()
 	req, err := http.NewRequest("PUT", testServerURL+agentBasePath+"/"+otherID, bytes.NewReader(body))
@@ -304,11 +367,12 @@ func (ts *AgentAPITestSuite) TestAgentUpdate_NameConflict() {
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 	ts.Assert().Equal(http.StatusConflict, resp.StatusCode)
+	ts.Assert().Equal("AGT-1014", errorCode(resp))
 }
 
 func (ts *AgentAPITestSuite) TestAgentDelete() {
 	// Create a transient agent to delete.
-	transient := Agent{OUID: testOUID, Type: "default", Name: "agent-to-delete"}
+	transient := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("agent-to-delete", nil)}
 	id, err := createAgent(transient)
 	ts.Require().NoError(err)
 
@@ -331,7 +395,7 @@ func (ts *AgentAPITestSuite) TestAgentDelete() {
 // --- creation mode: entity only ---
 
 func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
-	agent := Agent{OUID: testOUID, Type: "default", Name: "create-entity-only"}
+	agent := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("create-entity-only", nil)}
 	id, err := createAgent(agent)
 	ts.Require().NoError(err, "entity-only agent creation must succeed")
 	defer func() { _ = deleteAgent(id) }()
@@ -414,15 +478,16 @@ func (ts *AgentAPITestSuite) TestCreateAgentWithOAuth() {
 // --- creation validation ---
 
 func (ts *AgentAPITestSuite) TestCreateAgent_MissingName() {
-	agent := Agent{OUID: testOUID, Type: "default"}
+	agent := Agent{OUID: testOUID, Type: "default", Attributes: json.RawMessage(`{}`)}
 	resp, err := doPost(testServerURL+agentBasePath, agent)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 	ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
+	ts.Assert().Equal("AGT-1015", errorCode(resp))
 }
 
 func (ts *AgentAPITestSuite) TestCreateAgent_MissingType() {
-	agent := Agent{OUID: testOUID, Name: "no-type-agent"}
+	agent := Agent{OUID: testOUID, Attributes: agentAttrs("no-type-agent", nil)}
 	resp, err := doPost(testServerURL+agentBasePath, agent)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
@@ -431,11 +496,12 @@ func (ts *AgentAPITestSuite) TestCreateAgent_MissingType() {
 
 func (ts *AgentAPITestSuite) TestCreateAgent_DuplicateName() {
 	// Using the primary agent name which already exists.
-	dup := Agent{OUID: testOUID, Type: "default", Name: createdAgentName}
+	dup := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs(createdAgentName, nil)}
 	resp, err := doPost(testServerURL+agentBasePath, dup)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
 	ts.Assert().Equal(http.StatusConflict, resp.StatusCode)
+	ts.Assert().Equal("AGT-1014", errorCode(resp))
 }
 
 // --- group membership ---
@@ -456,7 +522,7 @@ func (ts *AgentAPITestSuite) TestAgentGroups_EmptyMembership() {
 
 func (ts *AgentAPITestSuite) TestAgentGroupMembership() {
 	// Create agent to add to a group.
-	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Name: "group-member-agent"})
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("group-member-agent", nil)})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
@@ -502,7 +568,7 @@ func (ts *AgentAPITestSuite) TestAgentGroupMembership() {
 
 func (ts *AgentAPITestSuite) TestAgentGroupMembership_AddViaAPI() {
 	// Create agent and an empty group.
-	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Name: "add-via-api-agent"})
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("add-via-api-agent", nil)})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
@@ -539,7 +605,7 @@ func (ts *AgentAPITestSuite) TestAgentGroupMembership_AddViaAPI() {
 
 func (ts *AgentAPITestSuite) TestAgentRoleAssignment() {
 	// Create agent.
-	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Name: "role-assigned-agent"})
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("role-assigned-agent", nil)})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
@@ -564,7 +630,7 @@ func (ts *AgentAPITestSuite) TestAgentRoleAssignment() {
 
 func (ts *AgentAPITestSuite) TestAgentRoleAssignment_ViaGroup() {
 	// Create agent and add it to a group.
-	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Name: "group-role-agent"})
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("group-role-agent", nil)})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
@@ -611,7 +677,7 @@ func (ts *AgentAPITestSuite) TestAgentRoleAssignment_ViaGroup() {
 
 func (ts *AgentAPITestSuite) TestUpdateAgent_AddInboundProfile() {
 	// Start with entity-only.
-	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Name: "transition-agent"})
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("transition-agent", nil)})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
@@ -619,7 +685,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AddInboundProfile() {
 	withInbound := Agent{
 		OUID:       testOUID,
 		Type:       "default",
-		Name:       "transition-agent",
+		Attributes: agentAttrs("transition-agent", nil),
 		AuthFlowID: defaultAuthFlowID,
 	}
 	body, _ := json.Marshal(withInbound)
@@ -644,14 +710,14 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_RemoveInboundProfile() {
 	agentID, err := createAgent(Agent{
 		OUID:       testOUID,
 		Type:       "default",
-		Name:       "strip-inbound-agent",
+		Attributes: agentAttrs("strip-inbound-agent", nil),
 		AuthFlowID: defaultAuthFlowID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
 	// Update dropping all inbound fields.
-	stripped := Agent{OUID: testOUID, Type: "default", Name: "strip-inbound-agent"}
+	stripped := Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("strip-inbound-agent", nil)}
 	body, _ := json.Marshal(stripped)
 	client := testutils.GetHTTPClient()
 	req, err := http.NewRequest("PUT", testServerURL+agentBasePath+"/"+agentID, bytes.NewReader(body))
@@ -680,7 +746,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowHandleOnly_ResolvesToFlowID
 	agentID, err := createAgent(Agent{
 		OUID:       testOUID,
 		Type:       "default",
-		Name:       "handle-only-agent",
+		Attributes: agentAttrs("handle-only-agent", nil),
 		AuthFlowID: handleAuthFlowID1,
 	})
 	ts.Require().NoError(err)
@@ -689,7 +755,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowHandleOnly_ResolvesToFlowID
 	resp, err := putAgentRaw(agentID, map[string]interface{}{
 		"ouId":           testOUID,
 		"type":           "default",
-		"name":           "handle-only-agent",
+		"attributes":     map[string]interface{}{"name": "handle-only-agent"},
 		"authFlowHandle": handleAuthFlowHandle1,
 	})
 	ts.Require().NoError(err)
@@ -719,7 +785,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowHandleRepointed_SwitchesFlo
 	agentID, err := createAgent(Agent{
 		OUID:       testOUID,
 		Type:       "default",
-		Name:       "handle-repoint-agent",
+		Attributes: agentAttrs("handle-repoint-agent", nil),
 		AuthFlowID: handleAuthFlowID1,
 	})
 	ts.Require().NoError(err)
@@ -728,7 +794,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowHandleRepointed_SwitchesFlo
 	resp, err := putAgentRaw(agentID, map[string]interface{}{
 		"ouId":           testOUID,
 		"type":           "default",
-		"name":           "handle-repoint-agent",
+		"attributes":     map[string]interface{}{"name": "handle-repoint-agent"},
 		"authFlowHandle": handleAuthFlowHandle2,
 	})
 	ts.Require().NoError(err)
@@ -747,7 +813,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_UnresolvableAuthFlowHandle_Preserve
 	agentID, err := createAgent(Agent{
 		OUID:       testOUID,
 		Type:       "default",
-		Name:       "handle-unresolvable-agent",
+		Attributes: agentAttrs("handle-unresolvable-agent", nil),
 		AuthFlowID: handleAuthFlowID1,
 	})
 	ts.Require().NoError(err)
@@ -756,7 +822,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_UnresolvableAuthFlowHandle_Preserve
 	resp, err := putAgentRaw(agentID, map[string]interface{}{
 		"ouId":           testOUID,
 		"type":           "default",
-		"name":           "handle-unresolvable-agent",
+		"attributes":     map[string]interface{}{"name": "handle-unresolvable-agent"},
 		"authFlowHandle": "agent-api-nonexistent-flow-handle",
 	})
 	ts.Require().NoError(err)
@@ -778,9 +844,9 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_UnresolvableAuthFlowHandle_Preserve
 // explicit ID wins and the handle is ignored.
 func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowIDTakesPrecedenceOverHandle() {
 	agentID, err := createAgent(Agent{
-		OUID: testOUID,
-		Type: "default",
-		Name: "handle-precedence-agent",
+		OUID:       testOUID,
+		Type:       "default",
+		Attributes: agentAttrs("handle-precedence-agent", nil),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
@@ -788,7 +854,7 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_AuthFlowIDTakesPrecedenceOverHandle
 	resp, err := putAgentRaw(agentID, map[string]interface{}{
 		"ouId":           testOUID,
 		"type":           "default",
-		"name":           "handle-precedence-agent",
+		"attributes":     map[string]interface{}{"name": "handle-precedence-agent"},
 		"authFlowId":     handleAuthFlowID1,
 		"authFlowHandle": handleAuthFlowHandle2,
 	})
@@ -892,6 +958,15 @@ func readBody(resp *http.Response) string {
 	return string(b)
 }
 
+// errorCode reads the error code from an error response body and leaves the body readable.
+func errorCode(resp *http.Response) string {
+	var e struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal([]byte(readBody(resp)), &e)
+	return e.Code
+}
+
 func readBodyBytes(resp *http.Response) string {
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body = io.NopCloser(bytes.NewReader(b))
@@ -914,6 +989,7 @@ var (
 		Handle:      "default",
 		DisplayName: "Default",
 		Schema: map[string]interface{}{
+			"name":   map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"region": map[string]interface{}{"type": "string"},
 			"tier":   map[string]interface{}{"type": "string"},
 		},
@@ -970,8 +1046,7 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_CreateWithAttributes() {
 	agent := Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "attr-create-agent",
-		Attributes: attrs,
+		Attributes: withName("attr-create-agent", attrs),
 	}
 
 	resp, err := doPost(testServerURL+agentBasePath, agent)
@@ -1003,8 +1078,7 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_UpdateAttributes() {
 	agentID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "attr-update-agent",
-		Attributes: json.RawMessage(`{"region":"eu-west","tier":"standard"}`),
+		Attributes: withName("attr-update-agent", json.RawMessage(`{"region":"eu-west","tier":"standard"}`)),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
@@ -1012,8 +1086,7 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_UpdateAttributes() {
 	updated := Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "attr-update-agent",
-		Attributes: json.RawMessage(`{"region":"ap-south","tier":"enterprise"}`),
+		Attributes: withName("attr-update-agent", json.RawMessage(`{"region":"ap-south","tier":"enterprise"}`)),
 	}
 	body, _ := json.Marshal(updated)
 	client := testutils.GetHTTPClient()
@@ -1046,8 +1119,7 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_FilterByAttribute() {
 	idA, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "filter-agent-alpha",
-		Attributes: json.RawMessage(`{"region":"filter-target","tier":"gold"}`),
+		Attributes: withName("filter-agent-alpha", json.RawMessage(`{"region":"filter-target","tier":"gold"}`)),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(idA) }()
@@ -1055,8 +1127,7 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_FilterByAttribute() {
 	idB, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "filter-agent-beta",
-		Attributes: json.RawMessage(`{"region":"other-region","tier":"silver"}`),
+		Attributes: withName("filter-agent-beta", json.RawMessage(`{"region":"other-region","tier":"silver"}`)),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(idB) }()
@@ -1084,13 +1155,12 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_NullifyAttributes() {
 	agentID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "attr-nullify-agent",
-		Attributes: json.RawMessage(`{"region":"to-clear","tier":"basic"}`),
+		Attributes: withName("attr-nullify-agent", json.RawMessage(`{"region":"to-clear","tier":"basic"}`)),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
 
-	stripped := Agent{OUID: ts.ouID, Type: "default", Name: "attr-nullify-agent"}
+	stripped := Agent{OUID: ts.ouID, Type: "default", Attributes: agentAttrs("attr-nullify-agent", nil)}
 	body, _ := json.Marshal(stripped)
 	client := testutils.GetHTTPClient()
 	req, err := http.NewRequest("PUT", testServerURL+agentBasePath+"/"+agentID, bytes.NewReader(body))
@@ -1108,5 +1178,6 @@ func (ts *AgentAttributesTestSuite) TestAgentAttributes_NullifyAttributes() {
 
 	var fetched Agent
 	ts.Require().NoError(json.NewDecoder(getResp.Body).Decode(&fetched))
-	ts.Assert().Empty(fetched.Attributes, "Attributes should be empty after nullify update")
+	ts.Assert().JSONEq(`{"name":"attr-nullify-agent"}`, string(fetched.Attributes),
+		"only the name should remain after the nullify update")
 }

@@ -94,6 +94,7 @@ func (ts *ExportEntityResourcesTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})

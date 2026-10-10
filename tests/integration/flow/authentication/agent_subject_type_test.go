@@ -68,6 +68,11 @@ func (ts *AgentSubjectTypeTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
+			"name": map[string]interface{}{
+				"type":     "string",
+				"required": true,
+				"unique":   true,
+			},
 			"agent_username": map[string]interface{}{
 				"type":     "string",
 				"required": true,
@@ -80,10 +85,10 @@ func (ts *AgentSubjectTypeTestSuite) SetupSuite() {
 
 	agentID, err := testutils.CreateAgent(testutils.Agent{
 		Type:        agentSubjectAgentType,
-		Name:        "agent-subject-type-bot",
 		Description: "Agent that signs in to the test applications",
 		OUID:        ts.ouID,
 		Attributes: map[string]interface{}{
+			"name":           "agent-subject-type-bot",
 			"agent_username": agentSubjectAgentUsername,
 			"password":       agentSubjectAgentPassword,
 		},

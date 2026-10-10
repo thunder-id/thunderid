@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -39,6 +40,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_CapturesTheGeneratedSecret()
 	svc, mockEntity, mockInbound, _, _ := suite.setupService()
 	capturer := &recordingCapturer{}
 	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
 		Return(buildAgentEntityFixture(testAgentName, "", "", "cid-xxx"), nil)
@@ -47,9 +49,9 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_CapturesTheGeneratedSecret()
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
-		Name:               testAgentName,
 		Type:               testAgentType,
 		OUID:               testOUID,
+		Attributes:         json.RawMessage(`{"name":"test-agent"}`),
 		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
 			Type: providers.OAuthInboundAuthType,
@@ -63,7 +65,7 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_CapturesTheGeneratedSecret()
 
 	agent := capturer.captured(suite)
 	assert.Equal(suite.T(), resp.ID, agent.ID)
-	assert.Equal(suite.T(), testAgentName, agent.Name)
+	assert.Equal(suite.T(), testAgentName, agent.Display)
 	suite.Require().Len(agent.InboundAuthConfig, 1)
 	assert.Equal(suite.T(), resp.InboundAuthConfig[0].OAuthConfig.ClientID,
 		agent.InboundAuthConfig[0].OAuthConfig.ClientID)
@@ -77,18 +79,33 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CapturesTheUpdatedAgent() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 	capturer := &recordingCapturer{}
 	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "name")
 	clearMockCalls(mockEntity, "GetEntity")
 	mockEntity.On("GetEntity", mock.Anything, testAgentID).
 		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
 
 	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name: testAgentName, Type: testAgentType,
+		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
 	})
 	suite.Require().Nil(svcErr)
 
 	agent := capturer.captured(suite)
 	assert.Equal(suite.T(), testAgentID, agent.ID)
-	assert.Equal(suite.T(), testAgentName, agent.Name)
+	assert.Equal(suite.T(), testAgentName, agent.Display)
+}
+
+// An agent whose type has no display attribute is captured under its ID, the name its export uses.
+func (suite *AgentServiceTestSuite) TestCapture_FallsBackToTheIDWithoutADisplayAttribute() {
+	svc, _, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	suite.withDisplayPaths(svc, "")
+
+	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
+		ID: testAgentID, Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+	})
+
+	assert.Equal(suite.T(), testAgentID, capturer.captured(suite).Display)
 }
 
 // A create that fails captures nothing.
@@ -108,6 +125,6 @@ func (suite *AgentServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	svc, _, _, _, _ := suite.setupService()
 
 	assert.NotPanics(suite.T(), func() {
-		svc.captureValues(context.Background(), &model.AgentCompleteResponse{Name: testAgentName})
+		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID})
 	})
 }

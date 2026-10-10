@@ -12,6 +12,10 @@ const mockLogger = {
   debug: vi.fn(),
 };
 
+const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => mockLogger,
 }));
@@ -98,6 +102,7 @@ import ConfigureExport from '../ConfigureExport';
 
 afterEach(() => {
   vi.clearAllMocks();
+  mockUseGetAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ConfigureExport', () => {
@@ -217,11 +222,85 @@ name: Valid Flow
 ---
 resource_type: agent
 id: agent-1
-name: Test Agent
 description: A test agent
+attributes:
+  name: Test Agent
 `;
       render(<ConfigureExport resources={agentYaml} />);
       expect(screen.getByTestId('icon-bot')).toBeInTheDocument();
+    });
+
+    const expandAgentsRow = async (): Promise<void> => {
+      await userEvent.click(screen.getByText('Agents').closest('tr')!);
+    };
+
+    it('labels an agent with the display attribute of the agent type in the same bundle', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Calendar Agent
+---
+resource_type: agent_type
+handle: default
+displayName: Default
+systemAttributes:
+  display: name
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Calendar Agent')).toBeInTheDocument();
+      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: false});
+    });
+
+    it('labels an agent from a server type when the bundle has no agent types', async () => {
+      mockUseGetAgentTypes.mockReturnValue({
+        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      } as never);
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Server Resolved
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Server Resolved')).toBeInTheDocument();
+      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+    });
+
+    it('falls back to the agent id when no type resolves a label', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+id: agent-1
+type: default
+attributes:
+  name: Hidden
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('agent-1')).toBeInTheDocument();
+      expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
+    });
+
+    it('falls back to the unnamed label when an agent has neither a label nor an id', async () => {
+      const yamlContent = `
+---
+resource_type: agent
+type: default
+`;
+      render(<ConfigureExport resources={yamlContent} />);
+      await expandAgentsRow();
+
+      expect(screen.getByText('Unnamed Agent')).toBeInTheDocument();
     });
 
     it('parses connection resources and renders a connections section', () => {
@@ -365,7 +444,7 @@ type: google
       resourceType: 'agent',
       label: 'Agents',
       body: (idx) =>
-        `resource_type: agent\nid: agent-${idx}\nname: Agent ${idx}\ndescription: Agent description ${idx}\ninbound_auth_config:\n  - type: oauth2\n    config:\n      client_id: client-agent-${idx}`,
+        `resource_type: agent\nid: agent-${idx}\ndescription: Agent description ${idx}\nattributes:\n  name: Agent ${idx}\ninbound_auth_config:\n  - type: oauth2\n    config:\n      client_id: client-agent-${idx}`,
     },
     {
       resourceType: 'server_config',

@@ -21,7 +21,7 @@ describe('AgentSignInSection', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test Agent',
+    display: 'Test Agent',
   };
 
   const delegationEnabledConfig: OAuthAgentConfig = {

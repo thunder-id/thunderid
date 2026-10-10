@@ -27,16 +27,13 @@ test.describe("Agents - Onboarding Flow", () => {
   // file in its own worker, so concurrent chromium/firefox/webkit runs get distinct names and
   // cannot collide.
   const createdAgent = TestDataFactory.generateUniqueId("zz_e2e_agent");
-  const cancelledAgent = TestDataFactory.generateUniqueId("zz_e2e_agent_cancelled");
 
   test.afterAll(async ({ request }) => {
     // beforeAll/afterAll cannot take custom test-scoped fixtures, so construct the shared helper
     // directly here - same class the agentsApi fixture uses inside the tests below.
     const agentsApi = new AgentsApi(request);
-    for (const name of [createdAgent, cancelledAgent]) {
-      const deleted = await agentsApi.deleteByName(name);
-      if (deleted) console.log(`Teardown: removed agent ${name}`);
-    }
+    const deleted = await agentsApi.deleteByName(createdAgent);
+    if (deleted) console.log(`Teardown: removed agent ${createdAgent}`);
   });
 
   /** TC001: Verify an agent can be created by running the onboarding flow end to end */
@@ -49,12 +46,12 @@ test.describe("Agents - Onboarding Flow", () => {
       await agentOnboardingPage.submitOwnerStep();
     });
 
-    await test.step("Name the agent", async () => {
-      await agentOnboardingPage.submitNameStep(createdAgent);
-    });
-
-    await test.step("Fill in the schema-driven details", async () => {
-      await agentOnboardingPage.submitDetailsStep({ model: "claude-opus-5", modelProvider: /^anthropic$/i });
+    await test.step("Name the agent and fill in the schema-driven details", async () => {
+      await agentOnboardingPage.submitDetailsStep({
+        name: createdAgent,
+        model: "claude-opus-5",
+        modelProvider: /^anthropic$/i,
+      });
     });
 
     await test.step("Read the generated credentials", async () => {
@@ -87,8 +84,13 @@ test.describe("Agents - Onboarding Flow", () => {
       // A placeholder or stale value would still satisfy the not-empty check above.
       await expect(agentOnboardingPage.credentialValue("Client ID")).toHaveText(String(agent.clientId));
 
-      // Proves the provisioning node wrote the attributes the schema-driven step collected.
-      expect(agent.attributes).toMatchObject({ model: "claude-opus-5", modelProvider: "anthropic" });
+      // Proves the provisioning node wrote the attributes the schema-driven step collected, the
+      // name among them.
+      expect(agent.attributes).toMatchObject({
+        name: createdAgent,
+        model: "claude-opus-5",
+        modelProvider: "anthropic",
+      });
     });
   });
 
@@ -102,7 +104,6 @@ test.describe("Agents - Onboarding Flow", () => {
   test("TC002: Offer the agent type's enum values on the detail step", async ({ agentOnboardingPage }) => {
     await agentOnboardingPage.open();
     await agentOnboardingPage.submitOwnerStep();
-    await agentOnboardingPage.submitNameStep(cancelledAgent);
     await agentOnboardingPage.expectStep(/agent details/i);
 
     const providers = await agentOnboardingPage.optionLabels(agentOnboardingPage.modelProviderSelect);
@@ -117,13 +118,13 @@ test.describe("Agents - Onboarding Flow", () => {
 
     await agentOnboardingPage.open();
     await agentOnboardingPage.submitOwnerStep();
-    await agentOnboardingPage.expectStep(/name your agent/i);
+    await agentOnboardingPage.expectStep(/agent details/i);
     await agentOnboardingPage.nameInput.fill(abandoned);
 
     await agentOnboardingPage.closeButton.click();
     await agentOnboardingPage.page.waitForURL(`**${ConsoleRoutes.agents}`, { timeout: Timeouts.PAGE_LOAD });
 
-    // The provisioning node runs after the name step, so abandoning here must leave no record.
+    // The provisioning node runs after the details step, so abandoning here must leave no record.
     expect(await agentsApi.findByName(abandoned)).toBeUndefined();
   });
 });

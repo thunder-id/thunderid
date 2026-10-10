@@ -24,7 +24,7 @@ export interface Agent {
   ouId: string;
   ouHandle?: string;
   type: string;
-  name: string;
+  display?: string;
   description?: string;
   logoUrl?: string;
   owner?: string;
@@ -48,10 +48,11 @@ export interface BasicAgent {
   ouId: string;
   ouHandle?: string;
   type: string;
-  name: string;
+  display?: string;
   description?: string;
   logoUrl?: string;
   clientId?: string;
+  attributes?: Record<string, unknown>;
   isReadOnly?: boolean;
 }
 
@@ -65,7 +66,6 @@ export interface AgentListResponse {
 export interface CreateAgentRequest {
   ouId: string;
   type: string;
-  name: string;
   description?: string;
   logoUrl?: string;
   owner?: string;
@@ -76,7 +76,6 @@ export interface CreateAgentRequest {
 export interface UpdateAgentRequest {
   ouId?: string;
   type?: string;
-  name?: string;
   description?: string;
   logoUrl?: string;
   owner?: string;

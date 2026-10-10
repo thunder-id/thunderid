@@ -61,7 +61,14 @@ id: 01900000-0000-7000-8000-000000000011
 handle: default
 displayName: Default
 ouHandle: default
+systemAttributes:
+  display: name
 schema:
+  name:
+    type: string
+    displayName: Name
+    required: true
+    unique: true
   modelProvider:
     type: string
     displayName: Model Provider
@@ -2306,7 +2313,7 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: prompt_agent_name
+  onSuccess: provisioning
   onIncomplete: prompt_owner
   layout:
     size:
@@ -2359,50 +2366,6 @@ nodes:
     position:
       x: 580
       y: -320
-- id: prompt_agent_name
-  type: PROMPT
-  meta:
-    components:
-    - align: left
-      type: TEXT
-      id: text_header_agent_name
-      label: '{{ t(agentOnboarding:forms.agent_name.title) }}'
-      variant: HEADING_1
-    - align: left
-      type: TEXT
-      id: text_subtitle_agent_name
-      label: '{{ t(agentOnboarding:forms.agent_name.subtitle) }}'
-      variant: HEADING_6
-    - type: BLOCK
-      id: block_agent_name
-      components:
-      - id: input_agent_name
-        ref: name
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_name.fields.name.label) }}'
-        required: true
-        placeholder: '{{ t(agentOnboarding:forms.agent_name.fields.name.placeholder) }}'
-      - type: ACTION
-        id: action_agent_name
-        label: '{{ t(agentOnboarding:forms.agent_name.actions.next.label) }}'
-        variant: PRIMARY
-        eventType: SUBMIT
-  prompts:
-  - inputs:
-    - ref: input_agent_name
-      identifier: name
-      type: TEXT_INPUT
-      required: true
-    action:
-      ref: action_agent_name
-      nextNode: provisioning
-  layout:
-    size:
-      width: 350
-      height: 410
-    position:
-      x: 900
-      y: 100
 - id: prompt_agent_details
   type: PROMPT
   meta:
@@ -2420,6 +2383,12 @@ nodes:
     - type: BLOCK
       id: block_agent_details
       components:
+      - id: input_agent_name
+        ref: name
+        type: TEXT_INPUT
+        label: '{{ t(agentOnboarding:forms.agent_details.fields.name.label) }}'
+        required: true
+        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.name.placeholder) }}'
       - id: input_agent_model_provider
         ref: modelProvider
         type: SELECT
@@ -2447,6 +2416,10 @@ nodes:
         eventType: SUBMIT
   prompts:
   - inputs:
+    - ref: input_agent_name
+      identifier: name
+      type: TEXT_INPUT
+      required: true
     - ref: input_agent_model_provider
       identifier: modelProvider
       type: SELECT
@@ -2465,9 +2438,9 @@ nodes:
   layout:
     size:
       width: 350
-      height: 566
+      height: 646
     position:
-      x: 1250
+      x: 1130
       y: 60
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
@@ -2482,7 +2455,7 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1480
+      x: 1500
       y: 175
 - id: provisioning
   type: TASK_EXECUTION
@@ -2493,13 +2466,13 @@ nodes:
     name: ProvisioningExecutor
   onSuccess: agent_credentials
   onIncomplete: prompt_agent_details
-  onFailure: prompt_agent_name
+  onFailure: prompt_agent_details
   layout:
     size:
       width: 206
       height: 113
     position:
-      x: 1620
+      x: 900
       y: 175
 - id: agent_credentials
   type: PROMPT
@@ -2536,7 +2509,7 @@ nodes:
       width: 350
       height: 520
     position:
-      x: 1900
+      x: 1760
       y: 60
 - id: end
   type: END
@@ -2545,7 +2518,7 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 2250
+      x: 2110
       y: 200
 ---
 resource_type: theme
@@ -5754,13 +5727,10 @@ translations:
     forms.owner.fields.owner.label: Owner
     forms.owner.fields.owner.placeholder: Select a user
     forms.owner.actions.next.label: Continue
-    forms.agent_name.title: Name Your Agent
-    forms.agent_name.subtitle: Give the agent a name you will recognize later.
-    forms.agent_name.fields.name.label: Name
-    forms.agent_name.fields.name.placeholder: Enter a name for the agent
-    forms.agent_name.actions.next.label: Continue
     forms.agent_details.title: Agent Details
-    forms.agent_details.subtitle: Describe the model this agent runs on and what it does.
+    forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
+    forms.agent_details.fields.name.label: Name
+    forms.agent_details.fields.name.placeholder: Enter a name for the agent
     forms.agent_details.fields.model_provider.label: Model Provider
     forms.agent_details.fields.model_provider.placeholder: Select a model provider
     forms.agent_details.fields.model.label: Model

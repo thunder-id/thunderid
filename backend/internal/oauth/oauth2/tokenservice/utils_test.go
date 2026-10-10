@@ -1020,8 +1020,8 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryAgent,
-		Attributes:       []byte(`{"modelProvider":"anthropic"}`),
-		SystemAttributes: []byte(`{"name":"Ledger Agent","owner":"user-123","clientId":"cid","description":"d"}`),
+		Attributes:       []byte(`{"modelProvider":"anthropic","name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid","description":"d"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "name", "owner"})
@@ -1116,7 +1116,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhe
 	assert.Nil(suite.T(), claims)
 }
 
-func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributeWinsOverSchemaOnCollision() {
+func (suite *UtilsTestSuite) TestBuildClientAttributes_StaleSystemNameDoesNotOverrideSchemaName() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
@@ -1129,7 +1129,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributeWinsOverSc
 	claims, err := BuildClientAttributes(app, actors)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "system-name", claims["name"])
+	assert.Equal(suite.T(), "schema-name", claims["name"])
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_ReturnsError() {

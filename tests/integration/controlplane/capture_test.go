@@ -189,10 +189,14 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	ts.Require().NoError(err)
 	defer func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }()
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
-		OUID:        ts.ouID,
-		Schema:      map[string]interface{}{"description": map[string]interface{}{"type": "string"}},
+		Handle:           "default",
+		DisplayName:      "Default",
+		OUID:             ts.ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string"},
+			"description": map[string]interface{}{"type": "string"},
+		},
 	})
 	ts.Require().NoError(err)
 	name := unique("CP Capture Agent")
@@ -202,8 +206,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	agentID, err := testutils.CreateAgent(testutils.Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       name,
-		Attributes: map[string]interface{}{"description": "captures its credentials"},
+		Attributes: map[string]interface{}{"name": name, "description": "captures its credentials"},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
 			Type: "oauth2",
 			Config: &testutils.AgentOAuthConfig{

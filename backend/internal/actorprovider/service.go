@@ -11,9 +11,12 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // actorProvider delegates actor resolution to inbound-client and entity-provider services, and
@@ -23,6 +26,7 @@ type actorProvider struct {
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
+	entityTypeSvc  entitytype.EntityTypeServiceInterface
 	logger         *log.Logger
 }
 
@@ -33,12 +37,14 @@ func newActorProvider(
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
+	entityTypeSvc entitytype.EntityTypeServiceInterface,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
 		roleService:    roleService,
+		entityTypeSvc:  entityTypeSvc,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -125,6 +131,12 @@ func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.
 	entity, epErr := p.entityProvider.GetEntity(actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
+	}
+	if entity.Category == providers.EntityCategoryAgent {
+		ctx := security.WithRuntimeContext(context.Background())
+		displayPaths := entitytype.ResolveDisplayAttributePaths(
+			ctx, entitytype.TypeCategoryAgent, []string{entity.Type}, p.entityTypeSvc, p.logger)
+		entity.Display = utils.ResolveDisplay(entity.ID, entity.Type, entity.Attributes, displayPaths)
 	}
 	return entity, nil
 }

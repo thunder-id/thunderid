@@ -1778,10 +1778,11 @@ nodes:
 ---
 resource_type: agent
 id: wayfinder-concierge
-name: WAYFINDER-CONCIERGE
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
 ouHandle: default
 type: default
+attributes:
+  name: WAYFINDER-CONCIERGE
 logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-agent-auth-flow
 inboundAuthConfig:
@@ -1815,10 +1816,11 @@ resource_type: agent
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
 id: wayfinder-upgrade-agent
-name: WAYFINDER-UPGRADE-AGENT
 description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
 ouHandle: default
 type: default
+attributes:
+  name: WAYFINDER-UPGRADE-AGENT
 logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-ciba-email-flow
 allowedUserTypes:

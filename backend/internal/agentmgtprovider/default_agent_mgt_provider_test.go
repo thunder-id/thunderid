@@ -41,10 +41,10 @@ func TestDefaultAgentMgtProviderTestSuite(t *testing.T) {
 
 func newTestAgent() *providers.Agent {
 	return &providers.Agent{
-		OUID:  "ou-id-abc",
-		Type:  "default",
-		Name:  "test-agent",
-		Owner: testAgentOwner,
+		OUID:       "ou-id-abc",
+		Type:       "default",
+		Owner:      testAgentOwner,
+		Attributes: []byte(`{"name":"test-agent"}`),
 	}
 }
 
@@ -183,11 +183,10 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 	req := &providers.Agent{
 		OUID:        "ou-id-abc",
 		Type:        "default",
-		Name:        "billing-agent",
 		Description: "handles invoices",
 		LogoURL:     "https://example.com/logo.png",
 		Owner:       testAgentOwner,
-		Attributes:  []byte(`{"model":"claude"}`),
+		Attributes:  []byte(`{"name":"billing-agent","model":"claude"}`),
 	}
 
 	captured := suite.captureCreatedAgent()
@@ -197,7 +196,6 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 	suite.Nil(svcErr)
 	suite.Equal(req.OUID, (*captured).OUID)
 	suite.Equal(req.Type, (*captured).Type)
-	suite.Equal(req.Name, (*captured).Name)
 	suite.Equal(req.Description, (*captured).Description)
 	suite.Equal(req.LogoURL, (*captured).LogoURL)
 	suite.Equal(req.Owner, (*captured).Owner)
@@ -338,7 +336,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServiceEr
 		{
 			name:     "DuplicateName",
 			scenario: "another agent already uses the requested name",
-			svcErr:   &agent.ErrorAgentAlreadyExistsWithName,
+			svcErr:   &agent.ErrorAttributeConflict,
 		},
 		{
 			name:     "OwnerNotFound",
@@ -470,7 +468,6 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 		OUID:        "ou-id-abc",
 		OUHandle:    "engineering",
 		Type:        "default",
-		Name:        "test-agent",
 		Description: "an agent",
 		LogoURL:     "avatar:shape=circle",
 		Owner:       testAgentOwner,
@@ -504,7 +501,6 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 	suite.Equal(full.OUID, resp.OUID)
 	suite.Equal(full.OUHandle, resp.OUHandle)
 	suite.Equal(full.Type, resp.Type)
-	suite.Equal(full.Name, resp.Name)
 	suite.Equal(full.Description, resp.Description)
 	suite.Equal(full.LogoURL, resp.LogoURL)
 	suite.Equal(full.Owner, resp.Owner)

@@ -50,7 +50,7 @@ var categoryTraitsByCategory = map[entitytype.TypeCategory]categoryTraits{
 		applicationAllowedTypes: func(ctx *providers.NodeContext) []string {
 			return ctx.Application.AllowedAgentTypes
 		},
-		recordFields:        []string{nameKey, ownerIDKey, delegatedKey, redirectURIsKey},
+		recordFields:        []string{ownerIDKey, delegatedKey, redirectURIsKey},
 		missingRecordFields: missingAgentRecordFields,
 	},
 }
@@ -67,11 +67,8 @@ func traitsFor(category entitytype.TypeCategory) categoryTraits {
 
 // missingAgentRecordFields returns the record fields an agent still has to collect.
 func missingAgentRecordFields(ctx *providers.NodeContext) []providers.Input {
-	missing := make([]providers.Input, 0, 2)
+	missing := make([]providers.Input, 0, 1)
 
-	if collectedValue(ctx, nameKey) == "" {
-		missing = append(missing, requiredTextInput(nameKey))
-	}
 	// Delegation is what makes a redirect URI necessary. A value that cannot be read is reported
 	// when the entity is created, so it is treated as absent here.
 	delegated, _ := collectedFlag(ctx, delegatedKey)

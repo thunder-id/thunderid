@@ -123,7 +123,6 @@ const (
 	// ownerIDKey is the runtime slot carrying the owner the resolver verified. It differs from the
 	// input identifier so a submitted value cannot stand in for a resolved one.
 	ownerIDKey     = "ownerId"
-	nameKey        = "name"
 	descriptionKey = "description"
 	logoURLKey     = "logoUrl"
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.

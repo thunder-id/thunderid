@@ -102,9 +102,7 @@ export default function AgentEditPage(): JSX.Element {
   const [activeTab, setActiveTab] = useState(0);
   const [editedAgent, setEditedAgent] = useState<Partial<Agent>>({});
   const [sectionResetKey, setSectionResetKey] = useState(0);
-  const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
   const [validationErrorSources, setValidationErrorSources] = useState<Record<string, boolean>>({});
   const handleValidationChange = useCallback(
@@ -142,23 +140,12 @@ export default function AgentEditPage(): JSX.Element {
     [isUpdateAgentError, resetUpdateAgent],
   );
 
-  const commitName = useCallback(
-    (value: string): void => {
-      const trimmedName = value.trim();
-      // The API rejects names outside these bounds, so an out of range rename is discarded here.
-      if (trimmedName.length < AgentConstants.NAME_MIN_LENGTH || trimmedName.length > AgentConstants.NAME_MAX_LENGTH) {
-        return;
-      }
-      handleFieldChange('name', trimmedName);
-    },
-    [handleFieldChange],
-  );
-
   const handleSave = useCallback(async () => {
     if (!agent || !agentId) return;
 
-    const {certificate, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
+    const {certificate, display, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
     void certificate;
+    void display;
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
@@ -450,41 +437,7 @@ export default function AgentEditPage(): JSX.Element {
         </PageTitle.Avatar>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-            {isEditingName ? (
-              <TextField
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                onBlur={() => {
-                  commitName(tempName);
-                  setIsEditingName(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    commitName(tempName);
-                    setIsEditingName(false);
-                  } else if (e.key === 'Escape') {
-                    setIsEditingName(false);
-                  }
-                }}
-                size="small"
-              />
-            ) : (
-              <>
-                <Typography variant="h3">{editedAgent.name ?? agent.name}</Typography>
-                {!agent.isReadOnly && (
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      setTempName(editedAgent.name ?? agent.name);
-                      setIsEditingName(true);
-                    }}
-                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
-                  >
-                    <Edit size={16} />
-                  </IconButton>
-                )}
-              </>
-            )}
+            <Typography variant="h3">{agent.display ?? agent.id}</Typography>
           </Stack>
         </PageTitle.Header>
         <PageTitle.SubHeader>

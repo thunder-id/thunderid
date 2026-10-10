@@ -33,6 +33,7 @@ import FileContentViewer from './FileContentViewer';
 import HowProductRunInHostedIllustration from './HowProductRunInHostedIllustration';
 import ResourceSummaryTable from './ResourceSummaryTable';
 import TemplateVariableDisplay from './TemplateVariableDisplay';
+import useAgentLabels from '../hooks/useAgentLabels';
 import type {ConfigSummaryItem} from '../models/import-configuration';
 import getConfigFileName from '../utils/getConfigFileName';
 import getEnvFileName from '../utils/getEnvFileName';
@@ -238,6 +239,8 @@ export default function ConfigureExport({
       return null;
     }
   }, [resources, logger]);
+
+  const getAgentLabel = useAgentLabels(configData);
 
   const command = t('howSolutionWorksIllustration:commandProduction');
 
@@ -1058,7 +1061,8 @@ export default function ConfigureExport({
     const agents =
       (configData?.['agent'] as {
         id?: string;
-        name?: string;
+        type?: string;
+        attributes?: Record<string, unknown>;
         description?: string;
         inbound_auth_config?: {type?: string; config?: {client_id?: string}}[];
       }[]) ?? [];
@@ -1078,13 +1082,13 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedAgents.map((agent, idx) => {
                 const clientId = agent.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id;
-                const agentKey = agent.id ?? agent.name ?? `agent-${idx}`;
+                const agentKey = agent.id ?? `agent-${idx}`;
                 return (
                   <Stack key={agentKey} spacing={0.5}>
                     <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <Bot size={14} />
                       <Typography variant="body2" fontWeight={600}>
-                        {agent.name ?? t('importExport:configureExport.fallback.unnamedAgent')}
+                        {getAgentLabel(agent) ?? t('importExport:configureExport.fallback.unnamedAgent')}
                       </Typography>
                     </Stack>
                     {agent.description && (

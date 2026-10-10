@@ -3,7 +3,9 @@
 
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Agent represents the structure for agent request and response in tests.
 type Agent struct {
@@ -11,7 +13,7 @@ type Agent struct {
 	OUID        string          `json:"ouId,omitempty"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
+	Display     string          `json:"display,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
@@ -24,6 +26,41 @@ type Agent struct {
 	LayoutID                  string              `json:"layoutId,omitempty"`
 	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"`
 	InboundAuthConfig         []InboundAuthConfig `json:"inboundAuthConfig,omitempty"`
+}
+
+// agentAttrs builds the attributes payload of an agent. The agent name is the schema attribute "name", so
+// every agent needs it; extra holds any further attributes and may be nil.
+func agentAttrs(name string, extra map[string]interface{}) json.RawMessage {
+	m := map[string]interface{}{"name": name}
+	for k, v := range extra {
+		m[k] = v
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// withName adds the agent name to an existing attributes payload.
+func withName(name string, raw json.RawMessage) json.RawMessage {
+	m := map[string]interface{}{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &m); err != nil {
+			panic(err)
+		}
+	}
+	return agentAttrs(name, m)
+}
+
+// AttrName returns the agent name, which is carried in attributes.name.
+func (a Agent) AttrName() string {
+	var m map[string]interface{}
+	if err := json.Unmarshal(a.Attributes, &m); err != nil {
+		return ""
+	}
+	name, _ := m["name"].(string)
+	return name
 }
 
 // InboundAuthConfig represents an inbound authentication configuration entry.

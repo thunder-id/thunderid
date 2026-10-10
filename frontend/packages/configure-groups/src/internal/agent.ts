@@ -11,10 +11,10 @@ export interface BasicAgent {
   ouId: string;
   ouHandle?: string;
   type: string;
-  name: string;
   description?: string;
   logoUrl?: string;
   clientId?: string;
+  display?: string;
   isReadOnly?: boolean;
 }
 

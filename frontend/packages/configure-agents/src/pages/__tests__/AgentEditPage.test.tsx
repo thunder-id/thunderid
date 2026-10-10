@@ -215,7 +215,7 @@ describe('AgentEditPage', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test Agent',
+    display: 'Test Agent',
     description: 'Test description',
     inboundAuthConfig: [
       {
@@ -383,20 +383,19 @@ describe('AgentEditPage', () => {
       expect(screen.getByText('Test description')).toBeInTheDocument();
     });
 
-    it('shows the edit name input when its edit icon is clicked', async () => {
-      const user = userEvent.setup();
+    it('falls back to the agent ID when the agent has no display value', () => {
+      mockUseGetAgent.mockReturnValue({data: {...baseAgent, display: undefined}, isLoading: false, error: null});
       render(<AgentEditPage />);
 
-      // Find and click the first edit icon (next to the name)
-      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
-      // The first edit-pencil button next to the name
-      const nameEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test Agent'));
-      if (!nameEditButton) throw new Error('name edit button not found');
-      await user.click(nameEditButton);
+      expect(screen.getAllByRole('heading', {name: 'agent-1'}).length).toBeGreaterThan(0);
+      expect(screen.queryByText('Test Agent')).not.toBeInTheDocument();
+    });
 
-      // After clicking, the heading text becomes a text input
-      const inputs = screen.getAllByRole('textbox');
-      expect(inputs.length).toBeGreaterThan(0);
+    it('does not offer an inline rename, since the name is a schema attribute', () => {
+      render(<AgentEditPage />);
+
+      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
+      expect(editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test Agent'))).toBeUndefined();
     });
 
     it('does not raise an unsaved-changes diff when description editor is opened and closed without changes', async () => {
@@ -568,68 +567,45 @@ describe('AgentEditPage', () => {
   });
 
   describe('Unsaved-changes bar', () => {
-    const editName = async (user: ReturnType<typeof userEvent.setup>, from: string, to: string): Promise<void> => {
+    const editDescription = async (
+      user: ReturnType<typeof userEvent.setup>,
+      from: string,
+      to: string,
+    ): Promise<void> => {
       const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
-      const nameEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes(from));
-      if (!nameEditButton) throw new Error(`name edit button for "${from}" not found`);
-      await user.click(nameEditButton);
-      const input = screen.getByRole('textbox');
+      const editButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes(from));
+      if (!editButton) throw new Error(`description edit button for "${from}" not found`);
+      await user.click(editButton);
+      const input = screen.getAllByRole('textbox').find((el) => (el as HTMLTextAreaElement).value === from);
+      if (!input) throw new Error(`description textarea for "${from}" not found`);
       await user.clear(input);
-      await user.type(input, `${to}{Enter}`);
+      await user.type(input, to);
+      fireEvent.blur(input);
     };
 
     it('hides the bar when a field is manually retyped back to its original value', async () => {
       const user = userEvent.setup();
       render(<AgentEditPage />);
 
-      await editName(user, 'Test Agent', 'Renamed Agent');
+      await editDescription(user, 'Test description', 'Changed description');
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
 
-      await editName(user, 'Renamed Agent', 'Test Agent');
+      await editDescription(user, 'Changed description', 'Test description');
       await waitFor(() => {
         expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
       });
-    });
-
-    it('discards a rename that exceeds the maximum length', async () => {
-      const user = userEvent.setup();
-      render(<AgentEditPage />);
-
-      const editIcons = screen.getAllByRole('button').filter((button) => button.querySelector('svg'));
-      const nameEditButton = editIcons.find((button) => button.parentElement?.textContent?.includes('Test Agent'));
-      if (!nameEditButton) throw new Error('name edit button for "Test Agent" not found');
-      await user.click(nameEditButton);
-      const input = screen.getByRole('textbox');
-      fireEvent.change(input, {target: {value: 'a'.repeat(AgentConstants.NAME_MAX_LENGTH + 1)}});
-      fireEvent.keyDown(input, {key: 'Enter'});
-
-      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
-      expect(screen.getByText('Test Agent')).toBeInTheDocument();
     });
 
     it('keeps the bar visible when only one of two edited fields is reverted', async () => {
       const user = userEvent.setup();
       render(<AgentEditPage />);
 
-      // Edit description
-      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
-      const descEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
-      if (!descEditButton) throw new Error('description edit button not found');
-      await user.click(descEditButton);
-      const descInput = screen
-        .getAllByRole('textbox')
-        .find((el) => (el as HTMLTextAreaElement).value === 'Test description');
-      if (!descInput) throw new Error('description textarea not found');
-      await user.clear(descInput);
-      await user.type(descInput, 'Changed description');
-      descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
+      await editDescription(user, 'Test description', 'Changed description');
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await editDescription(user, 'Changed description', 'Test description');
 
-      // Edit name, then revert only the name
-      await editName(user, 'Test Agent', 'Renamed Agent');
-      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
-      await editName(user, 'Renamed Agent', 'Test Agent');
-
-      // Description is still changed, so the bar must stay visible
+      // The staged attribute edit is still pending, so the bar must stay visible
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
     });
   });
@@ -793,16 +769,16 @@ describe('AgentEditPage', () => {
   });
 
   describe('Save validation', () => {
-    // Any field edit is enough to surface the Save bar — renaming is the simplest one available
-    // without depending on any of the (mocked) tab content components.
+    // Any field edit is enough to surface the Save bar — editing the description is the simplest
+    // one available without depending on any of the (mocked) tab content components.
     const triggerAChange = async (user: ReturnType<typeof userEvent.setup>) => {
       const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
-      const nameEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test Agent'));
-      if (!nameEditButton) throw new Error('name edit button not found');
-      await user.click(nameEditButton);
+      const editButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
+      if (!editButton) throw new Error('description edit button not found');
+      await user.click(editButton);
       const input = screen.getAllByRole('textbox')[0];
-      await user.type(input, ' Renamed');
-      await user.keyboard('{Enter}');
+      await user.type(input, ' updated');
+      fireEvent.blur(input);
     };
 
     it('disables Save when authorization_code is selected but no redirect URI or allowed user type is set, even without visiting those tabs', async () => {

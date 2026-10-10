@@ -639,7 +639,7 @@ func resolveClientEntityAttributes(
 	return filtered, nil
 }
 
-// resolveClientSystemAttributes returns the agent system attributes (name, owner) selected by
+// resolveClientSystemAttributes returns the agent system attribute (owner) selected by
 // ClientConfig.Attributes, read from Entity.SystemAttributes. Restricted to agent entities so an
 // application client can never surface these claims regardless of its stored allow-list.
 func resolveClientSystemAttributes(

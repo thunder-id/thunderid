@@ -30,7 +30,7 @@ describe('AllowedUserTypesSection', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test Agent',
+    display: 'Test Agent',
     allowedUserTypes: ['employee'],
   };
 

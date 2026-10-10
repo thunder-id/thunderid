@@ -240,13 +240,13 @@ credentials:
 
 resource_type: agent
 id: agent-identity-concierge
-name: Concierge
 description: The in-app travel assistant that books trips for customers
 ouHandle: default
 type: default
 logoUrl: "emoji:🧭"
 authFlowHandle: agent-identity-agent-auth-flow
 attributes:
+  name: Concierge
   model: claude-sonnet-5
   modelProvider: anthropic
   function: assistant
@@ -306,12 +306,12 @@ inboundAuthConfig:
 
 resource_type: agent
 id: agent-identity-flight-search
-name: Flight Search Agent
 description: Worker agent that runs the delegated flight-search sub-task
 ouHandle: default
 type: default
 logoUrl: "emoji:✈️"
 attributes:
+  name: Flight Search Agent
   model: claude-sonnet-5
   modelProvider: anthropic
   function: sub-agent

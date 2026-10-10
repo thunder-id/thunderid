@@ -23,7 +23,7 @@ vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
 
 describe('EditFlowsSettings', () => {
   const mockOnFieldChange = vi.fn();
-  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', name: 'Test Agent'};
+  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', display: 'Test Agent'};
 
   it('renders the authentication and registration flow sections', () => {
     render(

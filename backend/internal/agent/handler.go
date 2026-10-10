@@ -80,7 +80,6 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
 		Type:        req.Type,
-		Name:        req.Name,
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
@@ -271,8 +270,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		switch svcErr.Code {
 		case ErrorAgentNotFound.Code:
 			statusCode = http.StatusNotFound
-		case ErrorAgentAlreadyExistsWithName.Code,
-			ErrorAttributeConflict.Code,
+		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code,

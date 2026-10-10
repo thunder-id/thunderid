@@ -46,7 +46,10 @@ func (suite *CompositeModeSuite) SetupSuite() {
 		Handle:      "default",
 		DisplayName: "Default",
 		OUID:        "decl-ou-1",
-		Schema:      map[string]interface{}{"description": map[string]interface{}{"type": "string"}},
+		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"description": map[string]interface{}{"type": "string"},
+		},
 	})
 	suite.Require().NoError(err, "Failed to ensure default agent type exists")
 }
@@ -210,9 +213,9 @@ func (suite *CompositeModeSuite) TestUserDeclarativeVisibility() {
 
 func (suite *CompositeModeSuite) TestAgentCreate() {
 	agent := map[string]interface{}{
-		"name": "Test Runtime Agent",
-		"type": "default",
-		"ouId": "decl-ou-1",
+		"type":       "default",
+		"ouId":       "decl-ou-1",
+		"attributes": map[string]interface{}{"name": "Test Runtime Agent"},
 	}
 
 	payload, _ := json.Marshal(agent)
@@ -1107,9 +1110,9 @@ func (suite *CompositeModeSuite) TestUserDeclarativeDeleteReject() {
 func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
 	payload := map[string]interface{}{
-		"name": "Updated",
-		"type": "default",
-		"ouId": "decl-ou-1",
+		"type":       "default",
+		"ouId":       "decl-ou-1",
+		"attributes": map[string]interface{}{"name": "Updated"},
 	}
 	jsonPayload, _ := json.Marshal(payload)
 
@@ -1124,7 +1127,7 @@ func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	suite.Equal("AGT-1027", errCode, "error code should be AGT-1027 for immutable agent")
 
 	// The rejection must leave nothing behind. The payload above renames the agent and omits
-	// attributes, and omitting attributes on a successful update clears them, so a partially
+	// the other attributes, and omitting attributes on a successful update clears them, so a partially
 	// applied write would show up either as the new name or as emptied attributes.
 	getResp, err := client.Get(fmt.Sprintf("%s/agents/decl-agent-1", testutils.TestServerURL))
 	suite.Require().NoError(err)
@@ -1134,10 +1137,9 @@ func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	var stored map[string]interface{}
 	suite.Require().NoError(json.NewDecoder(getResp.Body).Decode(&stored))
 
-	suite.Equal("Declarative Test Agent", stored["name"], "rejected update must not rename the agent")
-
 	attributes, ok := stored["attributes"].(map[string]interface{})
 	suite.Require().True(ok, "declarative agent should still carry its attributes: %v", stored)
+	suite.Equal("Declarative Test Agent", attributes["name"], "rejected update must not rename the agent")
 	suite.Equal("engineering", attributes["department"],
 		"rejected update must not clear attributes the payload omitted")
 }

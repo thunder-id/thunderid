@@ -72,9 +72,9 @@ func (ts *CIBATestSuite) createCIBAAppWithActClaim(clientID, clientSecret string
 // no includeActClaim setting: an agent's act claim is implicit.
 func (ts *CIBATestSuite) createCIBAAgent(clientID, clientSecret string) string {
 	agent := map[string]interface{}{
-		"name":             "CIBA Act Claim Test Agent",
 		"type":             "default",
 		"ouId":             ts.ouID,
+		"attributes":       map[string]interface{}{"name": "CIBA Act Claim Test Agent"},
 		"authFlowId":       ts.flowID,
 		"allowedUserTypes": []string{"ciba-test-person"},
 		"inboundAuthConfig": []map[string]interface{}{
@@ -178,6 +178,7 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow_AgentActClaim() {
 		DisplayName: "Default",
 		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})

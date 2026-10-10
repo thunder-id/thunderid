@@ -118,8 +118,8 @@ describe('AddMemberDialog', () => {
         totalResults: 2,
         count: 2,
         agents: [
-          {id: 'agent-1', name: 'Automation Agent'},
-          {id: 'agent-2', name: 'Support Agent'},
+          {id: 'agent-1', display: 'Automation Agent'},
+          {id: 'agent-2', display: 'Support Agent'},
         ],
       },
       isLoading: false,

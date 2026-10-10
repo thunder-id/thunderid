@@ -29,7 +29,7 @@ const previewIncludes = (text: string): boolean =>
 
 describe('AgentAccessTokenSection', () => {
   const mockOnFieldChange = vi.fn();
-  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', name: 'Test Agent'};
+  const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', display: 'Test Agent'};
   const baseInboundAuthConfig: AgentInboundAuthConfig[] = [
     {type: 'oauth2', config: {grantTypes: ['client_credentials'], responseTypes: []}},
   ];
@@ -46,6 +46,7 @@ describe('AgentAccessTokenSection', () => {
         displayName: 'Default',
         ouId: 'ou-1',
         schema: {
+          name: {type: 'string'},
           department: {type: 'string'},
           apiKey: {type: 'string', credential: true},
         },
@@ -68,7 +69,7 @@ describe('AgentAccessTokenSection', () => {
     expect(screen.queryByText('apiKey')).not.toBeInTheDocument();
   });
 
-  it('lists the name and owner system attributes alongside the schema attributes', () => {
+  it('lists the schema name once alongside the owner system attribute', () => {
     render(
       <AgentAccessTokenSection
         agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
@@ -79,7 +80,7 @@ describe('AgentAccessTokenSection', () => {
     );
 
     expect(screen.getByText('department')).toBeInTheDocument();
-    expect(screen.getByText('name')).toBeInTheDocument();
+    expect(screen.getAllByText('name')).toHaveLength(1);
     expect(screen.getByText('owner')).toBeInTheDocument();
   });
 

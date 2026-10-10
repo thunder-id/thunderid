@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -2426,6 +2427,43 @@ func TestPopulateMemberDisplayNames_MixedMembers(t *testing.T) {
 	require.Equal(t, "Engineering", resolved[1].Display)
 }
 
+func TestPopulateMemberDisplayNames_UserAgentAndAppMembers(t *testing.T) {
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1", "agent-1", "agent-2", "app-1"}).
+		Return([]providers.Entity{
+			{ID: "user-1", Category: providers.EntityCategoryUser, Type: "shared",
+				Attributes: json.RawMessage(`{"username":"alice","name":"wrong"}`)},
+			{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "shared",
+				Attributes: json.RawMessage(`{"username":"wrong","name":"Ledger Agent"}`)},
+			{ID: "agent-2", Category: providers.EntityCategoryAgent, Type: "shared",
+				Attributes: json.RawMessage(`{"model":"x"}`)},
+			{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: json.RawMessage(`{"name":"Shop"}`)},
+		}, nil).Once()
+
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryUser, []string{"shared"}).
+		Return(map[string]string{"shared": "username"}, (*tidcommon.ServiceError)(nil)).Once()
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, []string{"shared"}).
+		Return(map[string]string{"shared": "name"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	service := &groupService{entityService: entitySvcMock, entityTypeService: schemaMock}
+
+	members := []Member{
+		{ID: "user-1", Type: memberTypeEntity},
+		{ID: "agent-1", Type: memberTypeEntity},
+		{ID: "agent-2", Type: memberTypeEntity},
+		{ID: "app-1", Type: memberTypeEntity},
+	}
+
+	resolved, svcErr := service.resolveMembers(context.Background(), members, true, log.GetLogger())
+	require.Nil(t, svcErr)
+	require.Len(t, resolved, 4)
+	require.Equal(t, "alice", resolved[0].Display)
+	require.Equal(t, "Ledger Agent", resolved[1].Display)
+	require.Equal(t, "agent-2", resolved[2].Display)
+	require.Equal(t, "Shop", resolved[3].Display)
+}
+
 func TestPopulateMemberDisplayNames_UserFallbackToID(t *testing.T) {
 	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
 	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
@@ -3027,4 +3065,14 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_AbortedWhenCascadeFails() {
 
 	suite.Require().NotNil(err)
 	storeMock.AssertNotCalled(suite.T(), "DeleteGroup", mock.Anything, mock.Anything)
+}
+
+func TestResolveAppDisplay_AppUsesSystemAttributesName(t *testing.T) {
+	app := providers.Entity{
+		ID:               "app-1",
+		Category:         providers.EntityCategoryApp,
+		Attributes:       json.RawMessage(`{"name":"ignored"}`),
+		SystemAttributes: json.RawMessage(`{"name":"My App"}`),
+	}
+	require.Equal(t, "My App", resolveAppDisplay(app))
 }

@@ -155,9 +155,9 @@ func (suite *RoleAPITestSuite) SetupSuite() {
 	// Create test agent (agent entity), using the bootstrapped `default` agent type
 	agentID, err := testutils.CreateAgent(testutils.Agent{
 		Type:        "default",
-		Name:        testAgentName,
 		Description: "Agent for role assignment testing",
 		OUID:        testOUID,
+		Attributes:  map[string]interface{}{"name": testAgentName},
 	})
 	suite.Require().NoError(err, "Failed to create test agent")
 	testAgentID = agentID

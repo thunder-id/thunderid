@@ -264,8 +264,7 @@ const (
 	ClaimOUID     string = "ouId"
 	ClaimOUName   string = "ouName"
 	ClaimOUHandle string = "ouHandle"
-	// ClaimName and ClaimOwner carry an agent's system-attribute name/owner on its client token.
-	ClaimName                   string = "name"
+	// ClaimOwner carries an agent's system-attribute owner on its client token.
 	ClaimOwner                  string = "owner"
 	ClaimClaimsRequest          string = "claims_req"
 	ClaimClaimsLocales          string = "claims_locales"
@@ -318,7 +317,6 @@ const (
 // SurfaceableClientSystemClaims is the fixed set of entity system-attribute keys that may be
 // surfaced as client-token claims.
 var SurfaceableClientSystemClaims = map[string]bool{
-	ClaimName:  true,
 	ClaimOwner: true,
 }
 

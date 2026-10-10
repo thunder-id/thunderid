@@ -123,7 +123,7 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 		},
 	}
 	handler := newAgentHandler(stubService)
-	goodJSON := `{"ouId": "ou-123", "type": "worker", "name": "Valid Agent Name", "owner": "admin-id"}`
+	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"}, "owner": "admin-id"}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(goodJSON))
 	w := httptest.NewRecorder()
 
@@ -134,7 +134,7 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 func TestHandleAgentPostRequest_ValidationError(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
-	badJSON := `{"name": "ab", "type": "worker"}`
+	badJSON := `{"type": "worker", "attributes": {"name": "ab"}}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(badJSON))
 	w := httptest.NewRecorder()
 
@@ -155,7 +155,7 @@ func TestHandleAgentPostRequest_InvalidJSONFormat(t *testing.T) {
 func TestHandleAgentPutRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
-	goodJSON := `{"name": "Updated Valid Name"}`
+	goodJSON := `{"attributes": {"name": "Updated Valid Name"}}`
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(goodJSON))
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()
@@ -184,7 +184,7 @@ func TestHandleAgentPutRequest_ValidationError(t *testing.T) {
 		},
 	}
 	handler := newAgentHandler(stubService)
-	badJSON := `{"name": "a"}`
+	badJSON := `{"attributes": {"name": "a"}}`
 	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(badJSON))
 	req.SetPathValue("id", "agent-123")
 	w := httptest.NewRecorder()

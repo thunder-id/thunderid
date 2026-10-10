@@ -89,6 +89,7 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -157,7 +158,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_TokenIssuance() {
 	agentID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "cc-token-agent",
+		Attributes: agentAttrs("cc-token-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -193,7 +194,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_ClientSecretPost() {
 	agentID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "cc-post-agent",
+		Attributes: agentAttrs("cc-post-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -227,7 +228,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_InvalidCredentials() {
 	agentID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "cc-invalid-cred-agent",
+		Attributes: agentAttrs("cc-invalid-cred-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -261,7 +262,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_FullRoundTrip() {
 	agentID, err := createAgent(Agent{
 		OUID:             ts.ouID,
 		Type:             "default",
-		Name:             "authcode-agent",
+		Attributes:       agentAttrs("authcode-agent", nil),
 		AuthFlowID:       ts.authFlowID,
 		AllowedUserTypes: []string{"agent-oauth-flow-person"},
 		InboundAuthConfig: []InboundAuthConfig{
@@ -295,7 +296,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_WithPKCE() {
 	agentID, err := createAgent(Agent{
 		OUID:             ts.ouID,
 		Type:             "default",
-		Name:             "authcode-pkce-agent",
+		Attributes:       agentAttrs("authcode-pkce-agent", nil),
 		AuthFlowID:       ts.authFlowID,
 		AllowedUserTypes: []string{"agent-oauth-flow-person"},
 		InboundAuthConfig: []InboundAuthConfig{
@@ -331,7 +332,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_RefreshToken() {
 	agentID, err := createAgent(Agent{
 		OUID:             ts.ouID,
 		Type:             "default",
-		Name:             "authcode-refresh-agent",
+		Attributes:       agentAttrs("authcode-refresh-agent", nil),
 		AuthFlowID:       ts.authFlowID,
 		AllowedUserTypes: []string{"agent-oauth-flow-person"},
 		InboundAuthConfig: []InboundAuthConfig{
@@ -374,7 +375,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCreate_DuplicateClientID() {
 	firstID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "dup-client-first-agent",
+		Attributes: agentAttrs("dup-client-first-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -394,7 +395,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCreate_DuplicateClientID() {
 	resp, err := doPost(testServerURL+agentBasePath, Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "dup-client-second-agent",
+		Attributes: agentAttrs("dup-client-second-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -419,7 +420,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_DuplicateClientID() {
 	firstID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "dup-upd-first-agent",
+		Attributes: agentAttrs("dup-upd-first-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -439,7 +440,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_DuplicateClientID() {
 	secondID, err := createAgent(Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "dup-upd-second-agent",
+		Attributes: agentAttrs("dup-upd-second-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -459,7 +460,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_DuplicateClientID() {
 	updatePayload := Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "dup-upd-second-agent",
+		Attributes: agentAttrs("dup-upd-second-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -491,9 +492,9 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_DuplicateClientID() {
 // OAuth client via an update, and that a CC token can then be obtained.
 func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_AddOAuthProfile() {
 	agentID, err := createAgent(Agent{
-		OUID: ts.ouID,
-		Type: "default",
-		Name: "promote-to-oauth-agent",
+		OUID:       ts.ouID,
+		Type:       "default",
+		Attributes: agentAttrs("promote-to-oauth-agent", nil),
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = deleteAgent(agentID) }()
@@ -509,7 +510,7 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentUpdate_AddOAuthProfile() {
 	withOAuth := Agent{
 		OUID:       ts.ouID,
 		Type:       "default",
-		Name:       "promote-to-oauth-agent",
+		Attributes: agentAttrs("promote-to-oauth-agent", nil),
 		AuthFlowID: ts.authFlowID,
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -588,6 +589,7 @@ func (s *CCAgentAuthzTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        s.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -688,9 +690,9 @@ func (s *CCAgentAuthzTestSuite) TearDownSuite() {
 
 func (s *CCAgentAuthzTestSuite) createOAuthAgent() (string, error) {
 	agent := map[string]interface{}{
-		"name": "CC Authz Test Agent",
-		"type": "default",
-		"ouId": s.ouID,
+		"attributes": map[string]interface{}{"name": "CC Authz Test Agent"},
+		"type":       "default",
+		"ouId":       s.ouID,
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",
@@ -873,6 +875,7 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        s.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -945,9 +948,9 @@ func (s *AgentTokenExchangeTestSuite) TearDownSuite() {
 
 func (s *AgentTokenExchangeTestSuite) createTokenExchangeAgent() (string, error) {
 	agent := map[string]interface{}{
-		"name": "Agent Token Exchange Test",
-		"type": "default",
-		"ouId": s.ouID,
+		"attributes": map[string]interface{}{"name": "Agent Token Exchange Test"},
+		"type":       "default",
+		"ouId":       s.ouID,
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",

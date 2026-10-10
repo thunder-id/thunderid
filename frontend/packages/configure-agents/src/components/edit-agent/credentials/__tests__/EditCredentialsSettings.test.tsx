@@ -22,7 +22,7 @@ describe('EditCredentialsSettings', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test Agent',
+    display: 'Test Agent',
     inboundAuthConfig: [{type: 'oauth2', config: {grantTypes: [], responseTypes: []} as OAuthAgentConfig}],
   };
   const mockOnFieldChange = vi.fn();

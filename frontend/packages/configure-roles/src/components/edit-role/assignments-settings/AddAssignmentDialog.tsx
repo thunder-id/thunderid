@@ -316,10 +316,11 @@ export default function AddAssignmentDialog({
         ),
       },
       {
-        field: 'name',
+        field: 'display',
         headerName: t('roles:assignments.dialog.columns.name'),
         flex: 1,
         minWidth: 200,
+        valueGetter: (_value, row): string => row.display ?? row.id,
       },
       {
         field: 'description',

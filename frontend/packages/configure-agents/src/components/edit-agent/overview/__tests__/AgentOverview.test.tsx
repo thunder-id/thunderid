@@ -49,7 +49,7 @@ const baseAgent: Agent = {
   ouId: 'ou-1',
   ouHandle: 'engineering',
   type: 'default',
-  name: 'Enrollment Agent',
+  display: 'Enrollment Agent',
   clientId: 'client-abc',
   owner: 'user-1',
 };

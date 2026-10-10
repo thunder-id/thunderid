@@ -308,6 +308,7 @@ func (s *AgentTypeAPITestSuite) TestUpdateAgentTypeSchemaPersists() {
 	defer s.restoreSchema()
 
 	s.putSchema(map[string]interface{}{
+		"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 		"description": map[string]interface{}{"type": "string"},
 		"costCentre":  map[string]interface{}{"type": "string"},
 	})
@@ -317,7 +318,7 @@ func (s *AgentTypeAPITestSuite) TestUpdateAgentTypeSchemaPersists() {
 
 	s.Contains(stored, "costCentre", "the edited attribute must be persisted")
 	s.Contains(stored, "description")
-	s.Len(stored, 2, "the update replaces the schema rather than merging into it")
+	s.Len(stored, 3, "the update replaces the schema rather than merging into it")
 }
 
 // ---------------------------------------------------------------------------
@@ -363,22 +364,21 @@ func (s *AgentTypeAPITestSuite) TestUniqueAgentTypeAttributeRejectsDuplicateAgen
 	defer s.restoreSchema()
 
 	s.putSchema(map[string]interface{}{
+		"name":         map[string]interface{}{"type": "string", "required": true, "unique": true},
 		"serialNumber": map[string]interface{}{"type": "string", "unique": true},
 	})
 
 	firstID := s.createAgent(Agent{
 		Type:       defaultAgentTypeName,
-		Name:       "agent-type-unique-first",
 		OUID:       s.snapshot.OUID,
-		Attributes: json.RawMessage(`{"serialNumber": "SN-AGENTTYPE-0001"}`),
+		Attributes: json.RawMessage(`{"name": "agent-type-unique-first", "serialNumber": "SN-AGENTTYPE-0001"}`),
 	})
 	defer func() { s.deleteAgent(firstID) }()
 
 	resp := s.do(http.MethodPost, agentBasePath, Agent{
 		Type:       defaultAgentTypeName,
-		Name:       "agent-type-unique-second",
 		OUID:       s.snapshot.OUID,
-		Attributes: json.RawMessage(`{"serialNumber": "SN-AGENTTYPE-0001"}`),
+		Attributes: json.RawMessage(`{"name": "agent-type-unique-second", "serialNumber": "SN-AGENTTYPE-0001"}`),
 	})
 	defer closeBody(resp)
 
@@ -387,7 +387,7 @@ func (s *AgentTypeAPITestSuite) TestUniqueAgentTypeAttributeRejectsDuplicateAgen
 
 	holders := s.agentsWithSerial("SN-AGENTTYPE-0001")
 	s.Require().Len(holders, 1, "the rejected agent must not be persisted")
-	s.Equal("agent-type-unique-first", holders[0].Name,
+	s.Equal("agent-type-unique-first", holders[0].AttrName(),
 		"the surviving agent must be the one created first")
 }
 

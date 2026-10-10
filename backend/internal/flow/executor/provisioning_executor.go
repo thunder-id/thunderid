@@ -822,9 +822,10 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	return createdUser, nil
 }
 
-// createAgentInStore provisions an agent through the agent management provider. Name, description,
-// logo and owner are columns on the agent record rather than schema attributes, and are forwarded
-// as collected: the agent service owns their validation.
+// createAgentInStore provisions an agent through the agent management provider. Description, logo
+// and owner are carried on the agent record rather than as schema attributes, and are forwarded as
+// collected: the agent service owns their validation. The name is a schema attribute and travels
+// with the other attributes.
 func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext,
 	agentAttributes map[string]interface{}) (*providers.Agent, *tidcommon.ServiceError) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, nodeCtx.ExecutionID))
@@ -850,7 +851,6 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	agent := &providers.Agent{
 		OUID:        targetRef.ouID,
 		Type:        targetRef.entityType,
-		Name:        collectedValue(nodeCtx, nameKey),
 		Description: collectedValue(nodeCtx, descriptionKey),
 		LogoURL:     collectedValue(nodeCtx, logoURLKey),
 		Owner:       nodeCtx.RuntimeData[ownerIDKey],

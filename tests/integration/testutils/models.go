@@ -440,7 +440,6 @@ type Agent struct {
 	OUID        string      `json:"ouId,omitempty"`
 	OUHandle    string      `json:"ouHandle,omitempty"`
 	Type        string      `json:"type,omitempty"`
-	Name        string      `json:"name,omitempty"`
 	Description string      `json:"description,omitempty"`
 	LogoURL     string      `json:"logoUrl,omitempty"`
 	Owner       string      `json:"owner,omitempty"`

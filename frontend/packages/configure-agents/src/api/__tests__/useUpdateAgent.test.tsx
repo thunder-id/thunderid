@@ -32,12 +32,11 @@ describe('useUpdateAgent', () => {
     id: agentId,
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     type: 'default',
-    name: 'Updated Service',
+    display: 'Updated Service',
     description: 'Updated description',
   };
 
   const mockRequest: UpdateAgentRequest = {
-    name: 'Updated Service',
     description: 'Updated description',
   };
 

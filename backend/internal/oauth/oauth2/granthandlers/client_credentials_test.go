@@ -742,7 +742,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentSystem
 	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
 		ID:               agentApp.ID,
 		Category:         providers.EntityCategoryAgent,
-		SystemAttributes: []byte(`{"name":"Ledger Agent","owner":"user-123","clientId":"cid"}`),
+		Attributes:       []byte(`{"name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	suite.mockTokenBuilder.On("BuildAccessToken",

@@ -59,7 +59,7 @@ describe('EditAdvancedSettings', () => {
     id: 'agent-1',
     ouId: 'ou-1',
     type: 'default',
-    name: 'Test Agent',
+    display: 'Test Agent',
     inboundAuthConfig: [
       {
         type: 'oauth2',

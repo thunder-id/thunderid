@@ -118,12 +118,8 @@ func (ts *AgentOnboardingOUTestSuite) TestAgentIsProvisionedIntoTheSelectedOU() 
 	status, step, body = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	ts.Require().Equal(http.StatusOK, status, "Owner step failed: %s", string(body))
 
-	agentName := common.GenerateUniqueUsername("integration_agent_ou")
-	status, step, body = ts.step(executionID, step.ChallengeToken, agentNameAction,
-		map[string]string{agentNameInput: agentName})
-	ts.Require().Equal(http.StatusOK, status, "Name step failed: %s", string(body))
-
 	status, step, body = ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
+		agentNameInput:          common.GenerateUniqueUsername("integration_agent_ou"),
 		agentModelProviderInput: "anthropic",
 		agentModelInput:         common.GenerateUniqueUsername("model"),
 	})

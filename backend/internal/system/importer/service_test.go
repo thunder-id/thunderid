@@ -2662,13 +2662,13 @@ type fakeAgentService struct {
 func (f *fakeAgentService) CreateAgent(
 	_ context.Context, req *providers.Agent,
 ) (*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError) {
-	id := req.Name + "-id"
+	id := testAgentAttributeName(req.Attributes) + "-id"
 	f.created = append(f.created, req)
 	if f.existing == nil {
 		f.existing = map[string]*agentmodel.AgentGetResponse{}
 	}
-	f.existing[id] = &agentmodel.AgentGetResponse{ID: id, Name: req.Name}
-	return &agentmodel.AgentCompleteResponse{ID: id, Name: req.Name}, nil
+	f.existing[id] = &agentmodel.AgentGetResponse{ID: id, Attributes: req.Attributes}
+	return &agentmodel.AgentCompleteResponse{ID: id, Attributes: req.Attributes}, nil
 }
 
 func (f *fakeAgentService) GetAgent(
@@ -2695,14 +2695,22 @@ func (f *fakeAgentService) UpdateAgent(
 		}
 	}
 	f.updated = append(f.updated, req)
-	f.existing[agentID] = &agentmodel.AgentGetResponse{ID: agentID, Name: req.Name}
-	return &agentmodel.AgentCompleteResponse{ID: agentID, Name: req.Name}, nil
+	f.existing[agentID] = &agentmodel.AgentGetResponse{ID: agentID, Attributes: req.Attributes}
+	return &agentmodel.AgentCompleteResponse{ID: agentID, Attributes: req.Attributes}, nil
+}
+
+func testAgentAttributeName(attributes json.RawMessage) string {
+	var attrs struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(attributes, &attrs)
+	return attrs.Name
 }
 
 const testAgentLogo = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
 
 const agentYAML = "resource_type: agent\n" +
-	"id: agent-1\ntype: default\nouId: root\nname: Test Agent\ndescription: desc\n" +
+	"id: agent-1\ntype: default\nouId: root\nattributes:\n  name: Test Agent\ndescription: desc\n" +
 	"logoUrl: \"" + testAgentLogo + "\"\n"
 
 func TestImportAgent_Create(t *testing.T) {
@@ -2718,13 +2726,13 @@ func TestImportAgent_Create(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
 	assert.Len(t, agentSvc.created, 1)
-	assert.Equal(t, "Test Agent", agentSvc.created[0].Name)
+	assert.JSONEq(t, `{"name":"Test Agent"}`, string(agentSvc.created[0].Attributes))
 	assert.Equal(t, testAgentLogo, agentSvc.created[0].LogoURL)
 }
 
 func TestImportAgent_UpsertUpdate(t *testing.T) {
 	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
-		"agent-1": {ID: "agent-1", Name: "Test Agent"},
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
 	}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
@@ -2781,7 +2789,7 @@ func TestImportAgent_DryRunCreate(t *testing.T) {
 
 func TestImportAgent_DryRunUpsert(t *testing.T) {
 	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
-		"agent-1": {ID: "agent-1", Name: "Test Agent"},
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
 	}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
@@ -2888,7 +2896,7 @@ func TestImportAgent_UpsertUpdateError(t *testing.T) {
 	updateErr := &tidcommon.ServiceError{Code: "AGT-9998", Error: tidcommon.I18nMessage{DefaultValue: "update failed"}}
 	agentSvc := &errAgentService{
 		inner: &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
-			"agent-1": {ID: "agent-1", Name: "Test Agent"},
+			"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
 		}},
 		updateErr: updateErr,
 	}
@@ -3002,7 +3010,8 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 				"id: " + tc.agentID,
 				"type: default",
 				"ouId: root",
-				"name: " + tc.agentName,
+				"attributes:",
+				"  name: " + tc.agentName,
 				tc.agentFlowKey + ": " + tc.flowID,
 				"",
 			}, "\n")
@@ -3028,7 +3037,8 @@ func TestImportAgent_StripsClientSecretForPublicAgentWithNoneAuthMethod(t *testi
 		"id: agent-pub",
 		"type: default",
 		"ouId: root",
-		"name: Public Agent",
+		"attributes:",
+		"  name: Public Agent",
 		"inboundAuthConfig:",
 		"  - type: oauth2",
 		"    config:",

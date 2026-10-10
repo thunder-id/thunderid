@@ -15,10 +15,12 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
@@ -41,7 +43,7 @@ func (s *ActorProviderTestSuite) SetupTest() {
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.mockAuthn = managermock.NewAuthnProviderManagerMock(s.T())
 	s.mockRole = rolemock.NewRoleServiceInterfaceMock(s.T())
-	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole)
+	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil)
 }
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
@@ -173,6 +175,33 @@ func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	s.Equal(expected, entity)
 }
 
+func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAttribute() {
+	for name, tc := range map[string]struct {
+		displayPath string
+		want        string
+	}{
+		"display attribute set":     {displayPath: "name", want: "Ledger Agent"},
+		"display attribute removed": {displayPath: "", want: "agent-1"},
+	} {
+		s.Run(name, func() {
+			mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+			mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
+				[]string{"default"}).Return(map[string]string{"default": tc.displayPath},
+				(*tidcommon.ServiceError)(nil)).Once()
+			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType)
+			s.mockEntity.On("GetEntity", "agent-1").Return(&providers.Entity{
+				ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
+				Attributes: []byte(`{"name":"Ledger Agent"}`),
+			}, (*entityprovider.EntityProviderError)(nil)).Once()
+
+			entity, err := provider.GetActor("agent-1")
+
+			s.Nil(err)
+			s.Equal(tc.want, entity.Display)
+		})
+	}
+}
+
 func (s *ActorProviderTestSuite) TestGetActorGroups_Delegates() {
 	expected := []providers.EntityGroup{{ID: "group-1"}}
 	s.mockEntity.On("GetTransitiveEntityGroups", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
@@ -209,7 +238,7 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 }
 
 func (s *ActorProviderTestSuite) TestGetActorRoles_NilRoleService_ReturnsNil() {
-	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil)
+	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil, nil)
 
 	roles, err := provider.GetActorRoles("app-1", []string{"group-1"})
 

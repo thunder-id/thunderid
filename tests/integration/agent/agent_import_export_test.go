@@ -109,6 +109,7 @@ func (s *AgentImportExportSuite) SetupSuite() {
 		DisplayName: "Default",
 		OUID:        s.ouID,
 		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
 		},
 	})
@@ -161,7 +162,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	orig := Agent{
 		OUID:        s.ouID,
 		Type:        "default",
-		Name:        agentName,
+		Attributes:  agentAttrs(agentName, nil),
 		Description: "Round-trip entity-only agent",
 	}
 
@@ -178,7 +179,8 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Contains(yamlContent, "resource_type: agent")
 	s.Assert().Contains(yamlContent, "id: "+createdID)
 	s.Assert().Contains(yamlContent, "ouId: "+s.ouID)
-	s.Assert().Contains(yamlContent, "name: "+agentName)
+	s.Assert().Contains(yamlContent, "attributes:")
+	s.Assert().Contains(yamlContent, `name: "`+agentName+`"`)
 	s.Assert().Contains(yamlContent, "description: Round-trip entity-only agent")
 
 	s.Require().NoError(s.deleteAgent(createdID))
@@ -200,7 +202,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 
 	restored, err := s.agentGet(importedID)
 	s.Require().NoError(err)
-	s.Assert().Equal(pre.Name, restored.Name)
+	s.Assert().Equal(pre.AttrName(), restored.AttrName())
 	s.Assert().Equal(pre.Description, restored.Description)
 	s.Assert().Equal(pre.OUID, restored.OUID)
 }
@@ -216,7 +218,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithConfidential
 	orig := Agent{
 		OUID:        s.ouID,
 		Type:        "default",
-		Name:        agentName,
+		Attributes:  agentAttrs(agentName, nil),
 		Description: "Round-trip OAuth agent",
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -273,7 +275,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithConfidential
 
 	restored, err := s.agentGet(importedID)
 	s.Require().NoError(err)
-	s.Assert().Equal(agentName, restored.Name)
+	s.Assert().Equal(agentName, restored.AttrName())
 	s.Require().NotEmpty(restored.InboundAuthConfig)
 	cfg := restored.InboundAuthConfig[0].Config
 	s.Require().NotNil(cfg)
@@ -296,7 +298,7 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertUpdates() {
 	orig := Agent{
 		OUID:        s.ouID,
 		Type:        "default",
-		Name:        agentName,
+		Attributes:  agentAttrs(agentName, nil),
 		Description: "First version",
 	}
 
@@ -329,14 +331,14 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertWithAuthFlowHandleOnly() 
 	createdID, err := s.createAgent(Agent{
 		OUID:       s.ouID,
 		Type:       "default",
-		Name:       agentName,
+		Attributes: agentAttrs(agentName, nil),
 		AuthFlowID: s.authFlowID,
 	})
 	s.Require().NoError(err)
 	defer func() { _ = s.deleteAgent(createdID) }()
 
 	yamlContent := fmt.Sprintf(
-		"resource_type: agent\nid: %s\nouId: %s\ntype: default\nname: %s\nauthFlowHandle: %s\n",
+		"resource_type: agent\nid: %s\nouId: %s\ntype: default\nattributes:\n  name: %s\nauthFlowHandle: %s\n",
 		createdID, s.ouID, agentName, s.handleAuthFlowHandle)
 
 	importResp, err := s.importAgents(agentImportRequest{
@@ -365,12 +367,11 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	orig := Agent{
 		OUID:                      s.ouID,
 		Type:                      "default",
-		Name:                      agentName,
 		Description:               "Round-trip all-fields agent",
 		AuthFlowID:                s.authFlowID,
 		RegistrationFlowID:        s.registrationFlowID,
 		IsRegistrationFlowEnabled: true,
-		Attributes:                json.RawMessage(`{"description":"eng-team"}`),
+		Attributes:                withName(agentName, json.RawMessage(`{"description":"eng-team"}`)),
 		InboundAuthConfig: []InboundAuthConfig{
 			{
 				Type: "oauth2",
@@ -400,7 +401,8 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	s.Assert().Contains(yamlContent, "resource_type: agent")
 	s.Assert().Contains(yamlContent, "id: "+createdID)
 	s.Assert().Contains(yamlContent, "ouId: "+s.ouID)
-	s.Assert().Contains(yamlContent, "name: "+agentName)
+	s.Assert().Contains(yamlContent, "attributes:")
+	s.Assert().Contains(yamlContent, `name: "`+agentName+`"`)
 	s.Assert().Contains(yamlContent, "description: Round-trip all-fields agent")
 	s.Assert().Contains(yamlContent, "authFlowId: "+s.authFlowID)
 	s.Assert().Contains(yamlContent, "registrationFlowId: "+s.registrationFlowID)
@@ -436,7 +438,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	restored, err := s.agentGet(importedID)
 	s.Require().NoError(err)
 
-	s.Assert().Equal(pre.Name, restored.Name)
+	s.Assert().Equal(pre.AttrName(), restored.AttrName())
 	s.Assert().Equal(pre.Description, restored.Description)
 	s.Assert().Equal(pre.OUID, restored.OUID)
 	s.Assert().Equal(pre.Type, restored.Type)

@@ -123,7 +123,7 @@ func (s *OUEndpointOrderingTestSuite) post(ouID string) (*httptest.ResponseRecor
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil),
-		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil), s.authn, nil,
+		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil, nil), s.authn, nil,
 		discoverySvc, nil, s.ouService, true, engineconfig.ClientAssertionConfig{}, 0)
 
 	form := url.Values{}

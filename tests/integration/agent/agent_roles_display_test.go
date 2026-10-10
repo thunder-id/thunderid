@@ -57,7 +57,7 @@ func (ts *AgentRolesDisplayTestSuite) SetupSuite() {
 	agentID, err := createAgent(Agent{
 		OUID:        ts.ouID,
 		Type:        rolesTestAgentTypeName,
-		Name:        "agent-roles-display-agent",
+		Attributes:  agentAttrs("agent-roles-display-agent", nil),
 		Description: "Agent used by the roles and display listing tests",
 	})
 	ts.Require().NoError(err, "Failed to create the test agent")

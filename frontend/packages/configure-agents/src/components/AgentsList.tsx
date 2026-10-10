@@ -66,7 +66,7 @@ export default function AgentsList(): JSX.Element {
           <ListingTable.CellIcon
             sx={{width: '100%'}}
             icon={<ResourceAvatar size={30} value={params.row.logoUrl} fallback={AgentConstants.DEFAULT_AVATAR} />}
-            primary={params.row.name}
+            primary={params.row.display ?? params.row.id}
             secondary={params.row.description}
           />
         ),

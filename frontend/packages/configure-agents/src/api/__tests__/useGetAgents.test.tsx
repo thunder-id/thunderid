@@ -34,13 +34,13 @@ describe('useGetAgents', () => {
         id: '550e8400-e29b-41d4-a716-446655440000',
         ouId: '111e8400-e29b-41d4-a716-446655440000',
         type: 'default',
-        name: 'Billing Service',
+        display: 'Billing Service',
       },
       {
         id: '660e8400-e29b-41d4-a716-446655440001',
         ouId: '111e8400-e29b-41d4-a716-446655440000',
         type: 'default',
-        name: 'Reports Service',
+        display: 'Reports Service',
       },
     ],
   };

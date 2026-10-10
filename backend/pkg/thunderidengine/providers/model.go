@@ -716,7 +716,6 @@ type Agent struct {
 	OUID        string          `json:"ouId"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type"`
-	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
@@ -773,6 +772,9 @@ type Entity struct {
 	Attributes       json.RawMessage `json:"attributes,omitempty"`
 	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
 	IsReadOnly       bool            `json:"isReadOnly"`
+	// Display is the value of the entity type's display attribute, falling back to the entity ID.
+	// It is populated only by callers that resolve it, such as the actor provider for agents.
+	Display string `json:"display,omitempty"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.
