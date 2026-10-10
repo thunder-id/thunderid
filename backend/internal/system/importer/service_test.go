@@ -3057,8 +3057,9 @@ func TestGetAgentOAuthConfigForImport_NilRequest(t *testing.T) {
 
 // fakeResourceServerService is a test double for the resource server adapter used by importer tests.
 type fakeResourceServerService struct {
-	created []providers.ResourceServer
-	updated []providers.ResourceServer
+	created          []providers.ResourceServer
+	updated          []providers.ResourceServer
+	createdResources []providers.Resource
 }
 
 func (f *fakeResourceServerService) CreateResourceServer(
@@ -3086,9 +3087,11 @@ func (f *fakeResourceServerService) UpdateResourceServer(
 }
 
 func (f *fakeResourceServerService) CreateResource(
-	_ context.Context, _ string, _ providers.Resource,
+	_ context.Context, _ string, res providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
-	return &providers.Resource{}, nil
+	res.ID = fmt.Sprintf("res-%d", len(f.createdResources))
+	f.createdResources = append(f.createdResources, res)
+	return &res, nil
 }
 
 func (f *fakeResourceServerService) GetResourceList(
@@ -3445,6 +3448,54 @@ func TestImportResourceServer_OUIDWinsOverHandle(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	require.Len(t, rsSvc.created, 1)
 	assert.Equal(t, "ou-explicit", rsSvc.created[0].OUID)
+}
+
+// TestImportResourceServer_SameHandleUnderDifferentParents verifies that a resource handle reused
+// under different parents is imported, with each resource attached to the parent named by its path.
+func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-new",
+		"name: Repro",
+		"identifier: urn:example:repro",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"resources:",
+		"  - { name: App, handle: app }",
+		"  - { name: Project, handle: project, parent: app }",
+		"  - { name: Member, handle: member, parent: \"app:project\" }",
+		"  - { name: Team, handle: team, parent: app }",
+		"  - { name: Member, handle: member, parent: \"app:team\" }",
+		"  - { name: Lead, handle: lead, parent: \"app:team:member\" }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, rsSvc.createdResources, 6)
+
+	parentOf := func(i int) string {
+		if rsSvc.createdResources[i].Parent == nil {
+			return ""
+		}
+		return *rsSvc.createdResources[i].Parent
+	}
+	assert.Equal(t, "", parentOf(0))
+	assert.Equal(t, "res-0", parentOf(1))
+	assert.Equal(t, "res-1", parentOf(2))
+	assert.Equal(t, "res-0", parentOf(3))
+	assert.Equal(t, "res-3", parentOf(4))
+	assert.Equal(t, "res-4", parentOf(5))
 }
 
 func TestImportResources_IDPPropertiesArePassedToService(t *testing.T) {
