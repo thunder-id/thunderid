@@ -27,7 +27,8 @@ var (
 	testOUID string
 
 	testUserType = testutils.UserType{
-		Name: "par-test-person",
+		Handle:      "par-test-person",
+		DisplayName: "Par Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

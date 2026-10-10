@@ -11,7 +11,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import AgentsList from '../components/AgentsList';
 import useAgentRoutes from '../hooks/useAgentRoutes';
-import {DEFAULT_AGENT_TYPE_NAME} from '../models/agent';
+import {DEFAULT_AGENT_TYPE_HANDLE} from '../models/agent';
 
 export default function AgentsListPage(): JSX.Element {
   const routes = useAgentRoutes();
@@ -22,7 +22,7 @@ export default function AgentsListPage(): JSX.Element {
   // Agent types are restricted to a single bootstrap-provisioned `default` schema; the Schema
   // button jumps to its edit page so operators can manage attribute definitions in place.
   const {data: agentTypesData, isLoading: isAgentTypesLoading} = useGetAgentTypes();
-  const defaultAgentType = agentTypesData?.types?.find((s) => s.name === DEFAULT_AGENT_TYPE_NAME);
+  const defaultAgentType = agentTypesData?.types?.find((s) => s.handle === DEFAULT_AGENT_TYPE_HANDLE);
 
   const handleSchemaClick = (): void => {
     if (!defaultAgentType) return;

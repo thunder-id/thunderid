@@ -24,8 +24,21 @@ type sharingPolicyStoreInterface interface {
 	GetPolicy(ctx context.Context, id string) (Policy, error)
 	// GetPolicyByInitiator returns the one policy an organization unit holds for a resource.
 	GetPolicyByInitiator(ctx context.Context, rt ResourceType, resourceID, initiatingOUID string) (Policy, error)
-	// ListPoliciesForResource returns every policy recorded for one resource.
-	ListPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)
+	// ListPoliciesForResource returns one page of the policies recorded for one resource, for a
+	// management API to serve.
+	ListPoliciesForResource(
+		ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+	) ([]Policy, error)
+	// CountPoliciesForResource returns how many policies one resource has, for that listing's total.
+	CountPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) (int, error)
+	// ListAllPoliciesForResource returns every policy recorded for one resource, with no bound.
+	//
+	// Policy evaluation reads through here, and every question it asks is about the set as a whole:
+	// whether exactly one policy covers an organization unit, and what coverage looked like before
+	// and after an edit. A policy left out is not a shorter answer but a different one, quietly
+	// narrowing who can see a resource, so this read takes neither a page nor the composite store's
+	// record cap.
+	ListAllPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)
 	// ListPoliciesRelevantToChain returns the policies that could cover any organization unit in
 	// the chain. Coverage itself is decided in memory. An empty resourceID spans every resource of
 	// the type, which is what the reverse lookup needs.
@@ -105,10 +118,12 @@ func (s *sharingStore) writeContents(ctx context.Context, dbClient provider.DBCl
 			return fmt.Errorf("failed to create sharing policy target: %w", err)
 		}
 	}
-	for _, ouID := range utils.UniqueStrings(p.ExcludedOUIDs) {
-		if _, err := dbClient.ExecuteContext(ctx, queryInsertExclusion,
-			p.ID, ouID, s.scope(ctx)); err != nil {
-			return fmt.Errorf("failed to create sharing policy exclusion: %w", err)
+	for _, t := range p.Targets {
+		for _, ouID := range utils.UniqueStrings(t.ExcludedOUIDs) {
+			if _, err := dbClient.ExecuteContext(ctx, queryInsertExclusion,
+				p.ID, t.ID, ouID, s.scope(ctx)); err != nil {
+				return fmt.Errorf("failed to create sharing policy exclusion: %w", err)
+			}
 		}
 	}
 	for _, r := range p.Rules {
@@ -140,7 +155,7 @@ func (s *sharingStore) writeRule(
 		return fmt.Errorf("failed to generate an overlay rule identifier: %w", err)
 	}
 	if _, err := dbClient.ExecuteContext(ctx, queryInsertRule,
-		ruleID, policyID, nullableString(r.TargetID), r.FieldKey,
+		ruleID, policyID, r.TargetID, r.FieldKey,
 		string(resolved), string(requested), s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to create overlay rule: %w", err)
 	}
@@ -182,20 +197,61 @@ func (s *sharingStore) GetPolicyByInitiator(
 	return s.hydrate(ctx, dbClient, policyFromRow(rows[0]))
 }
 
-// ListPoliciesForResource returns every policy recorded for one resource.
+// ListPoliciesForResource returns one page of the policies recorded for one resource.
 func (s *sharingStore) ListPoliciesForResource(
-	ctx context.Context, rt ResourceType, resourceID string,
+	ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
 ) ([]Policy, error) {
 	dbClient, err := s.client()
 	if err != nil {
 		return nil, err
 	}
 	rows, err := dbClient.QueryContext(ctx, queryListPoliciesForResource,
+		string(rt), resourceID, s.scope(ctx), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sharing policies: %w", err)
+	}
+	return s.hydrateAll(ctx, dbClient, rows)
+}
+
+// ListAllPoliciesForResource returns every policy recorded for one resource.
+func (s *sharingStore) ListAllPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) ([]Policy, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryListAllPoliciesForResource,
 		string(rt), resourceID, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sharing policies: %w", err)
 	}
 	return s.hydrateAll(ctx, dbClient, rows)
+}
+
+// CountPoliciesForResource returns how many policies one resource has.
+func (s *sharingStore) CountPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (int, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return 0, err
+	}
+	rows, err := dbClient.QueryContext(ctx, queryCountPoliciesForResource,
+		string(rt), resourceID, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to count sharing policies: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	// Read through ToInt64 rather than asserting int64: the drivers do not agree on the type a
+	// COUNT comes back as.
+	count, ok := utils.ToInt64(rows[0]["total"])
+	if !ok {
+		return 0, fmt.Errorf("failed to read sharing policy count from %v", rows[0]["total"])
+	}
+	return int(count), nil
 }
 
 // ListPoliciesRelevantToChain returns the policies that could cover any organization unit in the
@@ -350,10 +406,12 @@ func (s *sharingStore) hydrate(
 	if err != nil {
 		return Policy{}, fmt.Errorf("failed to list sharing policy targets: %w", err)
 	}
+	byID := make(map[string]int, len(targetRows))
 	for _, row := range targetRows {
+		byID[utils.ConvertInterfaceValueToString(row["id"])] = len(p.Targets)
 		p.Targets = append(p.Targets, Target{
 			ID:    utils.ConvertInterfaceValueToString(row["id"]),
-			Scope: targetScope(utils.ConvertInterfaceValueToString(row["target_scope"])),
+			Scope: TargetScope(utils.ConvertInterfaceValueToString(row["target_scope"])),
 			OUID:  utils.ConvertInterfaceValueToString(row["target_ou_id"]),
 		})
 	}
@@ -363,7 +421,12 @@ func (s *sharingStore) hydrate(
 		return Policy{}, fmt.Errorf("failed to list sharing policy exclusions: %w", err)
 	}
 	for _, row := range exclusionRows {
-		p.ExcludedOUIDs = append(p.ExcludedOUIDs, utils.ConvertInterfaceValueToString(row["excluded_ou_id"]))
+		i, ok := byID[utils.ConvertInterfaceValueToString(row["target_id"])]
+		if !ok {
+			continue
+		}
+		p.Targets[i].ExcludedOUIDs = append(p.Targets[i].ExcludedOUIDs,
+			utils.ConvertInterfaceValueToString(row["excluded_ou_id"]))
 	}
 
 	ruleRows, err := dbClient.QueryContext(ctx, queryListRules, p.ID, s.scope(ctx))

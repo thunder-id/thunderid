@@ -325,12 +325,12 @@ type: google
       resourceType: 'user_type',
       label: 'User Types',
       body: (idx) =>
-        `resource_type: user_type\nname: Schema ${idx}\nhandle: schema-${idx}\nallow_self_registration: true`,
+        `resource_type: user_type\ndisplayName: Schema ${idx}\nhandle: schema-${idx}\nallow_self_registration: true`,
     },
     {
       resourceType: 'agent_type',
       label: 'Agent Types',
-      body: (idx) => `resource_type: agent_type\nname: Agent Type ${idx}\nhandle: agent-type-${idx}`,
+      body: (idx) => `resource_type: agent_type\ndisplayName: Agent Type ${idx}\nhandle: agent-type-${idx}`,
     },
     {
       resourceType: 'translation',

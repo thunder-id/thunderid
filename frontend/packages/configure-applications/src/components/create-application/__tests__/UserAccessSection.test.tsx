@@ -20,12 +20,14 @@ describe('UserAccessSection', () => {
   });
 
   const mockUserTypes = [
-    {id: '1', name: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true},
-    {id: '2', name: 'External', ouId: 'EXTERNAL', allowSelfRegistration: false},
+    {id: '1', handle: 'internal', displayName: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true},
+    {id: '2', handle: 'external', displayName: 'External', ouId: 'EXTERNAL', allowSelfRegistration: false},
   ];
 
   it('renders nothing when fewer than two user types exist', () => {
-    const singleUserType = [{id: '1', name: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true}];
+    const singleUserType = [
+      {id: '1', handle: 'internal', displayName: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true},
+    ];
 
     const {container} = render(
       <UserAccessSection userTypes={singleUserType} selectedUserTypes={[]} onUserTypesChange={mockOnUserTypesChange} />,
@@ -38,7 +40,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal', 'External']}
+        selectedUserTypes={['internal', 'external']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -50,7 +52,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal', 'External']}
+        selectedUserTypes={['internal', 'external']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -62,7 +64,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal']}
+        selectedUserTypes={['internal']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -79,7 +81,7 @@ describe('UserAccessSection', () => {
 
     await user.click(screen.getAllByRole('checkbox')[0]);
 
-    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['Internal', 'External']);
+    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['internal', 'external']);
   });
 
   it('clears the selection when the fully-checked master checkbox is unchecked', async () => {
@@ -87,7 +89,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal', 'External']}
+        selectedUserTypes={['internal', 'external']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -109,7 +111,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal']}
+        selectedUserTypes={['internal']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -122,7 +124,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal']}
+        selectedUserTypes={['internal']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -131,7 +133,7 @@ describe('UserAccessSection', () => {
     const externalCheckbox = screen.getByRole('checkbox', {name: 'External'});
     await user.click(externalCheckbox);
 
-    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['Internal', 'External']);
+    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['internal', 'external']);
   });
 
   it('removes an individual user type when its checkbox is unchecked', async () => {
@@ -139,7 +141,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal', 'External']}
+        selectedUserTypes={['internal', 'external']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -148,7 +150,7 @@ describe('UserAccessSection', () => {
     const internalCheckbox = screen.getByRole('checkbox', {name: 'Internal'});
     await user.click(internalCheckbox);
 
-    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['External']);
+    expect(mockOnUserTypesChange).toHaveBeenCalledWith(['external']);
   });
 
   it('expands and collapses via the chevron button', async () => {
@@ -156,7 +158,7 @@ describe('UserAccessSection', () => {
     render(
       <UserAccessSection
         userTypes={mockUserTypes}
-        selectedUserTypes={['Internal']}
+        selectedUserTypes={['internal']}
         onUserTypesChange={mockOnUserTypesChange}
       />,
     );
@@ -169,12 +171,12 @@ describe('UserAccessSection', () => {
 
   describe('with more than 5 user types', () => {
     const manyUserTypes = [
-      {id: '1', name: 'Type1', ouId: 'TYPE1', allowSelfRegistration: true},
-      {id: '2', name: 'Type2', ouId: 'TYPE2', allowSelfRegistration: false},
-      {id: '3', name: 'Type3', ouId: 'TYPE3', allowSelfRegistration: true},
-      {id: '4', name: 'Type4', ouId: 'TYPE4', allowSelfRegistration: false},
-      {id: '5', name: 'Type5', ouId: 'TYPE5', allowSelfRegistration: true},
-      {id: '6', name: 'Type6', ouId: 'TYPE6', allowSelfRegistration: false},
+      {id: '1', handle: 'type1', displayName: 'Type1', ouId: 'TYPE1', allowSelfRegistration: true},
+      {id: '2', handle: 'type2', displayName: 'Type2', ouId: 'TYPE2', allowSelfRegistration: false},
+      {id: '3', handle: 'type3', displayName: 'Type3', ouId: 'TYPE3', allowSelfRegistration: true},
+      {id: '4', handle: 'type4', displayName: 'Type4', ouId: 'TYPE4', allowSelfRegistration: false},
+      {id: '5', handle: 'type5', displayName: 'Type5', ouId: 'TYPE5', allowSelfRegistration: true},
+      {id: '6', handle: 'type6', displayName: 'Type6', ouId: 'TYPE6', allowSelfRegistration: false},
     ];
 
     it('renders an autocomplete instead of individual checkboxes', async () => {
@@ -182,7 +184,7 @@ describe('UserAccessSection', () => {
       render(
         <UserAccessSection
           userTypes={manyUserTypes}
-          selectedUserTypes={['Type1']}
+          selectedUserTypes={['type1']}
           onUserTypesChange={mockOnUserTypesChange}
         />,
       );
@@ -198,7 +200,7 @@ describe('UserAccessSection', () => {
       render(
         <UserAccessSection
           userTypes={manyUserTypes}
-          selectedUserTypes={['Type1']}
+          selectedUserTypes={['type1']}
           onUserTypesChange={mockOnUserTypesChange}
         />,
       );
@@ -210,17 +212,17 @@ describe('UserAccessSection', () => {
       const type2Option = await screen.findByText('Type2');
       await user.click(type2Option);
 
-      expect(mockOnUserTypesChange).toHaveBeenCalledWith(['Type1', 'Type2']);
+      expect(mockOnUserTypesChange).toHaveBeenCalledWith(['type1', 'type2']);
     });
   });
 
   describe('with exactly 5 user types', () => {
     const fiveUserTypes = [
-      {id: '1', name: 'Type1', ouId: 'TYPE1', allowSelfRegistration: true},
-      {id: '2', name: 'Type2', ouId: 'TYPE2', allowSelfRegistration: false},
-      {id: '3', name: 'Type3', ouId: 'TYPE3', allowSelfRegistration: true},
-      {id: '4', name: 'Type4', ouId: 'TYPE4', allowSelfRegistration: false},
-      {id: '5', name: 'Type5', ouId: 'TYPE5', allowSelfRegistration: true},
+      {id: '1', handle: 'type1', displayName: 'Type1', ouId: 'TYPE1', allowSelfRegistration: true},
+      {id: '2', handle: 'type2', displayName: 'Type2', ouId: 'TYPE2', allowSelfRegistration: false},
+      {id: '3', handle: 'type3', displayName: 'Type3', ouId: 'TYPE3', allowSelfRegistration: true},
+      {id: '4', handle: 'type4', displayName: 'Type4', ouId: 'TYPE4', allowSelfRegistration: false},
+      {id: '5', handle: 'type5', displayName: 'Type5', ouId: 'TYPE5', allowSelfRegistration: true},
     ];
 
     it('still renders individual checkboxes rather than an autocomplete', async () => {
@@ -228,7 +230,7 @@ describe('UserAccessSection', () => {
       render(
         <UserAccessSection
           userTypes={fiveUserTypes}
-          selectedUserTypes={['Type1']}
+          selectedUserTypes={['type1']}
           onUserTypesChange={mockOnUserTypesChange}
         />,
       );

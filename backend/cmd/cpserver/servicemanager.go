@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
@@ -44,10 +45,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -127,6 +130,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// List to collect exporters from each package
 	var exporters []declarativeresource.ResourceExporter
 
+	// The services that write a resource whose export refers to a value hand it here, so the value
+	// reaches the default gateway's store under the name the export refers to it by. It is bound to the
+	// export and the gateways once both exist below, since the export is built from these services.
+	valueCapture := gateway.NewValueCapture()
+
 	// Initialize i18n service for internationalization support.
 	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation)
 	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
@@ -135,7 +143,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouAuthzService, err := sysauthz.Initialize()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
-	ouService, ouHierarchyResolver, _, ouExporter, err := ou.Initialize(mux, mcpServer, cacheManager, ouAuthzService)
+	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
+		mux, mcpServer, cacheManager, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize OrganizationUnitService")
 	exporters = append(exporters, ouExporter)
 
@@ -160,7 +169,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
-		mux, entityService, ouService, entityTypeService, ouAuthzService,
+		mux, entityService, ouService, entityTypeService, ouAuthzService, valueCapture,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
@@ -204,10 +213,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	notifSenderMgtSvc, _, _, err := notification.Initialize(jwtService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
+	notifTemplateSvc, _, err := notificationtemplate.Initialize(mux, cacheManager, i18nService)
+	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
+
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender management services.
 	connectionExporter, err := connection.Initialize(
-		mux, idpService, notifSenderMgtSvc, resourceService, authZENPDPService)
+		mux, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -273,9 +285,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize LayoutMgtService")
 	exporters = append(exporters, layoutExporter)
 
+	sharingService, err := sharing.Initialize(cacheManager, ouHierarchyResolver, ouEnumerator,
+		runtime.Config.ResourceSharing.AllowChildOUCrossTreeSharing)
+	fatalOnError(ctx, logger, err, "Failed to initialize SharingService")
+
+	cimdService := cimd.Initialize(mux)
 	inboundClientService, err := inboundclient.Initialize(
 		cacheManager, certservice, entityProvider,
-		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService)
+		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService,
+		cimdService, nil, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize InboundClientService")
 
 	// TODO: Remove entityService dependency after finalizing declarative resource loading pattern
@@ -283,12 +301,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, nil)
+		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService)
+		roleService, ouAuthzService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
@@ -297,28 +315,29 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// identity provider or notification sender. Every consumer and provider here is a management
 	// service.
 	registerDependencyRegistry(dependencyConsumers{
-		theme:       themeMgtService,
-		layout:      layoutMgtService,
-		flow:        flowMgtService,
-		user:        userService,
-		idp:         idpService,
-		notifSender: notifSenderMgtSvc,
-		application: applicationService,
-		agent:       agentService,
-		group:       groupService,
-		ou:          ouService,
-		resource:    resourceService,
+		theme:         themeMgtService,
+		layout:        layoutMgtService,
+		flow:          flowMgtService,
+		user:          userService,
+		idp:           idpService,
+		notifSender:   notifSenderMgtSvc,
+		application:   applicationService,
+		agent:         agentService,
+		group:         groupService,
+		ou:            ouService,
+		resource:      resourceService,
+		notifTemplate: notifTemplateSvc,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, resourceService)
 
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export
 	// carries references naming where each value lives rather than the values themselves.
-	_ = export.Initialize(mux, exporters, export.ValueReferences)
+	exportService := export.Initialize(mux, exporters, export.ValueReferences)
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux)
+	gatewayService, err := gateway.Initialize(mux, exportService, valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -343,7 +362,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		openid4vciCredSvc,
 		serverConfigService,
 		gatewayService,
+		notifTemplateSvc,
 		authZENPDPService,
+		// A control plane keeps configuration as references and holds no values, so none are resolved.
+		nil,
 	)
 
 	// Register the health service.
@@ -382,17 +404,18 @@ func initializeFlowValidation(
 // dependencyConsumers groups the services that check the dependency registry before deleting their
 // own resources.
 type dependencyConsumers struct {
-	theme       thememgt.ThemeMgtServiceInterface
-	layout      layoutmgt.LayoutMgtServiceInterface
-	flow        flowmgt.FlowMgtServiceInterface
-	user        user.UserServiceInterface
-	idp         idp.IDPServiceInterface
-	notifSender notification.NotificationSenderMgtSvcInterface
-	application application.ApplicationServiceInterface
-	agent       agent.AgentServiceInterface
-	group       group.GroupServiceInterface
-	ou          ou.ConfigurableOUService
-	resource    resource.ResourceServiceInterface
+	theme         thememgt.ThemeMgtServiceInterface
+	layout        layoutmgt.LayoutMgtServiceInterface
+	flow          flowmgt.FlowMgtServiceInterface
+	user          user.UserServiceInterface
+	idp           idp.IDPServiceInterface
+	notifSender   notification.NotificationSenderMgtSvcInterface
+	application   application.ApplicationServiceInterface
+	agent         agent.AgentServiceInterface
+	group         group.GroupServiceInterface
+	ou            ou.ConfigurableOUService
+	resource      resource.ResourceServiceInterface
+	notifTemplate notificationtemplate.NotificationTemplateServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -410,6 +433,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.group.SetDependencyRegistry(registry)
 	consumers.ou.SetDependencyRegistry(registry)
 	consumers.resource.SetDependencyRegistry(registry)
+	consumers.notifTemplate.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

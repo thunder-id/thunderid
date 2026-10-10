@@ -36,7 +36,8 @@ import { send } from "../../utils/api-request";
 const RESOURCE_MANIFEST: Array<{
   label: string;
   path: string;
-  listKey: string;
+  // Omitted for endpoints that return a bare array, such as `/connections/{vendor}`.
+  listKey?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getName: (item: any) => string | undefined;
   expected: string[];
@@ -66,8 +67,8 @@ const RESOURCE_MANIFEST: Array<{
     label: "User types",
     path: "/user-types?limit=100",
     listKey: "types",
-    getName: t => t.name,
-    expected: ["Customer", "Staff"],
+    getName: t => t.handle,
+    expected: ["customer", "staff"],
   },
   {
     label: "Resource servers",
@@ -106,6 +107,12 @@ const RESOURCE_MANIFEST: Array<{
       "Default Wayfinder CIBA SMS Notification Flow",
       "Wayfinder Agent Authentication Flow",
     ],
+  },
+  {
+    label: "Email providers",
+    path: "/connections/email-smtp",
+    getName: c => c.name,
+    expected: ["Wayfinder Mock SMTP"],
   },
 ];
 
@@ -183,7 +190,7 @@ test.describe("Wayfinder Sample Setup", { tag: [TestTags.WAYFINDER] }, () => {
           expect(response.ok(), `GET ${resource.path} should succeed, got ${response.status()}`).toBe(true);
 
           const body = await response.json();
-          const names = (body[resource.listKey] ?? []).map(resource.getName);
+          const names = ((resource.listKey ? body[resource.listKey] : body) ?? []).map(resource.getName);
           for (const expected of resource.expected) {
             expect(names, `${resource.label} should include "${expected}"`).toContain(expected);
           }
@@ -207,7 +214,9 @@ test.describe("Wayfinder Sample Setup", { tag: [TestTags.WAYFINDER] }, () => {
         const response = await send(request, "GET", resource.path);
         expect(response.ok(), `GET ${resource.path} should succeed, got ${response.status()}`).toBe(true);
         const body = await response.json();
-        const item = (body[resource.listKey] ?? []).find((i: unknown) => resource.getName(i) === name);
+        const item = ((resource.listKey ? body[resource.listKey] : body) ?? []).find(
+          (i: unknown) => resource.getName(i) === name
+        );
         expect(item, `${resource.path} should include "${name}"`).toBeDefined();
         return item.id;
       };

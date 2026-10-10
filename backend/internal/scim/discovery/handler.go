@@ -10,8 +10,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-const discoveryHandlerLoggerComponentName = "SCIMDiscoveryHandler"
-
 // scimDiscoveryHandler handles SCIM discovery HTTP requests.
 type scimDiscoveryHandler struct {
 	svc     SCIMDiscoveryServiceInterface
@@ -24,7 +22,8 @@ func newSCIMDiscoveryHandler(svc SCIMDiscoveryServiceInterface, baseURL string) 
 	return &scimDiscoveryHandler{
 		svc:     svc,
 		baseURL: baseURL,
-		logger:  *log.GetLogger().With(log.String(log.LoggerKeyComponentName, discoveryHandlerLoggerComponentName)),
+		logger: *log.GetLogger().With(
+			log.String(log.LoggerKeyComponentName, "SCIMDiscoveryHandler")),
 	}
 }
 

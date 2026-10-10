@@ -549,7 +549,7 @@ func (ts *SSOLogoutTestSuite) createShortLivedIDTokenApp() (string, string) {
 		"authFlowId":                ts.authFlowID,
 		"isRegistrationFlowEnabled": false,
 		"signOutFlowId":             ts.signOutFlowID,
-		"allowedUserTypes":          []string{testUserType.Name},
+		"allowedUserTypes":          []string{testUserType.Handle},
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",
@@ -593,7 +593,7 @@ func (ts *SSOLogoutTestSuite) createShortLivedIDTokenApp() (string, string) {
 
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID: testOUID,
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(fmt.Sprintf(`{
 			"username": "%s",
 			"password": "%s",

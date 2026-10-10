@@ -65,7 +65,7 @@ These parameters on the authorization request control *how* the user authenticat
 `prompt`, `max_age`, and `id_token_hint` are answered from the SSO session the authentication flow maintains, so they apply to applications whose flow includes a **Check SSO Session** node. See [Single Sign-On](../../../flows/single-sign-on) for how a flow establishes one. The remaining parameters do not depend on a session.
 
 :::note
-`prompt=none` is answered by checking that a live session exists for the application's flow. A flow containing more than one **Check SSO Session** node, such as a step-up authentication flow, can therefore pass that check and still need to prompt at a later node, in which case the request fails rather than completing silently.
+`prompt=none` is answered by checking that a live session exists for the application's flow, then running the flow without loading the login page. If the flow still needs the user after the **Check SSO Session** node, such as a later step-up authentication step, the request returns `login_required` instead of prompting.
 :::
 
 ### `prompt` Values
@@ -73,7 +73,7 @@ These parameters on the authorization request control *how* the user authenticat
 | Value | Behavior |
 |---|---|
 | `login` | Forces the user to authenticate, even when a session exists. **Supported.** |
-| `none` | Completes without any user interaction when a session satisfies the request. Returns `login_required` when no session exists, when `id_token_hint` names a different user, or when the authentication is older than `max_age`. |
+| `none` | Completes without any user interaction when a session satisfies the request, redirecting to the client's redirect URI with the authorization code without loading the login page. Returns `login_required` when no session exists, when `id_token_hint` names a different user, when the authentication is older than `max_age`, or when the flow needs the user after the session check. |
 | `consent` | Forces the user to re-grant consent for all required attributes, even if consent was previously granted. |
 | `select_account` | Returns `account_selection_required`: account selection is not currently supported. |
 

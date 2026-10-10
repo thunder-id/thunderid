@@ -181,6 +181,16 @@ type PasskeyConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
 }
 
+// DirectAPIConfig holds the configuration for the Direct API endpoints.
+type DirectAPIConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether the Direct API endpoints are enabled, defaulting to false when unset.
+func (c DirectAPIConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
+}
+
 // AttestationConfig holds engine-level platform attestation configuration shared across
 // applications.
 type AttestationConfig struct {
@@ -297,22 +307,6 @@ type RestSecurityConfig struct {
 	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
-// EmailConfig holds the email configuration details.
-type EmailConfig struct {
-	SMTP SMTPEmailConfig `yaml:"smtp" json:"smtp"`
-}
-
-// SMTPEmailConfig holds the SMTP email configuration details.
-type SMTPEmailConfig struct {
-	Host                 string `yaml:"host"                  json:"host"`
-	Port                 int    `yaml:"port"                  json:"port"`
-	Username             string `yaml:"username"              json:"username"`
-	Password             string `yaml:"password"              json:"password"`
-	FromAddress          string `yaml:"from_address"          json:"from_address"`
-	EnableStartTLS       *bool  `yaml:"enable_start_tls"      json:"enable_start_tls"`
-	EnableAuthentication *bool  `yaml:"enable_authentication" json:"enable_authentication"`
-}
-
 // GatewayConfig holds how many gateways this deployment administers.
 //
 // It is here rather than in the engine's server configuration because only a deployment that
@@ -330,6 +324,9 @@ type GatewayConfig struct {
 	// user-supplied primitive when it is non-zero, so a plain int could not tell `max_gateways: 0`,
 	// meaning administer none, from an omitted field, and the default of one would win either way.
 	MaxGateways *int `yaml:"max_gateways" json:"max_gateways"`
+	// MaxVersions bounds how many captured configuration versions a deployment keeps. Capturing one
+	// beyond it removes the oldest, except a version some gateway holds or could be reverted to.
+	MaxVersions *int `yaml:"max_versions" json:"max_versions"`
 	// Store defines the storage mode for gateways.
 	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
 	// If not specified, falls back to global DeclarativeResources.Enabled setting:
@@ -343,6 +340,12 @@ type GatewayConfig struct {
 // deployment administers none.
 func (c GatewayConfig) MaxGatewayCount() int {
 	return derefInt(c.MaxGateways, 0)
+}
+
+// MaxVersionCount reports how many captured configuration versions a deployment keeps. It is never
+// below one, because a capture that kept nothing could not be applied.
+func (c GatewayConfig) MaxVersionCount() int {
+	return max(derefInt(c.MaxVersions, 1), 1)
 }
 
 // DeclarativeResources holds the configuration details for the declarative resources.
@@ -630,10 +633,12 @@ type OAuthConfig struct {
 	AuthorizationCode        engineconfig.AuthorizationCodeConfig    `yaml:"authorization_code" json:"authorization_code"`       //nolint:lll
 	AuthorizationRequest     engineconfig.AuthorizationRequestConfig `yaml:"authorization_request" json:"authorization_request"` //nolint:lll
 	DCR                      engineconfig.DCRConfig                  `yaml:"dcr" json:"dcr"`
+	CIMD                     engineconfig.CIMDConfig                 `yaml:"cimd" json:"cimd"`
 	PAR                      engineconfig.PARConfig                  `yaml:"par" json:"par"`
 	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
 	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
 	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
+	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
 	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
 	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
@@ -653,10 +658,12 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		AuthorizationCode:        c.AuthorizationCode,
 		AuthorizationRequest:     c.AuthorizationRequest,
 		DCR:                      c.DCR,
+		CIMD:                     c.CIMD,
 		PAR:                      c.PAR,
 		DPoP:                     c.DPoP,
 		AuthClass:                c.AuthClass,
 		CIBA:                     c.CIBA,
+		ClientAssertion:          c.ClientAssertion,
 		Revocation:               c.Revocation,
 		TokenExchange:            c.TokenExchange,
 		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
@@ -709,6 +716,7 @@ type Config struct {
 	EntityType           EntityTypeConfig                  `yaml:"user_type"             json:"user_type"`
 	Observability        engineconfig.ObservabilityConfig  `yaml:"observability"         json:"observability"`
 	Passkey              PasskeyConfig                     `yaml:"passkey"               json:"passkey"`
+	DirectAPI            DirectAPIConfig                   `yaml:"direct_api"            json:"direct_api"`
 	Attestation          AttestationConfig                 `yaml:"attestation"           json:"attestation"`
 	OpenID4VP            OpenID4VPConfig                   `yaml:"openid4vp"             json:"openid4vp"`
 	OpenID4VCI           OpenID4VCIConfig                  `yaml:"openid4vci"            json:"openid4vci"`
@@ -722,7 +730,6 @@ type Config struct {
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`
 	Layout               LayoutConfig                      `yaml:"layout"                json:"layout"`
 	Translation          TranslationConfig                 `yaml:"translation"           json:"translation"`
-	Email                EmailConfig                       `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
 	ResourceSharing      ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
@@ -755,6 +762,7 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 
 	// Merge user configuration with defaults
 	mergeConfigs(&cfg, &userCfg)
+	cfg.Server.EnableOUQualifiedEndpoints = true
 
 	// Default gate_client to the server's own URL when not explicitly configured, so the gate only
 	// needs configuring when it is hosted separately from the server.
@@ -822,6 +830,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.OAuth.DPoP.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.OAuth.ClientAssertion.Validate(); err != nil {
 		return nil, err
 	}
 	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {

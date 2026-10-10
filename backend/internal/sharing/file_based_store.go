@@ -126,8 +126,28 @@ func (f *fileBasedStore) GetPolicyByInitiator(
 	return Policy{}, errPolicyNotFound
 }
 
-// ListPoliciesForResource returns every declared policy for one resource.
+// ListPoliciesForResource returns one page of a resource's declared policies. Declaration order is
+// stable across restarts because it is the order the files were replayed in, so it is what a page
+// boundary is measured against.
 func (f *fileBasedStore) ListPoliciesForResource(
+	_ context.Context, rt ResourceType, resourceID string, limit, offset int,
+) ([]Policy, error) {
+	all := f.listForResource(rt, resourceID)
+	if offset >= len(all) {
+		return nil, nil
+	}
+	return all[offset:min(offset+limit, len(all))], nil
+}
+
+// CountPoliciesForResource returns how many declared policies one resource has.
+func (f *fileBasedStore) CountPoliciesForResource(
+	_ context.Context, rt ResourceType, resourceID string,
+) (int, error) {
+	return len(f.listForResource(rt, resourceID)), nil
+}
+
+// ListAllPoliciesForResource returns every declared policy for one resource.
+func (f *fileBasedStore) ListAllPoliciesForResource(
 	_ context.Context, rt ResourceType, resourceID string,
 ) ([]Policy, error) {
 	return f.listForResource(rt, resourceID), nil

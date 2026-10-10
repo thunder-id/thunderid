@@ -32,12 +32,13 @@ func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_ConfiguredID_Res
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	mockET.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-employee", false).
-		Return(&entitytype.EntityType{ID: "type-employee", Name: "Employee"}, (*tidcommon.ServiceError)(nil))
+		Return(&entitytype.EntityType{ID: "type-employee", Handle: "employee", DisplayName: "Employee Staff"},
+			(*tidcommon.ServiceError)(nil))
 
 	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "type-employee")
 
 	require.Nil(t, svcErr)
-	require.Equal(t, "Employee", name)
+	require.Equal(t, "employee", name)
 }
 
 // TestResolveCoreUserType_ConfiguredID_NotFound_ReturnsError tests that a CoreUserTypeID
@@ -62,13 +63,15 @@ func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_Unset_SingleUser
 	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, 0, false).
 		Return(&entitytype.EntityTypeListResponse{
 			TotalResults: 1,
-			Types:        []entitytype.EntityTypeListItem{{Name: "Employee", OUID: "ou-1"}},
+			Types: []entitytype.EntityTypeListItem{
+				{Handle: "employee", DisplayName: "Employee Staff", OUID: "ou-1"},
+			},
 		}, (*tidcommon.ServiceError)(nil))
 
 	name, svcErr := ResolveCoreUserType(context.Background(), mockET, "")
 
 	require.Nil(t, svcErr)
-	require.Equal(t, "Employee", name)
+	require.Equal(t, "employee", name)
 }
 
 // TestResolveCoreUserType_Unset_MultipleUserTypes_ReturnsMissingCustomSchema tests that an
@@ -81,8 +84,8 @@ func (suite *UsertypeResolverTestSuite) TestResolveCoreUserType_Unset_MultipleUs
 		Return(&entitytype.EntityTypeListResponse{
 			TotalResults: 2,
 			Types: []entitytype.EntityTypeListItem{
-				{Name: "Employee", OUID: "ou-1"},
-				{Name: "Contractor", OUID: "ou-2"},
+				{Handle: "employee", OUID: "ou-1"},
+				{Handle: "contractor", OUID: "ou-2"},
 			},
 		}, (*tidcommon.ServiceError)(nil))
 

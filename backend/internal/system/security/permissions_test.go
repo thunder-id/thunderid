@@ -343,6 +343,33 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "GET /groups exact", method: http.MethodGet, path: "/groups", wantPerm: p.GroupView},
 		{name: "POST /groups exact", method: http.MethodPost, path: "/groups", wantPerm: p.Group},
 
+		// ---- Notification template APIs ----
+		{
+			name:   "GET notification-templates list",
+			method: http.MethodGet, path: "/notification-templates/email/templates",
+			wantPerm: p.NotificationTemplateView,
+		},
+		{
+			name:   "POST notification-templates create",
+			method: http.MethodPost, path: "/notification-templates/sms/templates",
+			wantPerm: p.NotificationTemplate,
+		},
+		{
+			name:   "GET notification-template by id",
+			method: http.MethodGet, path: "/notification-templates/email/templates/tmpl-1",
+			wantPerm: p.NotificationTemplateView,
+		},
+		{
+			name:   "PUT notification-template by id",
+			method: http.MethodPut, path: "/notification-templates/email/templates/tmpl-1",
+			wantPerm: p.NotificationTemplate,
+		},
+		{
+			name:   "DELETE notification-template by id",
+			method: http.MethodDelete, path: "/notification-templates/sms/templates/tmpl-2",
+			wantPerm: p.NotificationTemplate,
+		},
+
 		// ---- Self-service paths (empty permission = any authenticated user) ----
 		{name: "GET /users/me self-service", method: http.MethodGet, path: "/users/me", wantPerm: ""},
 		{name: "PUT /users/me self-service", method: http.MethodPut, path: "/users/me", wantPerm: ""},

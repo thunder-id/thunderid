@@ -27,7 +27,8 @@ var (
 	}
 
 	passkeyEnrollmentEntityType = testutils.UserType{
-		Name: "passkey_enrollment_user",
+		Handle:      "passkey_enrollment_user",
+		DisplayName: "Passkey Enrollment User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -89,7 +90,7 @@ func (suite *PasskeyEnrollmentTestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       passkeyEnrollmentEntityType.Name,
+		Type:       passkeyEnrollmentEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributes),
 	})
@@ -104,7 +105,7 @@ func (suite *PasskeyEnrollmentTestSuite) SetupSuite() {
 	})
 	suite.Require().NoError(err, "Failed to marshal attacker attributes")
 	attackerID, err := testutils.CreateUser(testutils.User{
-		Type:       passkeyEnrollmentEntityType.Name,
+		Type:       passkeyEnrollmentEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attackerAttributes),
 	})
@@ -379,7 +380,7 @@ func (suite *PasskeyEnrollmentTestSuite) TestPasskeyRegisterFinishSuccess() {
 	suite.Require().NoError(err, "Failed to marshal user attributes")
 
 	userID, err := testutils.CreateUser(testutils.User{
-		Type:       passkeyEnrollmentEntityType.Name,
+		Type:       passkeyEnrollmentEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributes),
 	})

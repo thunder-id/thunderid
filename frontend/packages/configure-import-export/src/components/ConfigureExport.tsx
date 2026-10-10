@@ -658,7 +658,11 @@ export default function ConfigureExport({
   // Add user types if present
   if (userTypesCount > 0) {
     const schemas =
-      (configData?.['user_type'] as {name?: string; handle?: string; allow_self_registration?: boolean}[]) ?? [];
+      (configData?.['user_type'] as {
+        displayName?: string;
+        handle?: string;
+        allow_self_registration?: boolean;
+      }[]) ?? [];
     const displayedSchemas = expandedSchemas ? schemas : schemas.slice(0, 5);
     const remainingCount = schemas.length - 5;
 
@@ -674,11 +678,11 @@ export default function ConfigureExport({
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedSchemas.map((schema, idx) => (
-                <Stack key={schema.handle ?? schema.name ?? `schema-${idx}`} spacing={0.5}>
+                <Stack key={schema.handle ?? `schema-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <UserRoundCog size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {schema.name ?? schema.handle ?? t('importExport:configureExport.fallback.unnamedSchema')}
+                      {schema.displayName ?? schema.handle ?? t('importExport:configureExport.fallback.unnamedSchema')}
                     </Typography>
                     {schema.allow_self_registration && (
                       <Chip
@@ -716,7 +720,7 @@ export default function ConfigureExport({
 
   // Add agent types if present
   if (agentTypesCount > 0) {
-    const agentTypes = (configData?.['agent_type'] as {name?: string; handle?: string}[]) ?? [];
+    const agentTypes = (configData?.['agent_type'] as {displayName?: string; handle?: string}[]) ?? [];
     const displayedAgentTypes = expandedAgentTypes ? agentTypes : agentTypes.slice(0, 5);
     const remainingCount = agentTypes.length - 5;
 
@@ -732,11 +736,11 @@ export default function ConfigureExport({
           <Stack spacing={2}>
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedAgentTypes.map((agentType, idx) => (
-                <Stack key={agentType.handle ?? agentType.name ?? `agent-type-${idx}`} spacing={0.5}>
+                <Stack key={agentType.handle ?? `agent-type-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Bot size={14} />
                     <Typography variant="body2" fontWeight={600}>
-                      {agentType.name ??
+                      {agentType.displayName ??
                         agentType.handle ??
                         t('importExport:configureExport.fallback.unnamedAgentType', 'Unnamed agent type')}
                     </Typography>

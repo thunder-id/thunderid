@@ -155,3 +155,16 @@ func TestUnreadableCredentialsFailTheUsersExport(t *testing.T) {
 	require.NotNil(t, svcErr)
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
+
+// A control plane's export names the secret the gateway holds instead, as it does for every other
+// credential, so the gateway's import fills it in and hashes it.
+func TestAReferenceExportNamesAUsersPasswordAsASecret(t *testing.T) {
+	c := newCredentialExport(t, "alice")
+	c.exporter.WriteValueReferences(true)
+	c.typeDeclaresCredentials("password")
+	c.userHasCredential("password", true)
+
+	user := c.exportUser(t)
+
+	assert.Equal(t, map[string]interface{}{"password": "sec:USER_ALICE_PASSWORD"}, user.Credentials)
+}

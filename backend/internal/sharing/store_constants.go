@@ -35,11 +35,14 @@ var (
 			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND INITIATING_OU_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
 
+	// queryListPoliciesForResource returns one page, for a management API to serve. It orders
+	// exactly as queryListAllPoliciesForResource does, so a page boundary falls in the same place
+	// on every request and means the same thing the evaluation set does.
 	queryListPoliciesForResource = dbmodel.DBQuery{
 		ID: "SHQ-SHARING_MGT-04",
 		Query: `SELECT ` + policyColumns + ` FROM "RESOURCE_SHARING_POLICY"
 			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND DEPLOYMENT_ID = $3
-			ORDER BY CREATED_AT, ID`,
+			ORDER BY CREATED_AT, ID LIMIT $4 OFFSET $5`,
 	}
 
 	queryDeletePolicy = dbmodel.DBQuery{
@@ -74,19 +77,19 @@ var (
 
 	queryInsertExclusion = dbmodel.DBQuery{
 		ID: "SHQ-SHARING_MGT-10",
-		Query: `INSERT INTO "RESOURCE_SHARING_POLICY_EXCLUSION"
-			(POLICY_ID, EXCLUDED_OU_ID, DEPLOYMENT_ID) VALUES ($1, $2, $3)`,
+		Query: `INSERT INTO "RESOURCE_SHARING_POLICY_TARGET_EXCLUSIONS"
+			(POLICY_ID, TARGET_ID, EXCLUDED_OU_ID, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4)`,
 	}
 
 	queryListExclusions = dbmodel.DBQuery{
 		ID: "SHQ-SHARING_MGT-11",
-		Query: `SELECT EXCLUDED_OU_ID FROM "RESOURCE_SHARING_POLICY_EXCLUSION"
+		Query: `SELECT TARGET_ID, EXCLUDED_OU_ID FROM "RESOURCE_SHARING_POLICY_TARGET_EXCLUSIONS"
 			WHERE POLICY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	queryDeleteExclusions = dbmodel.DBQuery{
 		ID:    "SHQ-SHARING_MGT-12",
-		Query: `DELETE FROM "RESOURCE_SHARING_POLICY_EXCLUSION" WHERE POLICY_ID = $1 AND DEPLOYMENT_ID = $2`,
+		Query: `DELETE FROM "RESOURCE_SHARING_POLICY_TARGET_EXCLUSIONS" WHERE POLICY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	queryInsertRule = dbmodel.DBQuery{
@@ -135,6 +138,27 @@ var (
 		Query: `DELETE FROM "RESOURCE_OVERLAY_VALUE"
 			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND OU_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
+
+	// queryCountPoliciesForResource backs the paginated listing's total. Evaluation never counts:
+	// it reads the whole set and decides coverage from it.
+	queryCountPoliciesForResource = dbmodel.DBQuery{
+		ID: "SHQ-SHARING_MGT-21",
+		Query: `SELECT COUNT(*) AS TOTAL FROM "RESOURCE_SHARING_POLICY"
+			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryListAllPoliciesForResource returns every policy a resource has, deliberately unbounded.
+	//
+	// Policy evaluation reads through it, and every question it asks is about the set as a whole:
+	// whether exactly one policy covers an organization unit, and what coverage looked like before
+	// and after an edit. A row left out is not a shorter answer but a different one, so no limit
+	// belongs here. It orders as queryListPoliciesForResource does; the two have to agree.
+	queryListAllPoliciesForResource = dbmodel.DBQuery{
+		ID: "SHQ-SHARING_MGT-22",
+		Query: `SELECT ` + policyColumns + ` FROM "RESOURCE_SHARING_POLICY"
+			WHERE RESOURCE_TYPE = $1 AND RESOURCE_ID = $2 AND DEPLOYMENT_ID = $3
+			ORDER BY CREATED_AT, ID`,
+	}
 )
 
 // buildRelevantPoliciesQuery returns every policy of resourceType that could plausibly cover any
@@ -174,7 +198,9 @@ func buildRelevantPoliciesQuery(
 
 		// An empty chain names no organization unit, so the membership test is left out entirely
 		// rather than emitted as IN (), which is not valid SQL. The blanket scopes still match.
-		reach := "t.TARGET_SCOPE IN ('all_ous', 'all_roots')"
+		// They are rendered from the scope constants, the values targets are stored with, so the
+		// two cannot drift apart and leave blanket policies unmatched.
+		reach := fmt.Sprintf("t.TARGET_SCOPE IN ('%s', '%s')", ScopeAllOUs, ScopeAllRoots)
 		if len(chainOUIDs) > 0 {
 			placeholders := make([]string, len(chainOUIDs))
 			for i := range chainOUIDs {

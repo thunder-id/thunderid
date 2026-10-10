@@ -14,6 +14,7 @@ import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -28,6 +29,7 @@ type service struct {
 	notificationService notification.NotificationSenderMgtSvcInterface
 	resourceService     resource.ResourceServiceInterface
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
+	valueCapturer       declarativeresource.ValueCapturer
 }
 
 // newService creates a connection service over the given identity-provider and
@@ -58,28 +60,6 @@ func (s *service) listByType(ctx context.Context, idpType providers.IDPType) ([]
 		}
 	}
 	return instances, nil
-}
-
-// smsVendorName returns the connection vendor name for a message provider, or false when the
-// provider has no registered vendor (such instances are not exposed by /connections).
-func smsVendorName(provider ncommon.NotificationProviderType) (string, bool) {
-	for _, vendor := range smsBackedVendors {
-		if vendor.provider == provider {
-			return vendor.name, true
-		}
-	}
-	return "", false
-}
-
-// idpVendorName returns the connection vendor name for an identity-provider type, or false
-// when the type has no registered vendor (such instances are not exposed by /connections).
-func idpVendorName(idpType providers.IDPType) (string, bool) {
-	for _, vendor := range idpBackedVendors {
-		if vendor.idpType == idpType {
-			return vendor.name, true
-		}
-	}
-	return "", false
 }
 
 // validatePaginationParams validates the limit and offset pagination parameters.
@@ -167,6 +147,26 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 		}
 	}
 
+	if category == "" || category == categoryEmailProvider {
+		senders, svcErr := s.notificationService.ListSendersByType(ctx, ncommon.NotificationSenderTypeEmail)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, sender := range senders {
+			vendor, ok := emailVendorName(sender.Provider)
+			if !ok {
+				continue
+			}
+			instances = append(instances, connectionInstance{
+				ID:          sender.ID,
+				Name:        sender.Name,
+				Description: sender.Description,
+				Type:        vendor,
+				Categories:  []connectionCategory{categoryEmailProvider},
+			})
+		}
+	}
+
 	sort.SliceStable(instances, func(i, j int) bool {
 		if instances[i].Type != instances[j].Type {
 			return instances[i].Type < instances[j].Type
@@ -217,7 +217,11 @@ func (s *service) getByType(ctx context.Context, idpType providers.IDPType, id s
 
 // create delegates creation to the identity-provider service.
 func (s *service) create(ctx context.Context, dto *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
-	return s.idpService.CreateIdentityProvider(ctx, dto)
+	created, svcErr := s.idpService.CreateIdentityProvider(ctx, dto)
+	if svcErr == nil {
+		s.captureIDPValues(ctx, created)
+	}
+	return created, svcErr
 }
 
 // update verifies the instance is of the expected type, preserves any secret the request
@@ -229,7 +233,11 @@ func (s *service) update(ctx context.Context, idpType providers.IDPType, id stri
 		return nil, svcErr
 	}
 	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
-	return s.idpService.UpdateIdentityProvider(ctx, id, dto)
+	updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, id, dto)
+	if svcErr == nil {
+		s.captureIDPValues(ctx, updated)
+	}
+	return updated, svcErr
 }
 
 // deleteByType verifies the instance is of the expected type, then deletes it.
@@ -240,10 +248,10 @@ func (s *service) deleteByType(ctx context.Context, idpType providers.IDPType, i
 	return s.idpService.DeleteIdentityProvider(ctx, id)
 }
 
-// listSMSByProvider returns the configured message senders of the given provider.
-func (s *service) listSMSByProvider(ctx context.Context, provider ncommon.NotificationProviderType) (
-	[]ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
-	all, svcErr := s.notificationService.ListSendersByType(ctx, ncommon.NotificationSenderTypeMessage)
+// listSendersByProvider returns the configured senders of the given type and provider.
+func (s *service) listSendersByProvider(ctx context.Context, senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType) ([]ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
+	all, svcErr := s.notificationService.ListSendersByType(ctx, senderType)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -256,43 +264,81 @@ func (s *service) listSMSByProvider(ctx context.Context, provider ncommon.Notifi
 	return instances, nil
 }
 
-// getSMSByProvider fetches a single message sender and verifies it is of the expected provider,
-// returning a not-found error on a mismatch so a vendor endpoint cannot read another provider.
-func (s *service) getSMSByProvider(ctx context.Context, provider ncommon.NotificationProviderType, id string) (
+// getSenderByProvider fetches a single sender and verifies it is of the expected type and
+// provider, returning a not-found error on a mismatch so a vendor endpoint cannot read a
+// sender belonging to another vendor or channel.
+func (s *service) getSenderByProvider(ctx context.Context, senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType, id string) (
 	*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
 	dto, svcErr := s.notificationService.GetSender(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if dto.Type != ncommon.NotificationSenderTypeMessage || dto.Provider != provider {
+	if dto.Type != senderType || dto.Provider != provider {
 		return nil, &notification.ErrorSenderNotFound
 	}
 	return dto, nil
 }
 
-// createSMS delegates creation to the notification-sender service.
-func (s *service) createSMS(ctx context.Context, dto ncommon.NotificationSenderDTO) (
+// createSender delegates creation to the notification-sender service.
+func (s *service) createSender(ctx context.Context, dto ncommon.NotificationSenderDTO) (
 	*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
-	return s.notificationService.CreateSender(ctx, dto)
+	created, svcErr := s.notificationService.CreateSender(ctx, dto)
+	if svcErr == nil {
+		s.captureSenderValues(ctx, created)
+	}
+	return created, svcErr
 }
 
-// updateSMS verifies the sender is of the expected provider, preserves any secret the request
-// omits (keeping the stored value), then delegates the update.
-func (s *service) updateSMS(ctx context.Context, provider ncommon.NotificationProviderType, id string,
+// updateSender verifies the sender is of the expected type and provider, preserves any secret
+// the request omits (keeping the stored value) while its credential target is unchanged, then
+// delegates the update.
+func (s *service) updateSender(ctx context.Context, senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType, id string,
 	dto ncommon.NotificationSenderDTO) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
-	existing, svcErr := s.getSMSByProvider(ctx, provider, id)
+	existing, svcErr := s.getSenderByProvider(ctx, senderType, provider, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
-	return s.notificationService.UpdateSender(ctx, id, dto)
+	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties,
+		senderCredentialTargetKeys(senderType, provider)...)
+	updated, svcErr := s.notificationService.UpdateSender(ctx, id, dto)
+	if svcErr == nil {
+		s.captureSenderValues(ctx, updated)
+	}
+	return updated, svcErr
 }
 
-// deleteSMSByProvider verifies the sender is of the expected provider, then deletes it.
-func (s *service) deleteSMSByProvider(ctx context.Context, provider ncommon.NotificationProviderType,
-	id string) *tidcommon.ServiceError {
-	if _, svcErr := s.getSMSByProvider(ctx, provider, id); svcErr != nil {
+// senderCredentialTargetKeys returns the transport properties that identify where a sender's
+// outbound authentication credential is presented. Only email vendors carry outbound
+// authentication today; every other sender reports none.
+func senderCredentialTargetKeys(senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType) []string {
+	if senderType != ncommon.NotificationSenderTypeEmail {
+		return nil
+	}
+	for _, vendor := range emailBackedVendors {
+		if vendor.provider == provider {
+			return vendor.credentialTargetKeys
+		}
+	}
+	return nil
+}
+
+// deleteSenderByProvider verifies the sender is of the expected type and provider, then deletes it.
+// A sender that does not exist is treated as already deleted, while one belonging to another
+// vendor or channel is reported as not found.
+func (s *service) deleteSenderByProvider(ctx context.Context, senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType, id string) *tidcommon.ServiceError {
+	dto, svcErr := s.notificationService.GetSender(ctx, id)
+	if svcErr != nil {
+		if svcErr.Code == notification.ErrorSenderNotFound.Code {
+			return nil
+		}
 		return svcErr
+	}
+	if dto.Type != senderType || dto.Provider != provider {
+		return &notification.ErrorSenderNotFound
 	}
 	return s.notificationService.DeleteSender(ctx, id)
 }
@@ -373,11 +419,12 @@ func (s *service) usagesByType(ctx context.Context, idpType providers.IDPType, i
 	return s.idpService.GetIDPUsages(ctx, id)
 }
 
-// usagesSMSByProvider verifies the sender is of the expected provider, then returns the resources
-// that reference it. Drives the pre-delete confirmation dialog.
-func (s *service) usagesSMSByProvider(ctx context.Context, provider ncommon.NotificationProviderType, id string) (
+// usagesSenderByProvider verifies the sender is of the expected type and provider, then returns
+// the resources that reference it. Drives the pre-delete confirmation dialog.
+func (s *service) usagesSenderByProvider(ctx context.Context, senderType ncommon.NotificationSenderType,
+	provider ncommon.NotificationProviderType, id string) (
 	*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
-	if _, svcErr := s.getSMSByProvider(ctx, provider, id); svcErr != nil {
+	if _, svcErr := s.getSenderByProvider(ctx, senderType, provider, id); svcErr != nil {
 		return nil, svcErr
 	}
 	return s.notificationService.GetSenderUsages(ctx, id)

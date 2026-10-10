@@ -243,6 +243,11 @@ const (
 	// RuntimeKeyEntityState holds the entity existence state, set by the IdentifyingExecutor in
 	// check_state mode or by the federated auth executors from their account-linking result.
 	RuntimeKeyEntityState = "entityState"
+	// RuntimeKeyExternalIdentity holds what an external party asserted, as the JSON encoding of
+	// core.ExternalIdentity: the connection and subject of a federated authentication, and the claims.
+	// Set by the federated auth executors and the OpenID4VP verifier. Claims live only here, never
+	// under their own names, so no claim can stand in for the state executors keep in RuntimeData.
+	RuntimeKeyExternalIdentity = "externalIdentity"
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"

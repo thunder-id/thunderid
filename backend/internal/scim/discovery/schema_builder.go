@@ -15,16 +15,16 @@ import (
 
 // mapUserTypeToSCIMSchema converts a ThunderID user type into a SCIM Schema resource.
 func mapUserTypeToSCIMSchema(et entitytype.EntityType, baseURL, urnPrefix string) (SCIMSchema, error) {
-	schemaURN := scim.BuildSchemaURN(urnPrefix, et.Name)
+	schemaURN := scim.BuildSchemaURN(urnPrefix, et.Handle)
 	location := fmt.Sprintf(scimSchemaLocationFmt, baseURL, scim.SCIMBasePath, schemaURN)
-	description := fmt.Sprintf("%s user type", et.Name)
+	description := fmt.Sprintf("%s user type", et.DisplayName)
 
 	// Parse the raw schema JSON into our property def map.
 	rawProps, err := scim.ParseRawProperties(et.Schema)
 	if err != nil {
 		return SCIMSchema{}, fmt.Errorf(
 			"mapUserTypeToSCIMSchema: failed to parse schema JSON for %q: %w",
-			et.Name, err,
+			et.Handle, err,
 		)
 	}
 
@@ -37,7 +37,7 @@ func mapUserTypeToSCIMSchema(et entitytype.EntityType, baseURL, urnPrefix string
 	return SCIMSchema{
 		Schemas:     []string{scimSchemaSchemaURN},
 		ID:          schemaURN,
-		Name:        et.Name,
+		Name:        et.DisplayName,
 		Description: description,
 		Attributes:  attributes,
 		Meta: scim.SCIMMeta{
@@ -175,7 +175,7 @@ func enterpriseUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttri
 	rawProps, err := scim.ParseRawProperties(coreType.Schema)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"enterpriseUserAttributes: failed to parse schema JSON for %q: %w", coreType.Name, err,
+			"enterpriseUserAttributes: failed to parse schema JSON for %q: %w", coreType.Handle, err,
 		)
 	}
 
@@ -200,7 +200,7 @@ func coreUserAttributes(coreType entitytype.EntityType) ([]scimSchemaAttribute, 
 	rawProps, err := scim.ParseRawProperties(coreType.Schema)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"coreUserAttributes: failed to parse schema JSON for %q: %w", coreType.Name, err,
+			"coreUserAttributes: failed to parse schema JSON for %q: %w", coreType.Handle, err,
 		)
 	}
 

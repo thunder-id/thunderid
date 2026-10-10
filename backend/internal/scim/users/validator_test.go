@@ -191,7 +191,7 @@ func (suite *ValidatorTestSuite) TestValidateSCIMUserRequest() {
 			}
 			require.Nil(t, svcErr)
 			require.NotNil(t, payload)
-			require.Equal(t, tc.wantUserType, payload.UserTypeName)
+			require.Equal(t, tc.wantUserType, payload.UserTypeHandle)
 			require.Equal(t, tc.wantExtURN, payload.ExtensionURN)
 		})
 	}

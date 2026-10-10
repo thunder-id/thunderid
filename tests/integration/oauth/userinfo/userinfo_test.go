@@ -33,7 +33,8 @@ const (
 
 var (
 	testUserType = testutils.UserType{
-		Name: "userinfo-person",
+		Handle:      "userinfo-person",
+		DisplayName: "Userinfo Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

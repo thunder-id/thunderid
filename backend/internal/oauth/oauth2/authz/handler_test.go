@@ -4,6 +4,7 @@
 package authz
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -68,7 +70,9 @@ func (suite *AuthorizeHandlerTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime("test", testConfig)
 
 	suite.mockAuthzService = NewAuthorizeServiceInterfaceMock(suite.T())
-	suite.handler = newAuthorizeHandler(suite.mockAuthzService, authorizeServiceCfgFromRuntime()).(*authorizeHandler)
+	transport := flowsession.NewHandleTransport(flowsession.TransportConfig{})
+	suite.handler = newAuthorizeHandler(suite.mockAuthzService, transport,
+		authorizeServiceCfgFromRuntime()).(*authorizeHandler)
 }
 
 func (suite *AuthorizeHandlerTestSuite) TearDownTest() {
@@ -77,9 +81,11 @@ func (suite *AuthorizeHandlerTestSuite) TearDownTest() {
 
 func (suite *AuthorizeHandlerTestSuite) TestnewAuthorizeHandler() {
 	mockSvc := NewAuthorizeServiceInterfaceMock(suite.T())
-	handler := newAuthorizeHandler(mockSvc, testhelpers.OAuthConfig())
+	transport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: true})
+	handler := newAuthorizeHandler(mockSvc, transport, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*AuthorizeHandlerInterface)(nil), handler)
+	assert.Equal(suite.T(), transport, handler.(*authorizeHandler).ssoTransport)
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForGetRequest_Success() {
@@ -231,6 +237,74 @@ func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_Success() 
 	assert.Equal(suite.T(), http.StatusFound, rr.Code)
 	location := rr.Header().Get("Location")
 	assert.Contains(suite.T(), location, "/login")
+}
+
+// TestHandleAuthorizeGetRequest_PropagatesInboundSSOHandle verifies the inbound per-flow SSO cookie is
+// read through the injected transport and attached to the context handed to the service.
+func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_PropagatesInboundSSOHandle() {
+	transport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: true})
+	handler := newAuthorizeHandler(suite.mockAuthzService, transport, authorizeServiceCfgFromRuntime())
+
+	var gotInbound flowsession.InboundHandleInterface
+	var gotOK bool
+	suite.mockAuthzService.EXPECT().HandleInitialAuthorizationRequest(mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ *OAuthMessage) {
+			gotInbound, gotOK = flowsession.InboundFrom(ctx)
+		}).
+		Return(&AuthorizationInitResult{QueryParams: map[string]string{}}, nil)
+
+	req := httptest.NewRequest("GET",
+		"/oauth2/authorize?client_id=test-client&redirect_uri=https://example.com/callback&response_type=code", nil)
+	issued := httptest.NewRecorder()
+	transport.Write(&flowsession.Exchange{Response: issued}, "flow-1", "inbound-handle", time.Hour)
+	for _, ck := range issued.Result().Cookies() {
+		req.AddCookie(ck)
+	}
+
+	handler.HandleAuthorizeGetRequest(httptest.NewRecorder(), req)
+
+	suite.Require().True(gotOK, "inbound SSO handle must be attached to the service context")
+	assert.Equal(suite.T(), "inbound-handle", gotInbound.HandleFor("flow-1"))
+}
+
+// TestHandleAuthorizeGetRequest_NilSSOTransport verifies a deployment without an SSO handle transport
+// attaches no inbound handle and still serves the request.
+func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_NilSSOTransport() {
+	handler := newAuthorizeHandler(suite.mockAuthzService, nil, authorizeServiceCfgFromRuntime())
+
+	gotOK := true
+	suite.mockAuthzService.EXPECT().HandleInitialAuthorizationRequest(mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ *OAuthMessage) {
+			_, gotOK = flowsession.InboundFrom(ctx)
+		}).
+		Return(&AuthorizationInitResult{QueryParams: map[string]string{}}, nil)
+
+	req := httptest.NewRequest("GET",
+		"/oauth2/authorize?client_id=test-client&redirect_uri=https://example.com/callback&response_type=code", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleAuthorizeGetRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusFound, rr.Code)
+	assert.False(suite.T(), gotOK, "no inbound SSO handle must be attached without a transport")
+}
+
+// TestHandleAuthorizeGetRequest_RedirectsToClient: a result with RedirectURI goes straight to the
+// client, not the login page.
+func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_RedirectsToClient() {
+	clientRedirect := "https://client.example.com/callback?code=test-code&state=test-state"
+	result := &AuthorizationInitResult{RedirectURI: clientRedirect}
+	suite.mockAuthzService.EXPECT().HandleInitialAuthorizationRequest(mock.Anything, mock.Anything).Return(result, nil)
+
+	req := httptest.NewRequest("GET",
+		"/oauth2/authorize?client_id=test-client&redirect_uri=https://client.example.com/callback"+
+			"&response_type=code&prompt=none", nil)
+	rr := httptest.NewRecorder()
+
+	suite.handler.HandleAuthorizeGetRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusFound, rr.Code)
+	assert.Equal(suite.T(), clientRedirect, rr.Header().Get("Location"))
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_ServiceErrorRedirectToErrorPage() {

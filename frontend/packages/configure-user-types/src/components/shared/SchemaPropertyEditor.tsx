@@ -47,7 +47,7 @@ export interface SchemaPropertyEditorProps {
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
   enumInput: Record<string, string>;
   onEnumInputChange: (enumInput: Record<string, string>) => void;
-  userTypeName?: string;
+  userTypeHandle?: string;
   disabled?: boolean;
   /**
    * Whether the editor is operating on an already-persisted schema (edit flow) rather than a
@@ -72,7 +72,7 @@ export default function SchemaPropertyEditor({
   onPropertiesChange,
   enumInput,
   onEnumInputChange,
-  userTypeName = undefined,
+  userTypeHandle = undefined,
   disabled = false,
   isEditMode = false,
   footer = undefined,
@@ -326,8 +326,8 @@ export default function SchemaPropertyEditor({
                     unknownError: t('common:errors.unknown', 'An unknown error occurred'),
                   }}
                   defaultNewKey={
-                    userTypeName?.trim() && property.name.trim()
-                      ? `${userTypeName.trim()}.${property.name.trim()}`
+                    userTypeHandle?.trim() && property.name.trim()
+                      ? `${userTypeHandle.trim()}.${property.name.trim()}`
                       : undefined
                   }
                 />

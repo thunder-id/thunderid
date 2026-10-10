@@ -31,6 +31,7 @@ func Initialize(
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
 	serverConfigSvc serverConfigProvider,
+	ssoTransport session.HandleTransportInterface,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	flowStore := newFlowStore(storeProvider)
@@ -41,10 +42,8 @@ func Initialize(
 		actorProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
 		graphBuilder, jwtService, serverConfigSvc, cfg)
 
-	// Mark the SSO cookie Secure unless the deployment is configured to serve over plain HTTP, and
-	// bound its lifetime to the session's configured absolute timeout (same fallback as the session
-	// executor's timeouts).
-	ssoTransport := session.NewCookieTransport(cfg.SecureCookies)
+	// Bound the SSO handle's lifetime to the session's configured absolute timeout (same fallback as
+	// the session executor's timeouts).
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
 		cfg.Session.ActivityRefreshIntervalSeconds)
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)

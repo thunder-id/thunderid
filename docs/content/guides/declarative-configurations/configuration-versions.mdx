@@ -1,0 +1,174 @@
+---
+title: Apply Configuration Versions to Gateways
+docType: guide
+sidebar_position: 6
+description: Capture the control plane's configuration as versions, compare them with what a gateway holds, and apply, select or revert them.
+---
+
+# Apply Configuration Versions to Gateways
+
+A control plane keeps the configuration you author and applies it to the gateways it administers, the
+<ProductName /> deployments that serve your users. You capture the configuration as a version, compare
+the version with what a gateway holds, and apply it. Each gateway records the version it holds, so you
+can revert it to the one it held before.
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
+- A gateway registered on the control plane through `POST /gateways`.
+- An access token with the root system permission (the `system` scope by default). Every route on this
+  page requires it.
+
+## Capture a Version
+
+`POST /configuration-versions` exports the configuration as it stands and keeps it as a version. Users
+and groups are included. The body is optional and takes a `name` and a `note`.
+
+```bash
+curl -X POST https://localhost:8090/configuration-versions \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Spring release", "note": "Added the payments application"}'
+```
+
+A version is named by the SHA-256 hash of the exported documents as written, with their references or
+placeholders, not the values those stand for. Values differ from one gateway to the next, so a change
+to a value alone is not a new version. Any prefix of at least seven characters that no other version
+shares also names it, and so does `latest`.
+
+- **Capturing unchanged configuration keeps nothing new.** The answer is `200` with the existing version,
+  marked `unchanged`, instead of `201`.
+- **A resource the export cannot write is left out.** For example, a user with no username. The answer
+  lists it under `skipped` with the reason.
+- **A version holds references, not values.** A client secret or a user's password appears as a
+  [value reference](./value-references.mdx) such as `sec:APPLICATION_ORDERS_CLIENT_SECRET`. The gateway
+  fills it in from its own store when the version is applied.
+- **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
+  holds or can revert to. Those are kept even when that leaves more versions than the number. See
+  [Configuration](../../deployment/configuration.mdx).
+
+`GET /configuration-versions` lists the versions, newest first, without their content.
+`GET /configuration-versions/{version}` returns one with its content.
+
+## Compare a Version With a Gateway
+
+`GET /gateways/{id}/diff?version=<version>` reports what applying the version would add, update and
+remove, without contacting the gateway. The version defaults to `latest`.
+
+Each entry in `changes` names a resource, its `change` (`added`, `updated`, `deleted` or `unchanged`), and
+a `key` such as `application/550e8400-e29b-41d4-a716-446655440000`. Each change also carries `lines`, the
+resource's document compared line by line. The documents hold references, so a diff never shows a
+secret value.
+
+`GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
+it to.
+
+## Apply a Version
+
+`POST /gateways/{id}/apply` sends the version to the gateway's import API with the gateway's key.
+
+```bash
+curl -X POST https://localhost:8090/gateways/<gateway_id>/apply \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "latest"}'
+```
+
+The version is sent whole. Resources the gateway holds that the version no longer has are removed. The
+removals are worked out from the version last applied to that gateway, so the control plane never
+removes something it did not apply.
+
+- **A dry run records nothing.** With `"dryRun": true`, the gateway imports as a dry run and the answer
+  shows what would happen.
+- **The gateway's own report is returned.** `import` in the answer lists each resource the gateway
+  wrote or refused. A refused write does not stop the version being recorded, because every later
+  apply sends the version whole again.
+- **A removal the gateway did not complete leaves the version unrecorded.** `recorded` is then `false`,
+  and the next apply works from the version held before and sends the removal again.
+
+### Missing Values
+
+The gateway must hold a value for every variable and secret the version refers to. Before anything is
+sent, the control plane asks the gateway's store for each name.
+
+- A dry run lists the names the gateway lacks under `missing`, as `variables` and `secrets`.
+- An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. Nothing is sent and
+  nothing is recorded.
+
+Set the missing values through the control plane, as described in
+[Manage a Gateway's Values](#manage-a-gateways-values), then apply again.
+
+## Apply Only Selected Changes
+
+`selection` lists the keys of the changes to apply. Every other change on offer is left alone: a
+resource left out is neither written nor removed.
+
+```json
+{
+  "version": "latest",
+  "selection": ["application/550e8400-e29b-41d4-a716-446655440000"]
+}
+```
+
+- **Omitted**, the gateway's saved choices apply.
+- **Empty** (`[]`), every change on offer is left alone.
+- **With a dry run**, the selection shapes what is checked and sent, and is not saved.
+- **A key the diff does not report** is refused with `400` (`GTW-1025`), so a typo or a key from an
+  older diff never leaves out a resource you meant to keep. Naming a resource that did not change is
+  allowed. Leaving out a resource whose key is longer than 512 characters, or whose id or name is
+  longer than 255, is also refused.
+
+### How a Choice Is Kept
+
+The choice is saved per gateway. Applies and reverts leave a resource you left out alone until a later
+selection includes it again.
+
+- **A resource left alone stays on offer.** The diff marks its change `excluded`, whatever later
+  versions say of it.
+- **A removal held back is offered again.** Once no version names the resource, the diff offers it as
+  `deleted`.
+- **A refused apply keeps nothing.** An apply refused for missing values, one that could not connect
+  to the gateway, or one the gateway refused whole with a `4xx`, leaves the saved choice as it was.
+- **An apply that may have reached the gateway keeps its choice.** When the gateway answers with a
+  `5xx`, or the connection times out or drops after the request was sent, the gateway may hold what it
+  was sent, so the choice stays. Apply again to bring the gateway in line.
+- **One apply at a time per gateway.** Applies and reverts to the same gateway wait for each other on a
+  control plane node, so one apply's choice and import never interleave with another's.
+- **Removing a gateway forgets its choices.**
+
+## Revert a Gateway
+
+`POST /gateways/{id}/revert` applies the version the gateway held before the one it holds now, and
+removes what that version does not have. The version reverted from becomes the new revert target, so a
+revert can itself be undone.
+
+A revert takes `dryRun` and follows the same rules as an apply. It leaves the resources you chose to
+leave alone, and it is refused with `409` while the gateway lacks a value that version refers to. A
+gateway with no earlier version answers `400` (`GTW-1016`).
+
+## Manage a Gateway's Values
+
+The control plane passes requests to the gateway's own variable store, presenting the gateway's key,
+and returns the gateway's answer unchanged.
+
+| Route | Gateway route |
+|---|---|
+| `GET`, `POST` `/gateways/{id}/variables` | `/variables` |
+| `GET`, `PUT`, `DELETE` `/gateways/{id}/variables/{name}` | `/variables/{name}` |
+| `GET`, `POST` `/gateways/{id}/secrets` | `/secrets` |
+| `GET`, `PUT`, `DELETE` `/gateways/{id}/secrets/{name}` | `/secrets/{name}` |
+
+As on the gateway, a secret's value is never returned, only its name and whether it is set.
+
+```bash
+curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION_ORDERS_CLIENT_SECRET \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"value": "<client_secret>"}'
+```
+
+## Next Steps
+
+- [Value References](./value-references.mdx)
+- [Import Resources](./import-resources.mdx)
+- [API Reference](../../apis.mdx)

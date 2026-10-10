@@ -85,6 +85,8 @@ Under **Value Mapping**, map each external attribute value to a local user type 
 
 The resolved user type selects which mapping set applies under **Attribute Mappings**.
 
+The connection refers to user types by their handle (for example, `person`).
+
 ### Attribute Mappings
 
 Click **Add User Type** to add a mapping set for a user type, then click **Add Mapping** to add attribute mappings within that set. Each mapping has:
@@ -101,6 +103,29 @@ Behavior:
 - An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
 
 The mapping applies both when a user signs in through this connection in an authentication flow and when a token from this provider is exchanged (see [Trusted Issuer](../../trusted-issuer)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
+
+### Authorization Mapping
+
+Map attribute values this provider asserts, such as group membership, onto local roles, groups, or permissions, under **Authorization Mapping**. Click **Add Mapping** to add a mapping for a claim, then choose how its values resolve:
+
+- **Direct** (the default): each value the claim asserts is looked up by name against an existing role, group, or permission of the chosen **Target Type**. A value with no exact match, or more than one, confers nothing.
+- **Advanced**: turn the mapping's toggle on to compare the claim's values against an explicit rule table instead of matching by name.
+
+| Field | Description |
+|-------|-------------|
+| **Key** | The claim to read (for example, `groups`). Supports dot notation for a nested claim. |
+| **Value Type** | Advanced only. How to interpret the claim's value(s): `String`, `Number`, `Boolean`, or `Array`. Defaults to `String`. |
+| **Delimiter** | Splits a string claim into multiple values (for example, a space-delimited scope string). Leave unset for a single value. Only applies when Value Type is `String`. |
+| **Operator** | Advanced only, per rule. `Equals`/`Not Equals` for a single value; `Greater Than`/`Less Than`/`Greater Than or Equal`/`Less Than or Equal` when Value Type is `Number`; `Includes`/`Not Includes` when the claim carries a set of values (an `Array`, or a `String` split by Delimiter). |
+| **Target Type** | Direct only. Whether each value is looked up as a `Role`, `Group`, or `Permission`. A `Permission` target also requires a **Resource Server**. |
+
+Behavior:
+
+- An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
+- A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
+- Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.
+- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to.
+- To also assign a mapping's roles and groups the moment an account is first created, rather than only computing them at each sign-in, enable **Seed Groups/Roles From Authorization Mapping** on the flow's Provisioning step. See [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes).
 
 ### Account Linking
 

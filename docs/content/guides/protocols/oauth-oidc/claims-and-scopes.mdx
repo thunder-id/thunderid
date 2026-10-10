@@ -33,7 +33,7 @@ These defaults are written into a client's `scopeClaims` mapping at creation whe
 
 `openid` is the exception: it carries no user attributes of its own, its `sub` comes from the token subject, and it is always granted. It needs no mapping entry.
 
-The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, and `userType`. Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
+The attributes a mapping can reference come from the schemas of the client's allowed user types, plus the runtime-computed `groups`, `roles`, `ouId`, `ouName`, `ouHandle`, and `userType`. The `userType` claim carries the handle of the user's type (for example, `person`). Anything else is removed when the client is saved. A client with no allowed user types has no schema to draw on, so the scopes it is seeded with start empty: the scope names are there, but no attributes are mapped to them until user types are configured. A mapping you send yourself is still stored as sent.
 
 ## Custom Scope-to-Claim Mapping (`scopeClaims`)
 

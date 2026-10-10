@@ -46,7 +46,8 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 
 	// Create first user type with self-registration enabled
 	userType1 := testutils.UserType{
-		Name:                  "runtime-test-customer",
+		Handle:                "runtime-test-customer",
+		DisplayName:           "Runtime Test Customer",
 		OUID:                  ts.testOUID1,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
@@ -60,11 +61,12 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create first test user type: %v", err)
 	}
 	ts.testUserTypeID1 = userTypeID1
-	ts.testUserTypeName1 = userType1.Name
+	ts.testUserTypeName1 = userType1.Handle
 
 	// Create second user type with self-registration enabled
 	userType2 := testutils.UserType{
-		Name:                  "runtime-test-employee",
+		Handle:                "runtime-test-employee",
+		DisplayName:           "Runtime Test Employee",
 		OUID:                  ts.testOUID1,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
@@ -78,12 +80,13 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create second test user type: %v", err)
 	}
 	ts.testUserTypeID2 = userTypeID2
-	ts.testUserTypeName2 = userType2.Name
+	ts.testUserTypeName2 = userType2.Handle
 
 	// A third type so the allowedUserTypes node property can narrow 3 down to 2. Narrowing to a
 	// single type would auto-select instead of prompting (user_type_resolver.go:162).
 	userType3 := testutils.UserType{
-		Name:                  "runtime-test-contractor",
+		Handle:                "runtime-test-contractor",
+		DisplayName:           "Runtime Test Contractor",
 		OUID:                  ts.testOUID1,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
@@ -97,7 +100,7 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create third test user type: %v", err)
 	}
 	ts.testUserTypeID3 = userTypeID3
-	ts.testUserTypeName3 = userType3.Name
+	ts.testUserTypeName3 = userType3.Handle
 
 	// Custom registration flows need an isolated auth flow, else the app's default auth flow CALLs
 	// the default registration flow and the server rejects the mismatch with APP-1039.

@@ -56,8 +56,9 @@ func (suite *InboundClientValidationSuite) SetupSuite() {
 
 	suite.userTypeName = "inboundclient" + suffix
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: suite.userTypeName,
-		OUID: suite.ouID,
+		Handle:      suite.userTypeName,
+		DisplayName: "User Type",
+		OUID:        suite.ouID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type":     "string",

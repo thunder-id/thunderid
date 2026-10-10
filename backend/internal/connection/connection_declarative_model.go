@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -56,4 +57,14 @@ type connectionExportModel struct {
 	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
 	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
 	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
+
+	// Email-backed vendor fields (smtp).
+	Host        string `yaml:"host,omitempty"        json:"host,omitempty"`
+	Port        int    `yaml:"port,omitempty"        json:"port,omitempty"`
+	FromAddress string `yaml:"fromAddress,omitempty" json:"fromAddress,omitempty"`
+	FromName    string `yaml:"fromName,omitempty"    json:"fromName,omitempty"`
+	TLS         string `yaml:"tls,omitempty"         json:"tls,omitempty"`
+
+	// Outbound authentication, shared by every vendor that dials out with credentials.
+	Authentication *outboundauth.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
 }

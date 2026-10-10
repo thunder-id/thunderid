@@ -24,10 +24,10 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
@@ -38,7 +38,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
-	"github.com/thunder-id/thunderid/tests/mocks/templatemock"
 )
 
 const (
@@ -57,22 +56,23 @@ const (
 	testCredentialID     = "credential-id-123" // #nosec G101
 	testCredentialType   = "public-key"
 	testSenderID         = "sender_123"
+	otpTemplateHandle    = "otp"
 )
 
 type AuthenticationServiceTestSuite struct {
 	suite.Suite
-	mockIDPService      *idpmock.IDPServiceInterfaceMock
-	mockJWTService      *jwtmock.JWTServiceInterfaceMock
-	mockAssertGenerator *assertmock.AuthAssertGeneratorInterfaceMock
-	mockAuthnProvider   *managermock.AuthnProviderManagerMock
-	mockOTPService      *otpmock.OTPAuthnServiceInterfaceMock
-	mockNotifSenderSvc  *notificationmock.NotificationSenderServiceInterfaceMock
-	mockTemplateService *templatemock.TemplateServiceInterfaceMock
-	mockOAuthService    *oauthmock.OAuthAuthnServiceInterfaceMock
-	mockOIDCService     *oidcmock.OIDCAuthnServiceInterfaceMock
-	mockGoogleService   *googlemock.GoogleOIDCAuthnServiceInterfaceMock
-	mockGithubService   *githubmock.GithubOAuthAuthnServiceInterfaceMock
-	service             *authenticationService
+	mockIDPService       *idpmock.IDPServiceInterfaceMock
+	mockJWTService       *jwtmock.JWTServiceInterfaceMock
+	mockAssertGenerator  *assertmock.AuthAssertGeneratorInterfaceMock
+	mockAuthnProvider    *managermock.AuthnProviderManagerMock
+	mockOTPService       *otpmock.OTPAuthnServiceInterfaceMock
+	mockNotifSenderSvc   *notificationmock.NotificationSenderServiceInterfaceMock
+	mockTemplateRenderer *notificationTemplateRendererMock
+	mockOAuthService     *oauthmock.OAuthAuthnServiceInterfaceMock
+	mockOIDCService      *oidcmock.OIDCAuthnServiceInterfaceMock
+	mockGoogleService    *googlemock.GoogleOIDCAuthnServiceInterfaceMock
+	mockGithubService    *githubmock.GithubOAuthAuthnServiceInterfaceMock
+	service              *authenticationService
 }
 
 func TestAuthenticationServiceTestSuite(t *testing.T) {
@@ -118,7 +118,7 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 	suite.mockAuthnProvider = &managermock.AuthnProviderManagerMock{}
 	suite.mockOTPService = &otpmock.OTPAuthnServiceInterfaceMock{}
 	suite.mockNotifSenderSvc = notificationmock.NewNotificationSenderServiceInterfaceMock(suite.T())
-	suite.mockTemplateService = templatemock.NewTemplateServiceInterfaceMock(suite.T())
+	suite.mockTemplateRenderer = newNotificationTemplateRendererMock(suite.T())
 	suite.mockOAuthService = &oauthmock.OAuthAuthnServiceInterfaceMock{}
 	suite.mockOIDCService = &oidcmock.OIDCAuthnServiceInterfaceMock{}
 	suite.mockGoogleService = &googlemock.GoogleOIDCAuthnServiceInterfaceMock{}
@@ -131,7 +131,7 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 		authnProvider:          suite.mockAuthnProvider,
 		otpService:             suite.mockOTPService,
 		notifSenderSvc:         suite.mockNotifSenderSvc,
-		templateService:        suite.mockTemplateService,
+		templateRenderer:       suite.mockTemplateRenderer,
 		oauthService:           suite.mockOAuthService,
 		oidcService:            suite.mockOIDCService,
 		googleService:          suite.mockGoogleService,
@@ -485,10 +485,10 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSuccess() {
 
 	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number", mock.Anything).
 		Return(testSessionTkn, "123456", int64(300), nil)
-	suite.mockTemplateService.On("Render",
-		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
+	suite.mockTemplateRenderer.On("Resolve",
+		mock.Anything, notificationtemplate.ChannelTypeSMS, otpTemplateHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("SendMessage",
 		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
 		Return(nil)
 
@@ -533,10 +533,10 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSendError() {
 
 	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number", mock.Anything).
 		Return(testSessionTkn, "123456", int64(300), nil)
-	suite.mockTemplateService.On("Render",
-		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
-		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
+	suite.mockTemplateRenderer.On("Resolve",
+		mock.Anything, notificationtemplate.ChannelTypeSMS, otpTemplateHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("SendMessage",
 		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
 		Return(svcErr)
 
@@ -2535,7 +2535,7 @@ func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
 		suite.mockAuthnProvider,
 		suite.mockOTPService,
 		suite.mockNotifSenderSvc,
-		suite.mockTemplateService,
+		suite.mockTemplateRenderer,
 		nil,
 		suite.mockOAuthService,
 		suite.mockOIDCService,

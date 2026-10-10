@@ -11,7 +11,7 @@ import {
   InputAdornment,
   TextField,
 } from '@wso2/oxygen-ui';
-import {Eye, EyeOff, Lock, RotateCcw} from '@wso2/oxygen-ui-icons-react';
+import {Eye, EyeOff, Lock} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -66,12 +66,7 @@ export default function MaskedSecretField({
               },
             }}
           />
-          <Button
-            variant="outlined"
-            startIcon={<RotateCcw size={16} />}
-            onClick={() => onReplacingChange(true)}
-            data-testid={`${id}-replace`}
-          >
+          <Button variant="outlined" onClick={() => onReplacingChange(true)} data-testid={`${id}-replace`}>
             {t('form.secret.update')}
           </Button>
         </Box>

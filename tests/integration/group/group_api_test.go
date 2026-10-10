@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 var (
@@ -24,7 +24,8 @@ var (
 	}
 
 	testUserType = testutils.UserType{
-		Name:             "group-test-person",
+		Handle:           "group-test-person",
+		DisplayName:      "Group Test Person",
 		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "email"},
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{

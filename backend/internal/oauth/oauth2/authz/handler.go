@@ -27,18 +27,19 @@ type AuthorizeHandlerInterface interface {
 type authorizeHandler struct {
 	cfg          oauthconfig.Config
 	authZService AuthorizeServiceInterface
-	// ssoTransport reads the inbound SSO handle cookies; the authorize endpoint only reads them,
-	// the flow endpoint remains the sole writer.
-	ssoTransport session.HandleTransport
+	// ssoTransport reads the inbound SSO handle; the authorize endpoint only reads it, the flow
+	// endpoint remains the sole writer. It is nil when the deployment has no SSO session store.
+	ssoTransport session.HandleTransportInterface
 	logger       *log.Logger
 }
 
 // newAuthorizeHandler creates a new instance of authorizeHandler with injected dependencies.
-func newAuthorizeHandler(authZService AuthorizeServiceInterface, cfg oauthconfig.Config) AuthorizeHandlerInterface {
+func newAuthorizeHandler(authZService AuthorizeServiceInterface, ssoTransport session.HandleTransportInterface,
+	cfg oauthconfig.Config) AuthorizeHandlerInterface {
 	return &authorizeHandler{
 		cfg:          cfg,
 		authZService: authZService,
-		ssoTransport: session.NewCookieTransport(true),
+		ssoTransport: ssoTransport,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeHandler")),
 	}
 }
@@ -46,15 +47,18 @@ func newAuthorizeHandler(authZService AuthorizeServiceInterface, cfg oauthconfig
 // HandleAuthorizeGetRequest handles the GET request for OAuth2 authorization.
 func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *http.Request) {
 	// Validate the request before touching it: getOAuthMessage handles a nil request or response
-	// writer, and both the context and the cookie read below dereference it.
+	// writer, and both the context and the SSO handle read below dereference it.
 	oAuthMessage := ah.getOAuthMessage(r, w)
 	if oAuthMessage == nil {
 		return
 	}
 
-	// Carry the inbound SSO handle cookies so prompt=none can be answered from an existing
-	// session. The per-flow cookie is selected later, once the client's flow is known.
-	ctx := session.WithInbound(r.Context(), ah.ssoTransport.Read(r))
+	// Carry the inbound SSO transport inputs so prompt=none can be answered from an existing
+	// session. The handle is selected later, once the client's flow is known.
+	ctx := r.Context()
+	if ah.ssoTransport != nil {
+		ctx = session.WithInbound(ctx, ah.ssoTransport.Read(&session.Exchange{Request: r}))
+	}
 
 	result, authErr := ah.authZService.HandleInitialAuthorizationRequest(ctx, oAuthMessage)
 	if authErr != nil {
@@ -80,6 +84,10 @@ func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *
 		return
 	}
 
+	if result.RedirectURI != "" {
+		http.Redirect(w, r, result.RedirectURI, http.StatusFound)
+		return
+	}
 	ah.redirectToLoginPage(w, r, result.QueryParams)
 }
 

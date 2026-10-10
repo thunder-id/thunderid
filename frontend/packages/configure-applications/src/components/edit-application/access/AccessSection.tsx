@@ -4,6 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {SettingsCard} from '@thunderid/components';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
+import {getUserTypeLabel} from '@thunderid/utils';
 import {Autocomplete, Chip, CircularProgress, FormControl, FormLabel, Stack, Switch, TextField} from '@wso2/oxygen-ui';
 import {useEffect} from 'react';
 import {useForm, Controller} from 'react-hook-form';
@@ -65,14 +66,16 @@ export default function AccessSection({
   const {t} = useTranslation();
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
 
-  const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
+  // Options and stored values are handles; labels show the display name, falling back to the handle.
+  const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
+  const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
   // Agent access is a single on/off choice in the console for now: on means the default agent type (only type)
   // is the only allowed one, off means no agent type is allowed.
   const isAgentSignInEnabled = (editedApp.allowedAgentTypes ?? application.allowedAgentTypes ?? []).length > 0;
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
@@ -126,6 +129,7 @@ export default function AccessSection({
               fullWidth
               id="allowed-user-types-autocomplete"
               options={userTypeOptions}
+              getOptionLabel={getLabel}
               value={editedApp.allowedUserTypes ?? application.allowedUserTypes ?? []}
               onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
               loading={loadingUserTypes}
@@ -147,7 +151,7 @@ export default function AccessSection({
                 />
               )}
               renderTags={(value, getTagProps) =>
-                value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
+                value.map((option, index) => <Chip label={getLabel(option)} {...getTagProps({index})} key={option} />)
               }
               freeSolo={false}
               disableClearable={false}

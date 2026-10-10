@@ -163,7 +163,8 @@ var (
 	// assertion proving the target user, so the user needs another credential to authenticate with
 	// first. The flows under test never use it.
 	passkeyFlowEntityType = testutils.UserType{
-		Name: "passkey_flow_user",
+		Handle:      "passkey_flow_user",
+		DisplayName: "Passkey Flow User",
 		Schema: map[string]interface{}{
 			"username":    map[string]interface{}{"type": "string"},
 			"email":       map[string]interface{}{"type": "string"},
@@ -369,7 +370,7 @@ func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_Success() {
 	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 
 	claims, err := testutils.ValidateJWTAssertionFields(finalStep.Assertion, ts.appID,
-		passkeyFlowEntityType.Name, passkeyFlowTestOU.ID, passkeyFlowTestOU.Name, passkeyFlowTestOU.Handle)
+		passkeyFlowEntityType.Handle, passkeyFlowTestOU.ID, passkeyFlowTestOU.Name, passkeyFlowTestOU.Handle)
 	ts.Require().NoError(err, "Failed to validate JWT assertion fields")
 	ts.Require().NotNil(claims, "JWT claims should not be nil")
 }

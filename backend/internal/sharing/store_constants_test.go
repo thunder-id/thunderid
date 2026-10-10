@@ -34,7 +34,8 @@ func (s *StoreConstantsTestSuite) TestBuildRelevantPoliciesQueryHandlesAnEmptyCh
 	} {
 		s.Run(name, func() {
 			s.NotContains(sql, "IN ()", "an empty list is not valid SQL")
-			s.Contains(sql, "all_ous", "blanket policies still have to match")
+			s.Contains(sql, "t.TARGET_SCOPE IN ('allOus', 'allRoots')",
+				"blanket policies still have to match, by the values their targets are stored with")
 		})
 	}
 	s.Equal([]interface{}{string(testType), "dep-1"}, args)

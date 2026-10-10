@@ -53,7 +53,7 @@ func permissionTarget(resourceServerID, permission string) testutils.Authorizati
 func authzMapping(
 	claim, delimiter string, values map[string][]testutils.AuthorizationTarget,
 ) *testutils.AttributeConfiguration {
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Rules: []testutils.AuthorizationRuleMapping{
 			{Claim: claim, Delimiter: delimiter, Values: equalsRules(values)},
@@ -75,7 +75,7 @@ func authzMappingWithRules(
 func authzMappingWithRulesAndDelimiter(
 	claim, valueType, delimiter string, rules []testutils.AuthorizationRule,
 ) *testutils.AttributeConfiguration {
-	config := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	config.AuthorizationMapping = &testutils.AuthorizationMapping{
 		Rules: []testutils.AuthorizationRuleMapping{
 			{Claim: claim, ValueType: valueType, Delimiter: delimiter, Values: rules},
@@ -322,7 +322,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_MappedRoleWithNoLocalAssigneesG
 // second role, and both permissions are authorized together.
 func (s *FederatedMappingSuite) TestAuthzMapping_DirectAssignmentPlusMappedRoleCombine() {
 	user := s.baseUser(s.nextSubject())
-	noMappingConfig := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	s.register(noMappingConfig, user)
 
 	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
@@ -726,7 +726,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ProvisioningSeedsRolesAndGroups
 // this login, and both groups' permissions are authorized together.
 func (s *FederatedMappingSuite) TestAuthzMapping_LocalGroupPlusMappedGroupCombine() {
 	user := s.baseUser(s.nextSubject())
-	noMappingConfig := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	s.register(noMappingConfig, user)
 
 	entity, err := testutils.FindUserByAttribute("sub", user.Sub)
@@ -775,7 +775,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_LocalGroupPlusMappedGroupCombin
 // resolve once, not fail or double-grant.
 func (s *FederatedMappingSuite) TestAuthzMapping_OverlappingLocalAndMappedGroupDeduped() {
 	user := s.baseUser(s.nextSubject())
-	noMappingConfig := mapping(fedPersonType.Name, pair("email", "email"), pair("email", "username"))
+	noMappingConfig := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 	s.register(noMappingConfig, user)
 
 	entity, err := testutils.FindUserByAttribute("sub", user.Sub)

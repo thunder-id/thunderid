@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -348,7 +348,8 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflightByID() {
 func (suite *InitTestSuite) TestParseToEntityTypeDTO_ValidYAML() {
 	yamlData := `
 id: "schema-001"
-name: "Employee Schema"
+handle: "employee-schema"
+displayName: "Employee Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 allowSelfRegistration: true
 schema: |
@@ -367,7 +368,7 @@ schema: |
 	suite.NoError(err)
 	suite.NotNil(schemaDTO)
 	suite.Equal("schema-001", schemaDTO.ID)
-	suite.Equal("Employee Schema", schemaDTO.Name)
+	suite.Equal("Employee Schema", schemaDTO.DisplayName)
 	suite.Equal("550e8400-e29b-41d4-a716-446655440000", schemaDTO.OUID)
 	suite.True(schemaDTO.AllowSelfRegistration)
 	suite.NotEmpty(schemaDTO.Schema)
@@ -377,7 +378,8 @@ schema: |
 func (suite *InitTestSuite) TestParseToEntityTypeDTO_MinimalYAML() {
 	yamlData := `
 id: "minimal-schema"
-name: "Minimal Schema"
+handle: "minimal-schema"
+displayName: "Minimal Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -393,7 +395,7 @@ schema: |
 	suite.NoError(err)
 	suite.NotNil(schemaDTO)
 	suite.Equal("minimal-schema", schemaDTO.ID)
-	suite.Equal("Minimal Schema", schemaDTO.Name)
+	suite.Equal("Minimal Schema", schemaDTO.DisplayName)
 	suite.Equal("550e8400-e29b-41d4-a716-446655440000", schemaDTO.OUID)
 	suite.False(schemaDTO.AllowSelfRegistration)
 	suite.NotEmpty(schemaDTO.Schema)
@@ -416,7 +418,8 @@ invalid yaml content
 func (suite *InitTestSuite) TestParseToEntityTypeDTO_ComplexSchema() {
 	yamlData := `
 id: "complex-schema"
-name: "Complex Schema"
+handle: "complex-schema"
+displayName: "Complex Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 allowSelfRegistration: true
 schema: |
@@ -453,7 +456,7 @@ schema: |
 	suite.NoError(err)
 	suite.NotNil(schemaDTO)
 	suite.Equal("complex-schema", schemaDTO.ID)
-	suite.Equal("Complex Schema", schemaDTO.Name)
+	suite.Equal("Complex Schema", schemaDTO.DisplayName)
 	suite.True(schemaDTO.AllowSelfRegistration)
 	suite.NotEmpty(schemaDTO.Schema)
 }
@@ -462,7 +465,8 @@ schema: |
 func BenchmarkParseToEntityTypeDTO(b *testing.B) {
 	yamlData := `
 id: "benchmark-schema"
-name: "Benchmark Schema"
+handle: "benchmark-schema"
+displayName: "Benchmark Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -486,7 +490,8 @@ schema: |
 func TestParseToEntityTypeDTO_Standalone(t *testing.T) {
 	yamlData := `
 id: "standalone-schema"
-name: "Standalone Schema"
+handle: "standalone-schema"
+displayName: "Standalone Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 allowSelfRegistration: false
 schema: |
@@ -503,7 +508,7 @@ schema: |
 	assert.NoError(t, err)
 	assert.NotNil(t, schemaDTO)
 	assert.Equal(t, "standalone-schema", schemaDTO.ID)
-	assert.Equal(t, "Standalone Schema", schemaDTO.Name)
+	assert.Equal(t, "Standalone Schema", schemaDTO.DisplayName)
 	assert.False(t, schemaDTO.AllowSelfRegistration)
 	assert.NotEmpty(t, schemaDTO.Schema)
 }
@@ -770,7 +775,8 @@ func TestRegisterRoutes_AllEndpoints(t *testing.T) {
 func TestParseToEntityTypeDTO_InvalidJSONSchema(t *testing.T) {
 	yamlData := `
 id: "invalid-json-schema"
-name: "Invalid JSON Schema"
+handle: "invalid-json-schema"
+displayName: "Invalid JSON Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {invalid json here}
@@ -787,7 +793,8 @@ schema: |
 func TestParseToEntityTypeDTO_EmptySchemaField(t *testing.T) {
 	yamlData := `
 id: "empty-schema"
-name: "Empty Schema"
+handle: "empty-schema"
+displayName: "Empty Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: ""
 `
@@ -811,31 +818,34 @@ func TestValidateEntityTypeWithOUCheck(t *testing.T) {
 		{
 			name: "Valid schema with valid OU ID",
 			schema: EntityType{
-				ID:     "valid-schema-001",
-				Name:   "Valid Schema",
-				OUID:   "550e8400-e29b-41d4-a716-446655440000",
-				Schema: []byte(`{"email":{"type":"string","required":true}}`),
+				ID:          "valid-schema-001",
+				Handle:      "valid-schema",
+				DisplayName: "Valid Schema",
+				OUID:        "550e8400-e29b-41d4-a716-446655440000",
+				Schema:      []byte(`{"email":{"type":"string","required":true}}`),
 			},
 			shouldBeValid: true,
 		},
 		{
-			name: "Invalid schema - empty name",
+			name: "Invalid schema - empty display name",
 			schema: EntityType{
-				ID:     "invalid-001",
-				Name:   "",
-				OUID:   "550e8400-e29b-41d4-a716-446655440000",
-				Schema: []byte(`{"email":{"type":"string"}}`),
+				ID:          "invalid-001",
+				Handle:      "invalid-type",
+				DisplayName: "",
+				OUID:        "550e8400-e29b-41d4-a716-446655440000",
+				Schema:      []byte(`{"email":{"type":"string"}}`),
 			},
 			shouldBeValid: false,
-			errorContains: "entity type name must not be empty",
+			errorContains: "entity type display name must not be empty",
 		},
 		{
 			name: "Invalid schema - empty OU ID",
 			schema: EntityType{
-				ID:     "invalid-002",
-				Name:   "Test Schema",
-				OUID:   "",
-				Schema: []byte(`{"email":{"type":"string"}}`),
+				ID:          "invalid-002",
+				Handle:      "test-schema",
+				DisplayName: "Test Schema",
+				OUID:        "",
+				Schema:      []byte(`{"email":{"type":"string"}}`),
 			},
 			shouldBeValid: false,
 			errorContains: "organization unit id must not be empty",
@@ -843,20 +853,22 @@ func TestValidateEntityTypeWithOUCheck(t *testing.T) {
 		{
 			name: "Valid schema - non-UUID OU ID",
 			schema: EntityType{
-				ID:     "invalid-003",
-				Name:   "Test Schema",
-				OUID:   "not-a-valid-uuid",
-				Schema: []byte(`{"email":{"type":"string"}}`),
+				ID:          "invalid-003",
+				Handle:      "test-schema",
+				DisplayName: "Test Schema",
+				OUID:        "not-a-valid-uuid",
+				Schema:      []byte(`{"email":{"type":"string"}}`),
 			},
 			shouldBeValid: true,
 		},
 		{
 			name: "Invalid schema - empty schema definition",
 			schema: EntityType{
-				ID:     "invalid-004",
-				Name:   "Test Schema",
-				OUID:   "550e8400-e29b-41d4-a716-446655440000",
-				Schema: []byte{},
+				ID:          "invalid-004",
+				Handle:      "test-schema",
+				DisplayName: "Test Schema",
+				OUID:        "550e8400-e29b-41d4-a716-446655440000",
+				Schema:      []byte{},
 			},
 			shouldBeValid: false,
 			errorContains: "schema definition must not be empty",
@@ -864,10 +876,11 @@ func TestValidateEntityTypeWithOUCheck(t *testing.T) {
 		{
 			name: "Invalid schema - malformed schema definition",
 			schema: EntityType{
-				ID:     "invalid-005",
-				Name:   "Test Schema",
-				OUID:   "550e8400-e29b-41d4-a716-446655440000",
-				Schema: []byte(`{"email":"not-an-object"}`),
+				ID:          "invalid-005",
+				Handle:      "test-schema",
+				DisplayName: "Test Schema",
+				OUID:        "550e8400-e29b-41d4-a716-446655440000",
+				Schema:      []byte(`{"email":"not-an-object"}`),
 			},
 			shouldBeValid: false,
 			errorContains: "property definition must be an object",
@@ -996,7 +1009,8 @@ func TestParseAndValidateEntityTypeFlow(t *testing.T) {
 			name: "Valid YAML and schema",
 			yamlData: `
 id: "flow-test-001"
-name: "Flow Test Schema"
+handle: "flow-test-schema"
+displayName: "Flow Test Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -1010,7 +1024,8 @@ schema: |
 			name: "Valid YAML but invalid schema definition",
 			yamlData: `
 id: "flow-test-002"
-name: "Invalid Schema"
+handle: "invalid-schema"
+displayName: "Invalid Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -1025,7 +1040,8 @@ schema: |
 			name: "Valid YAML but empty schema name",
 			yamlData: `
 id: "flow-test-003"
-name: ""
+handle: "empty-name-type"
+displayName: ""
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -1034,7 +1050,7 @@ schema: |
 `,
 			expectParseOK: true,
 			expectValidOK: false,
-			errorContains: "entity type name must not be empty",
+			errorContains: "entity type display name must not be empty",
 		},
 		{
 			name: "Invalid YAML structure",
@@ -1141,7 +1157,8 @@ func TestInitialize_WithDeclarativeResourcesEnabled_ValidationFailure(t *testing
 
 	// Create a YAML file with invalid configuration (empty name)
 	invalidSchemaYAML := `id: "invalid-schema"
-name: ""
+handle: "empty-name-type"
+displayName: ""
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {
@@ -1198,7 +1215,8 @@ func TestInitialize_WithDeclarativeResourcesEnabled_OUHandleNotFound(t *testing.
 
 	// Create a YAML file that uses an ou_handle that cannot be resolved
 	validSchemaYAML := `id: "test-schema"
-name: "Test Schema"
+handle: "test-schema"
+displayName: "Test Schema"
 ouHandle: "nonexistent-handle"
 allowSelfRegistration: true
 schema: |
@@ -1273,7 +1291,8 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidJSONSchema(t *testing
 
 	// Create a YAML file with invalid JSON in schema field
 	invalidJSONYAML := `id: "invalid-json-schema"
-name: "Invalid JSON Schema"
+handle: "invalid-json-schema"
+displayName: "Invalid JSON Schema"
 ouId: "550e8400-e29b-41d4-a716-446655440000"
 schema: |
   {invalid json here}

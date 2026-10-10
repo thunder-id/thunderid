@@ -246,8 +246,8 @@ describe('ConfigureApplicationDetails', () => {
 
   describe('User Access', () => {
     const userTypes = [
-      {id: '1', name: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true},
-      {id: '2', name: 'External', ouId: 'EXTERNAL', allowSelfRegistration: false},
+      {id: '1', handle: 'internal', displayName: 'Internal', ouId: 'INTERNAL', allowSelfRegistration: true},
+      {id: '2', handle: 'external', displayName: 'External', ouId: 'EXTERNAL', allowSelfRegistration: false},
     ];
 
     it('renders the user access section when two or more user types exist', () => {
@@ -341,7 +341,7 @@ describe('ConfigureApplicationDetails', () => {
         />,
       );
 
-      expect(onUserTypesChange).toHaveBeenCalledWith(['Internal', 'External']);
+      expect(onUserTypesChange).toHaveBeenCalledWith(['internal', 'external']);
     });
 
     it('reports the step as not ready when multiple user types exist and none are selected', () => {
@@ -376,7 +376,7 @@ describe('ConfigureApplicationDetails', () => {
           ouDefaults={NO_DEFAULTS}
           onOuDefaultsChange={vi.fn()}
           userTypes={userTypes}
-          selectedUserTypes={['Internal']}
+          selectedUserTypes={['internal']}
           onUserTypesChange={vi.fn()}
           onReadyChange={onReadyChange}
         />,

@@ -643,16 +643,15 @@ const (
 )
 
 // policy builds a share-stage policy owned by owner with one target.
-func policy(id string, scope targetScope, targetOU string, excluded ...string) Policy {
+func policy(id string, scope TargetScope, targetOU string, excluded ...string) Policy {
 	return Policy{
 		ID: id, OwningOUID: owner, InitiatingOUID: owner, Stage: stageShare,
-		Targets:       []Target{{ID: id + "-t", Scope: scope, OUID: targetOU}},
-		ExcludedOUIDs: excluded,
+		Targets: []Target{{ID: id + "-t", Scope: scope, OUID: targetOU, ExcludedOUIDs: excluded}},
 	}
 }
 
 // reshare builds a reshare-stage policy issued by initiator with one target.
-func reshare(id, initiator string, scope targetScope, targetOU string, excluded ...string) Policy {
+func reshare(id, initiator string, scope TargetScope, targetOU string, excluded ...string) Policy {
 	p := policy(id, scope, targetOU, excluded...)
 	p.Stage = stageReshare
 	p.InitiatingOUID = initiator
@@ -661,7 +660,7 @@ func reshare(id, initiator string, scope targetScope, targetOU string, excluded 
 
 // The owner holds its own resource, so it is visible whatever the policies say.
 func (s *VisibilityTestSuite) TestEvaluateChainOwnerIsAlwaysVisible() {
-	visible, covering := evaluateChain([]string{owner}, []Policy{policy("p1", targetScopeRoot, rootA)})
+	visible, covering := evaluateChain([]string{owner}, []Policy{policy("p1", ScopeRoot, rootA)})
 
 	s.True(visible)
 	// The owner needs no policy of its own, so nothing is recorded as covering it.
@@ -675,12 +674,12 @@ func (s *VisibilityTestSuite) TestEvaluateChainRootTargeting() {
 		policies []Policy
 		want     bool
 	}{
-		{"named root", []Policy{policy("p1", targetScopeRoot, rootA)}, true},
-		{"a different root", []Policy{policy("p1", targetScopeRoot, "root-b")}, false},
-		{"all roots", []Policy{policy("p1", targetScopeAllRoots, "")}, true},
-		{"all roots minus this one", []Policy{policy("p1", targetScopeAllRoots, "", rootA)}, false},
+		{"named root", []Policy{policy("p1", ScopeRoot, rootA)}, true},
+		{"a different root", []Policy{policy("p1", ScopeRoot, "root-b")}, false},
+		{"all roots", []Policy{policy("p1", ScopeAllRoots, "")}, true},
+		{"all roots minus this one", []Policy{policy("p1", ScopeAllRoots, "", rootA)}, false},
 		// Root targeting is owner-only, so a reshare must never reach a root.
-		{"a reshare cannot reach a root", []Policy{reshare("p1", childA, targetScopeRoot, rootA)}, false},
+		{"a reshare cannot reach a root", []Policy{reshare("p1", childA, ScopeRoot, rootA)}, false},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
@@ -695,7 +694,7 @@ func (s *VisibilityTestSuite) TestEvaluateChainRequiresEveryHop() {
 	// The root is reached, but nothing carries the resource further down.
 	visible, _ := evaluateChain(
 		[]string{rootA, childA},
-		[]Policy{policy("p1", targetScopeRoot, rootA)},
+		[]Policy{policy("p1", ScopeRoot, rootA)},
 	)
 	s.False(visible, "a child is not visible merely because its root is")
 }
@@ -703,8 +702,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainRequiresEveryHop() {
 // An all-children scope reaches every depth beneath its anchor, not only the first level.
 func (s *VisibilityTestSuite) TestEvaluateChainSubtreeReachesAnyDepth() {
 	policies := []Policy{
-		policy("p1", targetScopeRoot, rootA),
-		reshare("p2", rootA, targetScopeAllChildren, rootA),
+		policy("p1", ScopeRoot, rootA),
+		reshare("p2", rootA, ScopeAllChildren, rootA),
 	}
 
 	visible, covering := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -717,8 +716,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainSubtreeReachesAnyDepth() {
 // An excluded organization unit takes its whole subtree with it.
 func (s *VisibilityTestSuite) TestEvaluateChainExclusionCutsOffEverythingBelow() {
 	policies := []Policy{
-		policy("p1", targetScopeRoot, rootA),
-		reshare("p2", rootA, targetScopeAllChildren, rootA, childA),
+		policy("p1", ScopeRoot, rootA),
+		reshare("p2", rootA, ScopeAllChildren, rootA, childA),
 	}
 
 	childVisible, _ := evaluateChain([]string{rootA, childA}, policies)
@@ -733,8 +732,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainExclusionCutsOffEverythingBelow()
 func (s *VisibilityTestSuite) TestEvaluateChainExplicitTargetNeverSkipsAHop() {
 	// The root names a grandchild directly, which must not reach it.
 	policies := []Policy{
-		policy("p1", targetScopeRoot, rootA),
-		reshare("p2", rootA, targetScopeOU, grandA),
+		policy("p1", ScopeRoot, rootA),
+		reshare("p2", rootA, ScopeChild, grandA),
 	}
 
 	visible, _ := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -745,8 +744,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainExplicitTargetNeverSkipsAHop() {
 // A subtree target reaches the organization unit it names as well as everything beneath it.
 func (s *VisibilityTestSuite) TestEvaluateChainSubtreeTargetCoversItsAnchorAndBelow() {
 	policies := []Policy{
-		policy("p1", targetScopeRoot, rootA),
-		reshare("p2", rootA, targetScopeOUSubtree, childA),
+		policy("p1", ScopeRoot, rootA),
+		reshare("p2", rootA, ScopeChildSubtree, childA),
 	}
 
 	anchorVisible, _ := evaluateChain([]string{rootA, childA}, policies)
@@ -763,9 +762,9 @@ func (s *VisibilityTestSuite) TestEvaluateChainReturnsEveryCoveringPolicy() {
 	// A diamond: a subtree reshare and a narrower one below it both reach the same organization
 	// unit, and rule resolution needs both to intersect them.
 	policies := []Policy{
-		policy("p1", targetScopeRoot, rootA),
-		reshare("p2", rootA, targetScopeAllChildren, rootA),
-		reshare("p3", childA, targetScopeOU, grandA),
+		policy("p1", ScopeRoot, rootA),
+		reshare("p2", rootA, ScopeAllChildren, rootA),
+		reshare("p3", childA, ScopeChild, grandA),
 	}
 
 	visible, covering := evaluateChain([]string{rootA, childA, grandA}, policies)
@@ -780,8 +779,8 @@ func (s *VisibilityTestSuite) TestEvaluateChainReturnsEveryCoveringPolicy() {
 
 // A blanket policy stands behind the specific ones rather than replacing them.
 func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
-	allOUs := policy("p-blanket", targetScopeAllOUs, "")
-	specific := reshare("p-specific", rootA, targetScopeAllChildren, rootA)
+	allOUs := policy("p-blanket", ScopeAllOUs, "")
+	specific := reshare("p-specific", rootA, ScopeAllChildren, rootA)
 
 	s.Run("it covers where nothing specific reached", func() {
 		visible, covering := evaluateChain([]string{"other-root"}, []Policy{allOUs})
@@ -795,7 +794,7 @@ func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
 	s.Run("it stands aside where a specific target reached", func() {
 		_, covering := evaluateChain(
 			[]string{rootA, childA},
-			[]Policy{policy("p1", targetScopeRoot, rootA), specific, allOUs},
+			[]Policy{policy("p1", ScopeRoot, rootA), specific, allOUs},
 		)
 		s.Require().Len(covering, 1)
 		s.Equal("p-specific", covering[0].Policy.ID)
@@ -804,14 +803,36 @@ func (s *VisibilityTestSuite) TestEvaluateChainAllOUsIsAFallbackNotAShadow() {
 
 	s.Run("an exclusion still applies to it", func() {
 		visible, _ := evaluateChain([]string{"other-root"},
-			[]Policy{policy("p-blanket", targetScopeAllOUs, "", "other-root")})
+			[]Policy{policy("p-blanket", ScopeAllOUs, "", "other-root")})
 		s.False(visible)
+	})
+
+	// A carve-out takes the unit's subtree with it, and a second target naming the carved-out unit
+	// does not hand that subtree back. Without checking the whole chain the walk would reach the
+	// grandchild: its parent is covered, by the other target, and the grandchild is not itself
+	// named in the exclusion list.
+	s.Run("an exclusion takes its subtree even when another target covers the unit", func() {
+		carvedOut := Policy{
+			ID: "p-mixed", OwningOUID: rootA, InitiatingOUID: rootA, Stage: stageShare,
+			Targets: []Target{
+				{ID: "t-blanket", Scope: ScopeAllOUs, ExcludedOUIDs: []string{childA}},
+				{ID: "t-child", Scope: ScopeChild, OUID: childA},
+			},
+		}
+
+		visible, covering := evaluateChain([]string{rootA, childA}, []Policy{carvedOut})
+		s.True(visible, "the named target reaches the carved-out unit itself")
+		s.Require().Len(covering, 1)
+		s.Equal("t-child", covering[0].TargetID)
+
+		visible, _ = evaluateChain([]string{rootA, childA, grandA}, []Policy{carvedOut})
+		s.False(visible, "the blanket target was carved out above it and the named one stops short")
 	})
 }
 
 // An empty chain names no organization unit, so nothing is visible and nothing covers it.
 func (s *VisibilityTestSuite) TestEvaluateChainEmptyInputs() {
-	visible, covering := evaluateChain(nil, []Policy{policy("p1", targetScopeAllOUs, "")})
+	visible, covering := evaluateChain(nil, []Policy{policy("p1", ScopeAllOUs, "")})
 	s.False(visible)
 	s.Nil(covering)
 
@@ -837,8 +858,8 @@ func withTargets(targets ...Target) Policy {
 
 // Every target scope belongs to exactly one family, which is what the edit rules key off.
 func (s *EditTestSuite) TestFamilyOf() {
-	blanket := []targetScope{targetScopeAllOUs, targetScopeAllRoots, targetScopeAllChildren}
-	selective := []targetScope{targetScopeRoot, targetScopeOU, targetScopeOUSubtree}
+	blanket := []TargetScope{ScopeAllOUs, ScopeAllRoots, ScopeAllChildren}
+	selective := []TargetScope{ScopeRoot, ScopeChild, ScopeChildSubtree}
 
 	for _, scope := range blanket {
 		s.Equal(familyBlanket, familyOf(scope), string(scope))
@@ -850,26 +871,27 @@ func (s *EditTestSuite) TestFamilyOf() {
 
 // A blanket policy already reaches everything in its family, so an edit may only carve out of it.
 func (s *EditTestSuite) TestValidateEditBlanketMayOnlyBeNarrowed() {
-	current := withTargets(Target{ID: "t1", Scope: targetScopeAllChildren, OUID: owner})
+	current := withTargets(Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner})
 
 	s.Run("keeping the same scope is allowed, so exclusions may change around it", func() {
-		proposed := withTargets(Target{ID: "t1", Scope: targetScopeAllChildren, OUID: owner})
-		proposed.ExcludedOUIDs = []string{childA}
+		proposed := withTargets(Target{
+			ID: "t1", Scope: ScopeAllChildren, OUID: owner, ExcludedOUIDs: []string{childA},
+		})
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
 	// Converting a blanket policy would change the meaning of every reshare derived from it.
 	s.Run("changing the blanket scope itself is rejected", func() {
-		proposed := withTargets(Target{ID: "t1", Scope: targetScopeAllOUs})
+		proposed := withTargets(Target{ID: "t1", Scope: ScopeAllOUs})
 
 		s.ErrorIs(validateEdit(current, proposed, 1, 1), errBlanketScopeNarrowOnly)
 	})
 
 	s.Run("adding a target to a blanket policy is rejected", func() {
 		proposed := withTargets(
-			Target{ID: "t1", Scope: targetScopeAllChildren, OUID: owner},
-			Target{ID: "t2", Scope: targetScopeAllChildren, OUID: childA},
+			Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner},
+			Target{ID: "t2", Scope: ScopeAllChildren, OUID: childA},
 		)
 
 		s.ErrorIs(validateEdit(current, proposed, 1, 1), errBlanketScopeNarrowOnly)
@@ -879,31 +901,31 @@ func (s *EditTestSuite) TestValidateEditBlanketMayOnlyBeNarrowed() {
 // A selective policy may grow within the one-hop rule, which creates no authority its initiator
 // did not already hold when the policy was first checked.
 func (s *EditTestSuite) TestValidateEditSelectiveMayGrow() {
-	current := withTargets(Target{ID: "t1", Scope: targetScopeOU, OUID: childA})
+	current := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
 
 	// Expansion within the one-hop rule creates no authority the initiator did not already have:
 	// it could have named the same children in the original call.
 	s.Run("adding a target is allowed", func() {
 		proposed := withTargets(
-			Target{ID: "t1", Scope: targetScopeOU, OUID: childA},
-			Target{ID: "t2", Scope: targetScopeOU, OUID: "child-b"},
+			Target{ID: "t1", Scope: ScopeChild, OUID: childA},
+			Target{ID: "t2", Scope: ScopeChild, OUID: "child-b"},
 		)
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
 	s.Run("flipping a target to carry its subtree is allowed", func() {
-		proposed := withTargets(Target{ID: "t1", Scope: targetScopeOUSubtree, OUID: childA})
+		proposed := withTargets(Target{ID: "t1", Scope: ScopeChildSubtree, OUID: childA})
 
 		s.NoError(validateEdit(current, proposed, 1, 1))
 	})
 
 	s.Run("removing a target is allowed", func() {
 		start := withTargets(
-			Target{ID: "t1", Scope: targetScopeOU, OUID: childA},
-			Target{ID: "t2", Scope: targetScopeOU, OUID: "child-b"},
+			Target{ID: "t1", Scope: ScopeChild, OUID: childA},
+			Target{ID: "t2", Scope: ScopeChild, OUID: "child-b"},
 		)
-		proposed := withTargets(Target{ID: "t1", Scope: targetScopeOU, OUID: childA})
+		proposed := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
 
 		s.NoError(validateEdit(start, proposed, 1, 1))
 	})
@@ -912,8 +934,8 @@ func (s *EditTestSuite) TestValidateEditSelectiveMayGrow() {
 // Converting between the families would change the meaning of every reshare derived from the
 // policy, so it is refused in both directions.
 func (s *EditTestSuite) TestValidateEditCannotChangeFamily() {
-	selective := withTargets(Target{ID: "t1", Scope: targetScopeOU, OUID: childA})
-	blanket := withTargets(Target{ID: "t1", Scope: targetScopeAllChildren, OUID: owner})
+	selective := withTargets(Target{ID: "t1", Scope: ScopeChild, OUID: childA})
+	blanket := withTargets(Target{ID: "t1", Scope: ScopeAllChildren, OUID: owner})
 
 	s.ErrorIs(validateEdit(selective, blanket, 1, 1), errScopeFamilyChange)
 	s.ErrorIs(validateEdit(blanket, selective, 1, 1), errScopeFamilyChange)
@@ -924,8 +946,7 @@ func (s *EditTestSuite) TestValidateEditCannotChangeFamily() {
 func (s *EditTestSuite) TestValidateEditBlanketExclusionsMayBeEditedBothWays() {
 	blanket := func(excluded ...string) Policy {
 		return Policy{
-			Targets:       []Target{{ID: "t1", Scope: targetScopeAllOUs}},
-			ExcludedOUIDs: excluded,
+			Targets: []Target{{ID: "t1", Scope: ScopeAllOUs, ExcludedOUIDs: excluded}},
 		}
 	}
 
@@ -953,8 +974,8 @@ func (s *EditTestSuite) TestValidateEditBlanketExclusionsMayBeEditedBothWays() {
 
 	// What stays fixed is the family the policy reaches.
 	s.Run("changing the blanket target is still refused", func() {
-		current := Policy{Targets: []Target{{ID: "t1", Scope: targetScopeAllOUs}}}
-		proposed := Policy{Targets: []Target{{ID: "t1", Scope: targetScopeAllRoots}}}
+		current := Policy{Targets: []Target{{ID: "t1", Scope: ScopeAllOUs}}}
+		proposed := Policy{Targets: []Target{{ID: "t1", Scope: ScopeAllRoots}}}
 		err := validateEdit(current, proposed, 1, 1)
 		s.ErrorIs(err, errBlanketScopeNarrowOnly)
 	})
@@ -963,8 +984,7 @@ func (s *EditTestSuite) TestValidateEditBlanketExclusionsMayBeEditedBothWays() {
 	s.Run("a selective policy may drop one", func() {
 		selective := func(excluded ...string) Policy {
 			return Policy{
-				Targets:       []Target{{ID: "t1", Scope: targetScopeOU, OUID: "ou-9"}},
-				ExcludedOUIDs: excluded,
+				Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: "ou-9", ExcludedOUIDs: excluded}},
 			}
 		}
 		err := validateEdit(selective("ou-1", "ou-2"), selective("ou-1"), 1, 1)

@@ -50,13 +50,20 @@ const (
 
 	// ssoCookiePrefix is the per-flow SSO handle cookie prefix minted by the session transport.
 	ssoCookiePrefix = "tid_sso_"
+
+	// promptStepClientID is the client whose flow prompts after the SSO check.
+	promptStepClientID = "sso_prompt_none_step_client"
+
+	// failOnReuseClientID is the client whose flow fails when it reuses the SSO session.
+	failOnReuseClientID = "sso_prompt_none_fail_client"
 )
 
 var (
 	testOUID string
 
 	testUserType = testutils.UserType{
-		Name: "sso-logout-person",
+		Handle:      "sso-logout-person",
+		DisplayName: "Sso Logout Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -157,6 +164,140 @@ var (
 		},
 	}
 
+	// promptStepAuthFlow is ssoAuthFlow with an interactive step after the SSO checkpoint, so even a
+	// reused session still needs the user.
+	promptStepAuthFlow = testutils.Flow{
+		Name:     "SSO Prompt None Interactive Step Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_sso_prompt_none_step",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "sso_check"},
+			{
+				"id":         "sso_check",
+				"type":       "TASK_EXECUTION",
+				"executor":   map[string]interface{}{"name": "SSOCheckExecutor"},
+				"properties": map[string]interface{}{"checkpointRef": "session_main"},
+				"onSuccess":  "session_main",
+				"onFailure":  "prompt_credentials",
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+							{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+						{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+					},
+				},
+				"onSuccess":    "session_main",
+				"onIncomplete": "prompt_credentials",
+			},
+			{
+				"id":        "session_main",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "SessionExecutor"},
+				"onSuccess": "prompt_confirm",
+			},
+			{
+				"id":   "prompt_confirm",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_003", "identifier": "nickname", "type": "TEXT_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_002", "nextNode": "auth_assert"},
+					},
+				},
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+
+	// failOnReuseAuthFlow signs in with credentials, but on SSO reuse runs a PermissionValidator that
+	// the authorize request can never satisfy, so a reused session ends the flow in failure.
+	failOnReuseAuthFlow = testutils.Flow{
+		Name:     "SSO Prompt None Fail On Reuse Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_sso_prompt_none_fail",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "sso_check"},
+			{
+				"id":         "sso_check",
+				"type":       "TASK_EXECUTION",
+				"executor":   map[string]interface{}{"name": "SSOCheckExecutor"},
+				"properties": map[string]interface{}{"checkpointRef": "session_main"},
+				"onSuccess":  "permission_check",
+				"onFailure":  "prompt_credentials",
+			},
+			{
+				"id":        "permission_check",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "PermissionValidator"},
+				"onSuccess": "session_main",
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+							{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+						{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+					},
+				},
+				"onSuccess":    "session_main",
+				"onIncomplete": "prompt_credentials",
+			},
+			{
+				"id":        "session_main",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "SessionExecutor"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+
 	// signOutFlow terminates the SSO session the login flow established and clears its per-flow cookie.
 	signOutFlow = testutils.Flow{
 		Name:     "SSO Logout Test Sign-Out Flow",
@@ -188,6 +329,10 @@ var (
 type SSOLogoutTestSuite struct {
 	suite.Suite
 	applicationID    string
+	promptStepAppID  string
+	promptStepFlowID string
+	failAppID        string
+	failFlowID       string
 	entityTypeID     string
 	authFlowID       string
 	signOutFlowID    string
@@ -231,6 +376,19 @@ func (ts *SSOLogoutTestSuite) SetupSuite() {
 	ts.resourceServerID = resourceServerID
 
 	ts.applicationID = ts.createApplication()
+
+	promptStepFlowID, err := testutils.CreateFlow(promptStepAuthFlow)
+	ts.Require().NoError(err, "Failed to create the interactive-step flow")
+	ts.promptStepFlowID = promptStepFlowID
+
+	ts.promptStepAppID = ts.createPromptNoneApp("SSOPromptNoneStepApp",
+		"Application whose flow prompts after the SSO check", promptStepFlowID, promptStepClientID)
+
+	failFlowID, err := testutils.CreateFlow(failOnReuseAuthFlow)
+	ts.Require().NoError(err, "Failed to create the fail-on-reuse flow")
+	ts.failFlowID = failFlowID
+	ts.failAppID = ts.createPromptNoneApp("SSOPromptNoneFailApp",
+		"Application whose flow fails when it reuses the SSO session", failFlowID, failOnReuseClientID)
 
 	for _, username := range []string{ssoReuseUsername, logoutUsername, ssoMaxAgeUsername} {
 		ts.createUser(username)
@@ -277,6 +435,22 @@ func (ts *SSOLogoutTestSuite) SetupSuite() {
 func (ts *SSOLogoutTestSuite) TearDownSuite() {
 	if ts.applicationID != "" {
 		ts.deleteAppByID(ts.applicationID)
+	}
+	if ts.promptStepAppID != "" {
+		ts.deleteAppByID(ts.promptStepAppID)
+	}
+	if ts.failAppID != "" {
+		ts.deleteAppByID(ts.failAppID)
+	}
+	if ts.failFlowID != "" {
+		if err := testutils.DeleteFlow(ts.failFlowID); err != nil {
+			ts.T().Errorf("Failed to delete the fail-on-reuse flow: %v", err)
+		}
+	}
+	if ts.promptStepFlowID != "" {
+		if err := testutils.DeleteFlow(ts.promptStepFlowID); err != nil {
+			ts.T().Errorf("Failed to delete the interactive-step flow: %v", err)
+		}
 	}
 	if ts.authFlowID != "" {
 		if err := testutils.DeleteFlow(ts.authFlowID); err != nil {
@@ -337,7 +511,7 @@ func (ts *SSOLogoutTestSuite) createApplication() string {
 		"authFlowId":                ts.authFlowID,
 		"isRegistrationFlowEnabled": false,
 		"signOutFlowId":             ts.signOutFlowID,
-		"allowedUserTypes":          []string{testUserType.Name},
+		"allowedUserTypes":          []string{testUserType.Handle},
 		"inboundAuthConfig": []map[string]interface{}{
 			{
 				"type": "oauth2",
@@ -376,6 +550,33 @@ func (ts *SSOLogoutTestSuite) createApplication() string {
 	return id
 }
 
+// createPromptNoneApp creates an application on the given flow for the prompt=none tests.
+func (ts *SSOLogoutTestSuite) createPromptNoneApp(name, description, flowID, appClientID string) string {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:             name,
+		Description:      description,
+		OUID:             testOUID,
+		AuthFlowID:       flowID,
+		AllowedUserTypes: []string{testUserType.Handle},
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                appClientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{redirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+					"scopes":                  []string{"openid"},
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create application %s", name)
+	return appID
+}
+
 func (ts *SSOLogoutTestSuite) deleteAppByID(id string) {
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/applications/%s", testutils.TestServerURL, id), nil)
 	if err != nil {
@@ -396,7 +597,7 @@ func (ts *SSOLogoutTestSuite) deleteAppByID(id string) {
 func (ts *SSOLogoutTestSuite) createUser(username string) string {
 	user := testutils.User{
 		OUID: testOUID,
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(fmt.Sprintf(`{
 			"username": "%s",
 			"password": "%s",

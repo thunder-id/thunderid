@@ -129,7 +129,8 @@ var (
 	}
 
 	githubRegEntityType = testutils.UserType{
-		Name: "github_reg_flow_user",
+		Handle:      "github_reg_flow_user",
+		DisplayName: "Github Reg Flow User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -250,7 +251,7 @@ var (
 		ClientID:                  "github_reg_flow_test_client",
 		ClientSecret:              "github_reg_flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{githubRegEntityType.Name},
+		AllowedUserTypes:          []string{githubRegEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
@@ -523,7 +524,7 @@ func (ts *GithubRegistrationFlowTestSuite) TestGithubRegistrationFlowCompleteSuc
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 
 	// Validate JWT contains expected user type and OU ID
-	ts.Require().Equal(githubRegEntityType.Name, jwtClaims.UserType, "Expected userType to match created schema")
+	ts.Require().Equal(githubRegEntityType.Handle, jwtClaims.UserType, "Expected userType to match created schema")
 	ts.Require().NotEmpty(jwtClaims.OUID, "Expected ouId to be present")
 	ts.Require().Equal(githubRegTestAppID, jwtClaims.Aud, "Expected aud to match the application ID")
 	ts.Require().NotEmpty(jwtClaims.Sub, "JWT subject should not be empty")

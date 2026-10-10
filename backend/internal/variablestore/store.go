@@ -34,6 +34,8 @@ type variableStoreInterface interface {
 // below this line ever holds a credential in the clear.
 type secretStoreInterface interface {
 	GetSecret(ctx context.Context, name string) (*Secret, error)
+	// GetSecretValue returns a secret's ciphertext and whether one is stored under the name.
+	GetSecretValue(ctx context.Context, name string) (string, bool, error)
 	ListSecrets(ctx context.Context, q listQuery) ([]Secret, int, error)
 	// InsertSecret stores a secret and reports whether it did. False means the name was taken.
 	InsertSecret(ctx context.Context, name, encrypted, description string) (bool, error)
@@ -163,6 +165,21 @@ func (s *store) GetSecret(ctx context.Context, name string) (*Secret, error) {
 	}
 	sec := secretFromRow(rows[0])
 	return &sec, nil
+}
+
+func (s *store) GetSecretValue(ctx context.Context, name string) (string, bool, error) {
+	dbClient, err := s.client()
+	if err != nil {
+		return "", false, err
+	}
+	rows, err := dbClient.QueryContext(ctx, querySecretValue, name, s.scope(ctx))
+	if err != nil {
+		return "", false, fmt.Errorf("failed to read secret value: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	return rowString(rows[0], "value"), true, nil
 }
 
 func (s *store) InsertSecret(ctx context.Context, name, encrypted, description string) (bool, error) {

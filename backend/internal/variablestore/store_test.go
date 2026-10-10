@@ -439,3 +439,31 @@ func (s *StoreTestSuite) TestInsertReportsWhenTheNameIsTaken() {
 	s.Require().NoError(err)
 	s.False(inserted)
 }
+
+// A secret's ciphertext is read by its own query, which the resolver alone uses.
+func (s *StoreTestSuite) TestGetSecretValueReadsTheCiphertext() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, querySecretValue, "DB_PASSWORD", testDeploymentID).
+		Return([]map[string]interface{}{{"value": "sealed"}}, nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, querySecretValue, "ABSENT", testDeploymentID).
+		Return([]map[string]interface{}{}, nil).Once()
+
+	value, held, err := s.store.GetSecretValue(context.Background(), "DB_PASSWORD")
+	s.Require().NoError(err)
+	s.True(held)
+	s.Equal("sealed", value)
+
+	_, held, err = s.store.GetSecretValue(context.Background(), "ABSENT")
+	s.Require().NoError(err)
+	s.False(held)
+}
+
+func (s *StoreTestSuite) TestGetSecretValueReportsAFailedRead() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, querySecretValue, "DB_PASSWORD", testDeploymentID).
+		Return(nil, errors.New("database is down")).Once()
+
+	_, _, err := s.store.GetSecretValue(context.Background(), "DB_PASSWORD")
+
+	s.Error(err)
+}

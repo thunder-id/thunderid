@@ -208,8 +208,9 @@ func (ts *DCREncryptionTestSuite) createOrganizationUnitWithAuthFlow(authFlowID 
 
 func (ts *DCREncryptionTestSuite) createUserType() string {
 	userType := testutils.UserType{
-		Name: encUserType,
-		OUID: ts.ouID,
+		Handle:      encUserType,
+		DisplayName: "Dcr Enc Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

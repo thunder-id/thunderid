@@ -53,6 +53,9 @@ type parameterizerInterface interface {
 	ToParameterizedYAML(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
 		rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error)
+	PlaceholderValues(ctx context.Context, obj interface{},
+		resourceType string, resourceName string,
+		rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error)
 	VarPrefix(resourceName string) string
 }
 
@@ -86,6 +89,14 @@ func (a *varNameAllocator) nameFor(resourceName string) string {
 // ExportServiceInterface defines the interface for the export service.
 type ExportServiceInterface interface {
 	ExportResources(ctx context.Context, request *ExportRequest) (*ExportResponse, *tidcommon.ServiceError)
+	// PlaceholderValues returns the values an export of one resource would refer to by name, as
+	// variables and secrets keyed by the name the export writes, without exporting anything.
+	//
+	// It reads the resource it is given rather than the stored one, so a caller that has just
+	// written a resource can pass what it wrote, including a value no read returns. The resource
+	// must be of the type the exporter registered for resourceType reads back.
+	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
+		map[string]string, map[string]string, error)
 }
 
 // exportService implements the ExportServiceInterface.
@@ -389,17 +400,38 @@ func (es *exportService) exportResourcesWithExporter(
 	return exportFiles, variableValues, exportErrors, nil
 }
 
+// PlaceholderValues names each value the way an export of the resource alone would. An export of
+// several resources can suffix a name to keep two resources whose names normalize alike apart, and
+// which of them is suffixed depends on what else that export holds, so it cannot be known here.
+func (es *exportService) PlaceholderValues(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]string, map[string]string, error) {
+	exporter, exists := es.registry.Get(resourceType)
+	if !exists {
+		return nil, nil, fmt.Errorf("no exporter is registered for resource type %q", resourceType)
+	}
+	logger := log.GetLogger().With(log.String("component", "ExportService"))
+	name, exportErr := exporter.ValidateResource(ctx, resource, "", logger)
+	if exportErr != nil {
+		return nil, nil, fmt.Errorf("the %s cannot be exported: %s", resourceType, exportErr.Error)
+	}
+	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
+		rulesFor(exporter, resource))
+}
+
+// rulesFor returns the parameterization rules an exporter applies to one resource.
+func rulesFor(exporter declarativeresource.ResourceExporter,
+	data interface{}) *declarativeresource.ResourceRules {
+	if pr, ok := exporter.(declarativeresource.PerResourceRuler); ok {
+		return pr.GetResourceRulesForResource(data)
+	}
+	return exporter.GetResourceRules()
+}
+
 func (es *exportService) generateTemplateFromStruct(ctx context.Context, data interface{},
 	paramResourceType string, resourceName string,
 	exporter declarativeresource.ResourceExporter) (string, map[string]string, error) {
-	var rules *declarativeresource.ResourceRules
-	if pr, ok := exporter.(declarativeresource.PerResourceRuler); ok {
-		rules = pr.GetResourceRulesForResource(data)
-	} else {
-		rules = exporter.GetResourceRules()
-	}
 	template, vars, _, err := es.parameterizer.ToParameterizedYAML(ctx,
-		data, paramResourceType, resourceName, rules)
+		data, paramResourceType, resourceName, rulesFor(exporter, data))
 	if err != nil {
 		return "", nil, err
 	}

@@ -35,10 +35,20 @@ servers:
         default: "8090"
 
 tags:
-  - name: SCIM Discovery
-    description: Endpoints for discovering supported SCIM capabilities, schemas, and resource types.
-  - name: SCIM Provisioning
-    description: Endpoints for provisioning and managing Users and Groups (RFC 7644).
+  - name: SCIM Service Provider Config
+    description: Discover the SCIM capabilities supported by the server (RFC 7643 §5).
+  - name: SCIM Schemas
+    description: Discover the core and tenant-specific extension schemas (RFC 7643 §7).
+  - name: SCIM Resource Types
+    description: Discover the supported resource types (RFC 7643 §6).
+  - name: SCIM Users
+    description: Provision and manage users, including search (RFC 7644).
+  - name: SCIM Me
+    description: Read and replace the user resource of the authenticated bearer token subject (RFC 7644 §3.11).
+  - name: SCIM Groups
+    description: Provision and manage groups and their members (RFC 7644).
+  - name: SCIM Unimplemented
+    description: Endpoints defined by SCIM that the server does not implement yet. They return 501 Not Implemented.
 
 security:
   - bearerAuth: []
@@ -47,7 +57,7 @@ paths:
   /scim/v2/ServiceProviderConfig:
     get:
       tags:
-        - SCIM Discovery
+        - SCIM Service Provider Config
       summary: Get Service Provider Configuration
       description: Returns the SCIM service provider configuration, including supported protocol capabilities (e.g., Filter). This is a public endpoint that does not require authentication.
       security: []
@@ -104,7 +114,7 @@ paths:
   /scim/v2/Schemas:
     get:
       tags:
-        - SCIM Discovery
+        - SCIM Schemas
       summary: List Schemas
       description: Returns all supported SCIM schemas, including core schemas and any tenant-specific custom extensions. Requires authentication to ensure tenant isolation.
       responses:
@@ -148,7 +158,7 @@ paths:
                       location: "https://localhost:8090/scim/v2/Schemas/urn:ietf:params:scim:schemas:core:2.0:User"
                   - schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
                     id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
-                    name: "employee"
+                    name: "Employee"
                     description: "ThunderID extension schema for the \"employee\" user type"
                     attributes:
                       - name: "department"
@@ -196,12 +206,12 @@ paths:
   /scim/v2/Schemas/{id}:
     get:
       tags:
-        - SCIM Discovery
+        - SCIM Schemas
       summary: Get Schema by URN
       description: |
         Returns a specific SCIM schema by its URN. Requires authentication to ensure tenant isolation.
 
-        The core `urn:ietf:params:scim:schemas:core:2.0:User` and `urn:ietf:params:scim:schemas:core:2.0:Group` URNs are always available. A ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) is available for each registered user type. The `urn:thunderid:params:scim:schemas:` prefix is the default and can be changed with `scim.urn_prefix` in `deployment.yaml`.
+        The core `urn:ietf:params:scim:schemas:core:2.0:User` and `urn:ietf:params:scim:schemas:core:2.0:Group` URNs are always available. A ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userTypeHandle>:2.0:User`) is available for each registered user type. The `urn:thunderid:params:scim:schemas:` prefix is the default and can be changed with `scim.urn_prefix` in `deployment.yaml`.
       parameters:
         - name: id
           in: path
@@ -220,7 +230,7 @@ paths:
               example:
                 schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
                 id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
-                name: "employee"
+                name: "Employee"
                 description: "ThunderID extension schema for the \"employee\" user type"
                 attributes:
                   - name: "username"
@@ -294,7 +304,7 @@ paths:
   /scim/v2/ResourceTypes:
     get:
       tags:
-        - SCIM Discovery
+        - SCIM Resource Types
       summary: List Resource Types
       description: Returns all supported SCIM resource types (User and Group). This endpoint requires a valid bearer token.
       responses:
@@ -366,7 +376,7 @@ paths:
   /scim/v2/ResourceTypes/{id}:
     get:
       tags:
-        - SCIM Discovery
+        - SCIM Resource Types
       summary: Get Resource Type by ID
       description: Returns a specific SCIM resource type by its ID ("User" or "Group", case-insensitive). This endpoint requires a valid bearer token.
       parameters:
@@ -441,7 +451,7 @@ paths:
   /scim/v2/Users:
     get:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: List Users
       description: |
         Returns a paginated list of users. Supports `startIndex` and `count` query parameters for pagination (RFC 7644 §3.4.2).
@@ -579,10 +589,10 @@ paths:
                 detail: "Internal server error"
     post:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Create User
       description: |
-        Creates a new user. The request body must include the SCIM Core User schema URN (`urn:ietf:params:scim:schemas:core:2.0:User`) whenever core attributes (`userName`, `name`, `emails`, etc.) are present, and exactly one ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) identifying the target user type (RFC 7644 §3.3).
+        Creates a new user. The request body must include the SCIM Core User schema URN (`urn:ietf:params:scim:schemas:core:2.0:User`) whenever core attributes (`userName`, `name`, `emails`, etc.) are present, and exactly one ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userTypeHandle>:2.0:User`) identifying the target user type (RFC 7644 §3.3).
 
         If exactly one user type is configured on the server, the extension URN and its object may be omitted and only core attributes supplied; the sole configured user type is used by default.
 
@@ -720,7 +730,7 @@ paths:
   /scim/v2/Users/{id}:
     get:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Get User
       description: Returns a single user by ID (RFC 7644 §3.4.1). Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
       parameters:
@@ -805,7 +815,7 @@ paths:
                 detail: "Internal server error"
     put:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Replace User
       description: |
         Fully replaces a user resource (RFC 7644 §3.5.1). The user type (extension URN) cannot be changed via PUT; it must match the existing resource's type, or the request is rejected with `400 mutability`.
@@ -944,7 +954,7 @@ paths:
                 detail: "Internal server error"
     delete:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Delete User
       description: Deletes a user by ID (RFC 7644 §3.6).
       parameters:
@@ -1000,7 +1010,7 @@ paths:
                 detail: "Internal server error"
     patch:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Patch User (Not Implemented)
       description: Returns 501 Not Implemented per the SCIM specification. User resource patching is currently unsupported.
       parameters:
@@ -1026,7 +1036,7 @@ paths:
   /scim/v2/Users/.search:
     post:
       tags:
-        - SCIM Provisioning
+        - SCIM Users
       summary: Search Users
       description: Searches users using a POST body with a SCIM filter expression (RFC 7644 §3.4.3). The request body must include the `urn:ietf:params:scim:api:messages:2.0:SearchRequest` schema URN. Supports the same `eq`/`and`-only filter syntax as `GET /scim/v2/Users`.
       requestBody:
@@ -1115,7 +1125,7 @@ paths:
   /scim/v2/Me:
     get:
       tags:
-        - SCIM Provisioning
+        - SCIM Me
       summary: Get Authenticated User
       description: Returns the user resource corresponding to the authenticated bearer token subject (RFC 7644 §3.11). Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
       parameters:
@@ -1193,7 +1203,7 @@ paths:
                 detail: "Internal server error"
     put:
       tags:
-        - SCIM Provisioning
+        - SCIM Me
       summary: Replace Authenticated User
       description: Fully replaces the user resource corresponding to the authenticated bearer token subject (RFC 7644 §3.11). Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9).
       parameters:
@@ -1304,7 +1314,7 @@ paths:
   /scim/v2/Groups:
     get:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: List Groups
       description: Returns a paginated list of groups. Supports `startIndex` and `count` query parameters for pagination. Filtering (`filter`) and sorting (`sortBy`/`sortOrder`) are not supported and return `400` if requested.
       parameters:
@@ -1396,7 +1406,7 @@ paths:
                 detail: "Internal server error"
     post:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: Create Group
       description: Creates a new group. The request body must include the SCIM Core Group schema URN (`urn:ietf:params:scim:schemas:core:2.0:Group`) and a non-empty `displayName` (RFC 7644 §3.3). `members[].type` may be `User` or `Group`. The group's organization unit is taken from the caller's access token, so the OAuth client must be configured to include the `ouId` claim in its token attributes; a token without it is rejected with `400 invalidValue`.
       requestBody:
@@ -1514,7 +1524,7 @@ paths:
   /scim/v2/Groups/{id}:
     get:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: Get Group
       description: Returns a single group by ID (RFC 7644 §3.4.1).
       parameters:
@@ -1585,7 +1595,7 @@ paths:
                 detail: "Internal server error"
     put:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: Replace Group
       description: Fully replaces a group resource (RFC 7644 §3.5.1).
       parameters:
@@ -1690,7 +1700,7 @@ paths:
                 detail: "Internal server error"
     patch:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: Patch Group
       description: |
         Partially updates a group resource using SCIM PATCH operations (RFC 7644 §3.5.2).
@@ -1815,7 +1825,7 @@ paths:
                 detail: "Internal server error"
     delete:
       tags:
-        - SCIM Provisioning
+        - SCIM Groups
       summary: Delete Group
       description: Deletes a group by ID (RFC 7644 §3.6).
       parameters:
@@ -1873,7 +1883,7 @@ paths:
   /scim/v2/.search:
     post:
       tags:
-        - SCIM Provisioning
+        - SCIM Unimplemented
       summary: Bulk Search (Not Implemented)
       description: Returns 501 Not Implemented per the SCIM specification. Root-level search is currently unsupported.
       responses:
@@ -1891,7 +1901,7 @@ paths:
   /scim/v2/Bulk:
     post:
       tags:
-        - SCIM Provisioning
+        - SCIM Unimplemented
       summary: Bulk Operations (Not Implemented)
       description: Returns 501 Not Implemented per the SCIM specification. Bulk operations are currently unsupported.
       responses:

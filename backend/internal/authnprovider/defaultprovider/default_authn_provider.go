@@ -105,6 +105,32 @@ func (p *defaultAuthnProvider) GetEntityReference(ctx context.Context, entityRef
 	}, nil
 }
 
+// SearchEntityReferences returns every entity an attribute lookup matches, or none. It answers a
+// lookup GetEntityReference has already found ambiguous: the two match differently, so reading it
+// for anything else would change which entities a lookup names.
+func (p *defaultAuthnProvider) SearchEntityReferences(ctx context.Context,
+	filters map[string]interface{}) ([]providers.EntityReference, *tidcommon.ServiceError) {
+	entities, err := p.entitySvc.SearchEntities(ctx, filters)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return nil, nil
+		}
+		return nil, p.logAndReturnServerError(ctx, "Failed to search entities",
+			log.String("error", err.Error()))
+	}
+
+	refs := make([]providers.EntityReference, 0, len(entities))
+	for _, e := range entities {
+		refs = append(refs, providers.EntityReference{
+			EntityID:       e.ID,
+			EntityCategory: string(e.Category),
+			EntityType:     e.Type,
+			OUID:           e.OUID,
+		})
+	}
+	return refs, nil
+}
+
 // GetAttributes retrieves the user attributes using the internal entity service.
 func (p *defaultAuthnProvider) GetAttributes(
 	ctx context.Context,
@@ -269,6 +295,42 @@ func (p *defaultAuthnProvider) enrollWithPasskey(
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 	}
 	return result, nil
+}
+
+// StoreAccountLink records a linked account against the entity the caller-supplied token
+// names. The token is this provider's own entity reference token, so it resolves the same way
+// GetEntityReference resolves one, and a token that names no entity is a client error.
+func (p *defaultAuthnProvider) StoreAccountLink(ctx context.Context, entityReferenceToken any,
+	idpID, sub string) *tidcommon.ServiceError {
+	if idpID == "" || sub == "" {
+		return newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+			"Invalid linked account", "A connection id and a subject are both required")
+	}
+
+	parsedToken, ok := entityReferenceToken.(map[string]interface{})
+	if !ok || parsedToken == nil {
+		return newClientError(authnprovidercm.ErrorCodeInvalidToken,
+			"Invalid entity reference token", "The provided entity reference token is invalid")
+	}
+
+	entityResult, svcErr := p.resolveEntityFromToken(ctx, parsedToken, "entity reference token")
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if err := p.entitySvc.LinkAccount(ctx, entityResult.ID, idpID, sub); err != nil {
+		if errors.Is(err, entity.ErrLinkedAccountConflict) {
+			return newClientError(authnprovidercm.ErrorCodeAmbiguousUser, "Account already linked",
+				"The account is linked to another user")
+		}
+		if errors.Is(err, entity.ErrIndexedValueLimitExceeded) {
+			return newClientError(authnprovidercm.ErrorCodeInvalidRequest, "Too many linked accounts",
+				"The user has reached the limit of linked accounts")
+		}
+		return p.logAndReturnServerError(ctx, "Failed to link account",
+			log.String("idpId", idpID), log.String("error", err.Error()))
+	}
+	return nil
 }
 
 func (p *defaultAuthnProvider) buildAuthnResult(
@@ -591,6 +653,10 @@ func (p *defaultAuthnProvider) handleEntityAuthError(
 	if errors.Is(err, entity.ErrAuthenticationFailed) {
 		return newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 			"Authentication failed", "Invalid credentials provided")
+	}
+	if errors.Is(err, entity.ErrAmbiguousEntity) {
+		return newClientError(authnprovidercm.ErrorCodeAmbiguousUser,
+			"Ambiguous user", "Multiple users found matching the provided identifiers")
 	}
 	return p.logAndReturnServerError(ctx, serverMsg, log.String("error", err.Error()))
 }

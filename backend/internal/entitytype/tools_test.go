@@ -30,7 +30,8 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_Success() {
 	expectedTypes := []EntityTypeListItem{
 		{
 			ID:                    "et1",
-			Name:                  "Employee",
+			Handle:                "employee",
+			DisplayName:           "Employee",
 			OUID:                  "ou1",
 			OUHandle:              "engineering",
 			AllowSelfRegistration: false,
@@ -38,7 +39,8 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_Success() {
 		},
 		{
 			ID:                    "et2",
-			Name:                  "Customer",
+			Handle:                "customer",
+			DisplayName:           "Customer",
 			OUID:                  "ou2",
 			OUHandle:              "sales",
 			AllowSelfRegistration: true,
@@ -65,7 +67,8 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_Success() {
 
 	item := output.Types[0]
 	assert.Equal(suite.T(), "et1", item.ID)
-	assert.Equal(suite.T(), "Employee", item.Name)
+	assert.Equal(suite.T(), "employee", item.Handle)
+	assert.Equal(suite.T(), "Employee", item.DisplayName)
 	assert.Equal(suite.T(), "ou1", item.OUID)
 	assert.Equal(suite.T(), "engineering", item.OUHandle)
 	assert.False(suite.T(), item.AllowSelfRegistration)

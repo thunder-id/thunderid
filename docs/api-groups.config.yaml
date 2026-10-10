@@ -68,6 +68,7 @@ fileGroupNames:
   application.yaml: Applications
   authzen.yaml: Access Control
   authentication.yaml: ~         # all tags claimed by Authentication
+  configuration-version.yaml: ~  # Configuration Versions claimed by System
   connections.yaml: Connections
   design.yaml: ~                 # all tags claimed by Branding & Localization
   discovery.yaml: ~              # all tags claimed by OAuth2 / OIDC
@@ -161,12 +162,19 @@ explicitSubGroups:
       - Variables
       - Secrets
       - Gateways
+      - Gateway values
+      - Configuration Versions
 
   # ── SCIM Provisioning ─────────────────────────────────────────────────────────
   - name: SCIM Provisioning
     tags:
-      - SCIM Discovery
-      - SCIM Provisioning
+      - SCIM Service Provider Config
+      - SCIM Schemas
+      - SCIM Resource Types
+      - SCIM Users
+      - SCIM Me
+      - SCIM Groups
+      - SCIM Unimplemented
 
 # Defines the display order of all sidebar groups (explicit and auto-derived).
 # Groups not listed here are appended alphabetically after all ordered entries.

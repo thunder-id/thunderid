@@ -56,12 +56,12 @@ func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_NotFound() {
 	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "missing").
-		Return((*providers.OAuthClient)(nil), inboundclient.ErrInboundClientNotFound)
+		Return((*providers.OAuthClient)(nil), nil)
 
 	client, svcErr := s.provider.GetOAuthClientByClientID(context.Background(), "missing")
 
 	s.Nil(client)
-	s.Equal(ErrorActorNotFound.Code, svcErr.Code)
+	s.Nil(svcErr)
 }
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_FetchFailed() {
@@ -69,6 +69,36 @@ func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_FetchFailed() {
 		Return((*providers.OAuthClient)(nil), errors.New("db error"))
 
 	client, svcErr := s.provider.GetOAuthClientByClientID(context.Background(), "client-1")
+
+	s.Nil(client)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ActorProviderTestSuite) TestGetOAuthClientByID_Delegates() {
+	expected := &providers.OAuthClient{ID: "app-1", ClientID: "client-1"}
+	s.mockInbound.On("GetOAuthClientByEntityID", mock.Anything, "app-1").Return(expected, nil)
+
+	client, svcErr := s.provider.GetOAuthClientByID(context.Background(), "app-1")
+
+	s.Nil(svcErr)
+	s.Equal(toProviderOAuthClient(expected), client)
+}
+
+func (s *ActorProviderTestSuite) TestGetOAuthClientByID_NotFound() {
+	s.mockInbound.On("GetOAuthClientByEntityID", mock.Anything, "missing").
+		Return((*providers.OAuthClient)(nil), nil)
+
+	client, svcErr := s.provider.GetOAuthClientByID(context.Background(), "missing")
+
+	s.Nil(client)
+	s.Nil(svcErr)
+}
+
+func (s *ActorProviderTestSuite) TestGetOAuthClientByID_FetchFailed() {
+	s.mockInbound.On("GetOAuthClientByEntityID", mock.Anything, "app-1").
+		Return((*providers.OAuthClient)(nil), errors.New("db error"))
+
+	client, svcErr := s.provider.GetOAuthClientByID(context.Background(), "app-1")
 
 	s.Nil(client)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)

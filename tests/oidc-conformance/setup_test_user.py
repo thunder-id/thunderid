@@ -125,7 +125,7 @@ def resolve_person_ou(http, base_url, headers):
 
     user_types = payload.get("types", payload if isinstance(payload, list) else [])
     for user_type in user_types:
-        if user_type.get("name") == "Person" or user_type.get("handle") == "Person":
+        if user_type.get("handle") == "person":
             ou_id = user_type.get("ouId")
             if ou_id:
                 return ou_id
@@ -150,7 +150,7 @@ def create_user(http, base_url, headers, ou_id, username, password, email):
         f"{base_url}/users",
         headers=headers,
         json={
-            "type": "Person",
+            "type": "person",
             "ouId": ou_id,
             # Kept in step with the built-in Person schema, which is strict: unknown keys are
             # rejected. These are the claims the Basic profile's UserInfo assertions read.

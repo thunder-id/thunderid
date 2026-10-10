@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
-import type {ReactNode} from 'react';
+import type {ComponentType, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AppWithDecorators from '../AppWithDecorators';
 
@@ -94,6 +94,12 @@ vi.mock('../i18n/I18nProvider', () => ({
 // Mock App component
 vi.mock('../App', () => ({
   default: () => <div data-testid="app">App Component</div>,
+}));
+
+// Resolving the runtime URL needs a query client the decorator chain does not own; it is covered
+// by its own test.
+vi.mock('../hocs/withRuntimeUrl', () => ({
+  default: <P extends object>(WrappedComponent: ComponentType<P>) => WrappedComponent,
 }));
 
 describe('AppWithDecorators', () => {

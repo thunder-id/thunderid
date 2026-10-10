@@ -29,15 +29,23 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/template"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const svcLoggerComponentName = "AuthenticationService"
+
+// notificationTemplateRenderer is the narrow renderer surface the authentication service consumes.
+type notificationTemplateRenderer interface {
+	Resolve(
+		ctx context.Context, channel notificationtemplate.ChannelType, handle string,
+		in notificationtemplate.RenderInput,
+	) (*notificationtemplate.ResolvedContent, *tidcommon.ServiceError)
+}
 
 // crossAllowedIDPTypes is the list of IDP types that allow cross-type authentication.
 var crossAllowedIDPTypes = []providers.IDPType{providers.IDPTypeOAuth, providers.IDPTypeOIDC}
@@ -87,7 +95,7 @@ type authenticationService struct {
 	authnProvider          providers.AuthnProviderManager
 	otpService             otp.OTPAuthnServiceInterface
 	notifSenderSvc         notification.NotificationSenderServiceInterface
-	templateService        template.TemplateServiceInterface
+	templateRenderer       notificationTemplateRenderer
 	magicLinkService       magiclink.MagicLinkAuthnServiceInterface
 	oauthService           oauth.OAuthAuthnServiceInterface
 	oidcService            oidc.OIDCAuthnServiceInterface
@@ -103,7 +111,7 @@ func newAuthenticationService(
 	authnProvider providers.AuthnProviderManager,
 	otpAuthnSvc otp.OTPAuthnServiceInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
-	templateSvc template.TemplateServiceInterface,
+	templateRenderer notificationTemplateRenderer,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	oauthAuthnSvc oauth.OAuthAuthnServiceInterface,
 	oidcAuthnSvc oidc.OIDCAuthnServiceInterface,
@@ -117,7 +125,7 @@ func newAuthenticationService(
 		authnProvider:          authnProvider,
 		otpService:             otpAuthnSvc,
 		notifSenderSvc:         notifSenderSvc,
-		templateService:        templateSvc,
+		templateRenderer:       templateRenderer,
 		magicLinkService:       magicLinkSvc,
 		oauthService:           oauthAuthnSvc,
 		oidcService:            oidcAuthnSvc,
@@ -211,11 +219,15 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 		return "", svcErr
 	}
 
-	templateData := template.TemplateData{
+	templateData := map[string]string{
 		"otpCode":    otpValue,
 		"expiryTime": systemutils.FormatExpiryDuration(expirySeconds),
 	}
-	rendered, renderErr := as.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
+	// Locale omitted (renderer falls back to system language).
+	rendered, renderErr := as.templateRenderer.Resolve(ctx, notificationtemplate.ChannelTypeSMS, "otp",
+		notificationtemplate.RenderInput{
+			Data: templateData,
+		})
 	if renderErr != nil {
 		if renderErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to render OTP template", log.String("error", renderErr.Code))
@@ -224,8 +236,8 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 		return "", renderErr
 	}
 
-	notifData := notifcommon.NotificationData{Recipient: recipient, Body: rendered.Body}
-	if sendErr := as.notifSenderSvc.Send(ctx, channel, senderID, notifData); sendErr != nil {
+	notifData := notifcommon.MessageData{Recipient: recipient, Body: rendered.Body}
+	if sendErr := as.notifSenderSvc.SendMessage(ctx, channel, senderID, notifData); sendErr != nil {
 		if sendErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to send OTP notification", log.String("error", sendErr.Code))
 			return "", &tidcommon.InternalServerError

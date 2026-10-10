@@ -21,7 +21,8 @@ type SystemAttributes struct {
 // UserType represents the user type model for tests
 type UserType struct {
 	ID                    string            `json:"id,omitempty"`
-	Name                  string            `json:"name"`
+	Handle                string            `json:"handle"`
+	DisplayName           string            `json:"displayName"`
 	OUID                  string            `json:"ouId"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -30,7 +31,8 @@ type UserType struct {
 
 // CreateUserTypeRequest represents the request to create a user type
 type CreateUserTypeRequest struct {
-	Name                  string            `json:"name"`
+	Handle                string            `json:"handle"`
+	DisplayName           string            `json:"displayName"`
 	OUID                  string            `json:"ouId"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -39,7 +41,8 @@ type CreateUserTypeRequest struct {
 
 // UpdateUserTypeRequest represents the request to update a user type
 type UpdateUserTypeRequest struct {
-	Name                  string            `json:"name"`
+	Handle                string            `json:"handle,omitempty"`
+	DisplayName           string            `json:"displayName"`
 	OUID                  string            `json:"ouId"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -49,7 +52,8 @@ type UpdateUserTypeRequest struct {
 // UserTypeListItem represents a simplified user type for listing operations in tests
 type UserTypeListItem struct {
 	ID                    string            `json:"id,omitempty"`
-	Name                  string            `json:"name,omitempty"`
+	Handle                string            `json:"handle,omitempty"`
+	DisplayName           string            `json:"displayName,omitempty"`
 	OUID                  string            `json:"ouId"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -57,11 +61,11 @@ type UserTypeListItem struct {
 
 // UserTypeListResponse represents the response from listing user types
 type UserTypeListResponse struct {
-	TotalResults int                  `json:"totalResults"`
-	StartIndex   int                  `json:"startIndex"`
-	Count        int                  `json:"count"`
+	TotalResults int                `json:"totalResults"`
+	StartIndex   int                `json:"startIndex"`
+	Count        int                `json:"count"`
 	Types        []UserTypeListItem `json:"types"`
-	Links        []testutils.Link     `json:"links"`
+	Links        []testutils.Link   `json:"links"`
 }
 
 type I18nMessage struct {

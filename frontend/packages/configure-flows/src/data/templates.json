@@ -1554,7 +1554,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "MAGIC_LINK"
+            "emailTemplate": "magic-link"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -1844,7 +1844,7 @@
           },
           "properties": {
             "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
+            "smsTemplate": "otp"
           },
           "executor": {
             "name": "SMSExecutor"
@@ -2169,7 +2169,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "OTP"
+            "emailTemplate": "otp"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -4889,7 +4889,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "MAGIC_LINK"
+            "emailTemplate": "magic-link"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -5518,7 +5518,7 @@
           },
           "properties": {
             "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
+            "smsTemplate": "otp"
           },
           "executor": {
             "name": "SMSExecutor"
@@ -6471,7 +6471,7 @@
           "id": "send_notification_email",
           "type": "TASK_EXECUTION",
           "properties": {
-            "emailTemplate": "CIBA_NOTIFICATION"
+            "emailTemplate": "ciba-notification"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -7723,7 +7723,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "MAGIC_LINK"
+            "emailTemplate": "magic-link"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -8151,7 +8151,7 @@
           },
           "properties": {
             "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
+            "smsTemplate": "otp"
           },
           "executor": {
             "name": "SMSExecutor"
@@ -8619,7 +8619,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "OTP"
+            "emailTemplate": "otp"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -10129,7 +10129,7 @@
             }
           },
           "properties": {
-            "emailTemplate": "MAGIC_LINK"
+            "emailTemplate": "magic-link"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -10804,7 +10804,7 @@
           },
           "properties": {
             "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
+            "smsTemplate": "otp"
           },
           "executor": {
             "name": "SMSExecutor"
@@ -11632,7 +11632,7 @@
           "id": "send_registration_email",
           "type": "TASK_EXECUTION",
           "properties": {
-            "emailTemplate": "SELF_REGISTRATION"
+            "emailTemplate": "self-registration"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -12235,7 +12235,7 @@
           "type": "TASK_EXECUTION",
           "properties": {
             "senderId": "<your-sender-id>",
-            "smsTemplate": "SELF_REGISTRATION"
+            "smsTemplate": "self-registration"
           },
           "executor": {
             "name": "SMSExecutor",
@@ -13194,7 +13194,7 @@
           "id": "send_invite_email",
           "type": "TASK_EXECUTION",
           "properties": {
-            "emailTemplate": "USER_INVITE"
+            "emailTemplate": "user-invite"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -13689,7 +13689,7 @@
           "id": "send_recovery_email",
           "type": "TASK_EXECUTION",
           "properties": {
-            "emailTemplate": "PASSWORD_RECOVERY"
+            "emailTemplate": "password-recovery"
           },
           "executor": {
             "name": "EmailExecutor",
@@ -14096,7 +14096,7 @@
           },
           "properties": {
             "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
+            "smsTemplate": "otp"
           },
           "executor": {
             "name": "SMSExecutor"
@@ -15622,7 +15622,7 @@
               },
               "properties": {
                 "senderId": "",
-                "smsTemplate": "OTP"
+                "smsTemplate": "otp"
               }
             }
           },
@@ -15910,7 +15910,7 @@
                 },
                 "properties": {
                   "senderId": "",
-                  "smsTemplate": "OTP"
+                  "smsTemplate": "otp"
                 },
                 "onSuccess": "{{SMS_OTP_VERIFICATION_STEP_ID}}",
                 "onFailure": "",
@@ -16595,7 +16595,7 @@
                 "onSuccess": "{{EMAIL_SENT_VIEW_ID}}"
               },
               "properties": {
-                "emailTemplate": "MAGIC_LINK"
+                "emailTemplate": "magic-link"
               }
             }
           },

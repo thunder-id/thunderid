@@ -31,24 +31,19 @@ func members(v ...string) *[]string {
 func fullRequest() PolicyRequest {
 	return PolicyRequest{
 		InitiatingOUID: "ou-1",
-		TargetOUScope: TargetOUScope{
-			AllOUs:            true,
-			AllRoots:          true,
-			RootOUIDs:         []string{"root-1"},
-			ExcludedRootOUIDs: []string{"root-2"},
-			AllChildren:       true,
-			ChildOUIDs: []TargetEntry{{
-				OUID:         "ou-2",
-				AllChildren:  true,
-				OverlayRules: map[string]OverlayRule{"assignments": {Editable: true}},
+		Targets: []TargetRequest{
+			{Scope: ScopeAllOUs, ExcludedOUIDs: []string{"ou-3"}, OverlayRules: map[string]OverlayRule{
+				"permissions": {
+					Value:          members("billing"),
+					AllowedValues:  members("billing", "bookings"),
+					ExcludedValues: members("billing:refunds"),
+				},
 			}},
-			ExcludedOUIDs: []string{"ou-3"},
+			{Scope: ScopeRoot, OUID: "root-1"},
+			{Scope: ScopeChildSubtree, OUID: "ou-2", OverlayRules: map[string]OverlayRule{
+				"assignments": {Editable: true},
+			}},
 		},
-		OverlayRules: map[string]OverlayRule{"permissions": {
-			Value:          members("billing"),
-			AllowedValues:  members("billing", "bookings"),
-			ExcludedValues: members("billing:refunds"),
-		}},
 		Version: 3,
 	}
 }
@@ -70,17 +65,18 @@ func (s *ModelTestSuite) TestPolicyRequestUsesTheSameCamelCaseNamesInBothEncodin
 	s.Equal(fromJSON, s.normalize(asYAML),
 		"the two encodings disagree, so some field is missing a matching tag")
 
-	scope, ok := fromJSON["targetOuScope"].(map[string]interface{})
-	s.Require().True(ok, "targetOuScope is absent, so the field is untagged")
-	s.ElementsMatch(
-		[]string{"allOus", "allRoots", "rootOuIds", "excludedRootOuIds", "allChildren", "childOuIds", "excludedOuIds"},
-		keysOf(scope))
+	targets, ok := fromJSON["targets"].([]interface{})
+	s.Require().True(ok, "targets is absent, so the field is untagged")
 
-	entry, ok := scope["childOuIds"].([]interface{})[0].(map[string]interface{})
+	broad, ok := targets[0].(map[string]interface{})
 	s.Require().True(ok)
-	s.ElementsMatch([]string{"ouId", "allChildren", "overlayRules"}, keysOf(entry))
+	s.ElementsMatch([]string{"scope", "excludedOuIds", "overlayRules"}, keysOf(broad))
 
-	rule, ok := fromJSON["overlayRules"].(map[string]interface{})["permissions"].(map[string]interface{})
+	named, ok := targets[2].(map[string]interface{})
+	s.Require().True(ok)
+	s.ElementsMatch([]string{"scope", "ouId", "overlayRules"}, keysOf(named))
+
+	rule, ok := broad["overlayRules"].(map[string]interface{})["permissions"].(map[string]interface{})
 	s.Require().True(ok)
 	s.ElementsMatch([]string{"editable", "value", "allowedValues", "excludedValues"}, keysOf(rule))
 }
@@ -171,31 +167,4 @@ func keysOf(m map[string]interface{}) []string {
 		out = append(out, k)
 	}
 	return out
-}
-
-// A mode's broad flag reaches everything its list could name, so the two together are a contradiction
-// rather than a refinement. Accepting the pair would drop the named entries in target building, and a
-// per-target overlay rule riding on a dropped child would store with no target and govern the whole
-// subtree instead of that one child.
-func (s *ModelTestSuite) TestAModesBroadFlagAndItsListAreMutuallyExclusive() {
-	for _, tc := range []struct {
-		name  string
-		scope TargetOUScope
-		valid bool
-	}{
-		{"allChildren alone", TargetOUScope{AllChildren: true}, true},
-		{"named children alone", TargetOUScope{ChildOUIDs: []TargetEntry{{OUID: "child"}}}, true},
-		{"allChildren with named children",
-			TargetOUScope{AllChildren: true, ChildOUIDs: []TargetEntry{{OUID: "child"}}}, false},
-		{"allRoots alone", TargetOUScope{AllRoots: true}, true},
-		{"named roots alone", TargetOUScope{RootOUIDs: []string{"root"}}, true},
-		{"allRoots with named roots", TargetOUScope{AllRoots: true, RootOUIDs: []string{"root"}}, false},
-		{"allChildren with excluded units stays valid",
-			TargetOUScope{AllChildren: true, ExcludedOUIDs: []string{"child"}}, true},
-	} {
-		s.Run(tc.name, func() {
-			_, _, _, valid := tc.scope.Mode()
-			s.Equal(tc.valid, valid)
-		})
-	}
 }

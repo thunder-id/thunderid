@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -17,9 +17,9 @@ const (
 	TypeCategoryAgent TypeCategory = "agent"
 )
 
-// DefaultAgentTypeName is the only agent type name allowed; agent types are restricted
+// DefaultAgentTypeHandle is the only agent type handle allowed; agent types are restricted
 // to a single 'default' schema.
-const DefaultAgentTypeName = "default"
+const DefaultAgentTypeHandle = "default"
 
 // IsValid reports whether the category is one of the known fixed values.
 func (c TypeCategory) IsValid() bool {
@@ -40,7 +40,8 @@ type SystemAttributes struct {
 type EntityType struct {
 	ID                    string            `json:"id,omitempty" yaml:"id,omitempty"`
 	Category              TypeCategory      `json:"-" yaml:"category,omitempty"`
-	Name                  string            `json:"name,omitempty" yaml:"name"`
+	Handle                string            `json:"handle,omitempty" yaml:"handle"`
+	DisplayName           string            `json:"displayName,omitempty" yaml:"displayName"`
 	OUID                  string            `json:"ouId" yaml:"ouId"`
 	OUHandle              string            `json:"ouHandle,omitempty" yaml:"-"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration" yaml:"allowSelfRegistration,omitempty"`
@@ -53,7 +54,8 @@ type EntityType struct {
 type EntityTypeListItem struct {
 	ID                    string            `json:"id,omitempty"`
 	Category              TypeCategory      `json:"-"`
-	Name                  string            `json:"name,omitempty"`
+	Handle                string            `json:"handle,omitempty"`
+	DisplayName           string            `json:"displayName,omitempty"`
 	OUID                  string            `json:"ouId"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration"`
@@ -78,7 +80,8 @@ type EntityTypeListResponse struct {
 
 // CreateEntityTypeRequest represents the request body for creating an entity type.
 type CreateEntityTypeRequest struct {
-	Name                  string            `json:"name" native:"required,min=1,max=100"`
+	Handle                string            `json:"handle" native:"required,min=1,max=100"`
+	DisplayName           string            `json:"displayName" native:"required,min=1"`
 	OUID                  string            `json:"ouId" native:"required"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -89,7 +92,8 @@ type CreateEntityTypeRequest struct {
 // including an optional ID.
 type CreateEntityTypeRequestWithID struct {
 	ID                    string            `json:"id,omitempty" yaml:"id,omitempty"`
-	Name                  string            `json:"name" native:"required,min=1,max=100"`
+	Handle                string            `json:"handle" native:"required,min=1,max=100"`
+	DisplayName           string            `json:"displayName" native:"required,min=1"`
 	OUID                  string            `json:"ouId" native:"required"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
@@ -99,7 +103,8 @@ type CreateEntityTypeRequestWithID struct {
 
 // UpdateEntityTypeRequest represents the request body for updating an entity type.
 type UpdateEntityTypeRequest struct {
-	Name                  string            `json:"name" native:"required,min=1,max=100"`
+	Handle                string            `json:"handle,omitempty"`
+	DisplayName           string            `json:"displayName" native:"required,min=1"`
 	OUID                  string            `json:"ouId" native:"required"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
@@ -112,7 +117,8 @@ type UpdateEntityTypeRequest struct {
 type EntityTypeRequestWithID struct {
 	ID                    string            `yaml:"id"`
 	Category              TypeCategory      `yaml:"category,omitempty"`
-	Name                  string            `yaml:"name"`
+	Handle                string            `yaml:"handle"`
+	DisplayName           string            `yaml:"displayName"`
 	OUID                  string            `yaml:"ouId,omitempty"`
 	OUHandle              string            `yaml:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `yaml:"allowSelfRegistration,omitempty"`

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, MessagesSquare, ServerCog, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Mail, MessagesSquare, ServerCog, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import SelectableConnectionCard from './SelectableConnectionCard';
@@ -93,6 +93,17 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
       icon: <MessagesSquare size={28} />,
       comingSoon: false,
     },
+    {
+      type: ConnectionTypes.SMTP,
+      labelKey: 'wizard.type.smtp.label',
+      labelDefault: 'Email Provider (SMTP)',
+      descriptionKey: 'wizard.type.smtp.description',
+      descriptionDefault: 'Deliver email through your own SMTP server.',
+      tagKey: 'wizard.type.smtp.tag',
+      tagDefault: 'Message sender · Email',
+      icon: <Mail size={28} />,
+      comingSoon: false,
+    },
   ];
 
   return (
@@ -107,7 +118,7 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
         </Typography>
       </Stack>
 
-      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(2, 1fr)'}, gap: 2}}>
+      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(3, 1fr)'}, gap: 2}}>
         {options.map((option) => {
           const isSelected: boolean = selectedType === option.type;
           return (

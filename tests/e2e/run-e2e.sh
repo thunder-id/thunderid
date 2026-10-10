@@ -373,8 +373,8 @@ start_wayfinder_app() {
 }
 
 # Starts the mock SMTP server + web inbox that TC006 reads the password-reset email from (see
-# mock-email.page.ts). Defaults (127.0.0.1:2525 SMTP, 127.0.0.1:8788 inbox) match the server
-# distribution's deployment.yaml email.smtp settings, so no config changes are needed. Mirrors the
+# mock-email.page.ts). Defaults (127.0.0.1:2525 SMTP, 127.0.0.1:8788 inbox) match the email
+# provider connection the Wayfinder bundle imports, so no config changes are needed. Mirrors the
 # "Start Wayfinder Mock SMTP Server" step in .github/workflows/pr-builder.yml.
 start_mock_smtp_server() {
     echo "Setting up Wayfinder mock SMTP server..."

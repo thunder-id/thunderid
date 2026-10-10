@@ -171,10 +171,11 @@ func onboardingFlowNodes(allowedUserTypes []string) []map[string]interface{} {
 	}
 }
 
-func onboardingUserTypeSchema(name, ouID string) testutils.UserType {
+func onboardingUserTypeSchema(handle, ouID string) testutils.UserType {
 	return testutils.UserType{
-		Name: name,
-		OUID: ouID,
+		Handle:      handle,
+		DisplayName: "Onboarding " + handle,
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",

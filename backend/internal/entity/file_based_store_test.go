@@ -113,6 +113,8 @@ func (s *FileBasedStoreTestSuite) TestUnsupportedMutations() {
 	s.Error(s.store.UpdateCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateSystemCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.DeleteEntity(s.ctx, "e4"))
+	_, err := s.store.LockEntity(s.ctx, "e4")
+	s.Error(err)
 }
 
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_NoMatch() {
@@ -129,6 +131,25 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_OneMatch() {
 	s.Equal("e6", *id)
 }
 
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_ArrayItemMatch() {
+	attrs, _ := json.Marshal(map[string]interface{}{"email": []string{"primary@test.com", "secondary@test.com"}})
+	s.seedEntity(providers.Entity{ID: "arr1", Category: providers.EntityCategoryUser, Attributes: attrs})
+
+	id, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "secondary@test.com"})
+	s.NoError(err)
+	s.Equal("arr1", *id)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_ArrayItemSharedWithScalar_Ambiguous() {
+	arrayAttrs, _ := json.Marshal(map[string]interface{}{"email": []string{"shared@test.com", "other@test.com"}})
+	scalarAttrs, _ := json.Marshal(map[string]interface{}{"email": "shared@test.com"})
+	s.seedEntity(providers.Entity{ID: "arr2", Category: providers.EntityCategoryUser, Attributes: arrayAttrs})
+	s.seedEntity(providers.Entity{ID: "scl2", Category: providers.EntityCategoryUser, Attributes: scalarAttrs})
+
+	_, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "shared@test.com"})
+	s.ErrorIs(err, ErrAmbiguousEntity)
+}
+
 func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 	attrs1, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
 	attrs2, _ := json.Marshal(map[string]interface{}{"email": "dup@test.com"})
@@ -139,6 +160,37 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 
 	_, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"email": "dup@test.com"})
 	s.Error(err)
+}
+
+func (s *FileBasedStoreTestSuite) seedLinkedEntity(id, linkedIDs string) {
+	s.seedEntity(providers.Entity{ID: id, Category: providers.EntityCategoryUser,
+		SystemAttributes: json.RawMessage(`{"linkedIds":` + linkedIDs + `}`)})
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_OneMatch() {
+	s.seedLinkedEntity("linked1", `{"idp-a":{"sub-1":{}}}`)
+	s.seedLinkedEntity("other1", `{"idp-a":{"sub-2":{}}}`)
+
+	id, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.Equal("linked1", *id)
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_NoMatch() {
+	s.seedEntity(makeTestEntity("plain1", "user", "ou1"))
+	s.seedLinkedEntity("linked2", `{"idp-b":{"sub-1":{}}}`)
+	s.seedLinkedEntity("malformed1", `"not-an-object"`)
+
+	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *FileBasedStoreTestSuite) TestResolveLinkedAccount_MultipleMatches() {
+	s.seedLinkedEntity("linked3", `{"idp-a":{"sub-1":{}}}`)
+	s.seedLinkedEntity("linked4", `{"idp-a":{"sub-1":{}}}`)
+
+	_, err := s.store.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.ErrorIs(err, ErrAmbiguousEntity)
 }
 
 func (s *FileBasedStoreTestSuite) TestGetEntityListCount_WithCategoryAndFilter() {
@@ -292,6 +344,17 @@ func (s *FileBasedStoreTestSuite) TestMatchesFilters() {
 	s.False(matchesFilters(attrs, map[string]interface{}{"nested.missing": "val"}))
 	s.False(matchesFilters(nil, map[string]interface{}{"email": "a@b.com"}))
 	s.False(matchesFilters(json.RawMessage(`invalid-json`), map[string]interface{}{"k": "v"}))
+}
+
+func (s *FileBasedStoreTestSuite) TestMatchesFilters_ArrayMatchesAnyElement() {
+	attrs := json.RawMessage(`{"email":["a@b.com","c@d.com"],"codes":[1,2],"nested":[["a@b.com"]]}`)
+
+	s.True(matchesFilters(attrs, map[string]interface{}{"email": "a@b.com"}))
+	s.True(matchesFilters(attrs, map[string]interface{}{"email": "c@d.com"}))
+	s.False(matchesFilters(attrs, map[string]interface{}{"email": "x@y.com"}))
+	s.True(matchesFilters(attrs, map[string]interface{}{"codes": int64(2)}))
+	s.False(matchesFilters(json.RawMessage(`{"email":[]}`), map[string]interface{}{"email": "a@b.com"}))
+	s.False(matchesFilters(attrs, map[string]interface{}{"nested": "a@b.com"}), "nested arrays are not searched")
 }
 
 func (s *FileBasedStoreTestSuite) TestGetNestedValue() {

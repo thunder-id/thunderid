@@ -43,9 +43,10 @@ func (suite *CompositeModeSuite) SetupSuite() {
 
 	// Ensure the singleton "default" agent type exists so composite agent tests can create runtime agents.
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name:   "default",
-		OUID:   "decl-ou-1",
-		Schema: map[string]interface{}{"description": map[string]interface{}{"type": "string"}},
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        "decl-ou-1",
+		Schema:      map[string]interface{}{"description": map[string]interface{}{"type": "string"}},
 	})
 	suite.Require().NoError(err, "Failed to ensure default agent type exists")
 }
@@ -321,7 +322,7 @@ func (suite *CompositeModeSuite) TestConnectionAttributeConfigurationInComposite
 	// driven by the json tags while the file is parsed with the yaml ones. See G13.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	suite.Require().True(ok, "expected userTypeResolution in %v", config)
-	suite.Equal("Declarative Test Schema", resolution["default"])
+	suite.Equal("declarative-test-schema", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	suite.Require().True(ok, "expected accountLinking in %v", config)
@@ -332,7 +333,7 @@ func (suite *CompositeModeSuite) TestConnectionAttributeConfigurationInComposite
 	suite.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	suite.Require().True(ok)
-	suite.Equal("Declarative Test Schema", entry["userType"])
+	suite.Equal("declarative-test-schema", entry["userType"])
 	suite.Len(entry["attributes"], 2)
 
 	// A runtime, database-backed connection in the same deployment carries its own configuration.
@@ -373,10 +374,10 @@ func (suite *CompositeModeSuite) createRuntimeConnectionWithAttributeConfigurati
 		"redirectUri":  "https://localhost:8095/callback",
 		"scopes":       []string{"openid", "email", "profile"},
 		"attributeConfiguration": map[string]interface{}{
-			"userTypeResolution": map[string]interface{}{"default": "Declarative Test Schema"},
+			"userTypeResolution": map[string]interface{}{"default": "declarative-test-schema"},
 			"userTypeAttributeMappings": []interface{}{
 				map[string]interface{}{
-					"userType": "Declarative Test Schema",
+					"userType": "declarative-test-schema",
 					"attributes": []interface{}{
 						map[string]interface{}{"externalAttribute": "given_name", "localAttribute": "username"},
 					},
@@ -431,7 +432,7 @@ func (suite *CompositeModeSuite) TestDeclarativeConnectionWithAttributeConfigura
 		"clientSecret": "test-client-secret",
 		"redirectUri":  "https://localhost:8095/callback",
 		"attributeConfiguration": map[string]interface{}{
-			"userTypeResolution": map[string]interface{}{"default": "Declarative Test Schema"},
+			"userTypeResolution": map[string]interface{}{"default": "declarative-test-schema"},
 			"accountLinking":     map[string]interface{}{"attributes": []string{"email"}},
 		},
 	}
@@ -472,7 +473,7 @@ func (suite *CompositeModeSuite) TestSecretMaskingLeavesAttributeConfigurationIn
 	// compared against what the fixture declares.
 	resolution, ok := config["userTypeResolution"].(map[string]interface{})
 	suite.Require().True(ok, "expected userTypeResolution in %v", config)
-	suite.Equal("Declarative Test Schema", resolution["default"])
+	suite.Equal("declarative-test-schema", resolution["default"])
 
 	linking, ok := config["accountLinking"].(map[string]interface{})
 	suite.Require().True(ok, "expected accountLinking in %v", config)
@@ -483,7 +484,7 @@ func (suite *CompositeModeSuite) TestSecretMaskingLeavesAttributeConfigurationIn
 	suite.Require().Len(mappings, 1)
 	entry, ok := mappings[0].(map[string]interface{})
 	suite.Require().True(ok)
-	suite.Equal("Declarative Test Schema", entry["userType"])
+	suite.Equal("declarative-test-schema", entry["userType"])
 	attributes, ok := entry["attributes"].([]interface{})
 	suite.Require().True(ok)
 	suite.Require().Len(attributes, 2)
@@ -597,7 +598,7 @@ func (suite *CompositeModeSuite) TestApplicationCreate() {
 
 func (suite *CompositeModeSuite) TestUserCreate() {
 	user := map[string]interface{}{
-		"type": "Declarative Test Schema",
+		"type": "declarative-test-schema",
 		"ouId": "decl-ou-1",
 		"attributes": map[string]interface{}{
 			"username": fmt.Sprintf("runtime-user-%d", time.Now().Unix()),
@@ -909,8 +910,9 @@ func (suite *CompositeModeSuite) TestEntityTypeCreate() {
 	ouResp.Body.Close()
 
 	schema := map[string]interface{}{
-		"name": schemaID,
-		"ouId": "decl-ou-1",
+		"handle":      schemaID,
+		"displayName": "Runtime Schema",
+		"ouId":        "decl-ou-1",
 		"schema": map[string]interface{}{
 			"email":    map[string]interface{}{"type": "string"},
 			"username": map[string]interface{}{"type": "string", "required": true},
@@ -1329,7 +1331,11 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeDeleteReject() {
 
 func (suite *CompositeModeSuite) TestEntityTypeDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"name": "Updated", "ouId": "decl-ou-1"}
+	payload := map[string]interface{}{
+		"handle":      "declarative-test-schema",
+		"displayName": "Updated",
+		"ouId":        "decl-ou-1",
+	}
 	jsonPayload, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/user-types/decl-schema-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))

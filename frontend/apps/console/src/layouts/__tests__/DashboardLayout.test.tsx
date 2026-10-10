@@ -143,6 +143,20 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
   });
 
+  it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
+    render(<DashboardLayout collapseSidebar={collapseSidebar} />);
+
+    const applicationIcon = screen.getByRole('button', {name: 'navigation:pages.applications'}).querySelector('svg');
+    expect(applicationIcon).toBeInTheDocument();
+
+    const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
+    expect(navigationIcons.length).toBeGreaterThan(0);
+    navigationIcons.forEach((icon) => {
+      expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
+      expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
+  });
+
   it('renders footer', () => {
     render(<DashboardLayout />);
 

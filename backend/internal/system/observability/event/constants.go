@@ -13,6 +13,8 @@ const (
 
 	// ComponentAuthHandler identifies events from authentication handlers.
 	ComponentAuthHandler = "AuthHandler"
+	// ComponentBackchannelLogout identifies the back-channel logout dispatcher.
+	ComponentBackchannelLogout = "BackchannelLogout"
 )
 
 // Authentication and Authorization Event Types

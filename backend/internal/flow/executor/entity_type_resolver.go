@@ -65,12 +65,12 @@ func (r *entityTypeResolution) resolve(ctx *providers.NodeContext, category enti
 	}
 
 	if len(candidates) == 1 {
-		return r.accept(ctx, candidates[0].Name, candidates[0].OUID, execResp, logger), nil
+		return r.accept(ctx, candidates[0].Handle, candidates[0].OUID, execResp, logger), nil
 	}
 
 	options := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		options = append(options, candidate.Name)
+		options = append(options, candidate.Handle)
 	}
 	r.prompt(ctx, category, options, defaultInputs, execResp, logger)
 
@@ -101,9 +101,6 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 	if selectedOUID, exists := ctx.RuntimeData[ouIDKey]; exists && selectedOUID != "" {
 		isValid, svcErr := r.ouService.IsParent(ctx.Context, ouID, selectedOUID)
 		if svcErr != nil {
-			logger.Error(ctx.Context, "Failed to validate the entity type against the selected OU",
-				log.String(categoryTypeKey, selected), log.String(ouIDKey, selectedOUID),
-				log.String("error", svcErr.Error.DefaultValue))
 			return nil, fmt.Errorf("failed to validate %s type against selected OU: %s",
 				category, svcErr.Error.DefaultValue)
 		}
@@ -165,13 +162,13 @@ func (r *entityTypeResolution) candidates(ctx *providers.NodeContext,
 	return candidates, true, nil
 }
 
-// accept records the resolved type and the organization unit it lives in.
-func (r *entityTypeResolution) accept(ctx *providers.NodeContext, name, ouID string,
+// accept records the resolved type handle and the organization unit it lives in.
+func (r *entityTypeResolution) accept(ctx *providers.NodeContext, handle, ouID string,
 	execResp *providers.ExecutorResponse, logger *log.Logger,
 ) *providers.ExecutorResponse {
-	logger.Debug(ctx.Context, "Entity type resolved", log.String(categoryTypeKey, name),
+	logger.Debug(ctx.Context, "Entity type resolved", log.String(categoryTypeKey, handle),
 		log.String(ouIDKey, ouID))
-	execResp.RuntimeData[categoryTypeKey] = name
+	execResp.RuntimeData[categoryTypeKey] = handle
 	execResp.RuntimeData[defaultOUIDKey] = ouID
 	execResp.Status = providers.ExecComplete
 
@@ -204,19 +201,16 @@ func (r *entityTypeResolution) promptOptions(ctx context.Context, execResp *prov
 	}
 }
 
-// entityTypeAndOU reads a type by name and the organization unit it lives in.
+// entityTypeAndOU reads a type by handle and the organization unit it lives in.
 func (r *entityTypeResolution) entityTypeAndOU(ctx context.Context, category entitytype.TypeCategory,
-	name string, logger *log.Logger,
+	handle string, logger *log.Logger,
 ) (*entitytype.EntityType, string, error) {
-	entityType, svcErr := r.entityTypeService.GetEntityTypeByName(ctx, category, name)
+	entityType, svcErr := r.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
 	if svcErr != nil {
-		logger.Error(ctx, "Failed to resolve the entity type", log.String("name", name),
-			log.String("error", svcErr.Error.DefaultValue))
-		return nil, "", fmt.Errorf("failed to resolve %s type: %s", category, name)
+		return nil, "", fmt.Errorf("failed to resolve %s type: %s", category, handle)
 	}
 	if entityType.OUID == "" {
-		logger.Error(ctx, "No organization unit found for the entity type", log.String("name", name))
-		return nil, "", fmt.Errorf("no organization unit found for %s type: %s", category, name)
+		return nil, "", fmt.Errorf("no organization unit found for %s type: %s", category, handle)
 	}
 
 	return entityType, entityType.OUID, nil
@@ -233,7 +227,7 @@ func filterTypesByAllowed(
 
 	filtered := make([]entitytype.EntityTypeListItem, 0, len(types))
 	for _, entityType := range types {
-		if slices.Contains(allowedTypes, entityType.Name) {
+		if slices.Contains(allowedTypes, entityType.Handle) {
 			filtered = append(filtered, entityType)
 		}
 	}
@@ -250,10 +244,8 @@ func (r *entityTypeResolution) filterTypesByOU(ctx *providers.NodeContext,
 	for _, entityType := range types {
 		isValid, svcErr := r.ouService.IsParent(ctx.Context, entityType.OUID, selectedOUID)
 		if svcErr != nil {
-			logger.Error(ctx.Context, "Failed to check OU ancestry for schema",
-				log.String("schema", entityType.Name), log.String("error", svcErr.Error.DefaultValue))
 			return nil, fmt.Errorf("failed to check OU ancestry for schema %s: %s",
-				entityType.Name, svcErr.Error.DefaultValue)
+				entityType.Handle, svcErr.Error.DefaultValue)
 		}
 		if isValid {
 			filtered = append(filtered, entityType)
@@ -266,7 +258,7 @@ func (r *entityTypeResolution) filterTypesByOU(ctx *providers.NodeContext,
 	return filtered, nil
 }
 
-// allowedTypesFromProperties reads an optional list of type names from the node property at key.
+// allowedTypesFromProperties reads an optional list of type handles from the node property at key.
 func allowedTypesFromProperties(ctx *providers.NodeContext, key string) []string {
 	if ctx.NodeProperties == nil {
 		return nil
@@ -281,12 +273,12 @@ func allowedTypesFromProperties(ctx *providers.NodeContext, key string) []string
 		return nil
 	}
 
-	names := make([]string, 0, len(items))
+	handles := make([]string, 0, len(items))
 	for _, item := range items {
 		if s, ok := item.(string); ok && s != "" {
-			names = append(names, s)
+			handles = append(handles, s)
 		}
 	}
 
-	return names
+	return handles
 }

@@ -96,6 +96,7 @@ func newDeleteTestService(
 ) ImportServiceInterface {
 	return newImportService(
 		appSvc, idpSvc, senderSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil,
 		pdpSvc...,
 	)
 }

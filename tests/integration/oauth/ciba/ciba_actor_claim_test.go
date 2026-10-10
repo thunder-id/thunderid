@@ -174,8 +174,9 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow_AgentActClaim() {
 	}()
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: ts.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},

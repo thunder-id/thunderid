@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -287,4 +288,84 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SuccessWithIssuedToke
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "exchanged-token", response["access_token"])
 	assert.Equal(suite.T(), string(constants.TokenTypeIdentifierAccessToken), response["issued_token_type"])
+}
+
+// OUScopedGrantTestSuite covers which grants the organization-unit-scoped token endpoint serves.
+// Only client_credentials acts for an organization unit; another grant would be admitted against
+// the named unit and then issue a token identical to the bare endpoint's.
+type OUScopedGrantTestSuite struct {
+	suite.Suite
+	service *TokenServiceInterfaceMock
+}
+
+func TestOUScopedGrantTestSuite(t *testing.T) {
+	suite.Run(t, new(OUScopedGrantTestSuite))
+}
+
+func (s *OUScopedGrantTestSuite) SetupTest() {
+	s.service = NewTokenServiceInterfaceMock(s.T())
+}
+
+// serve runs one token request, optionally naming an accessing organization unit.
+func (s *OUScopedGrantTestSuite) serve(grantType, accessingOUID string) (*httptest.ResponseRecorder, map[string]any) {
+	form := url.Values{}
+	form.Set(constants.RequestParamGrantType, grantType)
+	req, _ := http.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	ctx := context.WithValue(req.Context(), clientauth.OAuthClientKey, &clientauth.OAuthClientInfo{
+		ClientID: "test-client-id",
+		OAuthApp: &providers.OAuthClient{ClientID: "test-client-id"},
+	})
+	if accessingOUID != "" {
+		ctx = syscontext.WithAccessingOUID(ctx, accessingOUID)
+	}
+
+	recorder := httptest.NewRecorder()
+	newTokenHandler(s.service, nil).HandleTokenRequest(recorder, req.WithContext(ctx))
+
+	var body map[string]any
+	_ = json.Unmarshal(recorder.Body.Bytes(), &body)
+	return recorder, body
+}
+
+// A grant that does not act for an organization unit is refused before the service is reached, so
+// no token is issued and no issuance event claims a scope the token would not carry.
+func (s *OUScopedGrantTestSuite) TestAnotherGrantIsRefusedOnThePrefixedPath() {
+	for _, grantType := range []string{
+		string(providers.GrantTypeAuthorizationCode),
+		string(providers.GrantTypeRefreshToken),
+	} {
+		recorder, body := s.serve(grantType, "customer-a")
+
+		s.Equal(http.StatusBadRequest, recorder.Code, grantType)
+		s.Equal(constants.ErrorInvalidRequest, body["error"], grantType)
+	}
+	s.service.AssertNotCalled(s.T(), "ProcessTokenRequest", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// client_credentials is the grant the prefixed endpoint exists for, and reaches the service.
+func (s *OUScopedGrantTestSuite) TestClientCredentialsIsServedOnThePrefixedPath() {
+	s.service.EXPECT().
+		ProcessTokenRequest(mock.Anything, mock.Anything, mock.Anything).
+		Return(&model.TokenResponse{
+			AccessToken: "at", TokenType: constants.TokenTypeBearer, ExpiresIn: 3600,
+		}, nil).Once()
+
+	recorder, _ := s.serve(string(providers.GrantTypeClientCredentials), "customer-a")
+
+	s.Equal(http.StatusOK, recorder.Code)
+}
+
+// The bare endpoint is untouched: it names no organization unit and keeps serving every grant.
+func (s *OUScopedGrantTestSuite) TestTheBareEndpointStillServesEveryGrant() {
+	s.service.EXPECT().
+		ProcessTokenRequest(mock.Anything, mock.Anything, mock.Anything).
+		Return(&model.TokenResponse{
+			AccessToken: "at", TokenType: constants.TokenTypeBearer, ExpiresIn: 3600,
+		}, nil).Once()
+
+	recorder, _ := s.serve(string(providers.GrantTypeAuthorizationCode), "")
+
+	s.Equal(http.StatusOK, recorder.Code)
 }

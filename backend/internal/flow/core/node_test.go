@@ -6,6 +6,7 @@ package core
 import (
 	"testing"
 
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/suite"
@@ -108,4 +109,32 @@ func (s *NodeTestSuite) TestInputsAndProperties() {
 	inputs := []providers.Input{{Identifier: "i1", Required: true}}
 	execNode.SetInputs(inputs)
 	s.Equal(inputs, execNode.GetInputs())
+}
+
+// A claim named after flow control state can neither select nor skip a node, while the same state set
+// in runtime data still decides the condition.
+func (s *NodeTestSuite) TestShouldExecuteIgnoresExternalClaims() {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{"ProvisioningEligibility", common.RuntimeKeyUserEligibleForProvisioning, "true"},
+		{"EntityState", common.RuntimeKeyEntityState, "exists"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			node := newTaskExecutionNode("n1", nil, false, false)
+			node.SetCondition(&NodeCondition{Key: "{{ctx(" + tt.key + ")}}", Value: tt.value})
+
+			ctx := &providers.NodeContext{
+				RuntimeData: externalIdentityData(map[string]interface{}{tt.key: tt.value}),
+				UserInputs:  map[string]string{},
+			}
+			s.False(node.ShouldExecute(ctx), "a claim satisfied the condition")
+
+			ctx.RuntimeData[tt.key] = tt.value
+			s.True(node.ShouldExecute(ctx), "runtime data no longer satisfies the condition")
+		})
+	}
 }

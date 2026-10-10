@@ -38,12 +38,6 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.passkey.relyingPartyName.label': 'Relying Party Name',
         'flows:core.executions.passkey.relyingPartyName.placeholder': 'Enter relying party name',
         'flows:core.executions.passkey.relyingPartyName.hint': 'Relying party name hint',
-        'flows:core.executions.templateScenarios.userInvite': 'User Invite',
-        'flows:core.executions.templateScenarios.magicLink': 'Magic Link',
-        'flows:core.executions.templateScenarios.selfRegistration': 'Self Registration',
-        'flows:core.executions.templateScenarios.otp': 'OTP Verification',
-        'flows:core.executions.templateScenarios.passwordRecovery': 'Password Recovery',
-        'flows:core.executions.templateScenarios.cibaNotification': 'CIBA Notification',
         'flows:core.executions.consent.description': 'Configure the consent executor settings.',
         'flows:core.executions.consent.timeout.label': 'Consent Timeout (seconds)',
         'flows:core.executions.consent.timeout.placeholder': '0',
@@ -82,14 +76,42 @@ vi.mock('../../../../hooks/useValidationStatus', () => ({
   }),
 }));
 
-// Mock useIdentityProviders + useSMSProviders
+// Mock useIdentityProviders + useSMSProviders + useEmailProviders
 const mockIdentityProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
 const mockSMSProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
+const mockEmailProviders = vi.fn<() => {data?: unknown[]; isLoading: boolean; isError?: boolean}>();
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useEmailProviders: () => mockEmailProviders(),
   useIdentityProviders: () => mockIdentityProviders(),
   useSMSProviders: () => mockSMSProviders(),
 }));
+
+// Mock useGetNotificationTemplates, which backs the Email/SMS template pickers.
+interface TemplatesState {
+  data: unknown[] | undefined;
+  isLoading: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+}
+const mockNotificationTemplates = vi.fn<() => TemplatesState>();
+vi.mock('../../../../api/useGetNotificationTemplates', () => ({
+  default: () => mockNotificationTemplates(),
+}));
+
+/** Builds a resolved (successful) query state for the template hook mock. */
+const loaded = (data: unknown[]): TemplatesState => ({data, isLoading: false, isSuccess: true, isError: false});
+
+/** Builds a failed query state for the template hook mock. */
+const failed = (): TemplatesState => ({data: undefined, isLoading: false, isSuccess: false, isError: true});
+
+const emailTemplates = [
+  {id: 'id-1', handle: 'otp', displayName: 'OTP Verification', self: ''},
+  {id: 'id-2', handle: 'user-invite', displayName: 'User Invite', self: ''},
+  {id: 'id-3', handle: 'password-recovery', displayName: 'Password Recovery', self: ''},
+  {id: 'id-4', handle: 'magic-link', displayName: 'Magic Link', self: ''},
+];
+const smsTemplates = [{id: 'sms-1', handle: 'otp', displayName: 'OTP Verification', self: ''}];
 
 describe('ExecutionExtendedProperties', () => {
   const mockOnChange = vi.fn();
@@ -101,6 +123,11 @@ describe('ExecutionExtendedProperties', () => {
       isLoading: false,
     });
     mockSMSProviders.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+    mockNotificationTemplates.mockReturnValue(loaded([]));
+    mockEmailProviders.mockReturnValue({
       data: [],
       isLoading: false,
     });
@@ -878,6 +905,10 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
+    beforeEach(() => {
+      mockNotificationTemplates.mockReturnValue(loaded(emailTemplates));
+    });
+
     it('should render email template configuration', () => {
       render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
 
@@ -885,7 +916,7 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.email.emailTemplate.label')).toBeInTheDocument();
     });
 
-    it('should offer the supported template scenarios with readable labels', async () => {
+    it('should offer the fetched templates with their display names as labels', async () => {
       render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
 
       await userEvent.click(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'));
@@ -895,19 +926,19 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByRole('option', {name: 'Password Recovery'})).toBeInTheDocument();
     });
 
-    it('should commit the raw scenario value for the selected label', async () => {
+    it('should commit the template handle for the selected label', async () => {
       render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
 
       await userEvent.click(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'));
       await userEvent.click(screen.getByRole('option', {name: 'Magic Link'}));
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.emailTemplate', 'MAGIC_LINK', emailResource);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.emailTemplate', 'magic-link', emailResource);
     });
 
-    it('should find a scenario by searching its readable label', async () => {
+    it('should find a template by searching its display name', async () => {
       render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
 
-      await userEvent.type(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'), 'recov');
+      await userEvent.type(screen.getByLabelText('flows:core.executions.email.emailTemplate.label'), 'Recovery');
 
       expect(screen.getByRole('option', {name: 'Password Recovery'})).toBeInTheDocument();
       expect(screen.queryByRole('option', {name: 'User Invite'})).not.toBeInTheDocument();
@@ -918,7 +949,7 @@ describe('ExecutionExtendedProperties', () => {
         ...emailResource,
         data: {
           ...(emailResource as unknown as {data: object}).data,
-          properties: {emailTemplate: 'PASSWORD_RECOVERY'},
+          properties: {emailTemplate: 'password-recovery'},
         },
       } as unknown as Resource;
 
@@ -927,22 +958,71 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.email.emailTemplate.label')).toHaveValue('Password Recovery');
     });
 
-    it('should preserve a template scenario it does not know about', async () => {
+    // A failed read must not tell the user to create providers that may already exist.
+    it('should report a failed provider read instead of the no-providers warning', () => {
+      mockEmailProviders.mockReturnValue({data: undefined, isLoading: false, isError: true});
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.sender.loadError')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.email.sender.noSenders')).not.toBeInTheDocument();
+    });
+
+    it('should warn when the provider read succeeds with no providers', () => {
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.sender.noSenders')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.email.sender.loadError')).not.toBeInTheDocument();
+    });
+
+    // A failed read must not tell the user to create providers that may already exist.
+    it('should report a failed provider read instead of the no-providers warning', () => {
+      mockEmailProviders.mockReturnValue({data: undefined, isLoading: false, isError: true});
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.sender.loadError')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.email.sender.noSenders')).not.toBeInTheDocument();
+    });
+
+    it('should warn when the provider read succeeds with no providers', () => {
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.sender.noSenders')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.email.sender.loadError')).not.toBeInTheDocument();
+    });
+
+    it('should preserve a template handle it does not know about', async () => {
       const resourceWithUnknownTemplate = {
         ...emailResource,
         data: {
           ...(emailResource as unknown as {data: object}).data,
-          properties: {emailTemplate: 'CUSTOM_SCENARIO'},
+          properties: {emailTemplate: 'custom-handle'},
         },
       } as unknown as Resource;
 
       render(<ExecutionExtendedProperties resource={resourceWithUnknownTemplate} onChange={mockOnChange} />);
 
       const input = screen.getByLabelText('flows:core.executions.email.emailTemplate.label');
-      expect(input).toHaveValue('CUSTOM_SCENARIO');
+      expect(input).toHaveValue('custom-handle');
 
       await userEvent.click(input);
-      expect(screen.getByRole('option', {name: 'CUSTOM_SCENARIO'})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: 'custom-handle'})).toBeInTheDocument();
+    });
+
+    it('should warn when no email templates are available', () => {
+      mockNotificationTemplates.mockReturnValue(loaded([]));
+
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.emailTemplate.noTemplates')).toBeInTheDocument();
+    });
+
+    it('should report a load error without the empty-templates warning', () => {
+      mockNotificationTemplates.mockReturnValue(failed());
+
+      render(<ExecutionExtendedProperties resource={emailResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.email.emailTemplate.loadError')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.email.emailTemplate.noTemplates')).not.toBeInTheDocument();
     });
   });
 
@@ -963,6 +1043,10 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
+    beforeEach(() => {
+      mockNotificationTemplates.mockReturnValue(loaded(smsTemplates));
+    });
+
     it('should render SMS template and sender configuration', () => {
       mockSMSProviders.mockReturnValue({
         data: [{id: 'sender-1', name: 'Twilio'}],
@@ -976,7 +1060,7 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByText('Sender')).toBeInTheDocument();
     });
 
-    it('should commit the selected SMS template immediately', async () => {
+    it('should commit the selected SMS template handle immediately', async () => {
       mockSMSProviders.mockReturnValue({
         data: [],
         isLoading: false,
@@ -987,7 +1071,24 @@ describe('ExecutionExtendedProperties', () => {
       await userEvent.click(screen.getByLabelText('flows:core.executions.sms.smsTemplate.label'));
       await userEvent.click(screen.getByRole('option', {name: 'OTP Verification'}));
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.smsTemplate', 'OTP', smsResource);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.smsTemplate', 'otp', smsResource);
+    });
+
+    it('should warn when no SMS templates are available', () => {
+      mockNotificationTemplates.mockReturnValue(loaded([]));
+
+      render(<ExecutionExtendedProperties resource={smsResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.sms.smsTemplate.noTemplates')).toBeInTheDocument();
+    });
+
+    it('should report a load error without the empty-templates warning', () => {
+      mockNotificationTemplates.mockReturnValue(failed());
+
+      render(<ExecutionExtendedProperties resource={smsResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.sms.smsTemplate.loadError')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.sms.smsTemplate.noTemplates')).not.toBeInTheDocument();
     });
 
     it('should show warning when no senders are available', () => {

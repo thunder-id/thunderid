@@ -830,6 +830,9 @@ const translations = {
     'types.array': 'Array',
     'types.object': 'Object',
     'validationErrors.nameRequired': 'Please enter a user type name',
+    'validationErrors.handleRequired': 'Please enter a user type handle',
+    'validationErrors.handleInvalid':
+      'Handle must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores',
     'validationErrors.ouIdRequired': 'Please provide an organization unit ID',
     'validationErrors.propertiesRequired': 'Please add at least one property',
     'validationErrors.duplicateProperties': 'Duplicate property names found: {{duplicates}}',
@@ -844,12 +847,15 @@ const translations = {
     noOrganizationUnits: 'No organization units available',
     confirmDeleteUserType: 'Are you sure you want to delete this user type?',
     'errors.USRS-1002': 'This user type no longer exists. It may have already been deleted.',
-    'errors.USRS-1003': 'A user type with the same name already exists.',
+    'errors.USRS-1003': 'A user type with the same handle already exists.',
     'errors.USRS-1004': 'The user type request is missing required fields or contains invalid data.',
     'errors.USRS-1008': 'This user type is managed by the system and cannot be modified or deleted.',
     'errors.USRS-1011': 'Display attribute must reference an attribute defined in the schema.',
     'errors.USRS-1012': 'Display attribute must reference a string or number type.',
     'errors.USRS-1013': 'Display attribute cannot reference a credential attribute.',
+    'errors.USRS-1016':
+      'The handle is invalid. It must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores.',
+    'errors.USRS-1017': 'The handle of a user type cannot be changed.',
 
     // Edit page
     'manageUserType.title': 'Manage User Type',
@@ -859,6 +865,7 @@ const translations = {
     'edit.back': 'Back to User Types',
     'edit.editName': 'Edit user type name',
     'edit.copyId': 'Copy user type ID',
+    'edit.copyHandle': 'Copy user type handle',
     'edit.tabs.general': 'General',
     'edit.tabs.schema': 'Schema',
     'edit.tabs.advanced': 'Advanced',
@@ -873,6 +880,10 @@ const translations = {
     'schemaChangeWarning.affected': 'Affected attributes:',
     'schemaChangeWarning.areYouSure': 'Do you want to continue?',
     'schemaChangeWarning.confirm': 'Continue',
+    'edit.general.sections.quickCopy.title': 'Quick Copy',
+    'edit.general.sections.quickCopy.description': 'Copy user type identifiers for use in your application.',
+    'edit.general.labels.userTypeHandle': 'User Type Handle',
+    'edit.general.labels.userTypeId': 'User Type ID',
     'edit.general.organizationUnit.title': 'Organization Unit',
     'edit.general.organizationUnit.description': 'The organization unit this user type belongs to.',
     'edit.general.selfRegistration.title': 'Self Registration',
@@ -902,6 +913,12 @@ const translations = {
     'createWizard.name.fieldLabel': 'User Type Name',
     'createWizard.name.placeholder': 'Enter your user type name',
     'createWizard.name.maxLength': 'User type name cannot exceed {{max}} characters',
+    'createWizard.handle.fieldLabel': 'Handle',
+    'createWizard.handle.placeholder': 'e.g., customer',
+    'createWizard.handle.hint': "A unique identifier for this user type. You can't change it once created.",
+    'createWizard.handle.invalid':
+      'Handle must start and end with a lowercase letter or number, and may contain only lowercase letters, numbers, hyphens, and underscores',
+    'createWizard.handle.maxLength': 'Handle cannot exceed {{max}} characters',
     'createWizard.general.subtitle': 'Set registration preferences for this user type.',
     'createWizard.properties.title': 'Define your schema properties',
     'createWizard.properties.subtitle': 'Add the fields that make up this user type',
@@ -1131,6 +1148,7 @@ const translations = {
     'edit.page.validation.missingRedirectUri': 'add a redirect URI',
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
+    'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.tokenSettings': 'fix the token settings',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
@@ -1244,7 +1262,7 @@ const translations = {
     'edit.flows.allowedUserTypes.title': 'Allowed User Types',
     'edit.flows.allowedUserTypes.description': 'Restrict which user types can sign up through this agent.',
     'edit.flows.allowedUserTypes.label': 'User Types',
-    'edit.flows.allowedUserTypes.placeholder': 'Select or add user types',
+    'edit.flows.allowedUserTypes.placeholder': 'Select user types',
     'edit.flows.allowedUserTypes.hint': 'Users of these types can sign up through this agent.',
     'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign up through this agent.',
     'edit.flows.delegationLock.message':
@@ -1824,6 +1842,7 @@ const translations = {
     'vendor.vonage.description': 'Deliver SMS and email passcodes through Vonage.',
     'vendor.sms-gateway.description': 'Route SMS through your own HTTP gateway.',
     'vendor.authzen-pdp.description': 'Delegate authorization decisions to an AuthZEN-compatible PDP.',
+    'vendor.smtp.description': 'Deliver email through your own SMTP server.',
     'vendor.trustedIdp.description': 'Trusted token issuer for token exchange and ID-JAG.',
 
     // Add custom connection wizard
@@ -1851,6 +1870,9 @@ const translations = {
     'wizard.protocol.subheading': 'Select the protocol supported by your policy decision point.',
     'wizard.protocol.authzen.label': 'AuthZEN',
     'wizard.protocol.authzen.description': 'Use the AuthZEN protocol to send authorization evaluation requests.',
+    'wizard.type.smtp.label': 'Email Provider (SMTP)',
+    'wizard.type.smtp.description': 'Deliver email through your own SMTP server.',
+    'wizard.type.smtp.tag': 'Message sender · Email',
     'wizard.type.trustedIdp.label': 'Trusted Token Issuer',
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
@@ -1895,6 +1917,8 @@ const translations = {
       'Configure how ThunderID authenticates requests sent to this policy decision point.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
+    'detail.outboundAuthentication.description':
+      'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
     'detail.dangerZone.delete.title': 'Delete connection',
@@ -2028,12 +2052,28 @@ const translations = {
       'These mappings could not be matched to exactly one user or agent type. Remove them before saving this connection.',
     'subjectMapping.mappings.unresolved.entityType': 'Entity type: {{entityType}}',
     'subjectMapping.mappings.unresolved.attributes': 'Attributes: {{attributes}}',
+    'form.fields.smtpHost.label': 'Host',
+    'form.fields.smtpHost.hint': 'Hostname of the SMTP server email is sent through.',
+    'form.fields.smtpPort.label': 'Port',
+    'form.fields.smtpPort.hint': 'Port of the SMTP server. Typically 587 for STARTTLS or 465 for implicit TLS.',
+    'form.fields.smtpFromAddress.label': 'From address',
+    'form.fields.smtpFromAddress.hint': 'Address recipients see the email come from.',
+    'form.fields.smtpFromName.label': 'Sender name',
+    'form.fields.smtpFromName.hint':
+      'Optional name shown beside the address, for example Acme Support. Leave blank to show the address alone.',
+    'form.fields.smtpTls.label': 'Transport security',
+    'form.fields.smtpTls.hint':
+      'How the connection is secured. STARTTLS upgrades a plain connection, implicit TLS connects over TLS directly. None sends email unencrypted.',
+    'form.fields.authenticationType.label': 'Authentication method',
+    'form.fields.authenticationType.hint': 'How {{productName}} signs in to this server when sending.',
     'form.keyValue.name': 'Name',
     'form.keyValue.value': 'Value',
     'form.keyValue.showValue': 'Show value',
     'form.keyValue.hideValue': 'Hide value',
     'form.keyValue.add': 'Add',
     'form.keyValue.remove': 'Remove',
+    'form.sections.authentication': 'Authentication',
+    'form.authentication.loadError': 'Failed to load authentication methods',
     'form.sections.federation': 'Federation',
     'form.secret.update': 'Update',
     'form.secret.keepHelp': 'Leave unchanged to keep the stored secret.',
@@ -2169,11 +2209,15 @@ const translations = {
     'validation.positiveInteger': 'Enter a positive integer.',
     'validation.nonNegativeInteger': 'Enter zero or a positive integer.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
+    'validation.emailAddress': 'Enter a valid email address.',
+    'validation.tlsRequiredForAuthentication':
+      'Credentials cannot be sent over an unencrypted connection. Choose STARTTLS or implicit TLS, or set the authentication method to None.',
 
     // Error codes (backend)
     'errors.CON-1001': 'The requested connection category is not supported.',
     'errors.CON-1002': 'The limit parameter must be a positive integer.',
     'errors.CON-1003': 'The offset parameter must be a non-negative integer.',
+    'errors.CON-1005': 'The selected authentication method is not supported by this deployment.',
     'errors.IDP-1001': 'This identity provider no longer exists. It may have already been deleted.',
     'errors.IDP-1002': 'The identity provider ID is invalid or missing.',
     'errors.IDP-1003': 'The identity provider name is invalid or missing.',
@@ -2929,6 +2973,7 @@ const translations = {
     'edit.page.unsavedChanges': 'Unsaved changes',
     'edit.page.validation.missingRedirectUri': 'A redirect URI is required.',
     'edit.page.validation.missingCertificate': 'A certificate is required.',
+    'edit.page.validation.invalidBackchannelLogoutUri': 'The back-channel logout URI is not valid.',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving...',
@@ -3040,6 +3085,18 @@ const translations = {
     'edit.general.postLogoutRedirectUris.sameAsRedirect.title': 'Use the same URLs for post-logout redirect',
     'edit.general.postLogoutRedirectUris.sameAsRedirect.description':
       'Reuse the redirect URIs above instead of maintaining a separate list',
+    'edit.general.backchannelLogoutUri.title': 'Back-Channel Logout URI',
+    'edit.general.backchannelLogoutUri.description':
+      'Endpoint that receives a logout token when a session this client took part in ends. Leave empty to turn off notifications. By default the server refuses localhost and private network addresses.',
+    'edit.general.backchannelLogoutUri.error.invalid':
+      'Enter an absolute http or https URL with a host, and no user info, fragment, or wildcard.',
+    'edit.general.backchannelLogoutUri.error.requiresHttps': 'A public client must use an https URL.',
+    'edit.general.backchannelLogoutUri.error.privateHost':
+      'The server refused the back-channel logout URI because it points to localhost or a private network address. Use a publicly reachable address.',
+    'edit.general.backchannelLogoutUri.error.serverRequiresHttps':
+      'The server refused the back-channel logout URI because a public client must use an https URL.',
+    'edit.general.backchannelLogoutUri.error.serverInvalid':
+      'The server refused the back-channel logout URI. Enter an absolute http or https URL with a host, and no user info, fragment, or wildcard.',
     'onboarding.configure.details.devServer.banner': 'Using {{label}}? Its dev server runs on',
     'onboarding.configure.details.devServer.byDefault': 'by default.',
     'onboarding.configure.details.devServer.addToRedirectAndCors': 'Add it to redirect URIs & CORS origins',
@@ -3807,21 +3864,23 @@ const translations = {
     'core.executions.email.description': 'Configure the email executor settings.',
     'core.executions.email.emailTemplate.label': 'Email Template',
     'core.executions.email.emailTemplate.placeholder': 'Select an email template',
-    'core.executions.email.emailTemplate.hint': 'The email template scenario to use when sending the email.',
+    'core.executions.email.emailTemplate.hint': 'The email template to use when sending the email.',
+    'core.executions.email.emailTemplate.noTemplates':
+      'No email templates available. Please create an email template first.',
+    'core.executions.email.emailTemplate.loadError': 'Failed to load email templates. Please try again.',
+    'core.executions.email.sender.label': 'Email Provider',
+    'core.executions.email.sender.placeholder': 'Select an email provider',
+    'core.executions.email.sender.hint': 'The email provider used to deliver this email.',
+    'core.executions.email.sender.noSenders': 'No email providers available. Please create an email provider first.',
+    'core.executions.email.sender.loadError': 'Failed to load email providers',
 
     // SMS executor
     'core.executions.sms.description': 'Configure the SMS executor settings.',
     'core.executions.sms.smsTemplate.label': 'SMS Template',
     'core.executions.sms.smsTemplate.placeholder': 'Select an SMS template',
-    'core.executions.sms.smsTemplate.hint': 'The SMS template scenario to use when sending the message.',
-
-    // Template scenarios shared by the Email and SMS executors
-    'core.executions.templateScenarios.userInvite': 'User Invite',
-    'core.executions.templateScenarios.magicLink': 'Magic Link',
-    'core.executions.templateScenarios.selfRegistration': 'Self Registration',
-    'core.executions.templateScenarios.otp': 'OTP Verification',
-    'core.executions.templateScenarios.passwordRecovery': 'Password Recovery',
-    'core.executions.templateScenarios.cibaNotification': 'CIBA Notification',
+    'core.executions.sms.smsTemplate.hint': 'The SMS template to use when sending the message.',
+    'core.executions.sms.smsTemplate.noTemplates': 'No SMS templates available. Please create an SMS template first.',
+    'core.executions.sms.smsTemplate.loadError': 'Failed to load SMS templates. Please try again.',
 
     // OpenID4VP verifier executor
     'core.executions.openid4vp.description':
@@ -3899,7 +3958,7 @@ const translations = {
     'core.executions.userTypeResolver.allowedUserTypes.label': 'Allowed User Types',
     'core.executions.userTypeResolver.allowedUserTypes.placeholder': 'e.g., employee, customer',
     'core.executions.userTypeResolver.allowedUserTypes.hint':
-      'Comma-separated list of allowed user type names to filter available types.',
+      'Comma-separated list of allowed user type handles to filter available types.',
 
     // Entity category shared by mode-driven executors
     'core.executions.entityMode.user': 'User',
@@ -3917,7 +3976,7 @@ const translations = {
     'core.executions.agentTypeResolver.allowedAgentTypes.label': 'Allowed Agent Types',
     'core.executions.agentTypeResolver.allowedAgentTypes.placeholder': 'e.g., default',
     'core.executions.agentTypeResolver.allowedAgentTypes.hint':
-      'Comma-separated list of allowed agent type names to filter available types.',
+      'Comma-separated list of allowed agent type handles to filter available types.',
 
     // HTTP Request executor
     'core.executions.httpRequest.description': 'Configure the HTTP request executor settings.',
@@ -4051,6 +4110,10 @@ const translations = {
     // Validation messages - phone number input
     'core.validation.fields.phoneNumberInput.label': 'Phone number label is required',
     'core.validation.fields.phoneNumberInput.ref': 'Phone number attribute is required',
+
+    // Validation messages - email
+    'core.validation.fields.email.noSender':
+      'Email executor <code>{{id}}</code> has no email provider selected. Select an email provider so the step can send.',
 
     // Validation messages - form
     'core.validation.fields.form.noSubmitButton':

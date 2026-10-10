@@ -11,7 +11,8 @@
 resource_type: user_type
 id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
-name: Customer
+handle: customer
+displayName: Customer
 ouHandle: default
 allowSelfRegistration: true
 systemAttributes:
@@ -332,7 +333,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
-    smsTemplate: OTP
+    smsTemplate: otp
   executor:
     name: SMSExecutor
   onSuccess: prompt_otp
@@ -630,7 +631,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
-    smsTemplate: OTP
+    smsTemplate: otp
   executor:
     name: SMSExecutor
   onSuccess: prompt_otp
@@ -927,7 +928,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
-    smsTemplate: OTP
+    smsTemplate: otp
   executor:
     name: SMSExecutor
   onSuccess: prompt_otp
@@ -1300,7 +1301,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
-    smsTemplate: OTP
+    smsTemplate: otp
   executor:
     name: SMSExecutor
   onSuccess: prompt_otp
@@ -1418,7 +1419,7 @@ assertion:
 loginConsent:
   validityPeriod: 0
 allowedUserTypes:
-  - Customer
+  - customer
 # Presented as the `Flow-Secret` header when this server initiates a flow. Kept in server-side env
 # only (see .env.example), never bundled into client-side JavaScript.
 flowSecret: {{.SAMPLE_APP_FLOW_SECRET}}

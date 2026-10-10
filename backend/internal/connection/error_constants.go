@@ -4,8 +4,15 @@
 package connection
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// errUnsupportedAuthenticationType reports a connection payload naming an outbound
+// authentication method this deployment does not implement. It is the caller's mistake, so it
+// maps onto ErrorInvalidAuthenticationType rather than a server fault.
+var errUnsupportedAuthenticationType = errors.New("unsupported authentication type")
 
 // Client errors for connection operations.
 var (
@@ -19,8 +26,9 @@ var (
 			DefaultValue: "Invalid connection category",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.connectionservice.invalid_category_description",
-			DefaultValue: "The category must be one of: identity-provider, sms-provider, authorization-pdp",
+			Key: "error.connectionservice.invalid_category_description",
+			DefaultValue: "The category must be one of: identity-provider, sms-provider, " +
+				"authorization-pdp, email-provider",
 		},
 	}
 	// ErrorInvalidLimit is the error returned when an invalid limit query parameter is provided.
@@ -60,6 +68,34 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_request_format_description",
 			DefaultValue: "The request body is malformed or contains invalid data",
+		},
+	}
+	// ErrorInvalidConnectionVendor is the error returned when the vendor query parameter on
+	// GET /connections/meta does not name a registered connection vendor.
+	ErrorInvalidConnectionVendor = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_vendor",
+			DefaultValue: "Invalid connection vendor",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_vendor_description",
+			DefaultValue: "The vendor parameter must name a supported connection vendor",
+		},
+	}
+	// ErrorInvalidAuthenticationType is the error returned when a connection payload names an
+	// outbound authentication method this deployment does not implement.
+	ErrorInvalidAuthenticationType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authentication_type",
+			DefaultValue: "Invalid authentication type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authentication_type_description",
+			DefaultValue: "The authentication type must name a method this deployment supports",
 		},
 	}
 )

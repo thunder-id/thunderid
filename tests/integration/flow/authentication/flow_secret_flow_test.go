@@ -28,7 +28,8 @@ var flowSecretGuardOU = testutils.OrganizationUnit{
 }
 
 var flowSecretGuardUserType = testutils.UserType{
-	Name: "flow_secret_guard_person",
+	Handle:      "flow_secret_guard_person",
+	DisplayName: "Flow Secret Guard Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -37,7 +38,7 @@ var flowSecretGuardUserType = testutils.UserType{
 }
 
 var flowSecretGuardUser = testutils.User{
-	Type: flowSecretGuardUserType.Name,
+	Type: flowSecretGuardUserType.Handle,
 	Attributes: json.RawMessage(`{
 		"username": "appsecretguarduser",
 		"password": "testpassword",

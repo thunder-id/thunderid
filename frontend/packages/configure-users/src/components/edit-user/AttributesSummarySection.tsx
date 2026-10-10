@@ -31,7 +31,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
   const {data: userTypeList} = useGetUserTypes();
-  const matchedSchema = userTypeList?.types?.find((s) => s.name === user.type);
+  const matchedSchema = userTypeList?.types?.find((s) => s.handle === user.type);
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = user.attributes ?? {};

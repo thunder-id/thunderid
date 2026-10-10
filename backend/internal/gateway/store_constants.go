@@ -9,13 +9,15 @@ var (
 	// queryListGateways returns every gateway of the deployment, oldest first.
 	queryListGateways = dbmodel.DBQuery{
 		ID: "GTW_MGT-01",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, CREATED_AT, UPDATED_AT ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+			`CREATED_AT, UPDATED_AT ` +
 			`FROM "GATEWAY" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT`,
 	}
 	// queryGetGatewayByID returns one gateway.
 	queryGetGatewayByID = dbmodel.DBQuery{
 		ID: "GTW_MGT-02",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, CREATED_AT, UPDATED_AT ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+			`CREATED_AT, UPDATED_AT ` +
 			`FROM "GATEWAY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// queryCountGateways backs the registration limit.
@@ -38,17 +40,26 @@ var (
 	// uniqueness of NAME and BASE_URL, which the table's constraints enforce.
 	queryInsertGateway = dbmodel.DBQuery{
 		ID: "GTW_MGT-04",
-		// The deployment id is passed twice, as $6 and $7, rather than reused. PostgreSQL deduces a
+		// The deployment id is passed twice, as $7 and $8, rather than reused. PostgreSQL deduces a
 		// parameter's type from how it is used, and one used both as an inserted value and in a
-		// comparison gets two answers: "inconsistent types deduced for parameter $6, text versus
+		// comparison gets two answers: "inconsistent types deduced for parameter $7, text versus
 		// character varying". Two parameters give each use its own type, without the casts that would
 		// make this statement PostgreSQL-only.
 		Query: `INSERT INTO "GATEWAY" ` +
-			`(ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, DEPLOYMENT_ID) ` +
-			`SELECT $1, $2, $3, $4, $5, $6 ` +
-			`WHERE (SELECT COUNT(*) FROM "GATEWAY" WHERE DEPLOYMENT_ID = $7) < $8 ` +
-			`RETURNING ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, ` +
+			`(ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, DEPLOYMENT_ID) ` +
+			`SELECT $1, $2, $3, $4, $5, $6, $7 ` +
+			`WHERE (SELECT COUNT(*) FROM "GATEWAY" WHERE DEPLOYMENT_ID = $8) < $9 ` +
+			`RETURNING ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
 			`CREATED_AT, UPDATED_AT`,
+	}
+	// queryClearDefaultGateway takes the default off whichever gateway of the deployment holds it,
+	// so that a registration claiming it can take it over.
+	queryClearDefaultGateway = dbmodel.DBQuery{
+		ID: "GTW_MGT-09",
+		Query: `UPDATE "GATEWAY" SET IS_DEFAULT = FALSE, UPDATED_AT = NOW() ` +
+			`WHERE IS_DEFAULT = TRUE AND DEPLOYMENT_ID = $1`,
+		SQLiteQuery: `UPDATE "GATEWAY" SET IS_DEFAULT = 0, UPDATED_AT = datetime('now') ` +
+			`WHERE IS_DEFAULT = 1 AND DEPLOYMENT_ID = $1`,
 	}
 
 	// queryUpdateGateway replaces a gateway's connection details.
@@ -72,14 +83,14 @@ var (
 	// that write and blank the stored name.
 	queryGetGatewayByName = dbmodel.DBQuery{
 		ID: "GTW_MGT-07",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
 			`CREATED_AT, UPDATED_AT FROM "GATEWAY" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// queryGetGatewayByBaseURL supports the rule that one gateway registers once, which its
 	// address is what decides.
 	queryGetGatewayByBaseURL = dbmodel.DBQuery{
 		ID: "GTW_MGT-08",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
 			`CREATED_AT, UPDATED_AT FROM "GATEWAY" WHERE BASE_URL = $1 AND DEPLOYMENT_ID = $2`,
 	}
 )

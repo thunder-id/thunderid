@@ -24,6 +24,13 @@ describe('computeExecutorConnections', () => {
     categories: ['sms-provider'],
   });
 
+  const createEmailProvider = (id: string, name = 'Test SMTP'): ConnectionInstance => ({
+    id,
+    name,
+    type: 'email-smtp',
+    categories: ['email-provider'],
+  });
+
   describe('Identity Providers', () => {
     it('should map Google IDP to GoogleOIDCAuthExecutor', () => {
       const idps = [createIdp('google-1', IdentityProviderTypes.GOOGLE)];
@@ -122,6 +129,47 @@ describe('computeExecutorConnections', () => {
       expect(result).toHaveLength(1);
       expect(result[0].executorName).toBe(ExecutionTypes.SMSExecutor);
       expect(result[0].connections).toEqual(['sender-1', 'sender-2', 'sender-3']);
+    });
+  });
+
+  describe('Email Providers', () => {
+    it('should map email providers to EmailExecutor', () => {
+      const senders = [createEmailProvider('email-1')];
+
+      const result = computeExecutorConnections({emailProviders: senders});
+
+      expect(result).toHaveLength(1);
+      expect(result[0].executorName).toBe(ExecutionTypes.EmailExecutor);
+      expect(result[0].connections).toEqual(['email-1']);
+    });
+
+    it('should include all email sender IDs in connections', () => {
+      const senders = [createEmailProvider('email-1', 'Corp'), createEmailProvider('email-2', 'Backup')];
+
+      const result = computeExecutorConnections({emailProviders: senders});
+
+      expect(result[0].connections).toEqual(['email-1', 'email-2']);
+    });
+
+    it('should return empty array when emailProviders is undefined', () => {
+      expect(computeExecutorConnections({emailProviders: undefined})).toEqual([]);
+    });
+
+    it('should return empty array when emailProviders is empty', () => {
+      expect(computeExecutorConnections({emailProviders: []})).toEqual([]);
+    });
+
+    it('should keep email and SMS providers on separate executors', () => {
+      const result = computeExecutorConnections({
+        emailProviders: [createEmailProvider('email-1')],
+        smsProviders: [createSMSProvider('sms-1')],
+      });
+
+      const email = result.find((c) => c.executorName === ExecutionTypes.EmailExecutor);
+      const sms = result.find((c) => c.executorName === ExecutionTypes.SMSExecutor);
+
+      expect(email?.connections).toEqual(['email-1']);
+      expect(sms?.connections).toEqual(['sms-1']);
     });
   });
 

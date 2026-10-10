@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
@@ -22,6 +23,9 @@ import (
 )
 
 // Initialize initializes the application service and registers its routes.
+//
+// valueCapturer is optional. Given one, the service hands it every application it creates or changes,
+// so the values the application's export refers to are kept where a reference finds them.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -32,10 +36,17 @@ func Initialize(
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
+	sharingService sharing.SharingServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
+		valueCapturer,
 	)
+
+	// Registered before declarative resources load, because loading seeds the sharing policies those
+	// files declare and the framework refuses a type it does not know.
+	sharingService.RegisterResourceType(newApplicationSharingDeclaration(appService))
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {
 		return nil, nil, err
@@ -44,11 +55,19 @@ func Initialize(
 	storeMode := getApplicationStoreMode()
 	// TODO: Revisit once the declarative resource loading pattern is finalized.
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
-		if err := entityService.LoadDeclarativeResources(makeAppDeclarativeConfig(appService)); err != nil {
+		// One document, read once per thing it carries: its identity, its inbound client profile,
+		// and its sharing policies. Each loader takes the applications directory and the parser for
+		// its own half, which is the arrangement inbound client profiles already use.
+		if err := entityService.LoadDeclarativeResources(
+			makeAppDeclarativeConfig(appService)); err != nil {
 			return nil, nil, err
 		}
 		if err := inboundClient.LoadDeclarativeResources(
 			context.Background(), makeAppInboundConfig(appService)); err != nil {
+			return nil, nil, err
+		}
+		if err := sharingService.LoadDeclarativeResources(
+			context.Background(), makeAppSharingConfig(appService)); err != nil {
 			return nil, nil, err
 		}
 	}

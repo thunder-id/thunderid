@@ -17,7 +17,8 @@ const callFramesPassword = "SecurePass123!"
 // callFramesUserType is the minimum a callee needs to authenticate someone, so the call can return
 // to its caller rather than failing.
 var callFramesUserType = testutils.UserType{
-	Name: "call-frames-person",
+	Handle:      "call-frames-person",
+	DisplayName: "Call Frames Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -128,7 +129,7 @@ func (ts *CallFramesTestSuite) SetupSuite() {
 
 	ts.username = common.GenerateUniqueUsername("call_frames")
 	ts.userID, err = testutils.CreateUser(testutils.User{
-		Type: callFramesUserType.Name,
+		Type: callFramesUserType.Handle,
 		OUID: ouID,
 		Attributes: json.RawMessage(`{
 			"username": "` + ts.username + `",
@@ -234,7 +235,7 @@ func (ts *CallFramesTestSuite) createApp(name, clientID, flowID string) string {
 		ClientSecret:     clientID + "_secret",
 		RedirectURIs:     []string{"http://localhost:3000/callback"},
 		OUID:             ts.ouID,
-		AllowedUserTypes: []string{callFramesUserType.Name},
+		AllowedUserTypes: []string{callFramesUserType.Handle},
 		AuthFlowID:       flowID,
 	})
 	ts.Require().NoError(err, "Failed to create application %s", name)

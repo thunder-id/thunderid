@@ -15,7 +15,8 @@ export interface SystemAttributes {
  */
 export interface ApiAgentType {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   ouHandle?: string;
   systemAttributes?: SystemAttributes;
@@ -27,7 +28,8 @@ export interface ApiAgentType {
  */
 export interface AgentTypeListItem {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   ouHandle?: string;
   systemAttributes?: SystemAttributes;

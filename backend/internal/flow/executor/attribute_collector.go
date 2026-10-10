@@ -359,6 +359,7 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 	attributesMap := make(map[string]interface{})
 	requiredInputAttrs := a.getInputs(ctx)
 
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, inputAttr := range requiredInputAttrs {
 		// Skip special attributes that shouldn't be stored/ updated in the user profile
 		if inputAttr.Identifier == userAttributeUserID {
@@ -366,11 +367,14 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 		}
 
 		schemaType := schemaTypeForInputType(inputAttr.Type)
+		// External claims are only a fallback and must never take priority over runtime data.
 		value, exists := ctx.UserInputs[inputAttr.Identifier]
 		if exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
+		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists {
+			attributesMap[inputAttr.Identifier] = convertToSchemaType(claimValue, schemaType)
 		}
 	}
 

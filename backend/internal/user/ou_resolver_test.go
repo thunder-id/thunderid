@@ -105,7 +105,7 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 			}, nil).Once()
 
 		schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-		schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 			mock.MatchedBy(func(names []string) bool {
 				if len(names) != 2 {
 					return false
@@ -141,7 +141,7 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 			Code:  "500",
 			Error: tidcommon.I18nMessage{DefaultValue: "schema unavailable"},
 		}
-		schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 			Return((map[string]string)(nil), schemaErr).Once()
 
 		resolver := newOUUserResolver(svc, schemaMock)
@@ -163,7 +163,7 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 			}, nil).Once()
 
 		schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-		schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 			Return(map[string]string{"employee": "email"}, (*tidcommon.ServiceError)(nil)).Once()
 
 		resolver := newOUUserResolver(svc, schemaMock)

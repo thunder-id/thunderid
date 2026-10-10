@@ -56,9 +56,9 @@ describe('AccessSection', () => {
 
   const mockUserTypes = {
     types: [
-      {name: 'admin', id: '1'},
-      {name: 'user', id: '2'},
-      {name: 'guest', id: '3'},
+      {handle: 'admin', displayName: 'Admin', id: '1'},
+      {handle: 'user', displayName: 'User', id: '2'},
+      {handle: 'guest', displayName: 'Guest', id: '3'},
     ],
   };
 
@@ -157,8 +157,8 @@ describe('AccessSection', () => {
 
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
-      expect(screen.getByText('admin')).toBeInTheDocument();
-      expect(screen.getByText('user')).toBeInTheDocument();
+      expect(screen.getByText('Admin')).toBeInTheDocument();
+      expect(screen.getByText('User')).toBeInTheDocument();
     });
 
     it('should display selected user types from editedApp over application', () => {
@@ -175,8 +175,8 @@ describe('AccessSection', () => {
         />,
       );
 
-      expect(screen.getByText('guest')).toBeInTheDocument();
-      expect(screen.queryByText('admin')).not.toBeInTheDocument();
+      expect(screen.getByText('Guest')).toBeInTheDocument();
+      expect(screen.queryByText('Admin')).not.toBeInTheDocument();
     });
 
     it('should display all available user types in dropdown', async () => {
@@ -192,8 +192,8 @@ describe('AccessSection', () => {
       await user.click(input);
 
       await waitFor(() => {
-        expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
-        expect(screen.getAllByText('guest').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Guest').length).toBeGreaterThan(0);
       });
     });
   });
@@ -359,7 +359,7 @@ describe('AccessSection', () => {
       const input = screen.getByLabelText('Allowed User Types');
       await user.click(input);
 
-      const guestOption = await screen.findByRole('option', {name: 'guest'});
+      const guestOption = await screen.findByRole('option', {name: 'Guest'});
       await user.click(guestOption);
 
       await waitFor(() => {

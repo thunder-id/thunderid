@@ -29,7 +29,8 @@ var (
 
 	credentialEntityTypes = map[string]testutils.UserType{
 		"username_password": {
-			Name: "username_password",
+			Handle:      "username_password",
+			DisplayName: "Username Password",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{
 					"type": "string",
@@ -44,7 +45,8 @@ var (
 			},
 		},
 		"email_password": {
-			Name: "email_password",
+			Handle:      "email_password",
+			DisplayName: "Email Password",
 			Schema: map[string]interface{}{
 				"email": map[string]interface{}{
 					"type": "string",
@@ -59,7 +61,8 @@ var (
 			},
 		},
 		"mobile_password": {
-			Name: "mobile_password",
+			Handle:      "mobile_password",
+			DisplayName: "Mobile Password",
 			Schema: map[string]interface{}{
 				"mobile_number": map[string]interface{}{
 					"type": "string",
@@ -74,7 +77,8 @@ var (
 			},
 		},
 		"multiple_attributes": {
-			Name: "multiple_attributes",
+			Handle:      "multiple_attributes",
+			DisplayName: "Multiple Attributes",
 			Schema: map[string]interface{}{
 				"username": map[string]interface{}{
 					"type": "string",

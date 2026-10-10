@@ -15,6 +15,7 @@ export const ConnectionTypes = {
   VONAGE: 'vonage',
   SMS_GATEWAY: 'sms-gateway',
   AUTHZEN_PDP: 'authzen-pdp',
+  SMTP: 'email-smtp',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -43,6 +44,7 @@ export const ConnectionInstanceCategories = {
   IDENTITY_PROVIDER: 'identity-provider',
   SMS_PROVIDER: 'sms-provider',
   AUTHORIZATION_PDP: 'authorization-pdp',
+  EMAIL_PROVIDER: 'email-provider',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -312,6 +314,36 @@ export interface VonageConnectionRequest {
 }
 
 /**
+ * How ThunderID authenticates itself on an outbound call. `type` selects the method and
+ * `properties` carries that method's field values, so a method the console was not built
+ * against still round-trips. The fields each method takes come from GET /connections/meta.
+ *
+ * A field the method marks as a credential is write-only: returned masked as "******", and
+ * omitted on update to keep the stored value.
+ */
+export interface OutboundAuthConfig {
+  type: string;
+  properties?: Record<string, string>;
+}
+
+/**
+ * Request payload for an SMTP email connection.
+ */
+export interface SMTPConnectionRequest {
+  name: string;
+  description?: string;
+  host: string;
+  port: number;
+  fromAddress: string;
+  /** Display name shown beside the address in the From header. Omit for the bare address. */
+  fromName?: string;
+  /** Defaults to starttls when omitted. `none` cannot carry credentials. */
+  tls?: 'none' | 'starttls' | 'implicit';
+  /** Omit to send no credentials. */
+  authentication?: OutboundAuthConfig;
+}
+
+/**
  * Request payload for a generic HTTP SMS gateway connection — a webhook ThunderID calls to
  * deliver the message, for SMS providers without a dedicated vendor integration.
  */
@@ -322,8 +354,13 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
+  /**
+   * Comma-separated "Key: value" pairs sent with every request, for headers that are not
+   * credentials. Credentials belong in `authentication`, where they are stored encrypted.
+   */
   httpHeaders?: string;
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthConfig;
 }
 
 export interface AuthZENPDPConnectionRequest {
@@ -374,7 +411,8 @@ export type ConnectionRequest =
   | TwilioConnectionRequest
   | VonageConnectionRequest
   | SMSGatewayConnectionRequest
-  | AuthZENPDPConnectionRequest;
+  | AuthZENPDPConnectionRequest
+  | SMTPConnectionRequest;
 
 /**
  * Vendor response — secrets are never returned. A superset carrying every vendor's
@@ -401,8 +439,18 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   batchEndpoint?: string;
   timeoutMs?: number | string;
   retryCount?: number | string;
-  authentication?: OutboundAuthenticationResponse;
   subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
+  /** Email (SMTP) fields. */
+  host?: string;
+  port?: number;
+  fromAddress?: string;
+  fromName?: string;
+  tls?: string;
+  /**
+   * Outbound authentication. An AuthZEN PDP returns its scheme-based shape, while SMTP and the
+   * SMS gateway return the generic type and properties shape. Each vendor reads only its own fields.
+   */
+  authentication?: Partial<OutboundAuthenticationResponse> & Partial<OutboundAuthConfig>;
 }
 
 /**
@@ -457,4 +505,52 @@ export interface ConnectionCardModel {
   comingSoon: boolean;
   /** Route to navigate to when the card is activated; null for coming-soon. */
   navTarget: string | null;
+}
+
+/**
+ * One field of an authentication method, as the server describes it. It uses the same
+ * vocabulary as an entity type's property schema, so the console can render a method it was
+ * never compiled against.
+ */
+export interface OutboundAuthField {
+  key: string;
+  type: string;
+  required?: boolean;
+  /** A secret: rendered write-only, omitted on update to keep the stored value. */
+  credential?: boolean;
+  /** When present, the value must be one of these choices. */
+  enum?: string[];
+  /** When present, the pattern the value must match. Compiled client-side. */
+  regex?: string;
+  /** Plain text, or an i18n template pattern of the form "{{t(namespace:key)}}". */
+  displayName: string;
+}
+
+/**
+ * One authentication method a vendor supports, with its fields in render order.
+ */
+export interface OutboundAuthMethod {
+  type: string;
+  displayName: string;
+  /** The method's fields, in render order. Absent for a method that takes none. */
+  fields?: OutboundAuthField[];
+}
+
+/**
+ * One entry of GET /connections/meta: what a vendor can be configured with. Only authentication
+ * is described today; the rest of the form is still statically known to the console.
+ */
+export interface ConnectionMetaVendor {
+  vendor: string;
+  authentication: {
+    methods: OutboundAuthMethod[];
+  };
+}
+
+/**
+ * Response of GET /connections/meta. It is a list in both modes: without a vendor filter it
+ * describes every registered vendor, and with one it holds that vendor alone.
+ */
+export interface ConnectionMetaResponse {
+  vendors: ConnectionMetaVendor[];
 }

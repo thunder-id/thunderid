@@ -5,14 +5,16 @@
 # This is deliberately not the combined 🛡️ Patch Coverage Gate. That gate feeds
 # backend unit, backend integration, and both frontend reports into one
 # diff-cover invocation, so a changed backend line covered only by a unit test
-# satisfies it. This check loads the three integration profiles and nothing else,
-# so the number answers one question: did the integration suite actually execute
+# satisfies it. This check loads the integration profiles and nothing else, so
+# the number answers one question: did the integration suite actually execute
 # the backend code this PR changed?
 #
-# Coverage from the SQLite, PostgreSQL, and Redis runs is a union. diff-cover
-# takes all three reports in one invocation, and a line counts as covered when
-# any report records a hit for it, which is the intended semantics: the databases
-# exercise different branches and no single run is expected to cover everything.
+# Coverage from the SQLite, PostgreSQL, and Redis runs of the all-in-one server
+# and the run of the Control Plane is a union. diff-cover takes every report in
+# one invocation, and a line counts as covered when any report records a hit for
+# it, which is the intended semantics: the databases exercise different branches,
+# the Control Plane runs code the all-in-one server never does, and no single run
+# is expected to cover everything.
 #
 # The metric is changed coverable *lines*, not statements. Go's profile carries a
 # statement count per block, but the LCOV format and diff-cover are line-based,

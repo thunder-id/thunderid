@@ -1048,7 +1048,7 @@ func (ts *ExportAPITestSuite) findExportedConnection(bundle, id string) map[stri
 // connection on re-import. The whole structure is compared after parsing, because substring checks would
 // pass on a document whose values had been reordered, truncated or emptied.
 func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfiguration() {
-	// Targets resolve against the bootstrapped Person user type, so no fixture is needed here.
+	// Targets resolve against the bootstrapped person user type, so no fixture is needed here.
 	idpID, err := testutils.CreateIDP(testutils.IDP{
 		Name:        "Export Attr Config IDP",
 		Description: "Identity provider carrying an attribute configuration",
@@ -1059,9 +1059,9 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 			{Name: "redirect_uri", Value: "https://localhost:8095/callback"},
 		},
 		AttributeConfiguration: &testutils.AttributeConfiguration{
-			UserTypeResolution: &testutils.UserTypeResolution{Default: "Person"},
+			UserTypeResolution: &testutils.UserTypeResolution{Default: "person"},
 			UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
-				UserType: "Person",
+				UserType: "person",
 				Attributes: []testutils.AttributeMapping{
 					{ExternalAttribute: "given_name", LocalAttribute: "given_name"},
 					{ExternalAttribute: "family_name", LocalAttribute: "family_name"},
@@ -1085,7 +1085,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 
 	resolution, ok := yamlMapping(config, "user_type_resolution", "userTypeResolution")
 	ts.Require().True(ok, "exported configuration should carry a resolution section: %v", config)
-	ts.Equal("Person", resolution["default"])
+	ts.Equal("person", resolution["default"])
 
 	linking, ok := yamlMapping(config, "accountLinking", "account_linking")
 	ts.Require().True(ok, "exported configuration should carry an account-linking section: %v", config)
@@ -1102,7 +1102,7 @@ func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfig
 	ts.Require().True(ok)
 	entryUserType, ok := yamlValue(entry, "user_type", "userType")
 	ts.Require().True(ok, "mapping entry should name its user type: %v", entry)
-	ts.Equal("Person", entryUserType)
+	ts.Equal("person", entryUserType)
 
 	rawAttributes, ok := entry["attributes"]
 	ts.Require().True(ok, "mapping entry should carry its attributes: %v", entry)

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -546,4 +547,87 @@ func (s *ParseToApplicationDTOTestSuite) TestParseToApplicationDTO_PasskeyAllowe
 
 	assert.NoError(s.T(), err)
 	assert.Nil(s.T(), appDTO.PasskeyAllowedOrigins)
+}
+
+// The sharing half of an application document is read by its own parser, because the policies are
+// declared with the sharing framework rather than stored with the application.
+
+// The owner is taken from the validated application, not from the raw document. A document may name
+// its organization unit by handle, and only the service resolves that to the id a policy has to be
+// declared against; reading the unresolved field would declare the policy against no owner at all.
+func (s *ParseToApplicationDTOTestSuite) TestSharingParserTakesTheOwnerFromTheValidatedApplication() {
+	yamlData := []byte(`
+id: sharing-app
+name: Sharing App
+ouHandle: acme-root
+sharingPolicies:
+  - id: p1
+    targets:
+      - scope: allChildren
+`)
+	mockAppService := NewApplicationServiceInterfaceMock(s.T())
+	mockAppService.EXPECT().ValidateApplication(mock.Anything, mock.Anything).Return(
+		&model.ApplicationProcessedDTO{ID: "sharing-app", Name: "Sharing App", OUID: "resolved-ou-id"},
+		nil, nil).Once()
+
+	declared, err := makeAppSharingParser(mockAppService)(yamlData)
+
+	s.Require().NoError(err)
+	s.Equal("sharing-app", declared.ResourceID)
+	s.Equal("Sharing App", declared.ResourceName)
+	s.Equal("resolved-ou-id", declared.OwningOUID, "the handle is resolved before the policy is declared")
+	s.Require().Len(declared.Policies, 1)
+	s.Require().Len(declared.Policies[0].Targets, 1)
+	s.Equal(sharing.ScopeAllChildren, declared.Policies[0].Targets[0].Scope)
+}
+
+// Most documents declare no policy. That answer costs nothing: the parser returns the resource id
+// alone and never reaches the service, so the common case pays for no extra validation pass.
+func (s *ParseToApplicationDTOTestSuite) TestSharingParserSkipsValidationWithoutPolicies() {
+	yamlData := []byte(`
+id: plain-app
+name: Plain App
+ouId: acme-root
+`)
+	mockAppService := NewApplicationServiceInterfaceMock(s.T())
+
+	declared, err := makeAppSharingParser(mockAppService)(yamlData)
+
+	s.Require().NoError(err)
+	s.Equal("plain-app", declared.ResourceID)
+	s.Empty(declared.Policies)
+	s.Empty(declared.OwningOUID)
+	mockAppService.AssertNotCalled(s.T(), "ValidateApplication", mock.Anything, mock.Anything)
+}
+
+// A document the service refuses stops the load, and the failure names the application so the
+// operator is not left searching the directory for it.
+func (s *ParseToApplicationDTOTestSuite) TestSharingParserReportsAValidationFailure() {
+	yamlData := []byte(`
+id: sharing-app
+name: Sharing App
+ouId: acme-root
+sharingPolicies:
+  - id: p1
+    targets:
+      - scope: allChildren
+`)
+	mockAppService := NewApplicationServiceInterfaceMock(s.T())
+	mockAppService.EXPECT().ValidateApplication(mock.Anything, mock.Anything).Return(
+		nil, nil, &ErrorInvalidRequestFormat).Once()
+
+	_, err := makeAppSharingParser(mockAppService)(yamlData)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "Sharing App")
+}
+
+// Malformed YAML is reported as a parse failure rather than reaching the service.
+func (s *ParseToApplicationDTOTestSuite) TestSharingParserReportsMalformedYAML() {
+	mockAppService := NewApplicationServiceInterfaceMock(s.T())
+
+	_, err := makeAppSharingParser(mockAppService)([]byte("id: [unclosed"))
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to parse application YAML")
 }

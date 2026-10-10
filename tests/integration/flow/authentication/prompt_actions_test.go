@@ -126,7 +126,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -198,7 +198,8 @@ var (
 	}
 
 	promptActionsEntityType = testutils.UserType{
-		Name: "prompt_actions_test_person",
+		Handle:      "prompt_actions_test_person",
+		DisplayName: "Prompt Actions Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -223,7 +224,7 @@ var (
 	}
 
 	testUserWithMobilePromptActions = testutils.User{
-		Type: promptActionsEntityType.Name,
+		Type: promptActionsEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "promptactionsuser1",
 			"password": "testpassword",
@@ -235,7 +236,7 @@ var (
 	}
 
 	testUserWithoutMobilePromptActions = testutils.User{
-		Type: promptActionsEntityType.Name,
+		Type: promptActionsEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "promptactionsuser2",
 			"password": "testpassword",
@@ -498,7 +499,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithMobileUserSMS
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		promptActionsTestAppID,
-		promptActionsEntityType.Name,
+		promptActionsEntityType.Handle,
 		promptActionsTestOUID,
 		promptActionsTestOU.Name,
 		promptActionsTestOU.Handle,
@@ -621,7 +622,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithoutMobileUser
 		jwtClaims, err := testutils.ValidateJWTAssertionFields(
 			completeFlowStep.Assertion,
 			promptActionsTestAppID,
-			promptActionsEntityType.Name,
+			promptActionsEntityType.Handle,
 			promptActionsTestOUID,
 			promptActionsTestOU.Name,
 			promptActionsTestOU.Handle,
@@ -731,7 +732,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithoutMobileUser
 		jwtClaims, err := testutils.ValidateJWTAssertionFields(
 			completeFlowStep.Assertion,
 			promptActionsTestAppID,
-			promptActionsEntityType.Name,
+			promptActionsEntityType.Handle,
 			promptActionsTestOUID,
 			promptActionsTestOU.Name,
 			promptActionsTestOU.Handle,
@@ -839,7 +840,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithValidMobile() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		promptActionsTestAppID,
-		promptActionsEntityType.Name,
+		promptActionsEntityType.Handle,
 		promptActionsTestOUID,
 		promptActionsTestOU.Name,
 		promptActionsTestOU.Handle,

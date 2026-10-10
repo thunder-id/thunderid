@@ -20,7 +20,7 @@ func TestRegisterRoutes_SelfUserMetadata(t *testing.T) {
 	mux := http.NewServeMux()
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedSchema := &entitytype.EntityType{
-		Name:   "employee",
+		Handle: "employee",
 		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
 	}
 	mockSvc.On("GetUserMetadata", mock.Anything, testUserID123).Return(expectedSchema, nil)

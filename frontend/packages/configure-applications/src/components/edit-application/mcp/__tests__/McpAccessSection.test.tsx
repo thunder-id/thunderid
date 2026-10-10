@@ -42,8 +42,8 @@ describe('McpAccessSection', () => {
     vi.mocked(useGetUserTypes).mockReturnValue({
       data: {
         types: [
-          {name: 'admin', id: '1'},
-          {name: 'user', id: '2'},
+          {handle: 'admin', displayName: 'Admin', id: '1'},
+          {handle: 'user', displayName: 'User', id: '2'},
         ],
       },
       isLoading: false,
@@ -59,7 +59,7 @@ describe('McpAccessSection', () => {
   it('renders the allowed user types autocomplete with the current value', () => {
     render(<McpAccessSection application={mockApplication} onFieldChange={mockOnFieldChange} isReadOnly={false} />);
 
-    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
   it('renders the agent sign-in toggle off when no agent type is allowed', () => {

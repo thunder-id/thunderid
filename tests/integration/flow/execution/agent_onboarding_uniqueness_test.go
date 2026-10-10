@@ -35,8 +35,9 @@ func (ts *AgentOnboardingUniquenessTestSuite) SetupSuite() {
 	ts.snapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: snapshot.OUID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        snapshot.OUID,
 		Schema: map[string]interface{}{
 			"model": map[string]interface{}{
 				"type":     "string",

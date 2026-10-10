@@ -155,7 +155,8 @@ var (
 	}
 
 	testUserType = testutils.UserType{
-		Name: "credentials_auth_user",
+		Handle:      "credentials_auth_user",
+		DisplayName: "Credentials Auth User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -177,7 +178,7 @@ var (
 	}
 
 	testUser = testutils.User{
-		Type: testUserType.Name,
+		Type: testUserType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "testuser",
 			"password": "testpassword",
@@ -335,7 +336,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,
@@ -375,7 +376,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccessWithSingle
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		flowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,
@@ -444,7 +445,7 @@ func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowWithTwoStepInput(
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		testAppID,
-		testUserType.Name,
+		testUserType.Handle,
 		ts.ouID,
 		testOU.Name,
 		testOU.Handle,

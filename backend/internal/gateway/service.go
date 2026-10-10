@@ -153,10 +153,22 @@ func (s *service) Register(ctx context.Context,
 		BaseURL:       baseURL,
 		Key:           stored,
 		CACertificate: strings.TrimSpace(req.CACertificate),
+
+		// The first gateway registered is the default: with a single gateway there is no other
+		// candidate, and it should not need the flag to say so.
+		IsDefault: req.IsDefault || count == 0,
 	}
 	// The insert carries the capacity check and returns the row it wrote, so what comes back is what
 	// is stored, timestamps included. No row means the limit refused it.
 	registered, err := s.store.Create(ctx, gw, maxGateways())
+	// Two registrations made at once can both become the default, and the index that keeps it on one
+	// gateway refuses the second. One that asked to be the default writes again and takes it over, so
+	// the last caller to ask holds it. One that is the default only for being first registers without
+	// it. Any other failure is not retried, so a first gateway is never left non-default by one.
+	if errors.Is(err, errDefaultTaken) {
+		gw.IsDefault = req.IsDefault
+		registered, err = s.store.Create(ctx, gw, maxGateways())
+	}
 	if err != nil {
 		s.logger.Error(ctx, "Failed to register the gateway", log.Error(err))
 		return nil, &tidcommon.InternalServerError

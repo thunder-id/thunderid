@@ -17,7 +17,9 @@ that submits it.
 
 The entry points are the client surface in
 [spec.md](spec.md#client-surface), the redirect callback the SDK parses, the responses the
-ThunderID server returns, and the configuration the host application supplies.
+ThunderID server returns, and the configuration the host application supplies. An SDK that runs
+on a server and handles back-channel logout has one more: an unauthenticated endpoint that
+receives a logout token.
 
 Cross-cutting concerns covered elsewhere: token issuance, signing, and revocation at the
 server; the authorization and flow execution endpoints themselves; client registration and
@@ -32,6 +34,8 @@ This model covers:
 - Credential and factor submission in embedded mode.
 - Attachment of access tokens to outbound application requests.
 - Sign-out, revocation, and clearing of local state.
+- Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
+  local sessions it names.
 - Configuration supplied by the host application, where it can weaken the above.
 
 Out of scope:
@@ -60,6 +64,7 @@ flowchart LR
     FLOW[Flow execution endpoint]
     REVOKE[Revocation endpoint]
     JWKS[JWKS endpoint]
+    NOTIFY[Back-channel logout delivery]
   end
   APP --> SDK
   SDK --> STORE
@@ -69,6 +74,7 @@ flowchart LR
   SDK -->|TLS: flow steps and credentials| FLOW
   SDK -->|TLS: revoke on sign-out| REVOKE
   SDK -->|TLS: key retrieval| JWKS
+  NOTIFY -.->|logout token to the registered URI, server-side SDKs only| SDK
 ```
 
 The trust boundary sits between the SDK and the server. Everything on the SDK's side of it is
@@ -83,6 +89,7 @@ client with PKCE mandatory and no client secret.
 | Storage adapter | Persists tokens and session state in the platform's secure store, or in a caller-supplied backend |
 | Isolated storage proxy | Where supported, holds tokens out of reach of the main thread and attaches them to allowlisted outbound requests only |
 | Flow driver | Submits credentials and factor responses in embedded mode and surfaces each step to the application |
+| Back-channel logout handler | In a server-side SDK, receives a logout token, validates it, and ends the local sessions it names |
 | Host application | Supplies configuration, renders UI, decides which requests carry a token |
 
 ### Actors
@@ -392,6 +399,65 @@ sequenceDiagram
 | 2 | [Information Disclosure] | Partial clearing leaves cached user claims or a stale token behind for the next user of a shared device | [No] | Sign-out clears session state; the storage adapter contract includes a clear operation |
 | 3 | [Operational Risk] | Revocation fails because the device is offline, and the SDK either blocks sign-out or clears state without revoking | [Yes] | The specification requires the attempt before clearing but does not state the offline behaviour. Recorded as a residual |
 
+#### 06: Receiving a back-channel logout token
+
+**Description**
+
+In an SDK that runs on a server, the ThunderID server posts a logout token to the URI the
+application registered. The handler validates the token, finds the local sessions it names by
+`sid`, or by `sub` when there is no `sid`, and ends them. The request carries no session cookie
+and no client credential; the token's signature is the only authentication.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| ThunderID server | Network, the application's HTTP stack | Back-channel logout handler, session store |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant T as ThunderID server
+  participant H as Logout handler
+  participant J as JWKS endpoint
+  participant K as Session store
+  T->>H: POST logout_token
+  H->>J: fetch keys, when not cached
+  J->>H: keys
+  H->>H: verify signature and claims
+  H->>K: end the sessions named by sid or sub
+  H->>T: 200, or 400 for an invalid token
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The token names a subject and a session |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | Plain HTTP is possible for a confidential client on a private network, by server policy |
+| Authentication | Signature on the logout token | No cookie, no client credential |
+| Accessibility | [Public] | Any party that can reach the application can post to the endpoint |
+| Authorization and Access Control | The token's audience must be this client | |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Spoofing] | An attacker posts a token they made themselves and signs users out at will | [No] | The signature is verified against the server JWKS with the algorithms accepted for ID tokens, and the issuer must match exactly (AC9.4) |
+| 2 | [Spoofing] | A genuine logout token issued to another application is replayed to this one | [No] | The audience must contain this client's identifier (AC9.4) |
+| 3 | [Spoofing] | A genuine ID token, which the attacker can obtain by signing in, is posted as a logout token to end that user's or another holder's session | [No] | The `typ` header must be `logout+jwt`, the back-channel logout event must be present, and a `nonce` must be absent. None of these can be configured off (AC9.5) |
+| 4 | [Tampering] | A captured logout token is replayed later to sign the same user out again after they signed back in | [No] | The token is valid for a short time, a `sid` names a session that no longer exists, and a `sub`-only token ends only sessions that began before it was issued (AC9.2). A `jti` seen before is refused where the SDK tracks it |
+| 5 | [Denial of Service] | Tokens with an unknown key identifier are posted in volume, so the SDK fetches the JWKS on every request and is used to load the server | [No] | Keys are cached and the re-fetch after a verification failure is bounded in rate (AC9.7) |
+| 6 | [Denial of Service] | Large or slow request bodies exhaust the handler | [No] | The handler accepts one method and one content type and caps the body it reads. Request rate limiting is the application's or its gateway's |
+| 7 | [Denial of Service] | The list of ended sessions that a cookie-session SDK keeps grows without bound | [No] | An entry is kept only for as long as a matching session could remain valid, then dropped (AC9.10) |
+| 8 | [Information Disclosure] | The logout token, which names a subject and a session, ends up in logs | [No] | The token is never logged (AC9.9) |
+| 9 | [Security Risk] | The application runs several instances, the notification reaches one, and the session stays usable on the others | [Yes] | The default store is per process. The specification requires the store to be replaceable and the limit to be documented. Recorded as a residual |
+| 10 | [Security Risk] | The SDK's session ends, but an access token already handed to a browser or another service keeps working until it expires | [Yes] | Ending the local session cannot recall a token in circulation. The server revokes the refresh token, so the window is the access token lifetime. Recorded as a residual |
+| 11 | [Security Risk] | A client configured for ID token encryption is sent an encrypted logout token the SDK cannot read, so its sessions are never ended | [Yes] | An SDK that cannot decrypt must document that back-channel logout is unsupported for such a client. Recorded as a residual |
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -399,7 +465,7 @@ sequenceDiagram
 | # | Consideration | State | Comments |
 | --- | --- | --- | --- |
 | 1 | Are all inputs and outputs validated (syntactic and semantic)? | [Partial] | Inputs are covered: configuration is validated at initialization, and operation inputs before any network call. Outputs are covered where it matters most, in callback `state` comparison and full ID token claim validation, but the specification defines no general schema validation contract for every server response. Narrowing that gap is follow-up work |
-| 2 | Are rate limits in place where necessary? | [N/A] | Server-side concern. The SDK does not retry automatically, except for token refresh |
+| 2 | Are rate limits in place where necessary? | [Partial] | Mostly a server-side concern: the SDK does not retry automatically, except for token refresh. The back-channel logout handler bounds its own JWKS re-fetch. Limiting requests to that endpoint is left to the application or its gateway |
 | 3 | Are permissions, roles, and entitlements defined on the principle of least privilege and business need? | [Yes] | Public client with no secret, scopes default to `openid`, tokens attached only to allowlisted hosts under isolated storage |
 | 4 | Are authentication and authorization validated at both the UI and API layers, front end and back end, before granting access to resources? | [Partial] | API authorization is enforced by the server and is out of the SDK's hands. What the SDK contributes is refusing to look like an authorization layer: `decodeJwtToken` is specified as unsafe for authorization decisions, and verified claims come from the server |
 | 5 | Are proper isolations in place between components to ensure least-privilege access and reduce the blast radius against lateral movement? | [Partial] | Isolated storage is available in the browser and the platform secure store on mobile. A host application that supplies its own storage adapter can weaken this by design |
@@ -472,6 +538,15 @@ identifiers a user supplies during authentication and recovery.
 - The shared error code catalogue referenced in
   [spec.md](spec.md#error-model) is a target rather than a defined artifact, so uniform
   handling by code across SDKs is not yet guaranteed.
+- A back-channel logout notification reaches one instance of an application. With the default
+  in-memory store, the session stays usable on the other instances until its tokens fail. The
+  store is replaceable for this reason, and each SDK documents that more than one instance needs
+  a shared one.
+- Back-channel logout ends the SDK's own session. An access token the application already gave
+  to a browser or another service stays usable until it expires, bounded by the access token
+  lifetime, and is accepted.
+- An SDK that cannot decrypt an encrypted logout token does not support back-channel logout for
+  a client configured for ID token encryption. Each such SDK documents it.
 
 ## Appendix
 
@@ -481,6 +556,7 @@ identifiers a user supplies during authentication and recovery.
   [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519),
   [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html),
+  [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html),
   [OAuth 2.0 Security Best Current Practice](https://datatracker.ietf.org/doc/html/rfc9700),
   [OWASP Top 10 Proactive Controls](https://top10proactive.owasp.org/).
 - Companion document: [spec.md](spec.md).
@@ -490,3 +566,4 @@ identifiers a user supplies during authentication and recovery.
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-10 | Initial threat model. |
+| 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |

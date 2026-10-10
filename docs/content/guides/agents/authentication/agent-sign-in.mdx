@@ -47,6 +47,8 @@ curl -X PUT https://localhost:8090/applications/<application-id> \
   }'
 ```
 
+`allowedAgentTypes` and `allowedUserTypes` list agent type and user type handles. The only agent type handle is `default`.
+
 See the [Applications API Reference](../../../../apis#tag/applications).
 
 </TabItem>
@@ -91,7 +93,8 @@ curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
-    "name": "default",
+    "handle": "default",
+    "displayName": "Default",
     "ouId": "<organization-unit-id>",
     "schema": {
       "username": { "type": "string", "required": true, "unique": true },
@@ -154,7 +157,8 @@ curl -X PUT https://localhost:8090/agent-types/<agent-type-id> \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <access-token>' \
   -d '{
-    "name": "default",
+    "handle": "default",
+    "displayName": "Default",
     "ouId": "<organization-unit-id>",
     "schema": {
       "email": { "type": "string", "required": true },

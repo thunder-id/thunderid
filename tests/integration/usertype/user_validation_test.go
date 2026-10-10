@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type UserValidationTestSuite struct {
@@ -303,7 +303,8 @@ func (ts *UserValidationTestSuite) TestCreateUserWithoutSchema() {
 
 func (ts *UserValidationTestSuite) createEmployeeSchema() string {
 	schema := CreateUserTypeRequest{
-		Name: "employee",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: json.RawMessage(`{
 			"given_name": {"type": "string"},
 			"family_name": {"type": "string"},
@@ -318,7 +319,8 @@ func (ts *UserValidationTestSuite) createEmployeeSchema() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithEnum() string {
 	schema := CreateUserTypeRequest{
-		Name: "student",
+		Handle:      "student",
+		DisplayName: "Student",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"grade": {"type": "string", "enum": ["A", "B", "C", "D", "F"]},
@@ -331,7 +333,8 @@ func (ts *UserValidationTestSuite) createSchemaWithEnum() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithNestedObject() string {
 	schema := CreateUserTypeRequest{
-		Name: "customer",
+		Handle:      "customer",
+		DisplayName: "Customer",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"address": {
@@ -350,7 +353,8 @@ func (ts *UserValidationTestSuite) createSchemaWithNestedObject() string {
 
 func (ts *UserValidationTestSuite) createSchemaWithArray() string {
 	schema := CreateUserTypeRequest{
-		Name: "teacher",
+		Handle:      "teacher",
+		DisplayName: "Teacher",
 		Schema: json.RawMessage(`{
 			"name": {"type": "string"},
 			"subjects": {

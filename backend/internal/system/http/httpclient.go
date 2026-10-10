@@ -6,8 +6,10 @@
 //
 //   - NewHTTPClient(HTTPClientConfig) - creates a client from a config struct
 //   - NewDefaultHTTPClient() - creates a client with the default 30s timeout that follows redirects
+//   - NewHTTPClientWithRootCAs(duration, rootCAs) - creates a client with a custom timeout that never follows
+//     redirects and trusts the given certificate authorities
 //
-// Safety controls (timeout, redirect policy, SSRF dial guard) are selected per caller through
+// Safety controls (timeout, redirect policy, SSRF dial guard, root CAs) are selected per caller through
 // HTTPClientConfig instead of being bundled into fixed constructor combinations.
 //
 // Usage examples:
@@ -25,6 +27,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -78,6 +81,10 @@ type HTTPClientConfig struct {
 	// rebinding). Leave it off only for targets an administrator registered
 	// on an internal network.
 	GuardSSRF bool
+	// RootCAs replaces the system root store with the given certificate
+	// authorities. Use it to reach a server whose certificate a private
+	// authority issued, keeping verification on. Nil keeps the system roots.
+	RootCAs *x509.CertPool
 }
 
 // defaultHTTPTimeout bounds one request unless HTTPClientConfig.Timeout overrides it.
@@ -95,6 +102,7 @@ func NewHTTPClient(cfg HTTPClientConfig) HTTPClientInterface {
 		// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
 		TLSClientConfig: &tls.Config{
 			MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
+			RootCAs:    cfg.RootCAs,
 		},
 	}
 	if cfg.GuardSSRF {
@@ -121,6 +129,21 @@ func NewDefaultHTTPClient() HTTPClientInterface {
 	return NewHTTPClient(HTTPClientConfig{})
 }
 
+// NewHTTPClientWithRootCAs creates an HTTPClient with the given timeout that trusts the given certificate
+// authorities and returns a 3xx response instead of following it. Use it to reach a server whose
+// certificate a private authority issued, with verification kept on.
+func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool) HTTPClientInterface {
+	return NewHTTPClient(HTTPClientConfig{
+		Timeout:          timeout,
+		DisableRedirects: true,
+		RootCAs:          rootCAs,
+	})
+}
+
+// ErrPrivateAddress is returned, wrapped, when the SSRF-safe dialer refuses a host that resolves to a
+// loopback, link-local, private or unspecified address.
+var ErrPrivateAddress = errors.New("refused a private address")
+
 // ssrfSafeDialContext resolves the target hostname and validates every returned IP against
 // privateIPRanges before dialing. Connecting to the first validated IP directly pins the
 // connection and prevents DNS rebinding attacks. TLS hostname verification is unaffected:
@@ -142,11 +165,11 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 	var safeIP net.IP
 	for _, ia := range ipAddrs {
 		if ia.IP.IsUnspecified() {
-			return nil, fmt.Errorf("host %q resolves to an unspecified address %s", host, ia.IP)
+			return nil, fmt.Errorf("host %q resolves to an unspecified address %s: %w", host, ia.IP, ErrPrivateAddress)
 		}
 		for _, block := range privateIPRanges {
 			if block.Contains(ia.IP) {
-				return nil, fmt.Errorf("host %q resolves to a private address %s", host, ia.IP)
+				return nil, fmt.Errorf("host %q resolves to a private address %s: %w", host, ia.IP, ErrPrivateAddress)
 			}
 		}
 		if safeIP == nil {
@@ -228,6 +251,12 @@ func IsSSRFSafeURL(rawURL string) error {
 		}
 	}
 	return nil
+}
+
+// CloseIdleConnections closes the connections the client keeps open for reuse, so a client built for
+// one call releases them once the call is done.
+func (c *httpClient) CloseIdleConnections() {
+	c.client.CloseIdleConnections()
 }
 
 // Do executes an HTTP request and returns an HTTP response.

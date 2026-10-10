@@ -32,13 +32,14 @@ describe('useUpdateAgentType', () => {
 
   const mockAgentType: ApiAgentType = {
     id: agentTypeId,
-    name: 'default',
+    handle: 'default',
+    displayName: 'Default',
     ouId,
     schema: {model: {type: 'string', required: false}},
   };
 
   const mockRequest: UpdateAgentTypeRequest = {
-    name: 'default',
+    displayName: 'Default',
     ouId,
     schema: {model: {type: 'string', required: false}},
   };

@@ -220,7 +220,7 @@ var (
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    "placeholder-sender-id",
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",
@@ -340,7 +340,7 @@ var (
 		ClientID:                  "ou_reg_flow_test_client",
 		ClientSecret:              "ou_reg_flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{dynamicEntityType.Name},
+		AllowedUserTypes:          []string{dynamicEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
@@ -353,7 +353,7 @@ var (
 		ClientID:                  "ou_sms_reg_flow_test_client",
 		ClientSecret:              "ou_sms_reg_flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{dynamicEntityType.Name},
+		AllowedUserTypes:          []string{dynamicEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
@@ -374,7 +374,8 @@ var (
 	}
 
 	dynamicEntityType = testutils.UserType{
-		Name: "dynamic-user-type",
+		Handle:      "dynamic-user-type",
+		DisplayName: "Dynamic User Type",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -626,7 +627,7 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOU() {
 
 			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
 			ts.Require().NoError(err)
-			ts.Require().Equal(dynamicEntityType.Name, jwtClaims.UserType)
+			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserType)
 			ts.Require().NotEmpty(jwtClaims.OUID)
 
 			user, err := testutils.FindUserByAttribute("username", username)
@@ -807,7 +808,7 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreation() {
 
 			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
 			ts.Require().NoError(err)
-			ts.Require().Equal(dynamicEntityType.Name, jwtClaims.UserType)
+			ts.Require().Equal(dynamicEntityType.Handle, jwtClaims.UserType)
 			ts.Require().NotEmpty(jwtClaims.OUID)
 
 			user, err := testutils.FindUserByAttribute("mobile_number", mobileNumber)

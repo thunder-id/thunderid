@@ -29,6 +29,8 @@ type gateway struct {
 	CACertificate string `json:"caCertificate,omitempty"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
+
+	IsDefault bool `json:"isDefault,omitempty"`
 }
 
 type errorResponse struct {
@@ -85,6 +87,34 @@ func (ts *GatewayAPITestSuite) TestRegisterAndReadBack() {
 
 	fetched := ts.getGateway(created.ID, http.StatusOK)
 	ts.Equal(created.ID, fetched.ID)
+}
+
+// A gateway registered as the default takes it from the gateway that held it, so exactly
+// one holds it afterwards and a read of the earlier one no longer reports it.
+func (ts *GatewayAPITestSuite) TestRegisteringADefaultGatewayMovesTheDefault() {
+	first := ts.registerDefault("default-first")
+	ts.True(first.IsDefault, "the registration did not report the default")
+	ts.Equal([]string{first.ID}, ts.defaultGateways())
+
+	second := ts.registerDefault("default-second")
+	ts.True(second.IsDefault)
+
+	ts.Equal([]string{second.ID}, ts.defaultGateways(), "the default was not moved to the new gateway")
+	ts.False(ts.getGateway(first.ID, http.StatusOK).IsDefault,
+		"the earlier gateway still reports the default")
+}
+
+// A registration that does not ask to be the default leaves it where it is.
+func (ts *GatewayAPITestSuite) TestANonDefaultRegistrationLeavesTheDefaultAlone() {
+	current := ts.registerDefault("default-kept")
+
+	other := ts.register(map[string]string{
+		"name":    ts.name("not-default"),
+		"baseUrl": "https://not-default.integration.test:8090",
+	}, http.StatusCreated)
+
+	ts.False(other.IsDefault)
+	ts.Equal([]string{current.ID}, ts.defaultGateways())
 }
 
 // Registration is the one response that carries the key. No read returns it afterwards, so the
@@ -204,6 +234,41 @@ func (ts *GatewayAPITestSuite) register(body map[string]string, wantStatus int) 
 	return created
 }
 
+// registerDefault registers a gateway as the default.
+func (ts *GatewayAPITestSuite) registerDefault(suffix string) gateway {
+	ts.T().Helper()
+
+	resp := ts.post("/gateways", map[string]any{
+		"name": ts.name(suffix),
+		// The run's prefix keeps the address unique too: one gateway registers once per address, so an
+		// interrupted run that leaves one behind would otherwise refuse the next run's registration.
+		"baseUrl":   "https://" + ts.name(suffix) + ".integration.test:8090",
+		"isDefault": true,
+	})
+	defer func() { _ = resp.Body.Close() }()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode)
+
+	var created gateway
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	ts.registered = append(ts.registered, created.ID)
+	return created
+}
+
+// defaultGateways lists the ids of every gateway that holds the default.
+func (ts *GatewayAPITestSuite) defaultGateways() []string {
+	ts.T().Helper()
+
+	var listed []gateway
+	ts.Require().NoError(json.Unmarshal([]byte(ts.rawGet("/gateways")), &listed))
+	defaults := []string{}
+	for _, gw := range listed {
+		if gw.IsDefault {
+			defaults = append(defaults, gw.ID)
+		}
+	}
+	return defaults
+}
+
 func (ts *GatewayAPITestSuite) registerExpectingError(body map[string]string, wantStatus int) string {
 	ts.T().Helper()
 
@@ -216,7 +281,7 @@ func (ts *GatewayAPITestSuite) registerExpectingError(body map[string]string, wa
 	return failure.Code
 }
 
-func (ts *GatewayAPITestSuite) post(path string, body map[string]string) *http.Response {
+func (ts *GatewayAPITestSuite) post(path string, body any) *http.Response {
 	ts.T().Helper()
 
 	encoded, err := json.Marshal(body)

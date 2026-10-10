@@ -47,8 +47,9 @@ func (suite *SchemaBuilderTestSuite) TestMapRawPropertyToSCIMAttribute_Credentia
 func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_Success() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		ID:   "et-emp",
-		Name: "Employee",
+		ID:          "et-emp",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: []byte(`{
 			"employee_number": {"type": "string", "required": true},
 			"cost_center": {"type": "string"},
@@ -85,8 +86,9 @@ func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_Success() {
 func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_NoEnterpriseAttrs() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		ID:   "et-user",
-		Name: "User",
+		ID:          "et-user",
+		Handle:      "user",
+		DisplayName: "User",
 		Schema: []byte(`{
 			"username": {"type": "string"},
 			"email": {"type": "string"}
@@ -102,9 +104,10 @@ func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_NoEnterpriseA
 func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_MalformedJSON() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		ID:     "et-bad",
-		Name:   "Bad",
-		Schema: []byte(`invalid json`),
+		ID:          "et-bad",
+		Handle:      "bad",
+		DisplayName: "Bad",
+		Schema:      []byte(`invalid json`),
 	}
 
 	_, err := buildEnterpriseUserSchema("https://example.com", et)
@@ -120,8 +123,9 @@ func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_MalformedJSON
 func (suite *SchemaBuilderTestSuite) TestBuildCoreUserSchema_CredentialMappedCandidate_DeclaresNeverWriteOnly() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		ID:   "et-user",
-		Name: "User",
+		ID:          "et-user",
+		Handle:      "user",
+		DisplayName: "User",
 		Schema: []byte(`{
 			"username": {"type": "string", "required": true, "credential": true},
 			"email": {"type": "string"}

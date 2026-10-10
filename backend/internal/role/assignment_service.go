@@ -583,7 +583,7 @@ func resolveDisplayAttributePaths(
 		return nil
 	}
 
-	displayPaths, svcErr := schemaService.GetDisplayAttributesByNames(ctx, entitytype.TypeCategoryUser, uniqueTypes)
+	displayPaths, svcErr := schemaService.GetDisplayAttributesByHandles(ctx, entitytype.TypeCategoryUser, uniqueTypes)
 	if svcErr != nil {
 		if logger != nil {
 			logger.Warn(ctx, "Failed to resolve display attribute paths, skipping display resolution",

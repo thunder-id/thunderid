@@ -45,7 +45,8 @@ func (s *SelfUserEndpointsSuite) SetupSuite() {
 	s.ouID = ouID
 
 	schema := testutils.UserType{
-		Name:                  s.userType,
+		Handle:                s.userType,
+		DisplayName:           "User Type",
 		OUID:                  ouID,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{

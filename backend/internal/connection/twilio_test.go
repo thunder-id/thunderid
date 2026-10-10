@@ -73,7 +73,7 @@ func (s *TwilioTestSuite) TestCreateMasksSecret() {
 	})
 	req := httptest.NewRequest(http.MethodPost, "/connections/twilio", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
-	createSMSHandler(s.handler, twilioToSenderDTO, twilioFromSenderDTO)(rr, req)
+	createSenderHandler(s.handler, twilioToSenderDTO, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusCreated, rr.Code)
 	var resp twilioConnectionResponse
@@ -102,7 +102,8 @@ func (s *TwilioTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp twilioConnectionResponse
@@ -122,7 +123,8 @@ func (s *TwilioTestSuite) TestGetProviderMismatchReturnsNotFound() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio/vo-1", nil)
 	req.SetPathValue("id", "vo-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusNotFound, rr.Code)
 }

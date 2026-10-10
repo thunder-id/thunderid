@@ -29,7 +29,7 @@ type SCIMConfig struct {
 	CoreUserTypeID string
 
 	// SchemaURNPrefix is the URN prefix of the custom per-user-type SCIM schemas, ending in
-	// a colon. The user type name and ":2.0:User" are appended to it.
+	// a colon. The user type handle and ":2.0:User" are appended to it.
 	SchemaURNPrefix string
 
 	// PatchSupported is reported in ServiceProviderConfig as the SCIM PATCH capability

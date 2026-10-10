@@ -27,7 +27,8 @@ const (
 )
 
 var rtBranchUserType = testutils.UserType{
-	Name: "rt-branches-person",
+	Handle:      "rt-branches-person",
+	DisplayName: "Rt Branches Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -130,17 +131,17 @@ func (ts *RefreshTokenBranchesTestSuite) SetupSuite() {
 	ts.authFlowID = flowID
 
 	rsAID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name:        "Refresh Token Branches RS A",
-		Identifier:  rtBranchResourceA,
-		OUID:        ts.ouID,
+		Name:       "Refresh Token Branches RS A",
+		Identifier: rtBranchResourceA,
+		OUID:       ts.ouID,
 	}, []testutils.Action{})
 	ts.Require().NoError(err)
 	ts.resourceServerAID = rsAID
 
 	rsBID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name:        "Refresh Token Branches RS B",
-		Identifier:  rtBranchResourceB,
-		OUID:        ts.ouID,
+		Name:       "Refresh Token Branches RS B",
+		Identifier: rtBranchResourceB,
+		OUID:       ts.ouID,
 	}, []testutils.Action{})
 	ts.Require().NoError(err)
 	ts.resourceServerBID = rsBID

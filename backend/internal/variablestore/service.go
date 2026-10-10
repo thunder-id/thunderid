@@ -52,6 +52,19 @@ type ServiceInterface interface {
 	SecretServiceInterface
 }
 
+// ReferenceResolverInterface reads back the value held under a name, a secret's included.
+//
+// It is the one way a secret's value leaves the store, and it is not served over HTTP: an import uses
+// it to put a value where a reference stood, on the deployment that holds the value, before the
+// resource is written. A secret then takes the path any credential takes, hashed where it is only
+// ever verified.
+type ReferenceResolverInterface interface {
+	// ResolveVariable returns a variable's value and whether one is held under the name.
+	ResolveVariable(ctx context.Context, name string) (string, bool, *common.ServiceError)
+	// ResolveSecret returns a secret's value and whether one is held under the name.
+	ResolveSecret(ctx context.Context, name string) (string, bool, *common.ServiceError)
+}
+
 type service struct {
 	store  storeInterface
 	crypto kmprovider.ConfigCryptoProvider
@@ -267,6 +280,32 @@ func (s *service) DeleteSecret(ctx context.Context, name string) *common.Service
 		return s.unexpected(ctx, "failed to delete secret", err)
 	}
 	return nil
+}
+
+func (s *service) ResolveVariable(ctx context.Context, name string) (string, bool, *common.ServiceError) {
+	variable, err := s.store.GetVariable(ctx, name)
+	if err != nil {
+		return "", false, s.unexpected(ctx, "failed to read variable", err)
+	}
+	if variable == nil {
+		return "", false, nil
+	}
+	return variable.Value, true, nil
+}
+
+func (s *service) ResolveSecret(ctx context.Context, name string) (string, bool, *common.ServiceError) {
+	encrypted, held, err := s.store.GetSecretValue(ctx, name)
+	if err != nil {
+		return "", false, s.unexpected(ctx, "failed to read secret value", err)
+	}
+	if !held {
+		return "", false, nil
+	}
+	value, err := s.crypto.Decrypt(ctx, []byte(encrypted))
+	if err != nil {
+		return "", false, s.unexpected(ctx, "failed to decrypt secret", err)
+	}
+	return string(value), true, nil
 }
 
 // encrypt seals a secret value for storage. Nothing outside this file writes to the SECRET table's

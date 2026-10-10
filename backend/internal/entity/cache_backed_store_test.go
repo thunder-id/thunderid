@@ -227,6 +227,18 @@ func (s *CacheBackedEntityStoreTestSuite) TestIdentifyEntity_StoreError() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
+func (s *CacheBackedEntityStoreTestSuite) TestResolveLinkedAccount_PassesThroughUncached() {
+	entityID := testEntityID
+	s.mockStore.On("ResolveLinkedAccount", mock.Anything, "idp-a", "sub-1").Return(&entityID, nil).Twice()
+
+	for range 2 {
+		result, err := s.cachedStore.ResolveLinkedAccount(context.Background(), "idp-a", "sub-1")
+		s.Require().NoError(err)
+		s.Equal(entityID, *result)
+	}
+	s.mockStore.AssertExpectations(s.T())
+}
+
 // UpdateSystemAttributes tests
 
 func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_InvalidatesEntityCache() {
@@ -673,4 +685,19 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateCredentials_DoesNotInvalidat
 		cache.CacheKey{Key: "clientId:client-1"})
 	s.True(ok)
 	s.Equal(entity.ID, *cachedID)
+}
+
+// A stale cached copy would let the locked read-modify-write drop another writer's change, so the
+// entity read under the lock bypasses the cache in both directions.
+func (s *CacheBackedEntityStoreTestSuite) TestLockEntity_BypassesCache() {
+	stale := providers.Entity{ID: testEntityID, SystemAttributes: json.RawMessage(`{"stale":true}`)}
+	s.entityByIDData[testEntityID] = &stale
+	locked := providers.Entity{ID: testEntityID, SystemAttributes: json.RawMessage(`{"fresh":true}`)}
+	s.mockStore.On("LockEntity", mock.Anything, testEntityID).Return(locked, nil).Once()
+
+	got, err := s.cachedStore.LockEntity(context.Background(), testEntityID)
+	s.Require().NoError(err)
+	s.Equal(locked, got)
+	s.Same(&stale, s.entityByIDData[testEntityID])
+	s.mockStore.AssertExpectations(s.T())
 }

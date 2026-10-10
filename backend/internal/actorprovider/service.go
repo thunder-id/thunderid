@@ -43,16 +43,35 @@ func newActorProvider(
 	}
 }
 
-// GetOAuthClientByClientID returns the OAuth client registered for the given ID.
+// GetOAuthClientByClientID returns the OAuth client registered for the given ID, or nil when there
+// is none.
 func (p *actorProvider) GetOAuthClientByClientID(
 	ctx context.Context, clientID string,
 ) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	client, err := p.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
-			return nil, &ErrorActorNotFound
-		}
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return toProviderOAuthClient(client), nil
+}
+
+// IsOAuthClientAccessibleFromOU reports whether an OAuth2 client may act on behalf of an
+// organization unit, which the inbound client service answers from the sharing policies.
+func (p *actorProvider) IsOAuthClientAccessibleFromOU(
+	ctx context.Context, client *providers.OAuthClient, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	return p.inboundClient.IsClientAccessibleFromOU(ctx, client, ouID)
+}
+
+// GetOAuthClientByID returns the runtime OAuth client for the given entity UUID, or nil when there
+// is none.
+func (p *actorProvider) GetOAuthClientByID(
+	ctx context.Context, id string,
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
+	client, err := p.inboundClient.GetOAuthClientByEntityID(ctx, id)
+	if err != nil {
+		p.logger.Error(ctx, "Failed to fetch OAuth client by entity ID", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	return toProviderOAuthClient(client), nil
@@ -177,6 +196,7 @@ func toProviderOAuthClient(c *providers.OAuthClient) *providers.OAuthClient {
 		RequirePushedAuthorizationRequests: c.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              c.DPoPBoundAccessTokens,
 		IncludeActClaim:                    c.IncludeActClaim,
+		ClientIDMetadataDocument:           c.ClientIDMetadataDocument,
 		EntityCategory:                     c.EntityCategory,
 		Token:                              c.Token,
 		Scopes:                             c.Scopes,

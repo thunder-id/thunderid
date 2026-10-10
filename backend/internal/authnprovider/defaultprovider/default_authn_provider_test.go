@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -124,6 +125,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_AuthenticationFaile
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(authnprovidercm.ErrorCodeAuthenticationFailed, err.Code)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_AmbiguousEntity() {
+	identifiers := map[string]interface{}{"email": "shared@example.com"}
+	credentials := map[string]interface{}{"password": "password"}
+
+	suite.mockService.On("AuthenticateEntity", mock.Anything, identifiers, credentials).
+		Return(nil, entity.ErrAmbiguousEntity).Once()
+
+	result, err := suite.provider.Authenticate(context.Background(), identifiers, credentials, nil)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.ClientErrorType, err.Type)
+	suite.Equal(authnprovidercm.ErrorCodeAmbiguousUser, err.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_GenericAuthError() {
@@ -523,6 +539,46 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenWithUserID() {
 	suite.NotNil(result)
 	suite.NotNil(result.AuthenticatedClaims)
 	suite.Equal("user123", result.AuthenticatedClaims[authnprovidercm.UserAttributeUserID])
+}
+
+// --- SearchEntityReferences tests ---
+
+func (suite *DefaultAuthnProviderTestSuite) TestSearchEntityReferences_ListsEveryMatch() {
+	filters := map[string]interface{}{"costCenter": "CC-1"}
+	suite.mockService.On("SearchEntities", mock.Anything, filters).Return([]providers.Entity{
+		{ID: "user-1", Category: providers.EntityCategoryUser, Type: "customer", OUID: "ou1"},
+		{ID: "user-2", Category: providers.EntityCategoryUser, Type: "customer", OUID: "ou2"},
+	}, nil).Once()
+
+	refs, err := suite.provider.SearchEntityReferences(context.Background(), filters)
+
+	suite.Nil(err)
+	suite.Equal([]providers.EntityReference{
+		{EntityID: "user-1", EntityCategory: "user", EntityType: "customer", OUID: "ou1"},
+		{EntityID: "user-2", EntityCategory: "user", EntityType: "customer", OUID: "ou2"},
+	}, refs)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestSearchEntityReferences_NoMatchIsEmpty() {
+	filters := map[string]interface{}{"costCenter": "CC-1"}
+	suite.mockService.On("SearchEntities", mock.Anything, filters).Return(nil, entity.ErrEntityNotFound).Once()
+
+	refs, err := suite.provider.SearchEntityReferences(context.Background(), filters)
+
+	suite.Nil(err)
+	suite.Empty(refs)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestSearchEntityReferences_StoreFailureIsServerError() {
+	filters := map[string]interface{}{"costCenter": "CC-1"}
+	suite.mockService.On("SearchEntities", mock.Anything, filters).Return(nil, errors.New("db down")).Once()
+
+	refs, err := suite.provider.SearchEntityReferences(context.Background(), filters)
+
+	suite.Nil(refs)
+	if suite.NotNil(err) {
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	}
 }
 
 // --- GetEntityReference tests ---
@@ -1562,4 +1618,81 @@ func (suite *DefaultAuthnProviderTestSuite) parseFile(filename string) *ast.File
 	file, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
 	suite.Require().NoError(err, "failed to parse %s", filename)
 	return file
+}
+
+// --- StoreAccountLink ---
+
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_ResolvesTokenAndDelegates() {
+	suite.mockService.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkAccount", mock.Anything, "user123", "idp-a", "sub-1").Return(nil)
+
+	token := map[string]interface{}{"userID": "user123"}
+	suite.Nil(suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1"))
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_UnresolvableTokenIsClientError() {
+	suite.mockService.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, entity.ErrEntityNotFound)
+
+	token := map[string]interface{}{"email": "nobody@example.com"}
+	svcErr := suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeUserNotFound, svcErr.Code)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_RejectsNonMapToken() {
+	svcErr := suite.provider.StoreAccountLink(context.Background(), "not-a-map", "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidToken, svcErr.Code)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_RejectsEmptyIdentity() {
+	token := map[string]interface{}{"userID": "user123"}
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest,
+		suite.provider.StoreAccountLink(context.Background(), token, "", "sub-1").Code)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest,
+		suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "").Code)
+}
+
+// A pair another user holds is the caller's to handle, so it is a client error.
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_PairHeldByAnotherUserIsClientError() {
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkAccount", mock.Anything, "user123", "idp-a", "sub-1").
+		Return(entity.ErrLinkedAccountConflict)
+
+	token := map[string]interface{}{"userID": "user123"}
+	svcErr := suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeAmbiguousUser, svcErr.Code)
+}
+
+// Reaching the link limit is about the user's own data, so it is a client error.
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_LinkLimitIsClientError() {
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkAccount", mock.Anything, "user123", "idp-a", "sub-1").
+		Return(fmt.Errorf("%w: too many", entity.ErrIndexedValueLimitExceeded))
+
+	token := map[string]interface{}{"userID": "user123"}
+	svcErr := suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest, svcErr.Code)
+}
+
+// A storage failure is the provider's own problem, not the caller's.
+func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_StoreFailureIsServerError() {
+	entityResult := &providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}
+	suite.mockService.On("GetEntity", mock.Anything, "user123").Return(entityResult, nil)
+	suite.mockService.On("LinkAccount", mock.Anything, "user123", "idp-a", "sub-1").
+		Return(errors.New("boom"))
+
+	token := map[string]interface{}{"userID": "user123"}
+	svcErr := suite.provider.StoreAccountLink(context.Background(), token, "idp-a", "sub-1")
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
 }

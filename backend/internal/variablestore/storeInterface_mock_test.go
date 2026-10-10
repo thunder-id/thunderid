@@ -219,6 +219,78 @@ func (_c *storeInterfaceMock_GetSecret_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// GetSecretValue provides a mock function for the type storeInterfaceMock
+func (_mock *storeInterfaceMock) GetSecretValue(ctx context.Context, name string) (string, bool, error) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSecretValue")
+	}
+
+	var r0 string
+	var r1 bool
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, bool, error)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) bool); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = returnFunc(ctx, name)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// storeInterfaceMock_GetSecretValue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSecretValue'
+type storeInterfaceMock_GetSecretValue_Call struct {
+	*mock.Call
+}
+
+// GetSecretValue is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *storeInterfaceMock_Expecter) GetSecretValue(ctx interface{}, name interface{}) *storeInterfaceMock_GetSecretValue_Call {
+	return &storeInterfaceMock_GetSecretValue_Call{Call: _e.mock.On("GetSecretValue", ctx, name)}
+}
+
+func (_c *storeInterfaceMock_GetSecretValue_Call) Run(run func(ctx context.Context, name string)) *storeInterfaceMock_GetSecretValue_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *storeInterfaceMock_GetSecretValue_Call) Return(s string, b bool, err error) *storeInterfaceMock_GetSecretValue_Call {
+	_c.Call.Return(s, b, err)
+	return _c
+}
+
+func (_c *storeInterfaceMock_GetSecretValue_Call) RunAndReturn(run func(ctx context.Context, name string) (string, bool, error)) *storeInterfaceMock_GetSecretValue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetVariable provides a mock function for the type storeInterfaceMock
 func (_mock *storeInterfaceMock) GetVariable(ctx context.Context, name string) (*Variable, error) {
 	ret := _mock.Called(ctx, name)

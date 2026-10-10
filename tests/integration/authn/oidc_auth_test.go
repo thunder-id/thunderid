@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -29,7 +29,8 @@ var oidcAuthTestOU = testutils.OrganizationUnit{
 }
 
 var oidcEntityType = testutils.UserType{
-	Name: "oidc_user",
+	Handle:      "oidc_user",
+	DisplayName: "Oidc User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -111,7 +112,7 @@ func (suite *OIDCAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       oidcEntityType.Name,
+		Type:       oidcEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}

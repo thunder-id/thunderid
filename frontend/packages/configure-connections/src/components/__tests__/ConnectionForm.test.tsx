@@ -3,7 +3,7 @@
 
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import {type ComponentProps, useState} from 'react';
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import ConnectionForm from '../ConnectionForm';
 
 /**
@@ -32,6 +32,15 @@ function ControlledConnectionForm({
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useToast: () => ({showToast: vi.fn()}),
+}));
+
+const mockAuthMethods: {type: string; displayName: string}[] = [];
+const mockMetaState: {isError: boolean} = {isError: false};
+vi.mock('../../api/useConnectionMeta', () => ({
+  default: () =>
+    mockMetaState.isError
+      ? {data: undefined, isError: true}
+      : {data: {authentication: {methods: mockAuthMethods}}, isError: false},
 }));
 
 function getConnectionField(id: string): HTMLElement {
@@ -64,6 +73,35 @@ describe('ConnectionForm', () => {
     onFieldChange: vi.fn(),
     onSecretReplacingChange: vi.fn(),
   };
+
+  describe('authentication section', () => {
+    beforeEach(() => {
+      mockAuthMethods.splice(0, mockAuthMethods.length, {type: 'none', displayName: 'None'});
+    });
+    afterEach(() => {
+      mockAuthMethods.splice(0, mockAuthMethods.length);
+      mockMetaState.isError = false;
+    });
+
+    it('renders the authentication section inline by default', () => {
+      render(<ConnectionForm {...baseProps} />);
+      expect(screen.getByTestId('connection-authentication-section')).toBeInTheDocument();
+    });
+
+    // A failed metadata read is shown where the section would render, rather than the section
+    // silently disappearing as if the vendor took no authentication.
+    it('reports a failed metadata read in place of the authentication section', () => {
+      mockMetaState.isError = true;
+      render(<ConnectionForm {...baseProps} />);
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.queryByTestId('connection-authentication-section')).not.toBeInTheDocument();
+    });
+
+    it('omits the authentication section when showAuthentication is false', () => {
+      render(<ConnectionForm {...baseProps} showAuthentication={false} />);
+      expect(screen.queryByTestId('connection-authentication-section')).not.toBeInTheDocument();
+    });
+  });
 
   it('shows field hints by default and replaces them with validation errors after blur', () => {
     render(<ConnectionForm {...baseProps} />);
@@ -246,6 +284,23 @@ describe('ConnectionForm', () => {
 
       expect(isFieldMarkedRequired('issuer')).toBe(true);
       expect(isFieldMarkedRequired('jwksEndpoint')).toBe(true);
+    });
+  });
+
+  describe('SMTP create', () => {
+    it('marks transport security required, since the select always holds a value', () => {
+      render(
+        <ConnectionForm
+          {...baseProps}
+          type="email-smtp"
+          vendorDisplayName="SMTP"
+          values={{name: '', host: '', port: '587', fromAddress: '', fromName: '', tls: 'starttls'}}
+        />,
+      );
+
+      expect(screen.getByTestId('connection-field-select-tls')).toHaveTextContent('STARTTLS');
+      expect(isFieldMarkedRequired('tls')).toBe(true);
+      expect(isFieldMarkedRequired('fromName')).toBe(false);
     });
   });
 

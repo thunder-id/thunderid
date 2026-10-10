@@ -4,7 +4,12 @@
 import {parseKeyValuePairs} from './keyValuePairs';
 import type {ConnectionFieldDef} from '../config/connectionFormFields';
 import {AuthenticationMethods, type AuthenticationMethod} from '../models/authentication-methods';
-import type {ConnectionRequest, ConnectionResponse, OutboundAuthentication} from '../models/connection';
+import type {
+  ConnectionRequest,
+  ConnectionResponse,
+  OutboundAuthConfig,
+  OutboundAuthentication,
+} from '../models/connection';
 
 /** The placeholder value the API returns for stored secrets. Must never be sent back. */
 export const MASKED_SECRET = '******';
@@ -26,6 +31,87 @@ function valueAtPath(source: unknown, path: string): unknown {
     }
     return (value as Record<string, unknown>)[key];
   }, source);
+}
+
+/**
+ * The authentication method that sends no credentials. Selecting it discards whatever the
+ * previous method had stored, which the backend enforces too.
+ */
+export const AUTH_TYPE_NONE = 'none';
+
+/** Form key holding the selected authentication method. */
+export const AUTH_TYPE_FIELD = 'authentication.type';
+
+/** Prefix of the form keys holding the selected method's field values. */
+const AUTH_PROPERTY_PREFIX = 'authentication.properties.';
+
+/** Form key holding the transport security mode of a vendor that secures its own transport. */
+const TLS_FIELD = 'tls';
+
+/** The transport security mode that sends over an unencrypted connection. */
+const TLS_DISABLED = 'none';
+
+/**
+ * Form key holding one authentication field's value. Authentication values share the flat form
+ * state with the static fields, so they are namespaced to keep a method's field from colliding
+ * with a vendor field of the same name.
+ */
+export function authPropertyField(name: string): string {
+  return `${AUTH_PROPERTY_PREFIX}${name}`;
+}
+
+/**
+ * Nest the namespaced authentication form values into the request object. Returns undefined
+ * when the form carries no authentication at all, which is how a vendor without the section
+ * leaves the payload unchanged.
+ *
+ * A blank value is omitted rather than sent. That is what "keep the stored credential" looks
+ * like: a credential is blanked when the response is loaded and only becomes non-empty once the
+ * user replaces it, so no separate replaced-or-not flag is needed here.
+ */
+function authenticationFromFormValues(values: ConnectionFormValues): OutboundAuthConfig | undefined {
+  const type: string = values[AUTH_TYPE_FIELD] ?? '';
+  if (type === '') {
+    return undefined;
+  }
+  if (type === AUTH_TYPE_NONE) {
+    return {type};
+  }
+
+  const properties: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!key.startsWith(AUTH_PROPERTY_PREFIX)) {
+      continue;
+    }
+    const raw: string = (value ?? '').trim();
+    // The mask is display-only; sending it back would store the literal asterisks.
+    if (raw === '' || raw === MASKED_SECRET) {
+      continue;
+    }
+    properties[key.slice(AUTH_PROPERTY_PREFIX.length)] = raw;
+  }
+
+  return Object.keys(properties).length > 0 ? {properties, type} : {type};
+}
+
+/**
+ * Flatten a response's authentication object into namespaced form values. A credential comes
+ * back masked, so it is blanked here the same way a static secret field is.
+ */
+export function authenticationToFormValues(response: ConnectionResponse): ConnectionFormValues {
+  const values: ConnectionFormValues = {};
+  const authentication: Partial<OutboundAuthConfig> | undefined = response.authentication;
+  // An AuthZEN PDP returns the scheme-based shape, which carries no type and is mapped by its
+  // own fields, so only the generic shape is flattened here.
+  if (!authentication?.type) {
+    return values;
+  }
+
+  values[AUTH_TYPE_FIELD] = authentication.type;
+  for (const [name, value] of Object.entries(authentication.properties ?? {})) {
+    values[authPropertyField(name)] = value === MASKED_SECRET ? '' : value;
+  }
+  return values;
 }
 
 /**
@@ -78,7 +164,9 @@ export function responseToFormValues(
       values[field.name] = field.defaultValue ?? '';
     }
   }
-  return values;
+  // Authentication is described by the server rather than by the static field list, so its
+  // values are merged in separately.
+  return {...values, ...authenticationToFormValues(response)};
 }
 
 /** Convert flat authentication form values into the structured outbound-authentication API contract. */
@@ -116,8 +204,9 @@ export interface ToRequestOptions {
  * - edit → include the secret only when the user replaced it with a non-empty value;
  *   otherwise omit it so the backend keeps the stored value. Never send the "******" mask.
  *
- * Scopes are split on whitespace/commas into an array (omitted when empty). Empty optional
- * fields are omitted rather than sent as empty strings.
+ * Scopes are split on whitespace/commas into an array (omitted when empty). Number fields are
+ * coerced so an integer API field is not sent as a string. Empty optional fields are omitted
+ * rather than sent as empty strings.
  */
 export function formValuesToRequest(
   values: ConnectionFormValues,
@@ -150,10 +239,24 @@ export function formValuesToRequest(
       continue;
     }
 
+    // Numeric API fields must not be sent as strings.
+    if (field.kind === 'number') {
+      const parsed = Number(raw);
+      if (raw !== '' && Number.isFinite(parsed)) {
+        payload[field.name] = parsed;
+      }
+      continue;
+    }
+
     // Always include required fields and any non-empty value; omit empty optional fields.
     if (field.required || raw !== '') {
-      payload[field.name] = field.kind === 'number' ? Number(raw) : raw;
+      payload[field.name] = raw;
     }
+  }
+
+  const authentication: OutboundAuthConfig | undefined = authenticationFromFormValues(values);
+  if (authentication) {
+    payload['authentication'] = authentication;
   }
 
   return payload as unknown as ConnectionRequest;
@@ -250,6 +353,15 @@ export function validateConnectionForm(
     if (field.pattern && raw !== '' && !field.pattern.test(raw)) {
       errors[field.name] = field.patternErrorKey ?? 'connections:validation.required';
     }
+  }
+
+  // Transport policy mirrored from the backend: credentials must not travel in the clear. The
+  // server rejects the combination with a message the console cannot surface, so the form has to
+  // catch it. Keyed off the transport security field so it only applies to vendors that have one.
+  const authType: string = values[AUTH_TYPE_FIELD] ?? '';
+  const securesTransport: boolean = fields.some((field) => field.name === TLS_FIELD);
+  if (securesTransport && authType !== '' && authType !== AUTH_TYPE_NONE && values[TLS_FIELD] === TLS_DISABLED) {
+    errors[TLS_FIELD] = 'connections:validation.tlsRequiredForAuthentication';
   }
 
   return errors;

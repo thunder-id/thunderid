@@ -29,7 +29,7 @@ const ATTRIBUTE_STALE_TIME: number = 5 * 60 * 1000;
  * An attribute aggregated across every user type that declares it.
  */
 export interface AggregatedUserTypeAttribute extends FlattenedAttribute {
-  /** Names of the user types declaring this attribute. */
+  /** Display names of the user types declaring this attribute. */
   userTypes: string[];
 }
 
@@ -62,11 +62,11 @@ function aggregateAttributes(results: UseQueryResult<ApiUserType>[]): Aggregated
       const existing = aggregated.get(key);
 
       if (existing) {
-        if (!existing.userTypes.includes(userType.name)) {
-          existing.userTypes.push(userType.name);
+        if (!existing.userTypes.includes(userType.displayName)) {
+          existing.userTypes.push(userType.displayName);
         }
       } else {
-        aggregated.set(key, {attribute, credential, userTypes: [userType.name]});
+        aggregated.set(key, {attribute, credential, userTypes: [userType.displayName]});
       }
     }
   }

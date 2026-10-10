@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -1722,7 +1722,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupMembers_WithDisplay
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"grp-002"}).
@@ -2398,7 +2398,7 @@ func TestPopulateMemberDisplayNames_MixedMembers(t *testing.T) {
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 		Return(map[string]string{"employee": "name"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	storeMock := newGroupStoreInterfaceMock(t)
@@ -2434,7 +2434,7 @@ func TestPopulateMemberDisplayNames_UserFallbackToID(t *testing.T) {
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 		Return(map[string]string{"employee": "missing"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &groupService{
@@ -2519,7 +2519,7 @@ func TestPopulateMemberDisplayNames_SchemaServiceError(t *testing.T) {
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 		Return(map[string]string(nil), &tidcommon.ServiceError{Code: "ERR"}).Once()
 
 	service := &groupService{
@@ -2554,7 +2554,7 @@ func TestPopulateMemberDisplayNames_SchemaServiceError_WithGroupMember(t *testin
 		}, nil).Once()
 
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, mock.Anything).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 		Return(map[string]string(nil), &tidcommon.ServiceError{Code: "ERR"}).Once()
 
 	groupStoreMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).

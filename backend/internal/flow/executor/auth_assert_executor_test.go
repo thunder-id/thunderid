@@ -206,6 +206,75 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserNotAuthenticated() {
 	assert.Equal(suite.T(), ErrUserNotAuthenticated.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
+// A provider rejecting the entity-reference fetch as a client error is the identity naming no local
+// user, which is the caller's input. It has to reach the flow as its own client error: wrapping it
+// in a plain error loses the classification and the whole execution answers 500.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceClientErrorFailsAsClientError() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+	}
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (*providers.EntityReference)(nil),
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1009"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err, "a client error must not escape as an executor fault")
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrFailedToIdentifyEntity.Code, resp.Error.Code)
+	assert.Equal(suite.T(), tidcommon.ClientErrorType, resp.Error.Type)
+}
+
+// A server error on the same fetch stays a server error: the execution collapsing to 500 is correct
+// there, and the classification is what tells the two apart.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceServerErrorStaysAFault() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+	}
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (*providers.EntityReference)(nil),
+			&tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "AUTHN-MGR-5000"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+}
+
+// The attribute fetch on the same path had the same collapse, so it carries its own client error too.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAttributesClientErrorFailsAsClientError() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+	}
+
+	suite.setupGetEntityReference("", "")
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (*providers.AttributesResponse)(nil),
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1009"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrAttributeRetrievalFailed.Code, resp.Error.Code)
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAuthorizedPermissions() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -1424,6 +1493,28 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_E
 	_, hasGroups := attrs[oauth2const.UserAttributeGroups]
 	assert.False(suite.T(), hasGroups)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetTransitiveEntityGroups")
+}
+
+// A linked sign-in resolves to a local user, so the stored profile wins over a conflicting claim from
+// the identity provider. The claim still fills an attribute the profile does not hold.
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_StoredProfileWinsOverExternalClaim() {
+	execResp := &providers.ExecutorResponse{}
+	suite.Require().NoError(setExternalIdentity(execResp, "idp-a", "sub-1", map[string]interface{}{
+		"email":   "alice.personal@gmail.com",
+		"picture": "https://example.com/alice.png",
+	}))
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: execResp.RuntimeData,
+	}
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{"email", "picture"},
+		map[string]interface{}{"email": "alice@corp.com"}, "user-123", "", "")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "alice@corp.com", attrs["email"])
+	assert.Equal(suite.T(), "https://example.com/alice.png", attrs["picture"])
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithUserType() {

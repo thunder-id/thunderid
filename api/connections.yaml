@@ -24,6 +24,8 @@ servers:
 tags:
   - name: Connections
     description: Discover available connection types and configure their instances.
+  - name: Connection Metadata
+    description: Describe the configurable options of each connection vendor.
 
 security:
   - OAuth2: [system]
@@ -44,7 +46,7 @@ paths:
           description: Filter instances by functional category. Omit to return all instances.
           schema:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -540,7 +542,6 @@ paths:
       summary: Delete a Twilio connection
       responses:
         "204": { description: Connection deleted }
-        "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -642,7 +643,6 @@ paths:
       summary: Delete a Vonage connection
       responses:
         "204": { description: Connection deleted }
-        "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -746,7 +746,6 @@ paths:
       summary: Delete an SMS gateway connection
       responses:
         "204": { description: Connection deleted }
-        "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -757,6 +756,111 @@ paths:
     get:
       tags: [Connections]
       summary: Get SMS gateway connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only: it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/email-smtp:
+    get:
+      tags: [Connections]
+      summary: List configured SMTP connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an SMTP connection
+      description: Creates an email provider backed by an SMTP server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an SMTP connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an SMTP connection
+      description: >-
+        Omit password to keep the stored value. The stored password is kept only while host, port,
+        authentication type and username are unchanged; changing any of them requires the password
+        to be supplied again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an SMTP connection
+      responses:
+        "204": { description: Connection deleted }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get SMTP connection usages
       description: |
         Returns the resources that reference this connection, aggregated across all resource
         types (for example, flows that use it). Informational only: it drives the pre-delete
@@ -875,6 +979,60 @@ paths:
       responses:
         "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/meta:
+    get:
+      tags: [Connection Metadata]
+      summary: Describe the configurable options of connection vendors
+      description: >-
+        Returns the server-driven description of what each connection vendor can be configured
+        with, so a console can render options it was not built against. Without a `vendor`
+        filter every registered vendor is described; with one, the list holds that vendor alone.
+        Only authentication is described today: which methods a vendor supports and which fields
+        each one takes. A vendor whose credentials are a fixed contract, such as Twilio, reports
+        no methods.
+      parameters:
+        - name: vendor
+          in: query
+          required: false
+          description: >-
+            Limits the result to one connection vendor, as it appears in the /connections/{vendor}
+            path. An unregistered vendor is rejected.
+          schema:
+            type: string
+            enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, email-smtp, authzen-pdp]
+          example: "email-smtp"
+      responses:
+        "200":
+          description: The configurable options of the described vendors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionMetaResponse'
+              example:
+                vendors:
+                  - vendor: "email-smtp"
+                    authentication:
+                      methods:
+                        - type: "none"
+                          displayName: "{{t(system:outboundauth.method.none)}}"
+                          fields: []
+                        - type: "basic"
+                          displayName: "{{t(system:outboundauth.method.basic)}}"
+                          fields:
+                            - key: "username"
+                              type: "string"
+                              required: true
+                              displayName: "{{t(system:outboundauth.field.username)}}"
+                            - key: "password"
+                              type: "string"
+                              required: true
+                              credential: true
+                              displayName: "{{t(system:outboundauth.field.password)}}"
+        "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -1127,14 +1285,14 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp]
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp, email-smtp]
           example: "google"
         categories:
           type: array
           minItems: 1
           items:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
           example: ["identity-provider"]
 
     ConnectionInstanceSummary:
@@ -1418,7 +1576,7 @@ components:
       properties:
         entityType:
           type: string
-          description: ThunderID entity type to which this mapping applies.
+          description: Handle of the user type or agent type to which this mapping applies.
         attributes:
           type: array
           items:
@@ -1490,7 +1648,12 @@ components:
         description: { type: string }
         url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
         httpMethod: { type: string, enum: [GET, POST], example: "POST" }
-        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer abc123" }
+        httpHeaders:
+          type: string
+          description: |
+            Comma-separated `Key: value` pairs sent with every request, including any credential
+            header the gateway requires. Header values are stored and returned in plain text.
+          example: "Authorization: Bearer token"
         contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
     SMSGatewayConnectionCreateRequest:
       $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
@@ -1505,6 +1668,139 @@ components:
         httpMethod: { type: string }
         httpHeaders: { type: string }
         contentType: { type: string }
+
+    SMTPConnectionUpdateRequest:
+      type: object
+      required: [name, host, port, fromAddress]
+      properties:
+        name: { type: string, example: "Corp SMTP" }
+        description: { type: string }
+        host: { type: string, description: "Hostname of the SMTP server.", example: "smtp.example.com" }
+        port: { type: integer, minimum: 1, maximum: 65535, example: 587 }
+        fromAddress: { type: string, format: email, description: "Address used in the From header and the SMTP envelope.", example: "noreply@example.com" }
+        fromName:
+          type: string
+          description: |
+            Display name shown beside `fromAddress` in the From header, so a recipient sees
+            `Acme Support <noreply@example.com>`. Optional: without it the From header carries
+            the bare address. It must not contain a line break. The SMTP envelope sender is
+            always the bare `fromAddress`, whether or not a name is set.
+          example: "Acme Support"
+        tls:
+          type: string
+          enum: [none, starttls, implicit]
+          default: starttls
+          description: |
+            How the connection to the SMTP server is secured. Defaults to `starttls` when
+            omitted. `implicit` dials TLS directly (SMTPS, usually port 465). `none` sends in
+            the clear and cannot carry credentials, so it cannot be combined with an
+            `authentication` method other than `none`.
+          example: "starttls"
+        authentication:
+          allOf:
+            - $ref: '#/components/schemas/OutboundAuthentication'
+          description: |
+            How ThunderID authenticates to the SMTP server. Omit it to send no credentials.
+            Call `GET /connections/meta?vendor=email-smtp` for the methods this deployment supports
+            and the fields each one takes.
+    SMTPConnectionCreateRequest:
+      $ref: '#/components/schemas/SMTPConnectionUpdateRequest'
+    SMTPConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "email-smtp" }
+        host: { type: string }
+        port: { type: integer, example: 587 }
+        fromAddress: { type: string, format: email }
+        fromName: { type: string, example: "Acme Support" }
+        tls: { type: string, enum: [none, starttls, implicit] }
+        authentication: { $ref: '#/components/schemas/OutboundAuthentication' }
+
+    OutboundAuthentication:
+      type: object
+      description: |
+        How ThunderID authenticates itself on an outbound call. The `type` selects the method
+        and `properties` carries that method's fields, so a new method needs no change to this
+        schema. Call `GET /connections/meta?vendor={vendor}` to discover the methods a vendor
+        supports and the fields each one takes.
+
+        A field the method marks as a credential is write-only: it is stored encrypted, returned
+        masked as `"******"`, and may be omitted on update to keep the stored value. Changing
+        `type`, or setting it to `none`, discards the previous method's stored credentials.
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "The authentication method. `none` sends no credentials."
+          example: "basic"
+        properties:
+          type: object
+          additionalProperties: { type: string }
+          description: "The selected method's field values, keyed by field name."
+          example:
+            username: "mailer"
+            password: "<smtp_password>"
+
+    ConnectionMetaResponse:
+      type: object
+      description: "Server-driven description of the configurable options of connection vendors."
+      properties:
+        vendors:
+          type: array
+          description: |
+            Every registered vendor, or the one named by the `vendor` filter. Filtering narrows the
+            list rather than changing the shape of the response.
+          items: { $ref: '#/components/schemas/ConnectionVendorMeta' }
+
+    ConnectionVendorMeta:
+      type: object
+      description: "Server-driven description of one connection vendor's configurable options."
+      properties:
+        vendor: { type: string, example: "email-smtp" }
+        authentication:
+          type: object
+          properties:
+            methods:
+              type: array
+              description: |
+                The outbound authentication methods this vendor supports, in the order a console
+                should offer them. Empty when the vendor has no configurable choice, such as a
+                provider whose credentials are a fixed vendor contract.
+              items: { $ref: '#/components/schemas/OutboundAuthMethod' }
+
+    OutboundAuthMethod:
+      type: object
+      properties:
+        type: { type: string, example: "basic" }
+        displayName:
+          type: string
+          description: "Label for the method. Either plain text or an i18n template pattern."
+          example: "{{t(system:outboundauth.method.basic)}}"
+        fields:
+          type: array
+          description: "The method's fields, in the order a console should render them."
+          items: { $ref: '#/components/schemas/OutboundAuthField' }
+
+    OutboundAuthField:
+      type: object
+      description: |
+        One field of an authentication method, described with the same vocabulary as an entity
+        type's property schema so a console can reuse its schema-driven form renderer.
+      properties:
+        key: { type: string, example: "password" }
+        type: { type: string, enum: [string], example: "string" }
+        required: { type: boolean, example: true }
+        credential:
+          type: boolean
+          description: "A secret: stored encrypted, returned masked, omit on update to keep it."
+          example: true
+        displayName:
+          type: string
+          description: "Label for the field. Either plain text or an i18n template pattern."
+          example: "{{t(system:outboundauth.field.password)}}"
 
     AttributeConfiguration:
       type: object
@@ -1541,27 +1837,27 @@ components:
 
     UserTypeResolution:
       type: object
-      description: Resolves which local user type an incoming federated identity maps to.
+      description: Resolves which local user type an incoming federated identity maps to. User types are referenced by their handle.
       required:
         - default
       properties:
         default:
           type: string
           description: >
-            Fallback local user type, used when claim-driven resolution is not configured or the
-            external attribute's value does not match a mapping.
-          example: "Person"
+            Handle of the fallback local user type, used when claim-driven resolution is not configured
+            or the external attribute's value does not match a mapping.
+          example: "person"
         externalAttribute:
           type: string
           description: External claim whose value selects the local user type.
           example: "user_type"
         valueMapping:
           type: object
-          description: Maps an external attribute value to a local user type.
+          description: Maps an external attribute value to the handle of a local user type.
           additionalProperties:
             type: string
           example:
-            staff: "Employee"
+            staff: "employee"
 
     UserTypeAttributeMapping:
       type: object
@@ -1571,8 +1867,8 @@ components:
       properties:
         userType:
           type: string
-          description: Local user type this profile applies to.
-          example: "Person"
+          description: Handle of the local user type this profile applies to.
+          example: "person"
         attributes:
           type: array
           description: External-to-local attribute mappings for this user type.

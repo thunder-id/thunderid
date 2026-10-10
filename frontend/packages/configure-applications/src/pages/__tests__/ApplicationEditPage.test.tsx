@@ -923,6 +923,44 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
     });
 
+    it('disables save with a named issue when the stored back-channel logout URI is http on a public client', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: {
+          ...mockApplication,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://app.example.com/cb'],
+                publicClient: true,
+                backchannelLogoutUri: 'http://app.example.com/bcl',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      renderComponent();
+
+      const nameSection = screen.getByText('Test Application').closest('div');
+      const editButton = nameSection?.querySelector('button');
+      await user.click(editButton!);
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Application{Enter}');
+
+      // The Advanced tab is not mounted, so this comes from the page's own check of the stored value.
+      await waitFor(() => {
+        expect(screen.getByText(/The back-channel logout URI is not valid\./)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
+    });
+
     it('freezes the flows tab when no user-facing grant is granted', async () => {
       const user = userEvent.setup();
       mockUseGetApplication.mockReturnValue({

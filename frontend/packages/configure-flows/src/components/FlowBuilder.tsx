@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {GradientBorderButton, QueryErrorNotice} from '@thunderid/components';
-import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -129,6 +129,7 @@ function FlowBuilder() {
   // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
   const {data: identityProviders, isPending: isIdentityProvidersPending} = useIdentityProviders();
   const {data: smsProviders, isPending: isSMSProvidersPending} = useSMSProviders();
+  const {data: emailProviders, isPending: isEmailProvidersPending} = useEmailProviders();
   const hasAutoAssignedRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -136,8 +137,9 @@ function FlowBuilder() {
       return;
     }
 
-    // Wait until both data sources are available
-    if (!identityProviders || !smsProviders) {
+    // Wait until every data source has settled. A source whose read failed has no data, and each
+    // branch below skips its executors in that case, so one failed read cannot block the others.
+    if (isIdentityProvidersPending || isSMSProvidersPending || isEmailProvidersPending) {
       return;
     }
 
@@ -153,6 +155,22 @@ function FlowBuilder() {
 
         const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
           (stepData?.properties as Record<string, string> | undefined) ?? {};
+
+        // Handle the Email executor - an email step is unusable without a provider, so it takes
+        // the first one even when several exist; the user can switch it in the resource panel.
+        if (executorName === ExecutionTypes.EmailExecutor) {
+          if ((currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') && emailProviders?.length) {
+            changed = true;
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                properties: {...(stepData?.properties ?? {}), senderId: emailProviders[0].id},
+              },
+            };
+          }
+          return node;
+        }
 
         // Handle SMS executors - auto-assign senderId
         if (SMS_EXECUTORS.has(executorName) && smsProviders) {
@@ -200,7 +218,16 @@ function FlowBuilder() {
 
       return currentNodes;
     });
-  }, [identityProviders, smsProviders, nodes.length, setNodes]);
+  }, [
+    identityProviders,
+    smsProviders,
+    emailProviders,
+    isIdentityProvidersPending,
+    isSMSProvidersPending,
+    isEmailProvidersPending,
+    nodes.length,
+    setNodes,
+  ]);
 
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({
@@ -293,8 +320,12 @@ function FlowBuilder() {
   const isLoadSettlingRef = useRef<boolean>(true);
   useEffect(() => {
     isLoadSettlingRef.current =
-      isLoadingExistingFlow || isIdentityProvidersPending || isSMSProvidersPending || hasUnpositionedNodes(nodes);
-  }, [isLoadingExistingFlow, isIdentityProvidersPending, isSMSProvidersPending, nodes]);
+      isLoadingExistingFlow ||
+      isIdentityProvidersPending ||
+      isSMSProvidersPending ||
+      isEmailProvidersPending ||
+      hasUnpositionedNodes(nodes);
+  }, [isLoadingExistingFlow, isIdentityProvidersPending, isSMSProvidersPending, isEmailProvidersPending, nodes]);
 
   const hasInteractedRef = useRef<boolean>(false);
   useEffect(() => {

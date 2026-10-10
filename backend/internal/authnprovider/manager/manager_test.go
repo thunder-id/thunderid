@@ -1319,3 +1319,464 @@ func TestMergeAttributes_WithVerifications(t *testing.T) {
 		t.Fatalf("expected merged verification")
 	}
 }
+
+// --- LinkAccount ---
+
+func (s *ManagerTestSuite) TestLinkAccount_RoutesToProviderHoldingTheUser() {
+	token := map[string]interface{}{"userID": "user-1"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything, token, "idp-a", "sub-1").
+		Return((*tidcommon.ServiceError)(nil))
+
+	svcErr := s.mgr.LinkAccount(context.Background(),
+		authenticatedAuthUserWithTokens(token, token), "idp-a", "sub-1")
+	s.Nil(svcErr)
+}
+
+// GetEntityReference swaps a resolved token for the reference itself, so by the time a flow reaches
+// the link write the only handle left is the entity id.
+func (s *ManagerTestSuite) TestLinkAccount_BuildsTokenFromResolvedReference() {
+	ref := &providers.EntityReference{EntityID: "user-2", EntityCategory: "user", EntityType: "employee"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything,
+		map[string]interface{}{"userID": "user-2"}, "idp-a", "sub-1").
+		Return((*tidcommon.ServiceError)(nil))
+
+	au := authUserWithDefaultState(providers.AuthState{
+		EntityReference: ref,
+		Attributes:      &providers.AttributesResponse{},
+	})
+	s.Nil(s.mgr.LinkAccount(context.Background(), au, "idp-a", "sub-1"))
+}
+
+// A provider that does not store links has nothing to do, and failing the sign-in over it would
+// break every sign-in through that provider that needs a link.
+func (s *ManagerTestSuite) TestLinkAccount_UnsupportedIsSuccess() {
+	token := map[string]interface{}{"userID": "user-3"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything, token, "idp-a", "sub-1").
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidercm.ErrorCodeNotImplemented,
+		})
+
+	s.Nil(s.mgr.LinkAccount(context.Background(),
+		authenticatedAuthUserWithTokens(token, token), "idp-a", "sub-1"))
+}
+
+// A malformed request is a real failure, so it must not be read as "links not stored" and silently
+// drop the link.
+func (s *ManagerTestSuite) TestLinkAccount_InvalidRequestIsSurfaced() {
+	token := map[string]interface{}{"userID": "user-3b"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything, token, "idp-a", "sub-1").
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidercm.ErrorCodeInvalidRequest,
+		})
+
+	svcErr := s.mgr.LinkAccount(context.Background(),
+		authenticatedAuthUserWithTokens(token, token), "idp-a", "sub-1")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorLinkAccountFailed.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestLinkAccount_ClientErrorIsSurfaced() {
+	token := map[string]interface{}{"userID": "user-4"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything, token, "idp-a", "sub-1").
+		Return(&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidercm.ErrorCodeUserNotFound,
+		})
+
+	svcErr := s.mgr.LinkAccount(context.Background(),
+		authenticatedAuthUserWithTokens(token, token), "idp-a", "sub-1")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorLinkAccountFailed.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestLinkAccount_ServerErrorBecomesInternal() {
+	token := map[string]interface{}{"userID": "user-5"}
+	s.mockProvider.On("StoreAccountLink", mock.Anything, token, "idp-a", "sub-1").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ServerErrorType})
+
+	svcErr := s.mgr.LinkAccount(context.Background(),
+		authenticatedAuthUserWithTokens(token, token), "idp-a", "sub-1")
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestLinkAccount_RejectsEmptyIdentity() {
+	token := map[string]interface{}{"userID": "user-6"}
+	au := authenticatedAuthUserWithTokens(token, token)
+
+	s.Equal(ErrorInvalidRequest.Code,
+		s.mgr.LinkAccount(context.Background(), au, "", "sub-1").Code)
+	s.Equal(ErrorInvalidRequest.Code,
+		s.mgr.LinkAccount(context.Background(), au, "idp-a", "").Code)
+	s.mockProvider.AssertNotCalled(s.T(), "StoreAccountLink",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ManagerTestSuite) TestLinkAccount_RejectsAuthUserWithoutState() {
+	svcErr := s.mgr.LinkAccount(context.Background(), providers.AuthUser{}, "idp-a", "sub-1")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestLinkAccount_RejectsStateWithoutEntity() {
+	au := authUserWithDefaultState(providers.AuthState{Attributes: &providers.AttributesResponse{}})
+	svcErr := s.mgr.LinkAccount(context.Background(), au, "idp-a", "sub-1")
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidRequest.Code, svcErr.Code)
+}
+
+// A verified flow authenticates federated first and by password second, so the AuthUser carries two
+// provider states. The link belongs to whichever provider claimed the first credential.
+func (s *ManagerTestSuite) TestLinkAccount_PrefersTheFirstCredentialProvider() {
+	custom := providermock.NewAuthnProviderInterfaceMock(s.T())
+	mgr, err := Initialize(s.mockProvider, map[string]providers.CustomAuthnProvider{
+		"corp": {Instance: custom, Creds: []string{authnprovidercm.CredentialTypeFederated}},
+	})
+	s.Require().NoError(err)
+
+	corpToken := map[string]interface{}{"userID": "corp-user"}
+	custom.On("StoreAccountLink", mock.Anything, corpToken, "idp-a", "sub-1").
+		Return((*tidcommon.ServiceError)(nil))
+
+	au := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {
+			EntityReferenceToken: map[string]interface{}{"userID": "local-user"},
+			AttributeToken:       map[string]interface{}{"userID": "local-user"},
+		},
+		"corp": {EntityReferenceToken: corpToken, AttributeToken: corpToken},
+	})
+
+	s.Nil(mgr.LinkAccount(context.Background(), au, "idp-a", "sub-1"))
+	s.mockProvider.AssertNotCalled(s.T(), "StoreAccountLink",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// --- ResolveLinkCandidates tests ---
+
+// pendingFederatedAuthUser returns an AuthUser carrying an unresolved federated identity with the
+// given account-linking filters.
+func pendingFederatedAuthUser(filters any) providers.AuthUser {
+	token := map[string]interface{}{"federatedIdpId": "idp-1", "sub": "sub-1"}
+	if filters != nil {
+		token[authnprovidercm.AccountLinkingFiltersKey] = filters
+	}
+	return authenticatedAuthUserWithTokens(token, token)
+}
+
+var errUserNotFound = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType, Code: authnprovidercm.ErrorCodeUserNotFound}
+
+// The provider resolves each filter the way it resolves any other attribute lookup.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_MatchesOnLinkingAttributes() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1"}, candidates.EntityIDs)
+		s.Equal(map[string]string{"email": "jane@example.com"}, candidates.MatchedAttributes)
+	}
+}
+
+// Any one filter may name the user, so a miss on the first still tries the next.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_LaterFilterMatches() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{
+		{"username": "jane@example.com"}, {"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"username": "jane@example.com"}).
+		Return(nil, errUserNotFound)
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1"}, candidates.EntityIDs)
+		s.Equal(map[string]string{"email": "jane@example.com"}, candidates.MatchedAttributes)
+	}
+}
+
+// Filters that all name the same user report every value it matched on.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_ReportsEveryMatchingFilter() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{
+		{"username": "jane@example.com"}, {"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1"}, candidates.EntityIDs)
+		s.Equal(map[string]string{"username": "jane@example.com", "email": "jane@example.com"},
+			candidates.MatchedAttributes)
+	}
+}
+
+// Filters naming different users all count, sorted by id, and verification decides which one is
+// the End-User's. A user named by two filters is listed once, and each entity type once, in the
+// order found.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_FiltersNamingDifferentUsersAreAllCandidates() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{
+		{"username": "jane@example.com"}, {"email": "jane@example.com"}, {"mobile": "+15550100"}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"username": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-2", EntityType: "employee"}, (*tidcommon.ServiceError)(nil))
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-1", EntityType: "customer"}, (*tidcommon.ServiceError)(nil))
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"mobile": "+15550100"}).
+		Return(&providers.EntityReference{EntityID: "user-2", EntityType: "employee"}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1", "user-2"}, candidates.EntityIDs)
+		s.Equal([]string{"employee", "customer"}, candidates.EntityTypes)
+		s.Equal(map[string]string{
+			"username": "jane@example.com", "email": "jane@example.com", "mobile": "+15550100"},
+			candidates.MatchedAttributes)
+	}
+}
+
+// Nothing matching is the ordinary first sign-in through a connection, not a failure. A provider
+// answering with no entity id names nobody either.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_NoMatchReturnsNothing() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{
+		{"username": "jane@example.com"}, {"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"username": "jane@example.com"}).
+		Return(nil, errUserNotFound)
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	s.Nil(candidates)
+}
+
+// A provider that cannot list what an ambiguous lookup matched leaves no ids to verify against, so
+// the lookup still fails closed.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_AmbiguousMatchFailsClosed() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: authnprovidercm.ErrorCodeAmbiguousUser})
+	s.mockProvider.On("SearchEntityReferences", mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType, Code: authnprovidercm.ErrorCodeNotImplemented})
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
+	}
+}
+
+// searchingManager is the suite's manager, with the provider's ambiguous lookups listing refs, or
+// failing with err.
+func (s *ManagerTestSuite) searchingManager(refs []providers.EntityReference,
+	err *tidcommon.ServiceError) providers.AuthnProviderManager {
+	s.mockProvider.On("SearchEntityReferences", mock.Anything, mock.Anything).Return(refs, err)
+	return s.mgr
+}
+
+var errAmbiguousUser = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType, Code: authnprovidercm.ErrorCodeAmbiguousUser}
+
+// entityRefs returns a reference for each id.
+func entityRefs(ids ...string) []providers.EntityReference {
+	refs := make([]providers.EntityReference, 0, len(ids))
+	for _, id := range ids {
+		refs = append(refs, providers.EntityReference{EntityID: id})
+	}
+	return refs
+}
+
+// One lookup matching several entities offers each of them, merged with what the other lookups
+// name and sorted by id.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_AmbiguousMatchListsEveryUser() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{
+		{"costCenter": "CC-1"}, {"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"costCenter": "CC-1"}).Return(nil, errAmbiguousUser)
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	candidates, svcErr := s.searchingManager(entityRefs("user-3", "user-1"), nil).
+		ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1", "user-3"}, candidates.EntityIDs)
+		s.Equal(map[string]string{"costCenter": "CC-1", "email": "jane@example.com"},
+			candidates.MatchedAttributes)
+	}
+}
+
+// The search matches differently from the lookup, so it is trusted only when it lists several: one
+// or none is a disagreement between the two, and nothing may be picked from it.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_AmbiguousMatchListingFewerThanTwoFailsClosed() {
+	for name, refs := range map[string][]providers.EntityReference{
+		"none": nil, "one": entityRefs("user-1"), "no ids": entityRefs("", ""),
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			authUser := pendingFederatedAuthUser([]map[string]interface{}{{"costCenter": "CC-1"}})
+			s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+				Return(nil, errAmbiguousUser)
+
+			candidates, svcErr := s.searchingManager(refs, nil).
+				ResolveLinkCandidates(context.Background(), authUser)
+
+			s.Nil(candidates)
+			if s.NotNil(svcErr) {
+				s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
+			}
+		})
+	}
+}
+
+// More candidates than the cap means a linking attribute that barely tells accounts apart, so the
+// match fails closed rather than carrying them all through the flow.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_TooManyCandidatesFailClosed() {
+	ids := make([]string, 0, maxLinkingCandidates+1)
+	for i := 0; i <= maxLinkingCandidates; i++ {
+		ids = append(ids, "user-"+string(rune('a'+i)))
+	}
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"costCenter": "CC-1"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(nil, errAmbiguousUser)
+
+	candidates, svcErr := s.searchingManager(entityRefs(ids...), nil).
+		ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
+	}
+}
+
+// Once the candidates pass the cap, the remaining filters are not looked up.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_StopsLookingUpPastTheCap() {
+	ids := make([]string, 0, maxLinkingCandidates+1)
+	for i := 0; i <= maxLinkingCandidates; i++ {
+		ids = append(ids, "user-"+string(rune('a'+i)))
+	}
+	first := map[string]interface{}{"costCenter": "CC-1"}
+	second := map[string]interface{}{"department": "D-1"}
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{first, second})
+	s.mockProvider.On("GetEntityReference", context.Background(), first).
+		Return(nil, errAmbiguousUser)
+
+	candidates, svcErr := s.searchingManager(entityRefs(ids...), nil).
+		ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(ErrorAmbiguousUser.Code, svcErr.Code)
+	}
+	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", context.Background(), second)
+}
+
+// Exactly the cap is still a choice verification can make.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_CandidatesAtTheCapAreOffered() {
+	ids := make([]string, 0, maxLinkingCandidates)
+	for i := 0; i < maxLinkingCandidates; i++ {
+		ids = append(ids, "user-"+string(rune('a'+i)))
+	}
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"costCenter": "CC-1"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(nil, errAmbiguousUser)
+
+	candidates, svcErr := s.searchingManager(entityRefs(ids...), nil).
+		ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal(ids, candidates.EntityIDs)
+	}
+}
+
+func (s *ManagerTestSuite) TestResolveLinkCandidates_AmbiguousMatchSearchFailureFails() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"costCenter": "CC-1"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(nil, errAmbiguousUser)
+
+	candidates, svcErr := s.searchingManager(nil,
+		&tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "AUP-5000"}).
+		ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	}
+}
+
+func (s *ManagerTestSuite) TestResolveLinkCandidates_ProviderServerErrorFails() {
+	authUser := pendingFederatedAuthUser([]map[string]interface{}{{"email": "jane@example.com"}})
+	s.mockProvider.On("GetEntityReference", context.Background(), mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "AUP-5000"})
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(candidates)
+	if s.NotNil(svcErr) {
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	}
+}
+
+// The token is persisted with the flow, so the filters come back from JSON in their decoded shape.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_ReadsFiltersAfterJSONRoundTrip() {
+	authUser := pendingFederatedAuthUser([]interface{}{
+		map[string]interface{}{"email": "jane@example.com"}, "not-a-filter", map[string]interface{}{}})
+	s.mockProvider.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"email": "jane@example.com"}).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	if s.NotNil(candidates) {
+		s.Equal([]string{"user-1"}, candidates.EntityIDs)
+	}
+}
+
+// A connection with no account-linking attributes configured has nothing to match on, so the
+// provider is never asked. Attribute values outside the filter list are never matched on either.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_NoLinkingAttributesSkipsLookup() {
+	authUser := authenticatedAuthUserWithTokens(
+		map[string]interface{}{"federatedIdpId": "idp-1", "sub": "sub-1", "email": "jane@example.com"},
+		map[string]interface{}{"federatedIdpId": "idp-1", "sub": "sub-1", "email": "jane@example.com"})
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	s.Nil(candidates)
+	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+// An already-resolved state carries no pending identity, so there is nothing to match.
+func (s *ManagerTestSuite) TestResolveLinkCandidates_ResolvedStateHasNoPendingIdentity() {
+	authUser := authenticatedAuthUserWithResolved(&providers.EntityReference{EntityID: "user-1"}, nil)
+
+	candidates, svcErr := s.mgr.ResolveLinkCandidates(context.Background(), authUser)
+
+	s.Nil(svcErr)
+	s.Nil(candidates)
+	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}

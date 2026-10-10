@@ -15,14 +15,15 @@ import (
 )
 
 const (
-	promptConsentClientID   = "prompt_consent_test_client"
+	promptConsentClientID    = "prompt_consent_test_client"
 	promptConsentRedirectURI = "https://localhost:3000"
-	promptConsentUsername   = "prompt_consent_test_user"
-	promptConsentPassword   = "PromptConsentPass1!"
+	promptConsentUsername    = "prompt_consent_test_user"
+	promptConsentPassword    = "PromptConsentPass1!"
 )
 
 var promptConsentUserType = testutils.UserType{
-	Name: "prompt-consent-person",
+	Handle:      "prompt-consent-person",
+	DisplayName: "Prompt Consent Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},
@@ -86,7 +87,7 @@ var promptConsentAuthFlow = testutils.Flow{
 // consentPurposePrompt mirrors providers.ConsentPurposePrompt, just enough to build an
 // "approve everything" ConsentDecisions payload from what the server forwards to the prompt.
 type consentPurposePrompt struct {
-	PurposeName string             `json:"purposeName"`
+	PurposeName string              `json:"purposeName"`
 	Essential   []consentElementRef `json:"essential"`
 	Optional    []consentElementRef `json:"optional"`
 }

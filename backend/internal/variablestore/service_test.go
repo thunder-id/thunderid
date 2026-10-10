@@ -339,3 +339,55 @@ func (s *ServiceTestSuite) TestCreateSecretLosingTheRaceIsAConflict() {
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorAlreadyExists.Code, svcErr.Code)
 }
+
+// A variable resolves to its value, and a name with nothing held resolves to nothing.
+func (s *ServiceTestSuite) TestResolveVariableReturnsItsValue() {
+	ctx := context.Background()
+	s.store.On("GetVariable", ctx, "API_URL").Return(&Variable{Name: "API_URL", Value: "https://x.test"}, nil).Once()
+	s.store.On("GetVariable", ctx, "ABSENT").Return(nil, nil).Once()
+	resolver := s.service.(ReferenceResolverInterface)
+
+	value, held, svcErr := resolver.ResolveVariable(ctx, "API_URL")
+	s.Nil(svcErr)
+	s.True(held)
+	s.Equal("https://x.test", value)
+
+	_, held, svcErr = resolver.ResolveVariable(ctx, "ABSENT")
+	s.Nil(svcErr)
+	s.False(held)
+}
+
+// A secret resolves to its value, opened from what is stored.
+func (s *ServiceTestSuite) TestResolveSecretOpensTheStoredValue() {
+	ctx := context.Background()
+	s.store.On("GetSecretValue", ctx, "DB_PASSWORD").Return("terces", true, nil).Once()
+	s.store.On("GetSecretValue", ctx, "ABSENT").Return("", false, nil).Once()
+	resolver := s.service.(ReferenceResolverInterface)
+
+	value, held, svcErr := resolver.ResolveSecret(ctx, "DB_PASSWORD")
+	s.Nil(svcErr)
+	s.True(held)
+	s.Equal("secret", value)
+
+	_, held, svcErr = resolver.ResolveSecret(ctx, "ABSENT")
+	s.Nil(svcErr)
+	s.False(held)
+}
+
+// A read or decryption that fails is reported without describing why.
+func (s *ServiceTestSuite) TestResolveReportsFailuresWithoutDetail() {
+	ctx := context.Background()
+	s.store.On("GetVariable", ctx, "API_URL").Return(nil, errors.New("database is down")).Once()
+	s.store.On("GetSecretValue", ctx, "DB_PASSWORD").Return("", false, errors.New("database is down")).Once()
+	resolver := s.service.(ReferenceResolverInterface)
+
+	_, _, svcErr := resolver.ResolveVariable(ctx, "API_URL")
+	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
+	_, _, svcErr = resolver.ResolveSecret(ctx, "DB_PASSWORD")
+	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
+
+	undecryptable := newService(s.store, reversingCrypto{err: errors.New("no key")}).(ReferenceResolverInterface)
+	s.store.On("GetSecretValue", ctx, "DB_PASSWORD").Return("terces", true, nil).Once()
+	_, _, svcErr = undecryptable.ResolveSecret(ctx, "DB_PASSWORD")
+	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
+}

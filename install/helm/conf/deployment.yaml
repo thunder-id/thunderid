@@ -256,6 +256,15 @@ oauth:
   dcr:
     enabled: {{ .Values.configuration.oauth.dcr.enabled }}
     insecure: {{ .Values.configuration.oauth.dcr.insecure }}
+  logout:
+    backchannel:
+      enabled: {{ .Values.configuration.oauth.logout.backchannel.enabled }}
+      reject_private_addresses: {{ .Values.configuration.oauth.logout.backchannel.rejectPrivateAddresses }}
+  client_assertion:
+    max_lifetime: {{ .Values.configuration.oauth.clientAssertion.maxLifetime }}
+    max_iat_age: {{ .Values.configuration.oauth.clientAssertion.maxIatAge }}
+  cimd:
+    enabled: {{ .Values.configuration.oauth.cimd.enabled }}
   send_server_errors_to_client: {{ .Values.configuration.oauth.sendServerErrorsToClient }}
   allowed_auth_methods:
   {{- range .Values.configuration.oauth.allowedAuthMethods }}
@@ -288,6 +297,9 @@ flow:
     - {{ . | quote }}
   {{- end }}
 {{- end }}
+
+direct_api:
+  enabled: {{ .Values.configuration.directApi.enabled }}
 
 passkey:
   allowed_origins:
@@ -330,27 +342,13 @@ openid4vci:
   store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vci.store "field" "configuration.openid4vci.store") | quote }}
   {{- end }}
 
-{{- $email := default dict .Values.configuration.email }}
-{{- $smtp := default dict $email.smtp }}
-{{- if $smtp.host }}
+scim:
+  urn_prefix: {{ .Values.configuration.scim.urnPrefix | quote }}
 
-email:
-  smtp:
-    host: {{ $smtp.host | quote }}
-    port: {{ required "configuration.email.smtp.port is required when configuration.email.smtp.host is set." $smtp.port }}
-    from_address: {{ required "configuration.email.smtp.fromAddress is required when configuration.email.smtp.host is set." $smtp.fromAddress | quote }}
-    {{- if hasKey $smtp "enableStartTls" }}
-    enable_start_tls: {{ $smtp.enableStartTls }}
-    {{- end }}
-    {{- if hasKey $smtp "enableAuthentication" }}
-    enable_authentication: {{ $smtp.enableAuthentication }}
-    {{- end }}
-    {{- if $smtp.username }}
-    username: {{ $smtp.username | quote }}
-    {{- end }}
-    {{- if or $smtp.password (default dict $smtp.passwordRef).key }}
-    password: {{ "{{.SMTP_PASSWORD}}" | quote }}
-    {{- end }}
+{{- /* Values copied from a v1.0.0 chart carry an email block with an empty host, which never enabled email. */}}
+{{- $legacyEmail := default dict (default dict .Values.configuration).email }}
+{{- if (default dict $legacyEmail.smtp).host }}
+{{- fail "configuration.email is no longer supported. Create an email provider connection and set senderId on each email flow step." }}
 {{- end }}
 
 {{- $log := default dict .Values.configuration.log }}

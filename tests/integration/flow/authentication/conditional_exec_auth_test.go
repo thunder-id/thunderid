@@ -9,9 +9,9 @@ import (
 
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -107,7 +107,8 @@ var (
 	}
 
 	conditionalExecEntityType = testutils.UserType{
-		Name:                  "conditional_exec_flow_user",
+		Handle:                "conditional_exec_flow_user",
+		DisplayName:           "Conditional Exec Flow User",
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
@@ -227,7 +228,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 
 	existingUser := testutils.User{
-		Type:       conditionalExecEntityType.Name,
+		Type:       conditionalExecEntityType.Handle,
 		OUID:       conditionalExecPreCreatedOUID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -370,7 +371,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestSkipConditionalNodes() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		flowStep.Assertion,
 		conditionalExecTestAppID,
-		conditionalExecEntityType.Name,
+		conditionalExecEntityType.Handle,
 		conditionalExecPreCreatedOUID,
 		conditionalExecTestOU.Name,
 		conditionalExecTestOU.Handle,
@@ -431,7 +432,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestExecuteConditionalNodes() {
 	ts.Require().NoError(err, "Failed to decode JWT assertion")
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 	ts.Require().Equal(conditionalExecTestAppID, jwtClaims.Aud, "JWT aud should match app ID")
-	ts.Require().Equal(conditionalExecEntityType.Name, jwtClaims.UserType, "JWT userType should match schema")
+	ts.Require().Equal(conditionalExecEntityType.Handle, jwtClaims.UserType, "JWT userType should match schema")
 	ts.Require().NotEmpty(jwtClaims.OUID, "JWT ouId should not be empty")
 
 	// Verify the created OU

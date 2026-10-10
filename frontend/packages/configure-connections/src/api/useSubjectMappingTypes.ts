@@ -9,7 +9,7 @@ import type {SubjectMappingTypeLists} from '../models/subject-mapping';
 
 interface SubjectTypeListResponse {
   totalResults: number;
-  types: {id: string; name: string}[];
+  types: {id: string; handle: string; displayName: string}[];
 }
 
 export default function useSubjectMappingTypes(): UseQueryResult<SubjectMappingTypeLists> {
@@ -32,7 +32,9 @@ export default function useSubjectMappingTypes(): UseQueryResult<SubjectMappingT
 
         return response.data;
       };
-      const fetchAllPages = async (path: 'agent-types' | 'user-types'): Promise<{id: string; name: string}[]> => {
+      const fetchAllPages = async (
+        path: 'agent-types' | 'user-types',
+      ): Promise<{id: string; handle: string; displayName: string}[]> => {
         const firstPage = await fetchPage(path, 0);
         const remainingOffsets = Array.from(
           {length: Math.max(0, Math.ceil(firstPage.totalResults / SUBJECT_MAPPING_TYPES_PAGE_SIZE) - 1)},

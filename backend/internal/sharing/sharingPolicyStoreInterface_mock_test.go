@@ -37,6 +37,78 @@ func (_m *sharingPolicyStoreInterfaceMock) EXPECT() *sharingPolicyStoreInterface
 	return &sharingPolicyStoreInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CountPoliciesForResource provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) CountPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) (int, error) {
+	ret := _mock.Called(ctx, rt, resourceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountPoliciesForResource")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) (int, error)); ok {
+		return returnFunc(ctx, rt, resourceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string) int); ok {
+		r0 = returnFunc(ctx, rt, resourceID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string) error); ok {
+		r1 = returnFunc(ctx, rt, resourceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountPoliciesForResource'
+type sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call struct {
+	*mock.Call
+}
+
+// CountPoliciesForResource is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) CountPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
+	return &sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call{Call: _e.mock.On("CountPoliciesForResource", ctx, rt, resourceID)}
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call) Return(n int, err error) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) (int, error)) *sharingPolicyStoreInterfaceMock_CountPoliciesForResource_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreatePolicy provides a mock function for the type sharingPolicyStoreInterfaceMock
 func (_mock *sharingPolicyStoreInterfaceMock) CreatePolicy(ctx context.Context, p Policy) error {
 	ret := _mock.Called(ctx, p)
@@ -519,12 +591,12 @@ func (_c *sharingPolicyStoreInterfaceMock_GetPolicyByInitiator_Call) RunAndRetur
 	return _c
 }
 
-// ListPoliciesForResource provides a mock function for the type sharingPolicyStoreInterfaceMock
-func (_mock *sharingPolicyStoreInterfaceMock) ListPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error) {
+// ListAllPoliciesForResource provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) ListAllPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error) {
 	ret := _mock.Called(ctx, rt, resourceID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListPoliciesForResource")
+		panic("no return value specified for ListAllPoliciesForResource")
 	}
 
 	var r0 []Policy
@@ -547,20 +619,20 @@ func (_mock *sharingPolicyStoreInterfaceMock) ListPoliciesForResource(ctx contex
 	return r0, r1
 }
 
-// sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPoliciesForResource'
-type sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call struct {
+// sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAllPoliciesForResource'
+type sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call struct {
 	*mock.Call
 }
 
-// ListPoliciesForResource is a helper method to define mock.On call
+// ListAllPoliciesForResource is a helper method to define mock.On call
 //   - ctx context.Context
 //   - rt ResourceType
 //   - resourceID string
-func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
-	return &sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call{Call: _e.mock.On("ListPoliciesForResource", ctx, rt, resourceID)}
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListAllPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
+	return &sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call{Call: _e.mock.On("ListAllPoliciesForResource", ctx, rt, resourceID)}
 }
 
-func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
+func (_c *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string)) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -583,12 +655,98 @@ func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) Run(run 
 	return _c
 }
 
+func (_c *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call) Return(policys []Policy, err error) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
+	_c.Call.Return(policys, err)
+	return _c
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)) *sharingPolicyStoreInterfaceMock_ListAllPoliciesForResource_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListPoliciesForResource provides a mock function for the type sharingPolicyStoreInterfaceMock
+func (_mock *sharingPolicyStoreInterfaceMock) ListPoliciesForResource(ctx context.Context, rt ResourceType, resourceID string, limit int, offset int) ([]Policy, error) {
+	ret := _mock.Called(ctx, rt, resourceID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPoliciesForResource")
+	}
+
+	var r0 []Policy
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, int, int) ([]Policy, error)); ok {
+		return returnFunc(ctx, rt, resourceID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, int, int) []Policy); ok {
+		r0 = returnFunc(ctx, rt, resourceID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Policy)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, int, int) error); ok {
+		r1 = returnFunc(ctx, rt, resourceID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPoliciesForResource'
+type sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call struct {
+	*mock.Call
+}
+
+// ListPoliciesForResource is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - limit int
+//   - offset int
+func (_e *sharingPolicyStoreInterfaceMock_Expecter) ListPoliciesForResource(ctx interface{}, rt interface{}, resourceID interface{}, limit interface{}, offset interface{}) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
+	return &sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call{Call: _e.mock.On("ListPoliciesForResource", ctx, rt, resourceID, limit, offset)}
+}
+
+func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, limit int, offset int)) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
 func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) Return(policys []Policy, err error) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
 	_c.Call.Return(policys, err)
 	return _c
 }
 
-func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, error)) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
+func (_c *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, limit int, offset int) ([]Policy, error)) *sharingPolicyStoreInterfaceMock_ListPoliciesForResource_Call {
 	_c.Call.Return(run)
 	return _c
 }

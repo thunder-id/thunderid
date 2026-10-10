@@ -71,19 +71,20 @@ func PaginateUsages(resp *DependenciesResponse, limit, offset int) *Dependencies
 
 // Resource type identifiers shared across dependency providers and consumers.
 const (
-	ResourceTypeTheme              = "theme"
-	ResourceTypeLayout             = "layout"
-	ResourceTypeFlow               = "flow"
-	ResourceTypeUser               = "user"
-	ResourceTypeApplication        = "application"
-	ResourceTypeAgent              = "agent"
-	ResourceTypeGroup              = "group"
-	ResourceTypeIDP                = "idp"
-	ResourceTypeNotificationSender = "notificationSender"
-	ResourceTypeOU                 = "organizationUnit"
-	ResourceTypeResourceServer     = "resourceServer"
-	ResourceTypeResource           = "resource"
-	ResourceTypeAction             = "action"
+	ResourceTypeTheme                = "theme"
+	ResourceTypeLayout               = "layout"
+	ResourceTypeFlow                 = "flow"
+	ResourceTypeUser                 = "user"
+	ResourceTypeApplication          = "application"
+	ResourceTypeAgent                = "agent"
+	ResourceTypeGroup                = "group"
+	ResourceTypeIDP                  = "idp"
+	ResourceTypeNotificationSender   = "notificationSender"
+	ResourceTypeNotificationTemplate = "notificationTemplate"
+	ResourceTypeOU                   = "organizationUnit"
+	ResourceTypeResourceServer       = "resourceServer"
+	ResourceTypeResource             = "resource"
+	ResourceTypeAction               = "action"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

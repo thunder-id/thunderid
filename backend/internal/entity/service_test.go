@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newEntityStoreInterfaceMock(s.T())
+	s.store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	s.hashService = hashmock.NewHashServiceInterfaceMock(s.T())
 	// Default: hashService.Generate returns a deterministic hash for any input.
 	s.hashService.On("Generate", mock.Anything).Return(cryptolib.Credential{
@@ -116,7 +118,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_NilEntity() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_StoreFails() {
 	e := testEntity("e5")
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
@@ -124,7 +126,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_StoreFails() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails() {
 	e := testEntity("e6")
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
@@ -133,6 +135,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_Success() {
 	e := testEntity("e7")
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	got, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
@@ -240,6 +243,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_DropsUndeclaredBeforeValidateAndStor
 	ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, e.Type, cleaned, mock.Anything).
 		Return(true, nil)
 	// The stale key is dropped before the full-object update reaches the store.
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, mock.MatchedBy(func(ent *providers.Entity) bool {
 		return string(ent.Attributes) == string(cleaned)
 	})).Return(nil)
@@ -298,6 +302,7 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsCredentialMarkerPreservin
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e}, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).Return(nil)
 
 	var written json.RawMessage
@@ -321,6 +326,7 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotat
 		Return(&entityWithCredentials{Entity: e}, nil)
 	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
 		Return(nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
 		Return(nil)
 
@@ -533,7 +539,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_NilEntity_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_UpdateFails_ViaOldPath() {
 	e := testEntity("uc1")
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
@@ -541,7 +547,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_UpdateFails_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails_ViaOldPath() {
 	e := testEntity("uc3")
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
@@ -550,6 +556,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_Success_ViaOldPath() {
 	e := testEntity("uc4")
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	got, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
@@ -713,7 +720,7 @@ func (s *ServiceTestSuite) TestSetCredentialUpdatedAt_EmptyBlobStartsFresh() {
 func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesCredentialMarker() {
 	e := testEntity("e-preserve")
 	e.SystemAttributes = json.RawMessage(`{"name":"Old","credentialUpdatedAt":"2026-08-12T10:00:00Z"}`)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 
 	var written json.RawMessage
 	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
@@ -731,6 +738,7 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesCredentialMarker(
 func (s *ServiceTestSuite) TestUpdateEntity_PreservesCredentialMarker() {
 	stored := testEntity("e-preserve-2")
 	stored.SystemAttributes = json.RawMessage(`{"credentialUpdatedAt":"2026-08-12T10:00:00Z"}`)
+	s.store.On("LockEntity", mock.Anything, stored.ID).Return(*stored, nil)
 	s.store.On("GetEntity", mock.Anything, stored.ID).Return(*stored, nil)
 	s.store.On("UpdateEntity", mock.Anything, mock.Anything).Return(nil)
 
@@ -745,11 +753,325 @@ func (s *ServiceTestSuite) TestUpdateEntity_PreservesCredentialMarker() {
 	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
 }
 
+// Linked accounts are what resolves a returning linked user. Dropping them on an
+// unrelated profile update would re-provision that user into a unique-attribute conflict on their
+// next login, so they survive a wholesale replacement of the blob alongside the credential marker.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesLinkedAccounts() {
+	e := testEntity("e-preserve-fed")
+	e.SystemAttributes = json.RawMessage(
+		`{"name":"Old","credentialUpdatedAt":"2026-08-12T10:00:00Z",` +
+			`"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Equal("New", attrs["name"], "the caller's own keys are replaced")
+	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+	s.Equal(map[string]interface{}{"idp-a": map[string]interface{}{"sub-1": map[string]interface{}{}}},
+		attrs[authnprovidercm.SystemAttrLinkedIDs])
+}
+
+// A stored blob that does not parse may still hold reserved keys, so the replace fails rather than
+// dropping them.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_UnparsableStoredBlobFails() {
+	e := testEntity("e-preserve-bad")
+	e.SystemAttributes = json.RawMessage(`not json`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	s.Error(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Links are written only by LinkAccount, which enforces the link limit, so a caller that
+// sends linkedIds through a wholesale replace has them dropped when the entity holds none.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_DropsCallerSentLinks() {
+	e := testEntity("e-sent-links")
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID,
+		json.RawMessage(`{"name":"New","linkedIds":{"idp-a":{"sub-x":{}}}}`)))
+	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+// A caller's linkedIds never replace the stored links.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_StoredLinksOverrideCallerSentLinks() {
+	e := testEntity("e-override-links")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID,
+		json.RawMessage(`{"name":"New","linkedIds":{"idp-b":{"sub-x":{}}}}`)))
+	s.JSONEq(`{"name":"New","linkedIds":{"idp-a":{"sub-1":{}}}}`, string(written))
+}
+
+// linkedIds are indexed whatever the configuration, so the subjects across every connection are held
+// to the per-attribute limit on input as well.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_RejectsLinksOverLimit() {
+	byIDP := map[string]interface{}{"idp-a": map[string]interface{}{}, "idp-b": map[string]interface{}{}}
+	for i := 0; i <= maxIndexedValuesPerAttribute; i++ {
+		idp := "idp-a"
+		if i%2 == 1 {
+			idp = "idp-b"
+		}
+		byIDP[idp].(map[string]interface{})[fmt.Sprintf("sub-%d", i)] = map[string]interface{}{}
+	}
+	blob, err := json.Marshal(map[string]interface{}{authnprovidercm.SystemAttrLinkedIDs: byIDP})
+	s.Require().NoError(err)
+
+	err = s.svc.UpdateSystemAttributes(s.ctx, "e-over", blob)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The credential marker is written over the blob read under the entity's lock, not the copy read
+// with the credentials, which can come from a cache filled before a concurrent link committed.
+func (s *ServiceTestSuite) TestUpdateCredentials_StampsOverLockedBlob() {
+	cached := testEntity("e-pw-lock")
+	locked := *cached
+	locked.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("GetEntity", mock.Anything, cached.ID).Return(*cached, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, cached.ID).
+		Return(&entityWithCredentials{Entity: cached}, nil)
+	s.store.On("UpdateCredentials", mock.Anything, cached.ID, mock.Anything).Return(nil)
+	s.store.On("LockEntity", mock.Anything, cached.ID).Return(locked, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, cached.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateCredentials(s.ctx, cached.ID, json.RawMessage(`{"password":"new-secret"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Contains(attrs, authnprovidercm.SystemAttrLinkedIDs)
+	s.NotEmpty(attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOverLockedBlob() {
+	cached := testEntity("e-cs-lock")
+	locked := *cached
+	locked.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("GetEntityWithCredentials", mock.Anything, cached.ID).
+		Return(&entityWithCredentials{Entity: cached}, nil)
+	s.store.On("UpdateSystemCredentials", mock.Anything, cached.ID, mock.Anything).Return(nil)
+	s.store.On("LockEntity", mock.Anything, cached.ID).Return(locked, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, cached.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, cached.ID, json.RawMessage(`{"clientSecret":"rotated"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Contains(attrs, authnprovidercm.SystemAttrLinkedIDs)
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_RecordsLink() {
+	e := testEntity("e-link")
+	s.expectLinkLock(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-1"))
+	s.JSONEq(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`, string(written))
+	s.store.AssertNotCalled(s.T(), "GetEntity", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_AddsSecondConnection() {
+	e := testEntity("e-link-2")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-b", "sub-2"))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	links, _ := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+	s.Len(links, 2, "linking a second connection must not drop the first")
+}
+
+// Re-authenticating through an already-linked connection must not churn the entity.
+func (s *ServiceTestSuite) TestLinkAccount_SameSubjectIsNoOp() {
+	e := testEntity("e-link-3")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(*e, nil)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-1"))
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A user may hold several accounts at one connection, so a second subject is added alongside the
+// first. The subjects share the identifier NAME and differ by VALUE, which the primary key keeps
+// apart.
+func (s *ServiceTestSuite) TestLinkAccount_AddsSecondSubjectAtSameConnection() {
+	e := testEntity("e-link-4")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-other"))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	links, _ := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+	s.Equal(map[string]interface{}{"sub-1": map[string]interface{}{}, "sub-other": map[string]interface{}{}},
+		links["idp-a"],
+		"a second account at the same connection must not replace the first")
+}
+
+// expectLinkLock expects the link write to lock the entity, reading it as e, and look the pair up,
+// answering with holder as the entity that already holds it (nil for none).
+func (s *ServiceTestSuite) expectLinkLock(e providers.Entity, holder *string) {
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(e, nil).Once()
+	if holder == nil {
+		s.store.On("ResolveLinkedAccount", mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, ErrEntityNotFound).Once()
+		return
+	}
+	s.store.On("ResolveLinkedAccount", mock.Anything, mock.Anything, mock.Anything).
+		Return(holder, nil).Once()
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_RefusesPairHeldByAnotherEntity() {
+	other := "e-other"
+	s.expectLinkLock(*testEntity("e-link-5"), &other)
+
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "e-link-5", "idp-a", "sub-1"), ErrLinkedAccountConflict)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_RefusesAmbiguousPair() {
+	s.store.On("LockEntity", mock.Anything, "e-link-6").Return(*testEntity("e-link-6"), nil).Once()
+	s.store.On("ResolveLinkedAccount", mock.Anything, "idp-a", "sub-1").
+		Return(nil, ErrAmbiguousEntity).Once()
+
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "e-link-6", "idp-a", "sub-1"), ErrLinkedAccountConflict)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The entity's own pair resolving to itself is a repeat link, not a conflict.
+func (s *ServiceTestSuite) TestLinkAccount_OwnPairIsNotAConflict() {
+	e := testEntity("e-link-7")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.expectLinkLock(*e, &e.ID)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-1"))
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_LockFailureWritesNothing() {
+	lockErr := errors.New("lock failed")
+	s.store.On("LockEntity", mock.Anything, "e-link-8").Return(providers.Entity{}, lockErr).Once()
+
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "e-link-8", "idp-a", "sub-1"), lockErr)
+	s.store.AssertNotCalled(s.T(), "ResolveLinkedAccount", mock.Anything, mock.Anything, mock.Anything)
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Every subject is an identifier row, so a new link past the limit is refused, while a repeat of a
+// subject already held still succeeds.
+func (s *ServiceTestSuite) TestLinkAccount_EnforcesLinkLimit() {
+	subjects := map[string]interface{}{}
+	for i := 0; i < maxIndexedValuesPerAttribute; i++ {
+		subjects[fmt.Sprintf("sub-%d", i)] = map[string]interface{}{}
+	}
+	blob, err := json.Marshal(map[string]interface{}{
+		authnprovidercm.SystemAttrLinkedIDs: map[string]interface{}{"idp-a": subjects},
+	})
+	s.Require().NoError(err)
+	e := testEntity("e-link-full")
+	e.SystemAttributes = blob
+
+	s.expectLinkLock(*e, nil)
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, e.ID, "idp-b", "sub-new"), ErrIndexedValueLimitExceeded)
+
+	s.expectLinkLock(*e, nil)
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-0"))
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A stored link entry of the wrong shape is refused rather than overwritten, which would silently
+// drop whatever it held.
+func (s *ServiceTestSuite) TestLinkAccount_RefusesMalformedStoredLinks() {
+	for name, blob := range map[string]string{
+		"linkedIds not an object":  `{"linkedIds":["idp-a"]}`,
+		"connection not an object": `{"linkedIds":{"idp-a":"sub-1"}}`,
+	} {
+		e := testEntity("e-link-bad")
+		e.SystemAttributes = json.RawMessage(blob)
+		s.expectLinkLock(*e, nil)
+		s.Error(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-2"), name)
+	}
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A null entry is the same as no entry.
+func (s *ServiceTestSuite) TestLinkAccount_NullLinksStartEmpty() {
+	e := testEntity("e-link-null")
+	e.SystemAttributes = json.RawMessage(`{"linkedIds":null}`)
+	s.expectLinkLock(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.LinkAccount(s.ctx, e.ID, "idp-a", "sub-1"))
+	s.JSONEq(`{"linkedIds":{"idp-a":{"sub-1":{}}}}`, string(written))
+}
+
+func (s *ServiceTestSuite) TestLinkAccount_RejectsEmptyArguments() {
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "", "idp-a", "sub-1"), ErrBadAttributesInRequest)
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "e1", "", "sub-1"), ErrBadAttributesInRequest)
+	s.ErrorIs(s.svc.LinkAccount(s.ctx, "e1", "idp-a", ""), ErrBadAttributesInRequest)
+}
+
+func (s *ServiceTestSuite) TestResolveLinkedAccount_Delegates() {
+	expected := "e-resolved"
+	s.store.On("ResolveLinkedAccount", mock.Anything, "idp-a", "sub-1").Return(&expected, nil)
+
+	got, err := s.svc.ResolveLinkedAccount(s.ctx, "idp-a", "sub-1")
+	s.Require().NoError(err)
+	s.Equal(expected, *got)
+}
+
+// A subject is unique only within its issuing connection, so both parts are required and a missing
+// one is a bad request rather than a broad lookup.
+func (s *ServiceTestSuite) TestResolveLinkedAccount_RejectsEmptyArguments() {
+	_, err := s.svc.ResolveLinkedAccount(s.ctx, "", "sub-1")
+	s.ErrorIs(err, ErrBadAttributesInRequest)
+	_, err = s.svc.ResolveLinkedAccount(s.ctx, "idp-a", "")
+	s.ErrorIs(err, ErrBadAttributesInRequest)
+	s.store.AssertNotCalled(s.T(), "ResolveLinkedAccount", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // An entity with no marker recorded is written through untouched.
 func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 	e := testEntity("e-nomarker")
 	e.SystemAttributes = json.RawMessage(`{"name":"Old"}`)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
 
 	var written json.RawMessage
 	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
@@ -757,4 +1079,51 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+// newServiceWithIndexedEmail returns a service whose store indexes email. Its store and entity type
+// mocks carry no other expectations, so any schema, uniqueness, or write call fails the test.
+func (s *ServiceTestSuite) newServiceWithIndexedEmail() (*entityService, *entityStoreInterfaceMock) {
+	store := newEntityStoreInterfaceMock(s.T())
+	store.On("GetIndexedAttributes").Return(map[string]bool{"email": true})
+	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	svc := newEntityService(store, s.hashService, ets, nil, transaction.NewNoOpTransactioner()).(*entityService)
+	return svc, store
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_TooManyIndexedValuesRejectedBeforeSchemaValidation() {
+	svc, _ := s.newServiceWithIndexedEmail()
+	e := testEntity("e1")
+	e.Attributes = emailArrayAttrs(maxIndexedValuesPerAttribute + 1)
+
+	_, err := svc.CreateEntity(s.ctx, e, nil)
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_TooManyIndexedSystemValuesRejected() {
+	svc, _ := s.newServiceWithIndexedEmail()
+	e := testEntity("e1")
+	e.SystemAttributes = emailArrayAttrs(maxIndexedValuesPerAttribute + 1)
+
+	_, err := svc.CreateEntity(s.ctx, e, nil)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_TooManyIndexedValuesRejected() {
+	svc, store := s.newServiceWithIndexedEmail()
+
+	err := svc.UpdateSystemAttributes(s.ctx, "e1", emailArrayAttrs(maxIndexedValuesPerAttribute+1))
+	s.ErrorIs(err, ErrSchemaValidationFailed)
+	s.ErrorIs(err, ErrIndexedValueLimitExceeded)
+	store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
+	svc, store := s.newServiceWithIndexedEmail()
+	attrs := emailArrayAttrs(maxIndexedValuesPerAttribute)
+	store.On("LockEntity", mock.Anything, "e1").Return(*testEntity("e1"), nil)
+	store.On("UpdateSystemAttributes", mock.Anything, "e1", mock.AnythingOfType("json.RawMessage")).Return(nil)
+
+	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
 }

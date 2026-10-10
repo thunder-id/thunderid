@@ -16,9 +16,10 @@
 # backend/internal/system/i18n/core/defaults.go, is exactly this case: 1300+
 # lines of map literal and no functions.
 #
-# A second form of expected absence is a file outside the binary the integration
-# suite exercises. Those tests drive the server, and Go only instruments packages
-# linked into it, so such a file emits no records however it is written. That is
+# A second form of expected absence is a file outside both binaries the
+# integration suites exercise, the all-in-one server and the Control Plane. Those
+# tests drive the binaries, and Go only instruments packages linked into one, so
+# such a file emits no records however it is written. That is
 # a property of the import graph rather than a coverage gap, and it is listed in
 # NOT_IN_SERVER_BINARY below with the reason. Entries are exact paths, not
 # prefixes, so exempting a package root never quietly exempts its subpackages.
@@ -38,13 +39,6 @@ INSTRUMENTED_LIST="${2:?instrumented-file list is required}"
 
 NOT_IN_SERVER_BINARY=(
   "backend/pkg/thunderidengine/engine.go"
-  # The Control Plane entry point. The integration suite drives the all-in-one server built from
-  # cmd/server, so nothing in this second main package is linked into the binary it exercises and
-  # none of it can emit coverage records. Its testable helpers are covered by cmd/cpserver's own
-  # unit tests, and TestControlPlaneLinksNoRuntime guards the property the binary exists for.
-  "backend/cmd/cpserver/bootstrap_cmd.go"
-  "backend/cmd/cpserver/main.go"
-  "backend/cmd/cpserver/servicemanager.go"
 )
 
 missing=()

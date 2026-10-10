@@ -513,20 +513,6 @@ var (
 		},
 	}
 
-	// ErrEmailSendFailed is returned when the email fails to send.
-	ErrEmailSendFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1036",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_send_failed",
-			DefaultValue: "Failed to send email",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_send_failed_desc",
-			DefaultValue: "An error occurred while sending the email",
-		},
-	}
-
 	// ErrEmailRecipientMissing is returned when the email recipient is not provided.
 	ErrEmailRecipientMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -541,17 +527,17 @@ var (
 		},
 	}
 
-	// ErrEmailServiceNotConfigured is returned when the email service is not configured.
-	ErrEmailServiceNotConfigured = tidcommon.ServiceError{
+	// ErrEmailProviderNotConfigured is returned when no email provider is configured.
+	ErrEmailProviderNotConfigured = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1038",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured",
-			DefaultValue: "Email service is not configured",
+			Key:          "flows.executor.errors.email_provider_not_configured",
+			DefaultValue: "Email provider is not configured",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured_desc",
-			DefaultValue: "The email notification service has not been configured",
+			Key:          "flows.executor.errors.email_provider_not_configured_desc",
+			DefaultValue: "The email notification provider has not been configured",
 		},
 	}
 

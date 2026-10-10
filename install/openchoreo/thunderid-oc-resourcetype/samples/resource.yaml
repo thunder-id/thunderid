@@ -187,7 +187,7 @@ spec:
       loginConsent:
         validityPeriod: 0
       allowedUserTypes:
-        - Person
+        - person
       inboundAuthConfig:
         - type: oauth2
           config:
@@ -413,7 +413,7 @@ spec:
         - id: send_notification_email
           type: TASK_EXECUTION
           properties:
-            emailTemplate: "CIBA_NOTIFICATION"
+            emailTemplate: "ciba-notification"
           executor:
             name: EmailExecutor
             mode: send
@@ -609,7 +609,7 @@ spec:
         - id: send_recovery_email
           type: TASK_EXECUTION
           properties:
-            emailTemplate: "PASSWORD_RECOVERY"
+            emailTemplate: "password-recovery"
           executor:
             name: EmailExecutor
             mode: send
@@ -751,7 +751,7 @@ spec:
               x: 1270
               y: 340
           properties:
-            emailTemplate: "PASSWORD_RECOVERY"
+            emailTemplate: "password-recovery"
           executor:
             name: EmailExecutor
             mode: send
@@ -1378,7 +1378,7 @@ spec:
               x: 4213
               y: 1398
           properties:
-            emailTemplate: "USER_INVITE"
+            emailTemplate: "user-invite"
           executor:
             name: EmailExecutor
             mode: send
@@ -1966,7 +1966,7 @@ spec:
       # File: admin.yaml
       resource_type: user
       id: 01900000-0000-7000-8000-000000000030
-      type: Person
+      type: person
       ouId: 01900000-0000-7000-8000-000000000001
       attributes:
         email: "admin@example.com"
@@ -1984,7 +1984,8 @@ spec:
       resource_type: user_type
       id: 01900000-0000-7000-8000-000000000010
       category: user
-      name: Person
+      handle: person
+      displayName: Person
       ouId: 01900000-0000-7000-8000-000000000001
       systemAttributes:
         display: username

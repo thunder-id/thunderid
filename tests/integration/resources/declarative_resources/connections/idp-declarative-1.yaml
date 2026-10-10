@@ -13,9 +13,9 @@ redirectUri: https://localhost:8095/callback
 # here would silently fail to parse. Update this fixture when G13 is fixed.
 attributeConfiguration:
   user_type_resolution:
-    default: "Declarative Test Schema"
+    default: "declarative-test-schema"
   user_type_attribute_mappings:
-    - user_type: "Declarative Test Schema"
+    - user_type: "declarative-test-schema"
       attributes:
         - external_attribute: given_name
           local_attribute: username

@@ -147,7 +147,7 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
         await usersPage.goto();
         await usersPage.clickAddUser();
         await usersPage.page.waitForURL(`**${ConsoleRoutes.users}/add`, { timeout: Timeouts.PAGE_LOAD });
-        await usersPage.selectUserTypeAndContinue("Staff");
+        await usersPage.selectUserTypeAndContinue("staff");
       });
 
       await test.step(`Pick ${role} and send the invitation`, async () => {

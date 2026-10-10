@@ -20,7 +20,8 @@ type entityTypeTools struct {
 // (StartIndex, Count, Links) and the raw Schema blob are excluded.
 type entityTypeMCPItem struct {
 	ID                    string            `json:"id,omitempty"`
-	Name                  string            `json:"name,omitempty"`
+	Handle                string            `json:"handle,omitempty"`
+	DisplayName           string            `json:"displayName,omitempty"`
 	OUID                  string            `json:"ouId"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration"`
@@ -63,7 +64,8 @@ func (t *entityTypeTools) listUserTypes(
 	for i, et := range resp.Types {
 		items[i] = entityTypeMCPItem{
 			ID:                    et.ID,
-			Name:                  et.Name,
+			Handle:                et.Handle,
+			DisplayName:           et.DisplayName,
 			OUID:                  et.OUID,
 			OUHandle:              et.OUHandle,
 			AllowSelfRegistration: et.AllowSelfRegistration,

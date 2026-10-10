@@ -133,8 +133,9 @@ func (s *StoreTestSuite) TestCreatePolicyWritesEveryPart() {
 	p := Policy{
 		ID: "p1", ResourceType: testType, ResourceID: testResource, OwningOUID: ownerOU,
 		InitiatingOUID: rootOU, Stage: stageShare, Version: 1,
-		Targets:       []Target{{ID: "t1", Scope: targetScopeRoot, OUID: rootOU}},
-		ExcludedOUIDs: []string{childOU, childOU},
+		Targets: []Target{{
+			ID: "t1", Scope: ScopeRoot, OUID: rootOU, ExcludedOUIDs: []string{childOU, childOU},
+		}},
 		Rules: []StoredRule{{
 			FieldKey: "assignments", TargetID: "t1",
 			Resolved:  OverlayRule{Editable: true, AllowedValues: members("a", "b")},
@@ -145,7 +146,7 @@ func (s *StoreTestSuite) TestCreatePolicyWritesEveryPart() {
 	s.expectExec(queryCreatePolicy, 9)
 	s.expectExec(queryInsertTarget, 5)
 	// The duplicate exclusion is deduplicated before it reaches the database.
-	s.expectExec(queryInsertExclusion, 3)
+	s.expectExec(queryInsertExclusion, 4)
 	// One insert per rule: both forms of it travel as documents.
 	s.expectExec(queryInsertRule, 7)
 
@@ -162,9 +163,18 @@ func (s *StoreTestSuite) TestEveryMethodSurfacesAClientFailure() {
 		"CreatePolicy": func() error { return s.store.CreatePolicy(ctx, Policy{ID: "p1"}) },
 		"GetPolicy":    func() error { _, err := s.store.GetPolicy(ctx, "p1"); return err },
 		"ListPoliciesForResource": func() error {
-			_, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+			_, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 100, 0)
 			return err
 		},
+		"ListAllPoliciesForResource": func() error {
+			_, err := s.store.ListAllPoliciesForResource(ctx, testType, testResource)
+			return err
+		},
+		"CountPoliciesForResource": func() error {
+			_, err := s.store.CountPoliciesForResource(ctx, testType, testResource)
+			return err
+		},
+
 		"ReplacePolicyContents": func() error { return s.store.ReplacePolicyContents(ctx, Policy{ID: "p1"}, 1) },
 		"DeletePolicy":          func() error { return s.store.DeletePolicy(ctx, "p1") },
 		"GetOverlayValues": func() error {
@@ -205,8 +215,8 @@ func (s *StoreTestSuite) TestGetPolicyHydratesEveryPart() {
 	s.client.On("QueryContext", mock.Anything, queryGetPolicyByID, "p1", storeDeploymentID).
 		Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
 	s.expectHydrate("p1",
-		[]map[string]interface{}{{"id": "t1", "target_scope": string(targetScopeRoot), "target_ou_id": rootOU}},
-		[]map[string]interface{}{{"excluded_ou_id": childOU}},
+		[]map[string]interface{}{{"id": "t1", "target_scope": string(ScopeRoot), "target_ou_id": rootOU}},
+		[]map[string]interface{}{{"target_id": "t1", "excluded_ou_id": childOU}},
 		[]map[string]interface{}{{
 			"id": "r1", "field_key": "assignments", "target_id": "t1",
 			"resolved":  `{"editable":true,"allowedValues":["a"]}`,
@@ -219,8 +229,9 @@ func (s *StoreTestSuite) TestGetPolicyHydratesEveryPart() {
 	s.Equal("p1", p.ID)
 	s.Equal(stageShare, p.Stage)
 	s.Equal(2, p.Version)
-	s.Equal([]Target{{ID: "t1", Scope: targetScopeRoot, OUID: rootOU}}, p.Targets)
-	s.Equal([]string{childOU}, p.ExcludedOUIDs)
+	s.Equal([]Target{{
+		ID: "t1", Scope: ScopeRoot, OUID: rootOU, ExcludedOUIDs: []string{childOU},
+	}}, p.Targets)
 	s.Require().Len(p.Rules, 1)
 	s.Equal("assignments", p.Rules[0].FieldKey)
 	s.Equal([]string{"a"}, *p.Rules[0].Resolved.AllowedValues)
@@ -290,7 +301,7 @@ func (s *StoreTestSuite) TestReplacePolicyContentsClearsBeforeWriting() {
 	s.expectExec(queryInsertTarget, 5)
 
 	err := s.store.ReplacePolicyContents(context.Background(), Policy{
-		ID: "p1", Targets: []Target{{ID: "t1", Scope: targetScopeOU, OUID: childOU}},
+		ID: "p1", Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}},
 	}, 2)
 	s.Require().NoError(err)
 }
@@ -364,16 +375,19 @@ func (s *StoreTestSuite) TestWriteFailuresAreWrappedWithTheirPart() {
 				s.expectExec(queryCreatePolicy, 9)
 				s.expectExecError(queryInsertTarget, 5, failure)
 			},
-			policy:  Policy{ID: "p1", Targets: []Target{{ID: "t1", Scope: targetScopeOU, OUID: childOU}}},
+			policy:  Policy{ID: "p1", Targets: []Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}}},
 			wantMsg: "failed to create sharing policy target",
 		},
 		{
 			name: "an exclusion",
 			arrange: func() {
 				s.expectExec(queryCreatePolicy, 9)
-				s.expectExecError(queryInsertExclusion, 3, failure)
+				s.expectExec(queryInsertTarget, 5)
+				s.expectExecError(queryInsertExclusion, 4, failure)
 			},
-			policy:  Policy{ID: "p1", ExcludedOUIDs: []string{childOU}},
+			policy: Policy{ID: "p1", Targets: []Target{{
+				ID: "t1", Scope: ScopeChild, OUID: childOU, ExcludedOUIDs: []string{childOU},
+			}}},
 			wantMsg: "failed to create sharing policy exclusion",
 		},
 		{
@@ -449,13 +463,37 @@ func (s *StoreTestSuite) TestReadFailuresAreWrapped() {
 			name: "the resource listing",
 			arrange: func() {
 				s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
-					string(testType), testResource, storeDeploymentID).Return(nil, failure).Once()
+					string(testType), testResource, storeDeploymentID, 100, 0).Return(nil, failure).Once()
 			},
 			call: func() error {
-				_, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource)
+				_, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
 				return err
 			},
 			wantMsg: "failed to list sharing policies",
+		},
+		{
+			name: "the whole-set read",
+			arrange: func() {
+				s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
+					string(testType), testResource, storeDeploymentID).Return(nil, failure).Once()
+			},
+			call: func() error {
+				_, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
+				return err
+			},
+			wantMsg: "failed to list sharing policies",
+		},
+		{
+			name: "the count behind the listing",
+			arrange: func() {
+				s.client.On("QueryContext", mock.Anything, queryCountPoliciesForResource,
+					string(testType), testResource, storeDeploymentID).Return(nil, failure).Once()
+			},
+			call: func() error {
+				_, err := s.store.CountPoliciesForResource(context.Background(), testType, testResource)
+				return err
+			},
+			wantMsg: "failed to count sharing policies",
 		},
 	}
 
@@ -505,14 +543,14 @@ func (s *StoreTestSuite) TestHydrateAllFailsRatherThanReturningPartialResults() 
 	s.clientAvailable()
 	failure := errors.New("query error")
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
-		string(testType), testResource, storeDeploymentID).
+		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
 	// The first row hydrates, the second fails on its targets.
 	s.expectHydrate("p1", nil, nil, nil)
 	s.client.On("QueryContext", mock.Anything, queryListTargets, "p2", storeDeploymentID).
 		Return(nil, failure).Once()
 
-	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource)
+	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
 
 	s.Require().Error(err)
 	s.ErrorIs(err, failure)
@@ -523,12 +561,12 @@ func (s *StoreTestSuite) TestHydrateAllFailsRatherThanReturningPartialResults() 
 func (s *StoreTestSuite) TestHydrateAllReturnsEveryPolicy() {
 	s.clientAvailable()
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
-		string(testType), testResource, storeDeploymentID).
+		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
 	s.expectHydrate("p1", nil, nil, nil)
 	s.expectHydrate("p2", nil, nil, nil)
 
-	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource)
+	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
 
 	s.Require().NoError(err)
 	s.Require().Len(got, 2)
@@ -716,14 +754,14 @@ func (s *StoreTestSuite) TestGetPolicyByInitiatorHydrates() {
 		string(testType), testResource, rootOU, storeDeploymentID).
 		Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
 	s.expectHydrate("p1",
-		[]map[string]interface{}{{"id": "t1", "target_scope": string(targetScopeOU), "target_ou_id": childOU}},
+		[]map[string]interface{}{{"id": "t1", "target_scope": string(ScopeChild), "target_ou_id": childOU}},
 		nil, nil)
 
 	p, err := s.store.GetPolicyByInitiator(context.Background(), testType, testResource, rootOU)
 
 	s.Require().NoError(err)
 	s.Equal(rootOU, p.InitiatingOUID)
-	s.Equal([]Target{{ID: "t1", Scope: targetScopeOU, OUID: childOU}}, p.Targets)
+	s.Equal([]Target{{ID: "t1", Scope: ScopeChild, OUID: childOU}}, p.Targets)
 }
 
 // A failed read of an organization unit's values is reported, not reported as no values, which
@@ -837,4 +875,85 @@ func (s *StoreTestSuite) TestARuleDocumentBoundsNoSingleMember() {
 
 	s.Require().NoError(err)
 	s.Equal([]string{long}, *got.Resolved.AllowedValues)
+}
+
+// The unbounded read carries no page arguments and hydrates every row it finds, which is what makes
+// it the one policy evaluation can ask a coverage question of.
+func (s *StoreTestSuite) TestTheWholeSetReadHydratesEveryPolicy() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
+	s.expectHydrate("p1", nil, nil, nil)
+	s.expectHydrate("p2", nil, nil, nil)
+
+	got, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal([]string{"p1", "p2"}, []string{got[0].ID, got[1].ID})
+}
+
+// The count backs the paged listing's total.
+func (s *StoreTestSuite) TestCountingAResourcesPolicies() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryCountPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{{"total": int64(7)}}, nil).Once()
+
+	count, err := s.store.CountPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal(7, count)
+}
+
+// A COUNT comes back as whatever width the driver decoded it to, so the value is read through the
+// converter that accepts them all rather than asserted to int64.
+func (s *StoreTestSuite) TestACountIsReadWhateverWidthTheDriverUsed() {
+	widths := map[string]interface{}{
+		"int":     3,
+		"int32":   int32(3),
+		"uint64":  uint64(3),
+		"float64": float64(3),
+	}
+	for name, value := range widths {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.clientAvailable()
+			s.client.On("QueryContext", mock.Anything, queryCountPoliciesForResource,
+				string(testType), testResource, storeDeploymentID).
+				Return([]map[string]interface{}{{"total": value}}, nil).Once()
+
+			count, err := s.store.CountPoliciesForResource(context.Background(), testType, testResource)
+
+			s.Require().NoError(err)
+			s.Equal(3, count)
+		})
+	}
+}
+
+// No row at all is a count of zero, not a failure: the resource simply has no policies.
+func (s *StoreTestSuite) TestACountWithNoRowIsZero() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryCountPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{}, nil).Once()
+
+	count, err := s.store.CountPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal(0, count)
+}
+
+// A value that is no kind of number is a failure rather than a silent zero, which would report a
+// resource as having no policies while it holds them.
+func (s *StoreTestSuite) TestACountThatIsNotANumberIsAFailure() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryCountPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{{"total": []byte{0x01}}}, nil).Once()
+
+	_, err := s.store.CountPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to read sharing policy count")
 }

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 var (
@@ -80,7 +80,8 @@ const (
 )
 
 var googleEntityType = testutils.UserType{
-	Name: "google_auth_user",
+	Handle:      "google_auth_user",
+	DisplayName: "Google Auth User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -186,7 +187,7 @@ func (ts *GoogleAuthFlowTestSuite) SetupSuite() {
 
 	// Create user in the pre-configured OU from database scripts
 	user := testutils.User{
-		Type:       googleEntityType.Name,
+		Type:       googleEntityType.Handle,
 		OUID:       googleEntityType.OUID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
@@ -380,7 +381,7 @@ func (ts *GoogleAuthFlowTestSuite) TestGoogleAuthFlowCompleteSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		googleAuthTestAppID,
-		googleEntityType.Name,
+		googleEntityType.Handle,
 		googleAuthTestOU.ID,
 		googleAuthTestOU.Name,
 		googleAuthTestOU.Handle,
@@ -479,7 +480,7 @@ func (ts *GoogleAuthFlowTestSuite) TestGoogleAuthFlowMultipleUsersSuccess() {
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
 		completeFlowStep.Assertion,
 		googleAuthTestAppID,
-		googleEntityType.Name,
+		googleEntityType.Handle,
 		googleAuthTestOU.ID,
 		googleAuthTestOU.Name,
 		googleAuthTestOU.Handle,

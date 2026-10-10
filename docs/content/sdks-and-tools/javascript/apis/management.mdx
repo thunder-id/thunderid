@@ -96,6 +96,8 @@ A `ManagedUser` is a user record on the server, with `id`, `ouId`, `type`, `attr
 | `CreateAgentRequest` | `ouId`, `type`, and `name` (required), `description`, `logoUrl`, `owner`, `attributes`, `inboundAuthConfig` |
 | `UpdateAgentRequest` | Any `CreateAgentRequest` field, plus `allowedUserTypes`, `allowedAgentTypes`, `authFlowId`, `registrationFlowId`, and `isRegistrationFlowEnabled` |
 
+The agent `type` is the handle of an agent type, and `allowedUserTypes` and `allowedAgentTypes` list user type and agent type handles.
+
 `AgentListResponse` contains `agents` (`BasicAgent[]`), `count`, `startIndex`, and `totalResults`.
 
 ## Management API on a Separate Host

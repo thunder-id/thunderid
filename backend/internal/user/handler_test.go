@@ -1295,7 +1295,7 @@ func TestHandleSelfUserMetadataGetRequest_Success(t *testing.T) {
 
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedSchema := &entitytype.EntityType{
-		Name:   "employee",
+		Handle: "employee",
 		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
 	}
 	mockSvc.On("GetUserMetadata", mock.Anything, userID).Return(expectedSchema, nil)

@@ -39,7 +39,10 @@ const {useConfig} = await import('@thunderid/contexts');
  * @param totalResults - Total results reported by the server, defaults to the number of types.
  * @returns The list response.
  */
-function buildListResponse(types: {id: string; name: string}[], totalResults?: number): UserTypeListResponse {
+function buildListResponse(
+  types: {id: string; handle: string; displayName: string}[],
+  totalResults?: number,
+): UserTypeListResponse {
   return {
     totalResults: totalResults ?? types.length,
     startIndex: 1,
@@ -83,8 +86,15 @@ describe('useGetUserTypeAttributes', () => {
   });
 
   it('should request user types with the maximum page size', async () => {
-    mockRequests(buildListResponse([{id: '1', name: 'Person'}]), {
-      '1': {id: '1', name: 'Person', ouId: 'root-ou', allowSelfRegistration: false, schema: {email: {type: 'string'}}},
+    mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}]), {
+      '1': {
+        id: '1',
+        handle: 'person',
+        displayName: 'Person',
+        ouId: 'root-ou',
+        allowSelfRegistration: false,
+        schema: {email: {type: 'string'}},
+      },
     });
 
     renderHook(() => useGetUserTypeAttributes());
@@ -100,20 +110,22 @@ describe('useGetUserTypeAttributes', () => {
   it('should aggregate and de-duplicate attributes across user types', async () => {
     mockRequests(
       buildListResponse([
-        {id: '1', name: 'Person'},
-        {id: '2', name: 'Customers'},
+        {id: '1', handle: 'person', displayName: 'Person'},
+        {id: '2', handle: 'customers', displayName: 'Customers'},
       ]),
       {
         '1': {
           id: '1',
-          name: 'Person',
+          handle: 'person',
+          displayName: 'Person',
           ouId: 'root-ou',
           allowSelfRegistration: false,
           schema: {email: {type: 'string'}, username: {type: 'string'}},
         },
         '2': {
           id: '2',
-          name: 'Customers',
+          handle: 'customers',
+          displayName: 'Customers',
           ouId: 'root-ou',
           allowSelfRegistration: false,
           schema: {email: {type: 'string'}, gender: {type: 'string'}},
@@ -137,20 +149,22 @@ describe('useGetUserTypeAttributes', () => {
   it('should keep credential and standard variants of the same attribute separate', async () => {
     mockRequests(
       buildListResponse([
-        {id: '1', name: 'Person'},
-        {id: '2', name: 'Customers'},
+        {id: '1', handle: 'person', displayName: 'Person'},
+        {id: '2', handle: 'customers', displayName: 'Customers'},
       ]),
       {
         '1': {
           id: '1',
-          name: 'Person',
+          handle: 'person',
+          displayName: 'Person',
           ouId: 'root-ou',
           allowSelfRegistration: false,
           schema: {secret: {type: 'string', credential: true}},
         },
         '2': {
           id: '2',
-          name: 'Customers',
+          handle: 'customers',
+          displayName: 'Customers',
           ouId: 'root-ou',
           allowSelfRegistration: false,
           schema: {secret: {type: 'string'}},
@@ -171,10 +185,11 @@ describe('useGetUserTypeAttributes', () => {
   });
 
   it('should list a user type once when its schema flattens to the same attribute twice', async () => {
-    mockRequests(buildListResponse([{id: '1', name: 'Person'}]), {
+    mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}]), {
       '1': {
         id: '1',
-        name: 'Person',
+        handle: 'person',
+        displayName: 'Person',
         ouId: 'root-ou',
         allowSelfRegistration: false,
         // A literal dotted key collides with the path flattened out of the nested object.
@@ -200,7 +215,7 @@ describe('useGetUserTypeAttributes', () => {
     mockHttpRequest.mockImplementation(({url}: {url: string}) =>
       /\/user-types\/[^?]+/.test(url)
         ? new Promise(() => null)
-        : Promise.resolve({data: buildListResponse([{id: '1', name: 'Person'}])}),
+        : Promise.resolve({data: buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}])}),
     );
 
     const {result} = renderHook(() => useGetUserTypeAttributes());
@@ -212,13 +227,14 @@ describe('useGetUserTypeAttributes', () => {
   it('should keep attributes from the user types that resolved when one schema fails', async () => {
     mockRequests(
       buildListResponse([
-        {id: '1', name: 'Person'},
-        {id: '2', name: 'Broken'},
+        {id: '1', handle: 'person', displayName: 'Person'},
+        {id: '2', handle: 'broken', displayName: 'Broken'},
       ]),
       {
         '1': {
           id: '1',
-          name: 'Person',
+          handle: 'person',
+          displayName: 'Person',
           ouId: 'root-ou',
           allowSelfRegistration: false,
           schema: {email: {type: 'string'}},
@@ -237,8 +253,15 @@ describe('useGetUserTypeAttributes', () => {
   });
 
   it('should warn when the server reports more user types than are fetched', async () => {
-    mockRequests(buildListResponse([{id: '1', name: 'Person'}], 150), {
-      '1': {id: '1', name: 'Person', ouId: 'root-ou', allowSelfRegistration: false, schema: {email: {type: 'string'}}},
+    mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}], 150), {
+      '1': {
+        id: '1',
+        handle: 'person',
+        displayName: 'Person',
+        ouId: 'root-ou',
+        allowSelfRegistration: false,
+        schema: {email: {type: 'string'}},
+      },
     });
 
     renderHook(() => useGetUserTypeAttributes());
@@ -249,8 +272,15 @@ describe('useGetUserTypeAttributes', () => {
   });
 
   it('should not warn when every user type is fetched', async () => {
-    mockRequests(buildListResponse([{id: '1', name: 'Person'}]), {
-      '1': {id: '1', name: 'Person', ouId: 'root-ou', allowSelfRegistration: false, schema: {email: {type: 'string'}}},
+    mockRequests(buildListResponse([{id: '1', handle: 'person', displayName: 'Person'}]), {
+      '1': {
+        id: '1',
+        handle: 'person',
+        displayName: 'Person',
+        ouId: 'root-ou',
+        allowSelfRegistration: false,
+        schema: {email: {type: 'string'}},
+      },
     });
 
     const {result} = renderHook(() => useGetUserTypeAttributes());

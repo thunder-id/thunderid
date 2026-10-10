@@ -2062,6 +2062,30 @@ func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_AddsInputNot
 	s.Equal(testEmailAttr, resp.Inputs[0].Identifier)
 }
 
+func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_ClaimNeverSatisfiesPassword() {
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		RuntimeData: externalIdentityData(map[string]interface{}{
+			testEmailAttr: "a@example.com", "password": "chosen-by-idp",
+		}),
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{Identifier: testEmailAttr, Type: "TEXT_INPUT", Required: true},
+				{Identifier: "password", Type: providers.InputTypePassword, Required: true},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Len(resp.Inputs, 1)
+	s.Equal("password", resp.Inputs[0].Identifier, "a claim must not satisfy a credential input")
+}
+
 func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_DoesNotDuplicateExistingInput() {
 	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
 	pn := node.(PromptNodeInterface)

@@ -431,6 +431,22 @@ configuration:
     dcr:
       enabled: true
       insecure: false
+    # OIDC Back-Channel Logout: notify relying parties that registered a back-channel logout URI when
+    # a session they took part in ends.
+    logout:
+      backchannel:
+        enabled: true
+        # Reject back-channel logout URIs naming localhost or a private IP address, and refuse a
+        # hostname that resolves to one. Set to false when relying parties run on internal networks.
+        rejectPrivateAddresses: true
+    # Validation policy for private_key_jwt client assertions, in seconds.
+    clientAssertion:
+      maxLifetime: 300
+      maxIatAge: 60
+    # Advertise Client ID Metadata Document support in the authorization server metadata. Turn it off when
+    # MCP clients should register through Dynamic Client Registration instead.
+    cimd:
+      enabled: true
     # Report an authentication flow failure that maps to the OAuth server_error code to the client.
     sendServerErrorsToClient: false
     # Client token endpoint auth methods allowed during registration.
@@ -464,6 +480,11 @@ configuration:
     # Storage mode for flows: "mutable", "declarative", or "composite".
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
+
+  # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
+  # remove them from the server. AuthZEN access endpoints are not affected.
+  directApi:
+    enabled: true
 
   # Passkey configuration
   passkey:
@@ -517,26 +538,10 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # SMTP server used to deliver emails (email OTP, magic link, verification).
-  # Leave host empty to omit the section, in which case no email can be sent.
-  # port and fromAddress are required once host is set. enableStartTls and
-  # enableAuthentication both default to true when omitted.
-  email:
-    smtp:
-      host: ""
-      port: 587
-      fromAddress: ""
-      username: ""
-      enableStartTls: true
-      enableAuthentication: true
-      # Inline SMTP password. Stored in the "<release>-db-credentials" Secret and
-      # injected as the SMTP_PASSWORD environment variable.
-      password: ""
-      # Source the SMTP password from an existing Kubernetes Secret. When both
-      # name and key are set, it takes precedence over the inline password above.
-      passwordRef:
-        name: ""
-        key: ""
+  # SCIM 2.0 provisioning configuration.
+  scim:
+    # URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.
+    urnPrefix: "urn:thunderid:params:scim:schemas:"
 
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below
@@ -794,7 +799,7 @@ bootstrap:
     # Example - Creating a custom user (filename must end in .yaml/.yml/.json):
     # 70-custom-users.yaml: |
     #   # resource_type: user
-    #   type: Person
+    #   type: person
     #   ouHandle: default
     #   attributes:
     #     username: alice

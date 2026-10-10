@@ -154,12 +154,12 @@ func (s *scimDiscoveryService) ListSchemas(
 		}
 
 		for _, item := range page.Types {
-			et, svcErr := s.userTypeService.GetEntityTypeByName(
-				runtimeCtx, entitytype.TypeCategoryUser, item.Name,
+			et, svcErr := s.userTypeService.GetEntityTypeByHandle(
+				runtimeCtx, entitytype.TypeCategoryUser, item.Handle,
 			)
 			if svcErr != nil {
 				s.logger.Warn(ctx, "Failed to load user type for SCIM schema list, skipping",
-					log.String("userTypeName", item.Name),
+					log.String("userType", item.Handle),
 					log.Any("error", svcErr),
 				)
 				continue
@@ -168,7 +168,7 @@ func (s *scimDiscoveryService) ListSchemas(
 			scimSchema, err := mapUserTypeToSCIMSchema(*et, baseURL, s.cfg.SchemaURNPrefix)
 			if err != nil {
 				s.logger.Warn(ctx, "Failed to map user type to SCIM schema, skipping",
-					log.String("userTypeName", item.Name),
+					log.String("userType", item.Handle),
 					log.Error(err),
 				)
 				continue
@@ -247,36 +247,21 @@ func (s *scimDiscoveryService) GetSchema(
 	}
 
 	// --- 4. ThunderID extension schema (dynamic, from DB) ---
-	userTypeName, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, trimmedURN)
+	userTypeHandle, ok := scim.ParseUserTypeFromSchemaURN(s.cfg.SchemaURNPrefix, trimmedURN)
 	if !ok {
 		// URN does not match any known pattern.
 		return nil, &scim.ErrorSchemaNotFound
 	}
 
 	runtimeCtx := security.WithRuntimeContext(ctx)
-	resolvedUserTypeName, svcErr := scim.ResolveUserTypeNameForSchemaURN(runtimeCtx, s.userTypeService, userTypeName)
+	et, svcErr := scim.ResolveUserTypeForSchemaURN(runtimeCtx, s.userTypeService, userTypeHandle)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if resolvedUserTypeName == "" {
+	if et == nil {
 		s.logger.Debug(ctx, "User type not found for SCIM schema URN",
 			log.String("urn", schemaURN),
-			log.String("resolvedUserTypeName", userTypeName),
-		)
-		return nil, &scim.ErrorSchemaNotFound
-	}
-
-	et, svcErr := s.userTypeService.GetEntityTypeByName(
-		runtimeCtx, entitytype.TypeCategoryUser, resolvedUserTypeName,
-	)
-	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
-		}
-		// User type not found or any other non-auth error → schema not found.
-		s.logger.Debug(ctx, "User type not found for SCIM schema URN",
-			log.String("urn", schemaURN),
-			log.String("resolvedUserTypeName", resolvedUserTypeName),
+			log.String("userTypeHandle", userTypeHandle),
 		)
 		return nil, &scim.ErrorSchemaNotFound
 	}
@@ -284,7 +269,7 @@ func (s *scimDiscoveryService) GetSchema(
 	scimSchema, err := mapUserTypeToSCIMSchema(*et, baseURL, s.cfg.SchemaURNPrefix)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to map user type to SCIM schema",
-			log.String("userTypeName", et.Name),
+			log.String("userType", et.Handle),
 			log.Error(err),
 		)
 		return nil, &tidcommon.InternalServerError
@@ -335,10 +320,10 @@ func (s *scimDiscoveryService) GetResourceType(
 	}
 }
 
-// listUserTypeNames paginates through all user-category entity types and returns their names.
-func (s *scimDiscoveryService) listUserTypeNames(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+// listUserTypeHandles paginates through all user-category entity types and returns their handles.
+func (s *scimDiscoveryService) listUserTypeHandles(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	runtimeCtx := security.WithRuntimeContext(ctx)
-	names := make([]string, 0, 16)
+	handles := make([]string, 0, 16)
 	offset := 0
 	for {
 		page, svcErr := s.userTypeService.GetEntityTypeList(
@@ -351,7 +336,7 @@ func (s *scimDiscoveryService) listUserTypeNames(ctx context.Context) ([]string,
 		}
 
 		for _, item := range page.Types {
-			names = append(names, item.Name)
+			handles = append(handles, item.Handle)
 		}
 
 		offset += len(page.Types)
@@ -360,7 +345,7 @@ func (s *scimDiscoveryService) listUserTypeNames(ctx context.Context) ([]string,
 		}
 	}
 
-	return names, nil
+	return handles, nil
 }
 
 // resolveCoreUserEntityType resolves the designated core user type and loads its EntityType record.
@@ -372,7 +357,7 @@ func (s *scimDiscoveryService) resolveCoreUserEntityType(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	et, svcErr := s.userTypeService.GetEntityTypeByName(runtimeCtx, entitytype.TypeCategoryUser, name)
+	et, svcErr := s.userTypeService.GetEntityTypeByHandle(runtimeCtx, entitytype.TypeCategoryUser, name)
 	if svcErr != nil {
 		return nil, scim.BuildUserTypeErrorToSCIM(svcErr)
 	}
@@ -408,8 +393,8 @@ func (s *scimDiscoveryService) resolveCoreUserTypeAndTotal(
 			log.Any("error", &scim.ErrorMissingCustomSchema))
 		return nil, page.TotalResults, nil
 	}
-	et, svcErr := s.userTypeService.GetEntityTypeByName(
-		runtimeCtx, entitytype.TypeCategoryUser, page.Types[0].Name,
+	et, svcErr := s.userTypeService.GetEntityTypeByHandle(
+		runtimeCtx, entitytype.TypeCategoryUser, page.Types[0].Handle,
 	)
 	if svcErr != nil {
 		s.logger.Debug(ctx, "Core user type unavailable, omitting SCIM core User schema",
@@ -426,15 +411,15 @@ func (s *scimDiscoveryService) buildUserResourceType(
 	location := fmt.Sprintf(scimResourceTypeLocationFmt, baseURL, scim.SCIMBasePath, scimResourceTypeUserID)
 
 	// Reuse the shared paginator — no duplicated pagination logic here.
-	names, svcErr := s.listUserTypeNames(ctx)
+	handles, svcErr := s.listUserTypeHandles(ctx)
 	if svcErr != nil {
 		return SCIMResourceType{}, svcErr
 	}
 
-	extensions := make([]scimResourceTypeSchemaExtension, 0, len(names))
-	for _, name := range names {
+	extensions := make([]scimResourceTypeSchemaExtension, 0, len(handles))
+	for _, handle := range handles {
 		extensions = append(extensions, scimResourceTypeSchemaExtension{
-			Schema:   scim.BuildSchemaURN(s.cfg.SchemaURNPrefix, name),
+			Schema:   scim.BuildSchemaURN(s.cfg.SchemaURNPrefix, handle),
 			Required: false,
 		})
 	}

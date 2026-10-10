@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -63,6 +64,7 @@ type userService struct {
 	entityTypeService  entitytype.EntityTypeServiceInterface
 	uuidGenerator      func() (string, error)
 	dependencyRegistry resourcedependency.Registry
+	valueCapturer      declarativeresource.ValueCapturer
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -71,6 +73,7 @@ func newUserService(
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	valueCapturer declarativeresource.ValueCapturer,
 ) UserServiceInterface {
 	return &userService{
 		authzService:      authzService,
@@ -78,6 +81,7 @@ func newUserService(
 		ouService:         ouService,
 		entityTypeService: entityTypeService,
 		uuidGenerator:     utils.GenerateUUIDv7,
+		valueCapturer:     valueCapturer,
 	}
 }
 
@@ -327,6 +331,7 @@ func (us *userService) CreateUser(
 	}
 
 	e := userToEntity(user)
+	submitted := user.Attributes
 	created, err := us.entityService.CreateEntity(ctx, e, nil)
 	if err != nil {
 		if svcErr := mapEntityError(err); svcErr != nil {
@@ -337,6 +342,7 @@ func (us *userService) CreateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = created.Attributes
+	us.captureSubmittedCredentials(ctx, user, submitted)
 
 	logger.Debug(ctx, "Successfully created user", log.MaskedString(log.LoggerKeyUserID, user.ID))
 	return user, nil
@@ -779,6 +785,7 @@ func (us *userService) UpdateUserCredentials(
 	logger.Debug(ctx, "Successfully updated user credentials",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("credentialTypesCount", len(credentialsMap)))
+	us.captureCredentials(ctx, &existingUser, existingUser.Attributes, plaintextCreds)
 	return nil
 }
 
@@ -1064,7 +1071,7 @@ func (us *userService) validateOrganizationUnitForUserType(
 		return &tidcommon.InternalServerError
 	}
 
-	entityType, svcErr := us.entityTypeService.GetEntityTypeByName(ctx,
+	entityType, svcErr := us.entityTypeService.GetEntityTypeByHandle(ctx,
 		entitytype.TypeCategoryUser, userType)
 	if svcErr != nil {
 		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {

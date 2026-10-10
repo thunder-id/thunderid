@@ -51,7 +51,7 @@ func (s *FederatedMappingSuite) authenticateGitHub(
 // linkOnEmail is the configuration these scenarios share: whichever address the authenticator settles on
 // is what resolves the local user, which is how the selection becomes observable.
 func linkOnEmail() *testutils.AttributeConfiguration {
-	config := mapping(fedPersonType.Name, pair("email", "email"))
+	config := mapping(fedPersonType.Handle, pair("email", "email"))
 	config.AccountLinking = &testutils.AccountLinking{Attributes: []string{"email"}}
 	return config
 }
@@ -130,7 +130,7 @@ func (s *FederatedMappingSuite) TestGitHubLoginMappedAndUsedForLinking() {
 	// The local user is identified by its username, which the login claim maps onto.
 	existingID := s.createLocalUser(map[string]interface{}{"username": login, "email": primary})
 
-	config := mapping(fedPersonType.Name, pair("login", "username"))
+	config := mapping(fedPersonType.Handle, pair("login", "username"))
 	config.AccountLinking = &testutils.AccountLinking{Attributes: []string{"login"}}
 	status, response := s.authenticateGitHub(config, login)
 

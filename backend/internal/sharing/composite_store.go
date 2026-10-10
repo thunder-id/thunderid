@@ -5,7 +5,9 @@ package sharing
 
 import (
 	"context"
-	"errors"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 // compositeStore combines the file-declared policies with the stored ones, so the service asks one
@@ -42,11 +44,11 @@ func (c *compositeStore) CreatePolicy(ctx context.Context, p Policy) error {
 // left behind survives: the row is what still applies, so it answers rather than being reported
 // missing.
 func (c *compositeStore) GetPolicy(ctx context.Context, id string) (Policy, error) {
-	p, err := c.dbStore.GetPolicy(ctx, id)
-	if err == nil || !errors.Is(err, errPolicyNotFound) {
-		return p, err
-	}
-	return c.fileStore.GetPolicy(ctx, id)
+	return declarativeresource.CompositeGetHelper(
+		func() (Policy, error) { return c.dbStore.GetPolicy(ctx, id) },
+		func() (Policy, error) { return c.fileStore.GetPolicy(ctx, id) },
+		errPolicyNotFound,
+	)
 }
 
 // GetPolicyByInitiator returns the one policy an organization unit holds for a resource.
@@ -57,26 +59,83 @@ func (c *compositeStore) GetPolicy(ctx context.Context, id string) (Policy, erro
 func (c *compositeStore) GetPolicyByInitiator(
 	ctx context.Context, rt ResourceType, resourceID, initiatingOUID string,
 ) (Policy, error) {
-	p, err := c.dbStore.GetPolicyByInitiator(ctx, rt, resourceID, initiatingOUID)
-	if err == nil || !errors.Is(err, errPolicyNotFound) {
-		return p, err
-	}
-	return c.fileStore.GetPolicyByInitiator(ctx, rt, resourceID, initiatingOUID)
+	return declarativeresource.CompositeGetHelper(
+		func() (Policy, error) {
+			return c.dbStore.GetPolicyByInitiator(ctx, rt, resourceID, initiatingOUID)
+		},
+		func() (Policy, error) {
+			return c.fileStore.GetPolicyByInitiator(ctx, rt, resourceID, initiatingOUID)
+		},
+		errPolicyNotFound,
+	)
 }
 
-// ListPoliciesForResource returns every policy recorded for one resource, from both stores.
+// ListPoliciesForResource returns one page of a resource's policies across both stores.
+//
+// The counts go to the helper uncapped, because they are what it compares against its own cap. A
+// count already cut down to the cap can never be found to exceed it, and the listing would then
+// page through the first MaxCompositeStoreRecords policies as though the rest did not exist.
 func (c *compositeStore) ListPoliciesForResource(
-	ctx context.Context, rt ResourceType, resourceID string,
+	ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
 ) ([]Policy, error) {
-	stored, err := c.dbStore.ListPoliciesForResource(ctx, rt, resourceID)
+	merged, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.CountPoliciesForResource(ctx, rt, resourceID) },
+		func() (int, error) { return c.fileStore.CountPoliciesForResource(ctx, rt, resourceID) },
+		func(count int) ([]Policy, error) {
+			return c.dbStore.ListPoliciesForResource(ctx, rt, resourceID, count, 0)
+		},
+		func(count int) ([]Policy, error) {
+			return c.fileStore.ListPoliciesForResource(ctx, rt, resourceID, count, 0)
+		},
+		appendUnsuperseded,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
 	if err != nil {
 		return nil, err
 	}
-	declared, err := c.fileStore.ListPoliciesForResource(ctx, rt, resourceID)
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return merged, nil
+}
+
+// ListAllPoliciesForResource returns every policy a resource has across both stores.
+//
+// Both halves are read whole and merged directly, without the helper the paged listing uses: that
+// helper refuses above MaxCompositeStoreRecords, and refusing here would take a resource's sharing
+// offline the moment it grew past the cap. The cap exists to keep a listing from materializing an
+// unbounded page in memory, which is a different concern from answering a coverage question
+// correctly.
+func (c *compositeStore) ListAllPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) ([]Policy, error) {
+	stored, err := c.dbStore.ListAllPoliciesForResource(ctx, rt, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	declared, err := c.fileStore.ListAllPoliciesForResource(ctx, rt, resourceID)
 	if err != nil {
 		return nil, err
 	}
 	return appendUnsuperseded(stored, declared), nil
+}
+
+// CountPoliciesForResource returns how many policies one resource has across both stores.
+//
+// The halves are merged before counting rather than added: a declaration whose unit also holds a
+// stored row is superseded by that row, and adding the two counts would report a policy that no
+// listing will ever return.
+func (c *compositeStore) CountPoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID string,
+) (int, error) {
+	merged, err := c.ListPoliciesForResource(ctx, rt, resourceID,
+		serverconst.MaxCompositeStoreRecords+1, 0)
+	if err != nil {
+		return 0, err
+	}
+	return len(merged), nil
 }
 
 // ListPoliciesRelevantToChain returns the policies that could cover any organization unit in the

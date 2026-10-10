@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -17,6 +18,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// indexedAttr is one row destined for ENTITY_IDENTIFIER.
+type indexedAttr struct {
+	name   string
+	value  string
+	source string
+}
 
 // entityStoreInterface defines the interface for entity store operations.
 type entityStoreInterface interface {
@@ -34,9 +42,11 @@ type entityStoreInterface interface {
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		creds json.RawMessage) error
 	DeleteEntity(ctx context.Context, id string) error
+	LockEntity(ctx context.Context, id string) (providers.Entity, error)
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	ResolveLinkedAccount(ctx context.Context, idpID, sub string) (*string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
 		filters map[string]interface{}) (int, error)
@@ -263,28 +273,32 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		return ErrEntityNotFound
 	}
 
-	// Reload the entity to get the authoritative post-update state for identifier sync.
-	// This ensures identifiers reflect what is actually stored in the DB, regardless of
-	// what the caller passed in SystemAttributes.
-	current, err := es.GetEntity(ctx, entity.ID)
+	return es.resyncIdentifiers(ctx, dbClient, entity.ID)
+}
+
+// resyncIdentifiers rebuilds all identifiers of an entity from its stored schema and system attributes.
+// Both sources are re-indexed together, since the system-over-schema precedence for a name depends on
+// both. The entity is reloaded so identifiers reflect what is actually stored in the DB.
+func (es *entityDBStore) resyncIdentifiers(ctx context.Context, dbClient provider.DBClientInterface,
+	entityID string) error {
+	current, err := es.GetEntity(ctx, entityID)
 	if err != nil {
 		return fmt.Errorf("failed to reload entity for identifier sync: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entity.ID, es.scope(ctx))
-	if err != nil {
+	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entityID, es.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete identifiers: %w", err)
 	}
 
-	if err := es.syncAttributeIdentifiers(
-		ctx, entity.ID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
+	if err = es.syncAttributeIdentifiers(
+		ctx, entityID, current.Attributes, current.SystemAttributes, es.indexedAttributes); err != nil {
 		return fmt.Errorf("failed to sync identifiers: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateAttributes updates only the schema attributes of an entity and re-syncs attribute-sourced identifiers.
+// UpdateAttributes updates only the schema attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -301,19 +315,10 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteAttributeIdentifiersByEntity,
-		entityID, es.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete attribute identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, attributes, nil, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync attribute identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
-// UpdateSystemAttributes updates the system attributes of an entity and re-syncs system-sourced identifiers.
+// UpdateSystemAttributes updates only the system attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
@@ -331,16 +336,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteSystemIdentifiersByEntity,
-		entityID, es.scope(ctx)); err != nil {
-		return fmt.Errorf("failed to delete system identifiers: %w", err)
-	}
-
-	if err = es.syncAttributeIdentifiers(ctx, entityID, nil, attrs, es.indexedAttributes); err != nil {
-		return fmt.Errorf("failed to sync system identifiers: %w", err)
-	}
-
-	return nil
+	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
 
 // UpdateCredentials updates the credentials of an entity.
@@ -427,6 +423,9 @@ func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID 
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, *query, args...)
+	if provider.IsUniqueIndexViolation(err, linkedIDIndexName, linkedIDIndexColumns) {
+		return ErrLinkedAccountConflict
+	}
 	if err != nil {
 		return fmt.Errorf("failed to batch insert identifiers: %w", err)
 	}
@@ -442,20 +441,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	// Fast path: try indexed identifier store first for all lookups.
-	// This covers both schema-indexed attributes (email, username) and
-	// system identifiers without requiring config.
-	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.scope(ctx))
-	if err == nil {
-		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
-		if qErr == nil && len(results) == 1 {
-			if entityID, ok := results[0]["id"].(string); ok {
-				return &entityID, nil
-			}
-		}
-	}
-
-	// Fallback: categorize filters into indexed and non-indexed for JSONB search.
+	// Categorize filters into indexed and non-indexed for the fast path and the JSONB fallback.
 	indexedFilters := make(map[string]interface{})
 	nonIndexedFilters := make(map[string]interface{})
 
@@ -467,6 +453,26 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 		}
 	}
 
+	// Fast path: try indexed identifier store first for all lookups.
+	// This covers both schema-indexed attributes (email, username) and
+	// system identifiers without requiring config.
+	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.scope(ctx))
+	if err == nil {
+		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
+		if qErr == nil && len(results) == 1 {
+			if entityID, ok := results[0]["id"].(string); ok {
+				return &entityID, nil
+			}
+		}
+		// Identifier rows are positive matches, so more than one entity for all-indexed filters is a
+		// real ambiguity. The JSON fallback compares whole values and cannot see array items, so it
+		// would report not found, or a single scalar holder, instead.
+		if qErr == nil && len(results) > 1 && len(nonIndexedFilters) == 0 {
+			return nil, ErrAmbiguousEntity
+		}
+	}
+
+	// Fallback: JSONB search, using the identifier table for any indexed filters.
 	var fallbackQuery dbmodel.DBQuery
 	var fallbackArgs []interface{}
 
@@ -518,6 +524,52 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	return &entityID, nil
 }
 
+// LockEntity holds the entity's write lock until the surrounding transaction ends and returns the
+// entity as read under that lock.
+func (es *entityDBStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryLockEntity, id, es.scope(ctx))
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to execute query: %w", err)
+	}
+	if rowsAffected == 0 {
+		return providers.Entity{}, ErrEntityNotFound
+	}
+	return es.GetEntity(ctx, id)
+}
+
+// ResolveLinkedAccount resolves the entity linked to a subject at a connection from the identifier
+// index only.
+func (es *entityDBStore) ResolveLinkedAccount(ctx context.Context, idpID, sub string) (*string, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryResolveIdentifier,
+		linkedIdentifierName(idpID), sub, identifierSourceSystem, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	if len(results) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	if len(results) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+
+	entityID, ok := results[0]["id"].(string)
+	if !ok || entityID == "" {
+		return nil, fmt.Errorf("unexpected type for id: %T", results[0]["id"])
+	}
+	return &entityID, nil
+}
+
 // SearchEntities searches for all entities matching the provided filters.
 // Unlike IdentifyEntity, this returns all matching entities instead of erroring on ambiguity.
 // Results are capped at MaxPageSize (100) entries; matches beyond that limit are not returned.
@@ -530,7 +582,7 @@ func (es *entityDBStore) SearchEntities(ctx context.Context,
 	}
 
 	searchQuery, args, err := buildEntityListQuery(
-		"", filters, serverconst.MaxPageSize, 0, es.scope(ctx))
+		"", filters, es.indexedAttributes, serverconst.MaxPageSize, 0, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build search query: %w", err)
 	}
@@ -560,7 +612,7 @@ func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQuery(category, filters, es.scope(ctx))
+	countQuery, args, err := buildEntityCountQuery(category, filters, es.indexedAttributes, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -576,7 +628,8 @@ func (es *entityDBStore) GetEntityList(ctx context.Context, category string,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQuery(category, filters, limit, offset, es.scope(ctx))
+	listQuery, args, err := buildEntityListQuery(
+		category, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -600,7 +653,8 @@ func (es *entityDBStore) GetEntityListCountByOUIDs(ctx context.Context, category
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQueryByOUIDs(category, ouIDs, filters, es.scope(ctx))
+	countQuery, args, err := buildEntityCountQueryByOUIDs(
+		category, ouIDs, filters, es.indexedAttributes, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -616,7 +670,8 @@ func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category stri
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQueryByOUIDs(category, ouIDs, filters, limit, offset, es.scope(ctx))
+	listQuery, args, err := buildEntityListQueryByOUIDs(
+		category, ouIDs, filters, es.indexedAttributes, limit, offset, es.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -934,18 +989,47 @@ func executeCountQuery(dbClient provider.DBClientInterface, ctx context.Context,
 	return totalCount, nil
 }
 
+// linkedIdentifierName derives the ENTITY_IDENTIFIER name a connection's links are indexed under.
+func linkedIdentifierName(idpID string) string {
+	return fmt.Sprintf("%s.%s", authnprovidercm.SystemAttrLinkedIDs, idpID)
+}
+
+// linkedIdentifierRows converts the linkedIds system attribute into one indexed identifier per
+// subject. Malformed entries are skipped.
+func linkedIdentifierRows(value interface{}) []indexedAttr {
+	byIDP, ok := value.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var rows []indexedAttr
+	for idpID, subjects := range byIDP {
+		bySub, ok := subjects.(map[string]interface{})
+		if idpID == "" || !ok {
+			continue
+		}
+		for sub := range bySub {
+			if sub == "" {
+				continue
+			}
+			rows = append(rows, indexedAttr{
+				name:   linkedIdentifierName(idpID),
+				value:  sub,
+				source: identifierSourceSystem,
+			})
+		}
+	}
+	return rows
+}
+
 func prepareIdentifierQuery(
 	entityID string, attributes json.RawMessage, systemAttributes json.RawMessage,
 	indexedAttrs map[string]bool, deploymentID string,
 ) (*dbmodel.DBQuery, []interface{}, error) {
-	type indexedAttr struct {
-		name   string
-		value  string
-		source string
-	}
-	var toInsert []indexedAttr
+	var attrEntries, sysEntries []indexedAttr
 
 	// Extract indexed attributes from schema attributes (source = "attribute").
+	// A value may be a scalar (one identifier value) or an array of scalars (multiple values).
 	if len(attributes) > 0 {
 		var attrMap map[string]interface{}
 		if err := json.Unmarshal(attributes, &attrMap); err != nil {
@@ -955,45 +1039,68 @@ func prepareIdentifierQuery(
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "attribute"})
+			for _, valueStr := range attrValueToStrings(attrValue) {
+				attrEntries = append(attrEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceAttribute})
 			}
 		}
 	}
 
 	// Extract indexed attributes from system attributes (source = "system").
+	sysNames := make(map[string]bool)
 	if len(systemAttributes) > 0 {
 		var sysAttrMap map[string]interface{}
 		if err := json.Unmarshal(systemAttributes, &sysAttrMap); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 		}
 		for attrName, attrValue := range sysAttrMap {
+			// Linked accounts are server-owned and indexed unconditionally. Gating them on
+			// user.indexed_attributes would let a missing config line silently break sign-in through a link.
+			if attrName == authnprovidercm.SystemAttrLinkedIDs {
+				for _, row := range linkedIdentifierRows(attrValue) {
+					sysNames[row.name] = true
+					sysEntries = append(sysEntries, row)
+				}
+				continue
+			}
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "system"})
+			values := attrValueToStrings(attrValue)
+			if len(values) > 0 {
+				sysNames[attrName] = true
+			}
+			for _, valueStr := range values {
+				sysEntries = append(sysEntries,
+					indexedAttr{name: attrName, value: valueStr, source: identifierSourceSystem})
 			}
 		}
 	}
+
+	// If the same name has indexable values in both schema and system attributes, the system
+	// attribute values win entirely (schema values for that name are dropped, not merged).
+	toInsert := make([]indexedAttr, 0, len(attrEntries)+len(sysEntries))
+	for _, attr := range attrEntries {
+		if !sysNames[attr.name] {
+			toInsert = append(toInsert, attr)
+		}
+	}
+	toInsert = append(toInsert, sysEntries...)
 
 	if len(toInsert) == 0 {
 		return nil, nil, nil
 	}
 
-	// Deduplicate by attribute name; if the same key appears in both schema and system attributes,
-	// the system attribute entry wins (it was appended last and overwrites the schema one).
-	dedupMap := make(map[string]indexedAttr, len(toInsert))
-	dedupOrder := make([]string, 0, len(toInsert))
+	// Deduplicate exact (name, value) repeats, preserving first-seen order.
+	seen := make(map[string]bool, len(toInsert))
+	deduped := make([]indexedAttr, 0, len(toInsert))
 	for _, attr := range toInsert {
-		if _, exists := dedupMap[attr.name]; !exists {
-			dedupOrder = append(dedupOrder, attr.name)
+		key := attr.name + "\x00" + attr.value
+		if seen[key] {
+			continue
 		}
-		dedupMap[attr.name] = attr
-	}
-	deduped := make([]indexedAttr, 0, len(dedupMap))
-	for _, name := range dedupOrder {
-		deduped = append(deduped, dedupMap[name])
+		seen[key] = true
+		deduped = append(deduped, attr)
 	}
 	toInsert = deduped
 
@@ -1030,6 +1137,47 @@ func attrValueToString(value interface{}) string {
 	default:
 		return ""
 	}
+}
+
+// attrValueToStrings converts an attribute value into the identifier values to index.
+// A scalar produces at most one value; an array produces one value per indexable element.
+// Non-indexable elements (e.g. nested objects) are skipped.
+func attrValueToStrings(value interface{}) []string {
+	elements, ok := value.([]interface{})
+	if !ok {
+		if s := attrValueToString(value); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+
+	values := make([]string, 0, len(elements))
+	for _, elem := range elements {
+		if s := attrValueToString(elem); s != "" {
+			values = append(values, s)
+		}
+	}
+	return values
+}
+
+// validateIndexedValueCounts rejects attributes in which an indexed name has more than
+// maxIndexedValuesPerAttribute values to index. Linked accounts are indexed whatever the
+// configuration, so their subjects are held to the same limit in total across every connection.
+func validateIndexedValueCounts(attrMap map[string]interface{}, indexedAttrs map[string]bool) error {
+	for attrName, attrValue := range attrMap {
+		if attrName == authnprovidercm.SystemAttrLinkedIDs {
+			if len(linkedIdentifierRows(attrValue)) > maxIndexedValuesPerAttribute {
+				return fmt.Errorf("%w: %s holds more than %d links",
+					ErrIndexedValueLimitExceeded, attrName, maxIndexedValuesPerAttribute)
+			}
+			continue
+		}
+		if indexedAttrs[attrName] && len(attrValueToStrings(attrValue)) > maxIndexedValuesPerAttribute {
+			return fmt.Errorf("%w: indexed attribute '%s' has more than %d values",
+				ErrIndexedValueLimitExceeded, attrName, maxIndexedValuesPerAttribute)
+		}
+	}
+	return nil
 }
 
 func validateIndexedAttributesConfig(configuredAttrs []string) error {

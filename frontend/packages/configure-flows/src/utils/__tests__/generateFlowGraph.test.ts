@@ -209,7 +209,7 @@ describe('generateFlowGraph', () => {
 
       const sendNode = request.nodes.find((n) => n.id === 'mfa_send_otp');
       expect(sendNode?.executor).toEqual({name: 'EmailExecutor', mode: 'send'});
-      expect(sendNode?.properties?.['emailTemplate']).toBe('OTP');
+      expect(sendNode?.properties?.['emailTemplate']).toBe('otp');
       expect(sendNode?.onSuccess).toBe('mfa_verify_prompt');
 
       const promptNode = request.nodes.find((n) => n.id === 'mfa_verify_prompt');
@@ -238,7 +238,7 @@ describe('generateFlowGraph', () => {
       const sendNode = request.nodes.find((n) => n.id === 'mfa_send_otp');
       expect(sendNode?.executor?.name).toBe('SMSExecutor');
       expect(sendNode?.properties?.['senderId']).toBe('sender-123');
-      expect(sendNode?.properties?.['smsTemplate']).toBe('OTP');
+      expect(sendNode?.properties?.['smsTemplate']).toBe('otp');
     });
 
     it('should branch into an independent channel-choice chain when both Email and SMS OTP MFA are enabled', () => {
@@ -265,7 +265,7 @@ describe('generateFlowGraph', () => {
 
       const smsSendNode = request.nodes.find((n) => n.id === 'mfa_send_otp_sms');
       expect(smsSendNode?.properties?.['senderId']).toBe('sender-123');
-      expect(smsSendNode?.properties?.['smsTemplate']).toBe('OTP');
+      expect(smsSendNode?.properties?.['smsTemplate']).toBe('otp');
 
       expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_email')?.onSuccess).toBe('authorization_check');
       expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_sms')?.onSuccess).toBe('authorization_check');
@@ -351,7 +351,7 @@ describe('generateFlowGraph', () => {
 
       const sendNode = request.nodes.find((n) => n.id === 'magic_link_send_email');
       expect(sendNode?.executor?.name).toBe('EmailExecutor');
-      expect(sendNode?.properties?.['emailTemplate']).toBe('MAGIC_LINK');
+      expect(sendNode?.properties?.['emailTemplate']).toBe('magic-link');
       expect(sendNode?.onSuccess).toBe('magic_link_prompt_sent');
 
       const sentPrompt = request.nodes.find((n) => n.id === 'magic_link_prompt_sent');

@@ -236,9 +236,21 @@ func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_EmptyCoreAttr
 func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_EmptySchema() {
 	t := suite.T()
 	coreAttrs := map[string]json.RawMessage{"userName": json.RawMessage(`"jdoe"`)}
-	result, _, err := reverseMapCoreAttrsForSchema(coreAttrs, nil)
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, nil)
 	require.NoError(t, err)
 	require.Nil(t, result)
+	require.Equal(t, []string{"userName"}, undeclared)
+}
+
+// TestReverseMapCoreAttrsForSchema_NoProperties tests Reverse Map Core Attrs For Schema for a schema with no
+// properties.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_NoProperties() {
+	t := suite.T()
+	coreAttrs := map[string]json.RawMessage{"userName": json.RawMessage(`"jdoe"`)}
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, json.RawMessage(`{}`))
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, []string{"userName"}, undeclared)
 }
 
 // TestReverseMapCoreAttrsForSchema_InvalidSchemaJSON tests Reverse Map Core Attrs For Schema for Invalid Schema JSON.
@@ -280,6 +292,49 @@ func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_NoMatchingSch
 	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, schema)
 	require.NoError(t, err)
 	require.Nil(t, result)
+	require.Equal(t, []string{"userName"}, undeclared)
+}
+
+// TestReverseMapCoreAttrsForSchema_MappedRuleWithoutSchemaProp tests that a core attribute with a rule but no
+// matching schema property is reported as undeclared while the other attributes still map.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_MappedRuleWithoutSchemaProp() {
+	t := suite.T()
+	schema := json.RawMessage(`{"username":{"type":"string"}}`)
+	coreAttrs := map[string]json.RawMessage{
+		"userName": json.RawMessage(`"jdoe"`),
+		"title":    json.RawMessage(`"Engineer"`),
+	}
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, schema)
+	require.NoError(t, err)
+	require.JSONEq(t, `"jdoe"`, string(result["username"]))
+	require.Equal(t, []string{"title"}, undeclared)
+}
+
+// TestReverseMapCoreAttrsForSchema_SubAttrWithoutSchemaProp tests that a complex core attribute none of whose
+// sub-attributes has a schema property is reported as undeclared.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_SubAttrWithoutSchemaProp() {
+	t := suite.T()
+	schema := json.RawMessage(`{"username":{"type":"string"}}`)
+	coreAttrs := map[string]json.RawMessage{
+		"name": json.RawMessage(`{"givenName":"John","familyName":"Doe"}`),
+	}
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, schema)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, []string{"name"}, undeclared)
+}
+
+// TestReverseMapCoreAttrsForSchema_SubAttrPartiallyMapped tests that a complex core attribute with at least one
+// mapped sub-attribute is not reported as undeclared.
+func (suite *AttrMapperTestSuite) TestReverseMapCoreAttrsForSchema_SubAttrPartiallyMapped() {
+	t := suite.T()
+	schema := json.RawMessage(`{"given_name":{"type":"string"}}`)
+	coreAttrs := map[string]json.RawMessage{
+		"name": json.RawMessage(`{"givenName":"John","familyName":"Doe"}`),
+	}
+	result, undeclared, err := reverseMapCoreAttrsForSchema(coreAttrs, schema)
+	require.NoError(t, err)
+	require.JSONEq(t, `"John"`, string(result["given_name"]))
 	require.Empty(t, undeclared)
 }
 

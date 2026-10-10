@@ -33,7 +33,7 @@ func (s *FederatedMappingSuite) oauthUser() string {
 // authenticateOAuth applies a configuration and authenticates through the OAuth connection.
 func (s *FederatedMappingSuite) authenticateOAuth(sub string) int {
 	s.T().Helper()
-	s.applyConfigTo("oauth", s.oauthIDPID, mapping(fedPersonType.Name, pair("email", "email")))
+	s.applyConfigTo("oauth", s.oauthIDPID, mapping(fedPersonType.Handle, pair("email", "email")))
 	status, _, _ := s.authenticateDirectVia(s.oauthIDPID, sub)
 	return status
 }

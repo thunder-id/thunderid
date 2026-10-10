@@ -1,37 +1,39 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {TEMPLATE_SCENARIOS} from './constants';
+import type {NotificationTemplateSummary} from '../../../../models/notification-templates';
 
 /**
- * Builds the template scenario options for a picker, keeping the current value in the list
- * even when it is not one this build knows about — a flow authored elsewhere should not have
- * its template silently blanked.
+ * Builds the template handle options for a picker, keeping the current value in the list even
+ * when the server did not return it, so a flow authored elsewhere is not silently blanked.
  *
- * @param currentValue - The scenario currently stored on the executor.
- * @returns The scenario values to offer.
+ * @param templates - The templates returned for the channel (may be undefined while loading).
+ * @param currentValue - The handle currently stored on the executor.
+ * @returns The handles to offer.
  */
-export const getTemplateScenarioOptions = (currentValue: string): string[] => {
-  const scenarios: string[] = TEMPLATE_SCENARIOS.map((scenario) => scenario.value);
+export const buildTemplateOptions = (
+  templates: NotificationTemplateSummary[] | undefined,
+  currentValue: string,
+): string[] => {
+  const handles: string[] = (templates ?? []).map((template) => template.handle);
 
-  return currentValue && !scenarios.includes(currentValue) ? [...scenarios, currentValue] : scenarios;
+  return currentValue && !handles.includes(currentValue) ? [...handles, currentValue] : handles;
 };
 
 /**
- * Resolves the display label for a template scenario. Scenarios this build does not know
- * about have no translation, so they fall back to the raw value.
+ * Maps each template handle to its display name, for resolving picker option labels.
  *
- * @param scenario - The scenario value.
- * @param translate - Translation function.
- * @returns The human-readable label.
+ * @param templates - The templates returned for the channel (may be undefined while loading).
+ * @returns A handle to display name lookup.
  */
-export const getTemplateScenarioLabel = (
-  scenario: string,
-  translate: (key: string, defaultValue: string) => string,
-): string => {
-  const known = TEMPLATE_SCENARIOS.find((candidate) => candidate.value === scenario);
+export const buildTemplateLabels = (templates: NotificationTemplateSummary[] | undefined): Record<string, string> => {
+  const labels: Record<string, string> = {};
 
-  return known ? translate(known.translationKey, known.displayLabel) : scenario;
+  (templates ?? []).forEach((template) => {
+    labels[template.handle] = template.displayName;
+  });
+
+  return labels;
 };
 
 /**

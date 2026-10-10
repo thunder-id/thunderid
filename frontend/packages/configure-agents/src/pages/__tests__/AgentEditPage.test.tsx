@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
-import type {ReactNode} from 'react';
+import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import AgentConstants from '../../constants/agent-constants';
 import AgentEditPage from '../AgentEditPage';
@@ -19,7 +19,10 @@ const {
   mockUseGetAgentType,
   mockUseLocation,
   stagingCallbackIdentities,
+  advancedSettings,
 } = vi.hoisted(() => ({
+  // Switches the Advanced tab from its stub to the real component for the tests that need it.
+  advancedSettings: {real: false},
   // Every distinct onFieldChange the Attributes tab is handed.
   stagingCallbackIdentities: new Set<unknown>(),
   mockNavigate: vi.fn(),
@@ -155,14 +158,38 @@ vi.mock('../../components/edit-agent/access/EditAccessSettings', () => ({
   default: () => <div data-testid="edit-access" />,
 }));
 
-vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', () => ({
-  default: ({onDeleteSuccess}: {onDeleteSuccess?: () => void}) => (
-    <div data-testid="edit-advanced">
-      <button type="button" onClick={() => onDeleteSuccess?.()}>
-        Delete Successful
-      </button>
-    </div>
-  ),
+vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', async (importOriginal) => {
+  const {default: RealEditAdvancedSettings} =
+    await importOriginal<typeof import('../../components/edit-agent/advanced-settings/EditAdvancedSettings')>();
+  return {
+    default: (props: ComponentProps<typeof RealEditAdvancedSettings>) => {
+      if (advancedSettings.real) return <RealEditAdvancedSettings {...props} />;
+      const {onDeleteSuccess, onBackchannelLogoutUriValidationChange} = props;
+      return (
+        <div data-testid="edit-advanced">
+          <button type="button" onClick={() => onDeleteSuccess?.()}>
+            Delete Successful
+          </button>
+          <button type="button" onClick={() => onBackchannelLogoutUriValidationChange?.(true)}>
+            Type an invalid back-channel logout URI
+          </button>
+        </div>
+      );
+    },
+  };
+});
+
+// The real Advanced tab's other sections fetch data the back-channel logout tests do not need.
+vi.mock('../../components/edit-agent/advanced-settings/OwnerSection', () => ({default: () => null}));
+vi.mock('../../components/edit-agent/advanced-settings/AllowedUserTypesSection', () => ({default: () => null}));
+vi.mock('../../components/edit-agent/advanced-settings/AgentSignInSection', () => ({default: () => null}));
+vi.mock('../../components/AgentDeleteDialog', () => ({default: () => null}));
+
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
+  useThunderID: () => ({
+    discovery: {wellKnown: {token_endpoint_auth_methods_supported: ['client_secret_basic', 'none']}},
+  }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -180,6 +207,7 @@ vi.mock('react-i18next', () => ({
       return result;
     },
   }),
+  Trans: ({defaults = ''}: {defaults?: string}) => <span>{defaults}</span>,
 }));
 
 describe('AgentEditPage', () => {
@@ -204,6 +232,7 @@ describe('AgentEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stagingCallbackIdentities.clear();
+    advancedSettings.real = false;
     mockUseGetAgent.mockReturnValue({
       data: baseAgent,
       isLoading: false,
@@ -219,12 +248,12 @@ describe('AgentEditPage', () => {
     mockMutateAsync.mockResolvedValue(undefined);
     mockRefetch.mockResolvedValue({});
     mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'default-type', name: 'default'}]},
+      data: {types: [{id: 'default-type', handle: 'default', displayName: 'Default'}]},
       isLoading: false,
       error: null,
     });
     mockUseGetAgentType.mockReturnValue({
-      data: {id: 'default-type', name: 'default', schema: {}},
+      data: {id: 'default-type', handle: 'default', displayName: 'Default', schema: {}},
       isLoading: false,
       error: null,
     });
@@ -694,6 +723,31 @@ describe('AgentEditPage', () => {
       expect(screen.queryByText('raw backend update failure detail')).not.toBeInTheDocument();
     });
 
+    it('names the back-channel logout URI field when the server refuses a private address', async () => {
+      const user = userEvent.setup();
+      mockUseUpdateAgent.mockReturnValue({
+        mutateAsync: mockMutateAsync,
+        isPending: false,
+        error: {
+          response: {
+            data: {
+              code: 'AGT-1021',
+              description: {key: 'error.agentservice.backchannel_logout_uri_private_host_description'},
+            },
+          },
+        } as unknown as Error,
+        isError: true,
+        reset: vi.fn(),
+      });
+
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+
+      expect(screen.getByText(/The server refused the back-channel logout URI/)).toBeInTheDocument();
+    });
+
     it('resets a failed save mutation as soon as another field changes', async () => {
       const user = userEvent.setup();
       const mockReset = vi.fn();
@@ -890,6 +944,158 @@ describe('AgentEditPage', () => {
 
       expect(screen.getByText('Before saving, add a certificate.')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('disables Save when the back-channel logout URI is http on a public client, even without visiting the advanced tab', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['person'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials', 'authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://agent.example.com/cb'],
+                publicClient: true,
+                backchannelLogoutUri: 'http://agent.example.com/bcl',
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, fix the back-channel logout URI.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('disables Save while the back-channel logout URI field holds an invalid typed value', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['person'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials', 'authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://agent.example.com/cb'],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+
+      await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+      await user.click(screen.getByText('Type an invalid back-channel logout URI'));
+
+      expect(screen.getByText('Before saving, fix the back-channel logout URI.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('blocks Save, without a render loop, when an invalid back-channel logout URI is typed in the real Advanced tab', async () => {
+      advancedSettings.real = true;
+      // Silenced, so a loop cannot flood the output, and restored in finally, so it cannot leak.
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['person'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials', 'authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://agent.example.com/cb'],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      try {
+        render(<AgentEditPage />);
+        await triggerAChange(user);
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+        await user.type(screen.getByPlaceholderText('https://example.com/backchannel-logout'), 'x');
+        await user.tab();
+
+        expect(screen.getByText('Before saving, fix the back-channel logout URI.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+        expect(consoleError.mock.calls.flat().join(' ')).not.toContain('Maximum update depth exceeded');
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
+    it('stops blocking Save once the Advanced tab, and the invalid value typed in it, is left behind', async () => {
+      advancedSettings.real = true;
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['person'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials', 'authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://agent.example.com/cb'],
+                backchannelLogoutUri: 'https://agent.example.com/bcl',
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+      await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+      await user.type(screen.getByDisplayValue('https://agent.example.com/bcl'), '#frag');
+      await user.tab();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      // The typed value was never committed and is dropped with the tab, so the saved URI stands.
+      await user.click(screen.getByRole('tab', {name: 'Overview'}));
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+
+      await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+      expect(screen.getByDisplayValue('https://agent.example.com/bcl')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
     });
 
     it('enables Save once a certificate is configured for private_key_jwt', async () => {

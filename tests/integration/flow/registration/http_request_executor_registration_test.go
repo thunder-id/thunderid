@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -179,7 +179,8 @@ var (
 	}
 
 	httpRequestRegTestEntityType = testutils.UserType{
-		Name: "http_request_reg_test_person",
+		Handle:      "http_request_reg_test_person",
+		DisplayName: "Http Request Reg Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -204,7 +205,7 @@ var (
 		Name:                      "HTTP Request Executor Registration Test Application",
 		Description:               "Application for testing HTTP request executor in registration flows",
 		IsRegistrationFlowEnabled: true,
-		AllowedUserTypes:          []string{httpRequestRegTestEntityType.Name},
+		AllowedUserTypes:          []string{httpRequestRegTestEntityType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},

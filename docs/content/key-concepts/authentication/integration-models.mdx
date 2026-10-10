@@ -366,6 +366,10 @@ curl -X POST https://localhost:8090/auth/credentials/authenticate \
 
 See [Security Configuration](../../../deployment/configuration#security-configuration) for details.
 
+### Disable the Direct API
+
+Deployments that don't use the Direct API can remove its endpoints from the server by setting `direct_api.enabled` to `false`. See [Direct API Configuration](../../../deployment/configuration#direct-api-configuration).
+
 ### Rate Limiting
 
 <ProductName /> does not apply rate limiting or brute-force protection to Direct API endpoints. It enforces no per-user lockout, no per-client request quota, and no throttling on repeated failures. An endpoint such as `POST /auth/credentials/authenticate` or `POST /auth/otp/sms/verify` accepts credential and OTP attempts at whatever rate the caller sends them.

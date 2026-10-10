@@ -179,6 +179,28 @@ notification:
 	assert.Equal(suite.T(), "mysql", config.Database.Config.SQLite.Path)
 }
 
+// ThunderID always serves the organization-unit-qualified routes, and resolving that during the
+// config load is what lets every module read one value instead of deciding for itself. A module
+// that reads the server config and finds this off would register no such route.
+func (suite *ConfigTestSuite) TestLoadConfigEnablesOUQualifiedEndpoints() {
+	tempDir := suite.T().TempDir()
+	userFile := suite.createTempFile(tempDir, "user*.yaml", `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), config.Server.EnableOUQualifiedEndpoints)
+}
+
 func (suite *ConfigTestSuite) TestLoadConfigGateClientDefaultsToServer() {
 	tempDir := suite.T().TempDir()
 
@@ -877,10 +899,12 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		return &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(true)}},
 			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(true)},
+			DirectAPI:    DirectAPIConfig{Enabled: boolPtr(true)},
 			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(true)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(true)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(true)},
+				CIMD:            engineconfig.CIMDConfig{Enabled: boolPtr(true)},
 				Revocation: engineconfig.RevocationConfig{TokenFamily: engineconfig.TokenFamilyRevocationConfig{
 					OnRefreshReplay:  boolPtr(true),
 					OnExplicitRevoke: boolPtr(true),
@@ -898,10 +922,12 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		user := &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(false)}},
 			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(false)},
+			DirectAPI:    DirectAPIConfig{Enabled: boolPtr(false)},
 			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(false)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(false)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(false)},
+				CIMD:            engineconfig.CIMDConfig{Enabled: boolPtr(false)},
 				Revocation: engineconfig.RevocationConfig{TokenFamily: engineconfig.TokenFamilyRevocationConfig{
 					OnRefreshReplay:  boolPtr(false),
 					OnExplicitRevoke: boolPtr(false),
@@ -917,9 +943,11 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 
 		assert.False(suite.T(), base.Notification.OTP.UsesNumericOnly())
 		assert.False(suite.T(), base.OpenID4VP.EnforceKeyBindingEnabled())
+		assert.False(suite.T(), base.DirectAPI.IsEnabled())
 		assert.False(suite.T(), base.OAuth.RefreshToken.RevokePreviousOnRenewEnabled())
 		assert.False(suite.T(), base.OAuth.TokenRevocation.IsEnabled())
 		assert.False(suite.T(), base.OAuth.Logout.IsEnabled())
+		assert.False(suite.T(), base.OAuth.CIMD.IsEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnRefreshReplayEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 		assert.False(suite.T(), base.OAuth.Revocation.TokenFamily.OnCodeReplayEnabled())
@@ -933,9 +961,11 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 
 		assert.True(suite.T(), base.Notification.OTP.UsesNumericOnly())
 		assert.True(suite.T(), base.OpenID4VP.EnforceKeyBindingEnabled())
+		assert.True(suite.T(), base.DirectAPI.IsEnabled())
 		assert.True(suite.T(), base.OAuth.RefreshToken.RevokePreviousOnRenewEnabled())
 		assert.True(suite.T(), base.OAuth.TokenRevocation.IsEnabled())
 		assert.True(suite.T(), base.OAuth.Logout.IsEnabled())
+		assert.True(suite.T(), base.OAuth.CIMD.IsEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnRefreshReplayEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 		assert.True(suite.T(), base.OAuth.Revocation.TokenFamily.OnCodeReplayEnabled())

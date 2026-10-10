@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype_test
@@ -53,8 +53,8 @@ func (s *EntityTypeExporterTestSuite) TestGetParameterizerType() {
 func (s *EntityTypeExporterTestSuite) TestGetAllResourceIDs_Success() {
 	expectedResponse := &entitytype.EntityTypeListResponse{
 		Types: []entitytype.EntityTypeListItem{
-			{ID: "schema1", Name: "Schema 1"},
-			{ID: "schema2", Name: "Schema 2"},
+			{ID: "schema1", Handle: "schema-1", DisplayName: "Schema 1"},
+			{ID: "schema2", Handle: "schema-2", DisplayName: "Schema 2"},
 		},
 	}
 
@@ -109,8 +109,9 @@ func (s *EntityTypeExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 
 func (s *EntityTypeExporterTestSuite) TestGetResourceByID_Success() {
 	expectedSchema := &entitytype.EntityType{
-		ID:   "schema1",
-		Name: "Test Schema",
+		ID:          "schema1",
+		Handle:      "test-schema",
+		DisplayName: "Test Schema",
 	}
 
 	s.mockService.EXPECT().
@@ -146,9 +147,10 @@ func (s *EntityTypeExporterTestSuite) TestGetResourceByID_Error() {
 
 func (s *EntityTypeExporterTestSuite) TestValidateResource_Success() {
 	schema := &entitytype.EntityType{
-		ID:     "schema1",
-		Name:   "Valid Schema",
-		Schema: json.RawMessage(`{"field": "value"}`),
+		ID:          "schema1",
+		Handle:      "valid-schema",
+		DisplayName: "Valid Schema",
+		Schema:      json.RawMessage(`{"field": "value"}`),
 	}
 
 	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
@@ -171,8 +173,9 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_InvalidType() {
 
 func (s *EntityTypeExporterTestSuite) TestValidateResource_EmptyName() {
 	schema := &entitytype.EntityType{
-		ID:   "schema1",
-		Name: "",
+		ID:          "schema1",
+		Handle:      "",
+		DisplayName: "",
 	}
 
 	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
@@ -187,9 +190,10 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_EmptyName() {
 
 func (s *EntityTypeExporterTestSuite) TestValidateResource_NoSchema() {
 	schema := &entitytype.EntityType{
-		ID:     "schema1",
-		Name:   "Test Schema",
-		Schema: json.RawMessage(`{}`),
+		ID:          "schema1",
+		Handle:      "test-schema",
+		DisplayName: "Test Schema",
+		Schema:      json.RawMessage(`{}`),
 	}
 
 	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
@@ -236,8 +240,8 @@ func (s *AgentTypeExporterTestSuite) TestGetParameterizerType() {
 func (s *AgentTypeExporterTestSuite) TestGetAllResourceIDs_Success() {
 	expectedResponse := &entitytype.EntityTypeListResponse{
 		Types: []entitytype.EntityTypeListItem{
-			{ID: "agenttype1", Name: "Agent Type 1"},
-			{ID: "agenttype2", Name: "Agent Type 2"},
+			{ID: "agenttype1", Handle: "agent-type-1", DisplayName: "Agent Type 1"},
+			{ID: "agenttype2", Handle: "agent-type-2", DisplayName: "Agent Type 2"},
 		},
 	}
 
@@ -292,8 +296,8 @@ func (s *AgentTypeExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 func (s *AgentTypeExporterTestSuite) TestGetAllResourceIDs_Pagination() {
 	firstPage := &entitytype.EntityTypeListResponse{
 		Types: []entitytype.EntityTypeListItem{
-			{ID: "agenttype1", Name: "Agent Type 1"},
-			{ID: "agenttype2", Name: "Agent Type 2"},
+			{ID: "agenttype1", Handle: "agent-type-1", DisplayName: "Agent Type 1"},
+			{ID: "agenttype2", Handle: "agent-type-2", DisplayName: "Agent Type 2"},
 		},
 	}
 	secondPage := &entitytype.EntityTypeListResponse{Types: []entitytype.EntityTypeListItem{}}
@@ -336,8 +340,9 @@ func (s *AgentTypeExporterTestSuite) TestGetAllResourceIDs_FiltersReadOnly() {
 
 func (s *AgentTypeExporterTestSuite) TestGetResourceByID_Success() {
 	expectedSchema := &entitytype.EntityType{
-		ID:   "agenttype1",
-		Name: "Test Agent Type",
+		ID:          "agenttype1",
+		Handle:      "test-agent-type",
+		DisplayName: "Test Agent Type",
 	}
 
 	s.mockService.EXPECT().
@@ -385,8 +390,9 @@ func (s *AgentTypeExporterTestSuite) TestValidateResource_InvalidType() {
 
 func (s *AgentTypeExporterTestSuite) TestValidateResource_EmptyName() {
 	schema := &entitytype.EntityType{
-		ID:   "agenttype1",
-		Name: "",
+		ID:          "agenttype1",
+		Handle:      "",
+		DisplayName: "",
 	}
 
 	name, err := s.exporter.ValidateResource(context.Background(), schema, "agenttype1", s.logger)

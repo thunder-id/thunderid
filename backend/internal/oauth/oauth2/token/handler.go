@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -67,6 +68,9 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	if len(dpopHeaders) == 1 {
 		ctx = dpop.WithProof(ctx, dpopHeaders[0])
+		// The proof is bound to the URI this request was sent to, and one handler serves both the
+		// bare and the organization-unit-scoped path.
+		ctx = dpop.WithRequestPath(ctx, r.URL.EscapedPath())
 	}
 
 	// Get authenticated client from context (set by ClientAuthMiddleware).
@@ -99,6 +103,16 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		Audiences:          r.Form[constants.RequestParamAudience],
 		AuthReqID:          r.FormValue(constants.RequestParamAuthReqID),
 		Assertion:          r.FormValue(constants.RequestParamAssertion),
+	}
+
+	// Only client_credentials acts for an organization unit.
+	if syscontext.GetAccessingOUID(ctx) != "" &&
+		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) {
+		logger.Debug(ctx, "Grant type is not available on the organization-unit-scoped endpoint",
+			log.String("grant_type", tokenRequest.GrantType))
+		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
+			constants.OUScopedGrantRefusal, http.StatusBadRequest, nil)
+		return
 	}
 
 	// Delegate all business logic to the token service.

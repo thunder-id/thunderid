@@ -312,7 +312,56 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_IDJAGTypRej
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "ID-JAG cannot be presented as a subject_token")
+	assert.Contains(suite.T(), err.Error(),
+		`a token of type "oauth-id-jag+jwt" cannot be presented as a subject_token`)
+}
+
+// A self-issued back-channel logout token is rejected on its typ header before its signature is checked.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_LogoutTokenTypRejected() {
+	header := map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeLogout}
+	claims := map[string]interface{}{
+		"iss": suite.validator.cfg.JWT.Issuer,
+		"sub": "user123",
+		"aud": testAppID,
+		"sid": "session-1",
+		"exp": float64(time.Now().Unix() + 120),
+	}
+	headerJSON, _ := json.Marshal(header)
+	claimsJSON, _ := json.Marshal(claims)
+	token := fmt.Sprintf("%s.%s.signature",
+		base64.RawURLEncoding.EncodeToString(headerJSON),
+		base64.RawURLEncoding.EncodeToString(claimsJSON))
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), `a token of type "logout+jwt" cannot be presented as a subject_token`)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "VerifyJWTSignature", mock.Anything, mock.Anything)
+}
+
+// A self-issued token whose typ is neither the generic nor an access token type is refused before its
+// signature is checked, so a token type added later with its own typ is not exchangeable by default.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_UnlistedSelfIssuedTypRejected() {
+	header := map[string]interface{}{"alg": "RS256", "typ": "example+jwt"}
+	claims := map[string]interface{}{
+		"iss": suite.validator.cfg.JWT.Issuer,
+		"sub": "user123",
+		"aud": testAppID,
+		"exp": float64(time.Now().Unix() + 3600),
+	}
+	headerJSON, _ := json.Marshal(header)
+	claimsJSON, _ := json.Marshal(claims)
+	token := fmt.Sprintf("%s.%s.signature",
+		base64.RawURLEncoding.EncodeToString(headerJSON),
+		base64.RawURLEncoding.EncodeToString(claimsJSON))
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), `a token of type "example+jwt" cannot be presented as a subject_token`)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "VerifyJWTSignature", mock.Anything, mock.Anything)
 }
 
 // ============================================================================
@@ -3715,7 +3764,7 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_RefreshToke
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "refresh token cannot be presented as a subject_token")
+	assert.Contains(suite.T(), err.Error(), `a token of type "rt+jwt" cannot be presented as a subject_token`)
 }
 
 // The same, for a refresh token minted before rt+jwt: the generic typ plus access_token_sub.
@@ -3737,7 +3786,7 @@ func (suite *TokenValidatorTestSuite) TestValidateActorToken_Error_RefreshToken(
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
-	assert.Contains(suite.T(), err.Error(), "refresh token cannot be presented as a subject_token")
+	assert.Contains(suite.T(), err.Error(), `a token of type "rt+jwt" cannot be presented as a subject_token`)
 }
 
 // An ID token remains a valid subject token: its sub is the end user, so the exchange is the

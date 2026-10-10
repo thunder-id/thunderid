@@ -101,7 +101,8 @@ var (
 	}
 
 	attrCollectEntityType = testutils.UserType{
-		Name: "attr_collect_flow_user",
+		Handle:      "attr_collect_flow_user",
+		DisplayName: "Attr Collect Flow User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -127,7 +128,7 @@ var (
 
 	// User templates with different attribute configurations
 	testUserNoAttributes = testutils.User{
-		Type: attrCollectEntityType.Name,
+		Type: attrCollectEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "noattrsuser",
 			"password": "testpassword"
@@ -135,7 +136,7 @@ var (
 	}
 
 	testUserPartialAttributes = testutils.User{
-		Type: attrCollectEntityType.Name,
+		Type: attrCollectEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "partialuser",
 			"password": "testpassword",
@@ -145,7 +146,7 @@ var (
 	}
 
 	testUserFullAttributes = testutils.User{
-		Type: attrCollectEntityType.Name,
+		Type: attrCollectEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "fulluser",
 			"password": "testpassword",
@@ -157,7 +158,7 @@ var (
 	}
 
 	testUserNoAttributes2 = testutils.User{
-		Type: attrCollectEntityType.Name,
+		Type: attrCollectEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "noattrsuser2",
 			"password": "testpassword"

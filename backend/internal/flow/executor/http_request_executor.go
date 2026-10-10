@@ -348,11 +348,11 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, co
 // resolvePlaceholders resolves placeholders in the configuration using context data.
 func (h *httpRequestExecutor) resolvePlaceholders(
 	ctx *providers.NodeContext, config *httpRequestConfig, execResp *providers.ExecutorResponse) {
-	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, h.logger)
+	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, true, h.logger)
 
 	// Resolve headers
 	for key, value := range config.Headers {
-		config.Headers[key] = core.ResolvePlaceholder(ctx, value, execResp, h.authnProvider, h.logger)
+		config.Headers[key] = core.ResolvePlaceholder(ctx, value, execResp, h.authnProvider, true, h.logger)
 	}
 
 	// Resolve body
@@ -376,7 +376,7 @@ func (h *httpRequestExecutor) resolveMapPlaceholders(
 		}
 		return result
 	case string:
-		return core.ResolvePlaceholder(ctx, v, execResp, h.authnProvider, h.logger)
+		return core.ResolvePlaceholder(ctx, v, execResp, h.authnProvider, true, h.logger)
 	default:
 		return v
 	}

@@ -4,6 +4,7 @@
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import type {OutboundAuthMethod} from '../../models/connection';
 import ConnectionDetailPage from '../ConnectionDetailPage';
 
 const updateMock = vi.fn().mockResolvedValue({});
@@ -105,6 +106,32 @@ const AUTHZEN_PDP_API_KEY_WITH_NULL_HEADERS = {
 
 const mockParams: {type: string; id: string} = {type: 'google', id: 'g1'};
 const mockConn: {data: Record<string, unknown>} = {data: CONNECTION};
+const mockMeta: {methods: OutboundAuthMethod[]; isError: boolean} = {methods: [], isError: false};
+
+const SMTP_METHODS: OutboundAuthMethod[] = [
+  {type: 'none', displayName: 'None'},
+  {
+    type: 'basic',
+    displayName: 'Username and Password',
+    fields: [
+      {key: 'username', type: 'string', required: true, displayName: 'Username'},
+      {key: 'password', type: 'string', required: true, credential: true, displayName: 'Password'},
+    ],
+  },
+];
+
+function smtpConnection(properties: Record<string, string>): Record<string, unknown> {
+  return {
+    id: 'sm1',
+    type: 'email-smtp',
+    name: 'Corp SMTP',
+    host: 'smtp.example.com',
+    port: 587,
+    fromAddress: 'noreply@example.com',
+    tls: 'starttls',
+    authentication: {type: 'basic', properties},
+  };
+}
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -113,7 +140,10 @@ vi.mock('react-router', async (importOriginal) => ({
 }));
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
-  useConfig: () => ({getGateCallbackUrl: () => 'https://id.acme.io/gate/callback'}),
+  useConfig: () => ({
+    config: {brand: {product_name: 'ThunderID'}},
+    getGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
+  }),
   useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('@thunderid/components', async (importOriginal) => ({
@@ -138,6 +168,12 @@ vi.mock('@thunderid/components', async (importOriginal) => ({
 
 vi.mock('../../api/useConnection', () => ({
   default: () => ({data: mockConn.data, isLoading: false, isError: false, refetch: refetchMock}),
+}));
+vi.mock('../../api/useConnectionMeta', () => ({
+  default: () =>
+    mockMeta.isError
+      ? {data: undefined, isError: true}
+      : {data: {authentication: {methods: mockMeta.methods}}, isError: false},
 }));
 vi.mock('../../api/useConnectionInstances', () => ({default: () => ({data: [], isLoading: false})}));
 vi.mock('../../api/useUpdateConnection', () => ({
@@ -294,6 +330,8 @@ describe('ConnectionDetailPage', () => {
     mockConn.data = CONNECTION;
     updateMutationState.isPending = false;
     updateMutationState.isError = false;
+    mockMeta.methods = [];
+    mockMeta.isError = false;
   });
 
   it('renders the general tab with quick-copy and the credentials form', () => {
@@ -302,6 +340,57 @@ describe('ConnectionDetailPage', () => {
     expect(screen.getByDisplayValue('g1')).toBeInTheDocument();
     expect(screen.getByText('Unique identifier for this connection.')).toBeInTheDocument();
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
+  });
+
+  it('renders the connection form in the Credentials card', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Credentials'})).toContainElement(
+      screen.getByTestId('stub-connection-form'),
+    );
+  });
+
+  it('omits the Authentication card when the vendor advertises no authentication methods', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByRole('region', {name: 'Authentication'})).not.toBeInTheDocument();
+  });
+
+  it('renders the authentication section in its own card when the vendor advertises methods', () => {
+    mockMeta.methods = [{type: 'none', displayName: 'None'}];
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Authentication'})).toContainElement(
+      screen.getByTestId('connection-authentication-section'),
+    );
+  });
+
+  // A provider saved with a credential comes back masked, so the password stays locked until the
+  // user chooses to replace it.
+  it('keeps the stored password of an email provider locked', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+    expect(document.getElementById('connection-field-authentication.properties.password')).toBeDisabled();
+    expect(screen.getByTestId('connection-field-authentication.properties.password-replace')).toBeInTheDocument();
+  });
+
+  // Nothing stored for the selected method means the password has to be entered, not shown as kept.
+  it('asks for an email provider password that is not stored', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+    expect(document.getElementById('connection-field-authentication.properties.password')).not.toBeDisabled();
+    expect(screen.queryByTestId('connection-field-authentication.properties.password-replace')).not.toBeInTheDocument();
+  });
+
+  // The authentication card reports a failed metadata read instead of disappearing.
+  it('reports a failed metadata read in the Authentication card', () => {
+    mockMeta.isError = true;
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Authentication'})).toContainElement(screen.getByRole('alert'));
+    expect(screen.queryByTestId('connection-authentication-section')).not.toBeInTheDocument();
   });
 
   it('renders the danger-zone delete on the advanced tab', () => {

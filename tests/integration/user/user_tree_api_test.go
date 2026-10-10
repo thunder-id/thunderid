@@ -23,7 +23,8 @@ var (
 	}
 
 	testUserType = testutils.UserType{
-		Name:             "employee",
+		Handle:           "employee",
+		DisplayName:      "Employee",
 		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "username"},
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{

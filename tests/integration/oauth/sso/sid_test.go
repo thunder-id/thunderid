@@ -160,7 +160,7 @@ func (ts *SSOLogoutTestSuite) TestSid_AbsentWithoutSessionNode() {
 		OUID:             testOUID,
 		Type:             "fullstack",
 		AuthFlowID:       flowID,
-		AllowedUserTypes: []string{testUserType.Name},
+		AllowedUserTypes: []string{testUserType.Handle},
 		InboundAuthConfig: []map[string]interface{}{
 			{
 				"type": "oauth2",

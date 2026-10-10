@@ -7,7 +7,7 @@
 // executions. It is grouped by flow: the flow ID is the group key, so only
 // applications configured with the same flow can share a session (SSO). The
 // session is referenced by an opaque handle, decoupled from the transport that
-// carries it (a cookie is one such transport; see HandleTransport).
+// carries it (a cookie is one such transport; see HandleTransportInterface).
 package session
 
 import (
@@ -361,9 +361,12 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
 			return revErr
 		}
-		if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
+		removed, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+		if delErr != nil {
 			return delErr
 		}
+		// A concurrent termination already removed the row; only the node that removed it notifies.
+		notify = notify && removed
 		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 			return delErr
 		}
@@ -414,12 +417,15 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	// remove them, as Terminate does. A failed read only drops the notification; it never blocks the
 	// revocation.
 	var participantsBySession map[string][]Participant
+	removed := make(map[string]bool, len(sessions))
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		participantsBySession = s.participantsForTermination(txCtx, sessions)
 		for _, sess := range sessions {
-			if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
+			wasRemoved, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+			if delErr != nil {
 				return delErr
 			}
+			removed[sess.SessionID] = wasRemoved
 			if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 				return delErr
 			}
@@ -435,6 +441,10 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
 	if participantsBySession != nil {
 		for _, sess := range sessions {
+			if !removed[sess.SessionID] {
+				// A concurrent termination already removed this session and notifies for it.
+				continue
+			}
 			s.terminationTopic.Notify(ctx, TerminatedSession{
 				SessionID:    sess.SessionID,
 				SubjectID:    sess.SubjectID,
@@ -478,7 +488,7 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 			if len(remaining) > 0 {
 				continue
 			}
-			if delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
+			if _, delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
 				return delErr
 			}
 			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {

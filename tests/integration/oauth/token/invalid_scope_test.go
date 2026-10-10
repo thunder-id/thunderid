@@ -28,7 +28,8 @@ const (
 )
 
 var invalidScopeTestUserType = testutils.UserType{
-	Name: "invalid-scope-test-person",
+	Handle:      "invalid-scope-test-person",
+	DisplayName: "Invalid Scope Test Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",

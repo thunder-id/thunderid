@@ -169,6 +169,9 @@ or configuration that affects any of them. It is not optional for those changes.
 - Refresh deduplicated to one in-flight request, refresh tokens rotated, stored tokens written
   atomically.
 - Sign-out revokes server-side before clearing local state.
+- In an SDK that handles back-channel logout: the logout token's signature, issuer, audience,
+  lifetime, `logout+jwt` type, and back-channel logout event validated, and a `nonce` refused,
+  before any session ends. The JWKS re-fetch bounded in rate.
 - Non-HTTPS `baseUrl` outside loopback rejected at initialization.
 - Credentials submitted and discarded, never retained beyond the call.
 - Tokens, credentials, and personal data masked or absent in logs, before any caller-supplied
@@ -178,7 +181,7 @@ or configuration that affects any of them. It is not optional for those changes.
 
 1. Does the change touch one of the modelled interactions? Those are redirect authorization
    and callback, code exchange and token storage, credential submission in embedded mode,
-   token attachment to outbound requests, and sign-out.
+   token attachment to outbound requests, sign-out, and receipt of a back-channel logout token.
 2. Does it weaken a mitigation the model relies on, or introduce a configuration key that
    could? If so, the model needs updating in the same change set, and the change needs a
    second look before it ships.

@@ -1431,3 +1431,55 @@ func (suite *CIBAServiceTestSuite) TestHandleCallback_Failure_UpdateStateFailure
 	suite.NotNil(cibaErr)
 	suite.Equal(oauth2const.ErrorServerError, cibaErr.Code)
 }
+
+// A hint must be an ID token: another JWT this server signs, such as an access or logout token, is refused.
+func (suite *CIBAServiceTestSuite) TestInitiate_WithIDTokenHint_NotAnIDToken() {
+	for _, typ := range []string{"at+jwt", "logout+jwt"} {
+		suite.Run(typ, func() {
+			suite.withIssuer()
+			header, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": typ})
+			payload, _ := json.Marshal(map[string]interface{}{
+				"iss": testIssuer,
+				"aud": "client-1",
+				"sub": testEntityID,
+				"exp": float64(time.Now().Add(10 * time.Minute).Unix()),
+			})
+			enc := base64.RawURLEncoding
+			hint := enc.EncodeToString(header) + "." + enc.EncodeToString(payload) + "." +
+				enc.EncodeToString([]byte("sig"))
+
+			resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+				IDTokenHint: hint,
+				Scope:       "openid",
+			}, suite.oauthApp)
+
+			suite.Nil(resp)
+			suite.Require().NotNil(cibaErr)
+			suite.Equal(oauth2const.ErrorInvalidRequest, cibaErr.Code)
+			suite.Equal("id_token_hint is not an ID token", cibaErr.Message)
+		})
+	}
+}
+
+// A refresh token minted before rt+jwt shares the generic type with ID tokens and is told apart by its
+// access_token_sub claim.
+func (suite *CIBAServiceTestSuite) TestInitiate_WithIDTokenHint_LegacyRefreshToken() {
+	suite.withIssuer()
+	hint := buildTestAssertion(map[string]interface{}{
+		"iss":              testIssuer,
+		"aud":              "client-1",
+		"sub":              testEntityID,
+		"access_token_sub": testEntityID,
+		"exp":              float64(time.Now().Add(10 * time.Minute).Unix()),
+	})
+
+	resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		IDTokenHint: hint,
+		Scope:       "openid",
+	}, suite.oauthApp)
+
+	suite.Nil(resp)
+	suite.Require().NotNil(cibaErr)
+	suite.Equal(oauth2const.ErrorInvalidRequest, cibaErr.Code)
+	suite.Equal("id_token_hint is not an ID token", cibaErr.Message)
+}

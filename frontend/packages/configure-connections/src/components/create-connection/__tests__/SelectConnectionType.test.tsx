@@ -10,7 +10,7 @@ describe('SelectConnectionType', () => {
   const onSelect = vi.fn();
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the OIDC, OAuth2, trusted-idp, and SMS gateway options', () => {
+  it('renders the OIDC, OAuth2, trusted-idp, SMS gateway, and SMTP options', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     expect(screen.getByText('What kind of connection do you want to add?')).toBeInTheDocument();
     expect(screen.queryByText('Connection type')).not.toBeInTheDocument();
@@ -19,6 +19,8 @@ describe('SelectConnectionType', () => {
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-policy-decision-point')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-sms-gateway')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-email-smtp')).toBeInTheDocument();
+    expect(screen.getByText('Email Provider (SMTP)')).toBeInTheDocument();
   });
 
   it('selects the OIDC type when clicked', () => {
@@ -37,6 +39,12 @@ describe('SelectConnectionType', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('connection-type-option-sms-gateway'));
     expect(onSelect).toHaveBeenCalledWith('sms-gateway');
+  });
+
+  it('selects the SMTP type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByTestId('connection-type-option-email-smtp'));
+    expect(onSelect).toHaveBeenCalledWith('email-smtp');
   });
 
   it('selects the Trusted Token Issuer type when clicked', () => {

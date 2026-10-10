@@ -157,48 +157,48 @@ func (_c *entityTypeStoreInterfaceMock_DeleteEntityTypeByID_Call) RunAndReturn(r
 	return _c
 }
 
-// GetDisplayAttributesByNames provides a mock function for the type entityTypeStoreInterfaceMock
-func (_mock *entityTypeStoreInterfaceMock) GetDisplayAttributesByNames(ctx context.Context, category TypeCategory, names []string) (map[string]string, error) {
-	ret := _mock.Called(ctx, category, names)
+// GetDisplayAttributesByHandles provides a mock function for the type entityTypeStoreInterfaceMock
+func (_mock *entityTypeStoreInterfaceMock) GetDisplayAttributesByHandles(ctx context.Context, category TypeCategory, handles []string) (map[string]string, error) {
+	ret := _mock.Called(ctx, category, handles)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetDisplayAttributesByNames")
+		panic("no return value specified for GetDisplayAttributesByHandles")
 	}
 
 	var r0 map[string]string
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, []string) (map[string]string, error)); ok {
-		return returnFunc(ctx, category, names)
+		return returnFunc(ctx, category, handles)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, []string) map[string]string); ok {
-		r0 = returnFunc(ctx, category, names)
+		r0 = returnFunc(ctx, category, handles)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]string)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, TypeCategory, []string) error); ok {
-		r1 = returnFunc(ctx, category, names)
+		r1 = returnFunc(ctx, category, handles)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDisplayAttributesByNames'
-type entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call struct {
+// entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDisplayAttributesByHandles'
+type entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call struct {
 	*mock.Call
 }
 
-// GetDisplayAttributesByNames is a helper method to define mock.On call
+// GetDisplayAttributesByHandles is a helper method to define mock.On call
 //   - ctx context.Context
 //   - category TypeCategory
-//   - names []string
-func (_e *entityTypeStoreInterfaceMock_Expecter) GetDisplayAttributesByNames(ctx interface{}, category interface{}, names interface{}) *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call {
-	return &entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call{Call: _e.mock.On("GetDisplayAttributesByNames", ctx, category, names)}
+//   - handles []string
+func (_e *entityTypeStoreInterfaceMock_Expecter) GetDisplayAttributesByHandles(ctx interface{}, category interface{}, handles interface{}) *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call {
+	return &entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call{Call: _e.mock.On("GetDisplayAttributesByHandles", ctx, category, handles)}
 }
 
-func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call) Run(run func(ctx context.Context, category TypeCategory, names []string)) *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call {
+func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call) Run(run func(ctx context.Context, category TypeCategory, handles []string)) *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -221,12 +221,84 @@ func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call) Run(run
 	return _c
 }
 
-func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call) Return(stringToString map[string]string, err error) *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call {
+func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call) Return(stringToString map[string]string, err error) *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call {
 	_c.Call.Return(stringToString, err)
 	return _c
 }
 
-func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, names []string) (map[string]string, error)) *entityTypeStoreInterfaceMock_GetDisplayAttributesByNames_Call {
+func (_c *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, handles []string) (map[string]string, error)) *entityTypeStoreInterfaceMock_GetDisplayAttributesByHandles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEntityTypeByHandle provides a mock function for the type entityTypeStoreInterfaceMock
+func (_mock *entityTypeStoreInterfaceMock) GetEntityTypeByHandle(ctx context.Context, category TypeCategory, handle string) (EntityType, error) {
+	ret := _mock.Called(ctx, category, handle)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityTypeByHandle")
+	}
+
+	var r0 EntityType
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) (EntityType, error)); ok {
+		return returnFunc(ctx, category, handle)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) EntityType); ok {
+		r0 = returnFunc(ctx, category, handle)
+	} else {
+		r0 = ret.Get(0).(EntityType)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, TypeCategory, string) error); ok {
+		r1 = returnFunc(ctx, category, handle)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityTypeByHandle'
+type entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call struct {
+	*mock.Call
+}
+
+// GetEntityTypeByHandle is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category TypeCategory
+//   - handle string
+func (_e *entityTypeStoreInterfaceMock_Expecter) GetEntityTypeByHandle(ctx interface{}, category interface{}, handle interface{}) *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call {
+	return &entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call{Call: _e.mock.On("GetEntityTypeByHandle", ctx, category, handle)}
+}
+
+func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call) Run(run func(ctx context.Context, category TypeCategory, handle string)) *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 TypeCategory
+		if args[1] != nil {
+			arg1 = args[1].(TypeCategory)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call) Return(entityType EntityType, err error) *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call {
+	_c.Call.Return(entityType, err)
+	return _c
+}
+
+func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, handle string) (EntityType, error)) *entityTypeStoreInterfaceMock_GetEntityTypeByHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -299,78 +371,6 @@ func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByID_Call) Return(entityType
 }
 
 func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByID_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, schemaID string) (EntityType, error)) *entityTypeStoreInterfaceMock_GetEntityTypeByID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetEntityTypeByName provides a mock function for the type entityTypeStoreInterfaceMock
-func (_mock *entityTypeStoreInterfaceMock) GetEntityTypeByName(ctx context.Context, category TypeCategory, name string) (EntityType, error) {
-	ret := _mock.Called(ctx, category, name)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetEntityTypeByName")
-	}
-
-	var r0 EntityType
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) (EntityType, error)); ok {
-		return returnFunc(ctx, category, name)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) EntityType); ok {
-		r0 = returnFunc(ctx, category, name)
-	} else {
-		r0 = ret.Get(0).(EntityType)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, TypeCategory, string) error); ok {
-		r1 = returnFunc(ctx, category, name)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// entityTypeStoreInterfaceMock_GetEntityTypeByName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityTypeByName'
-type entityTypeStoreInterfaceMock_GetEntityTypeByName_Call struct {
-	*mock.Call
-}
-
-// GetEntityTypeByName is a helper method to define mock.On call
-//   - ctx context.Context
-//   - category TypeCategory
-//   - name string
-func (_e *entityTypeStoreInterfaceMock_Expecter) GetEntityTypeByName(ctx interface{}, category interface{}, name interface{}) *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call {
-	return &entityTypeStoreInterfaceMock_GetEntityTypeByName_Call{Call: _e.mock.On("GetEntityTypeByName", ctx, category, name)}
-}
-
-func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call) Run(run func(ctx context.Context, category TypeCategory, name string)) *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 TypeCategory
-		if args[1] != nil {
-			arg1 = args[1].(TypeCategory)
-		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call) Return(entityType EntityType, err error) *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call {
-	_c.Call.Return(entityType, err)
-	return _c
-}
-
-func (_c *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, name string) (EntityType, error)) *entityTypeStoreInterfaceMock_GetEntityTypeByName_Call {
 	_c.Call.Return(run)
 	return _c
 }

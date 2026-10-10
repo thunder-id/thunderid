@@ -204,7 +204,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           {
             id: 'resource-servers',
             text: t('navigation:pages.resourceServers', 'Resource Servers'),
-            icon: <Server size={16} />,
+            icon: <Server />,
             path: RouteConfig.resourceServers.list(),
           },
         ],
@@ -292,13 +292,13 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           {
             id: 'design',
             text: t('navigation:pages.design', 'Design'),
-            icon: <Palette size={16} />,
+            icon: <Palette />,
             path: RouteConfig.design.list(),
           },
           {
             id: 'translations',
             text: t('navigation:pages.translations'),
-            icon: <Languages size={16} />,
+            icon: <Languages />,
             path: RouteConfig.translations.list(),
           },
         ],
@@ -309,7 +309,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           {
             id: 'settings',
             text: t('navigation:pages.settings'),
-            icon: <Settings size={16} />,
+            icon: <Settings />,
             path: RouteConfig.settings.list(),
           },
         ],

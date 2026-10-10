@@ -212,7 +212,7 @@ The practical workflow is to export from an existing ThunderID installation
   ```yaml
   # resource_type: user
   id: 01900000-0000-7000-8000-000000000030
-  type: Person
+  type: person
   attributes:
     username: "admin"
     # ...
@@ -340,6 +340,7 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `configOverrides.consoleConfigJs` | Full-content override for the Console `config.js` | `""` |
 | `env` | Extra env vars (`{name, value}` list) resolving template placeholders in the resources YAML | `[]` |
 | `runtime.declarativeResourcesEnabled` | Global declarative mode — services without an explicit `stores.*` override are file-backed | `true` |
+| `runtime.directApiEnabled` | Register the Direct API authentication endpoints (`/auth/**`, `/register/passkey/**`). When `false`, they return `404` and the Console hides them | `true` |
 | `runtime.stores.<service>` | Store mode override per service — `mutable`, `declarative`, or `composite`. Services: `user`, `userType`, `organizationUnit`, `identityProvider`, `application`, `group`, `role`, `theme`, `layout`, `translation`, `flow`, `resourceServer`, `serverConfig` | `""` (inherit) |
 | `runtime.tls.enabled` | `false` → plain HTTP; `true` → ThunderID serves HTTPS and a `BackendConfigPolicy` makes the gateway originate TLS to the backend | `false` |
 | `runtime.tls.minVersion` | Minimum TLS version (`1.2` / `1.3`) | `1.3` |

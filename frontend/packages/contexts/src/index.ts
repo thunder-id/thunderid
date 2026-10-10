@@ -11,6 +11,7 @@ export type {
   FeatureAdministrationConfig,
 } from './Administration/AdministrationContext';
 export type {AdministrationMode} from './Administration/constants';
+export type {RuntimeContextType} from './Runtime/RuntimeContext';
 
 // Export React components and hooks
 export {default as ConfigContext, type ConfigContextType} from './Config/ConfigContext';
@@ -34,3 +35,6 @@ export {
   resolveAdministrationOperation,
   DEFAULT_ADMINISTRATION_MODE,
 } from './Administration/useAdministration';
+export {default as RuntimeContext} from './Runtime/RuntimeContext';
+export {default as RuntimeProvider, type RuntimeProviderProps} from './Runtime/RuntimeProvider';
+export {default as useRuntimeUrl} from './Runtime/useRuntimeUrl';

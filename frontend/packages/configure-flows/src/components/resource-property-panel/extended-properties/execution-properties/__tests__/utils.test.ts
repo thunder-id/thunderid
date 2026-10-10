@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, it, expect} from 'vitest';
-import {clampToInteger, getTemplateScenarioLabel, getTemplateScenarioOptions, parseCommaSeparated} from '../utils';
+import type {NotificationTemplateSummary} from '../../../../../models/notification-templates';
+import {buildTemplateLabels, buildTemplateOptions, clampToInteger, parseCommaSeparated} from '../utils';
+
+const templates: NotificationTemplateSummary[] = [
+  {id: 'id-1', handle: 'user-invite', displayName: 'User Invite', self: '/self/id-1'},
+  {id: 'id-2', handle: 'password-recovery', displayName: 'Password Recovery', self: '/self/id-2'},
+];
 
 describe('parseCommaSeparated', () => {
   it('should parse comma-separated values', () => {
@@ -72,50 +78,33 @@ describe('clampToInteger', () => {
   });
 });
 
-describe('getTemplateScenarioOptions', () => {
-  it('should offer the supported scenarios', () => {
-    expect(getTemplateScenarioOptions('')).toEqual([
-      'USER_INVITE',
-      'MAGIC_LINK',
-      'SELF_REGISTRATION',
-      'OTP',
-      'PASSWORD_RECOVERY',
-      'CIBA_NOTIFICATION',
-    ]);
+describe('buildTemplateOptions', () => {
+  it('should offer the returned template handles', () => {
+    expect(buildTemplateOptions(templates, '')).toEqual(['user-invite', 'password-recovery']);
   });
 
-  it('should not duplicate a known current value', () => {
-    expect(getTemplateScenarioOptions('OTP')).toHaveLength(6);
+  it('should return an empty list when no templates are loaded yet', () => {
+    expect(buildTemplateOptions(undefined, '')).toEqual([]);
+  });
+
+  it('should not duplicate a current value that is already returned', () => {
+    expect(buildTemplateOptions(templates, 'user-invite')).toHaveLength(2);
   });
 
   it('should keep an unknown current value so it is not blanked', () => {
-    expect(getTemplateScenarioOptions('CUSTOM_SCENARIO')).toContain('CUSTOM_SCENARIO');
+    expect(buildTemplateOptions(templates, 'custom-handle')).toContain('custom-handle');
   });
 });
 
-describe('getTemplateScenarioLabel', () => {
-  const translate = (key: string): string => `translated:${key}`;
-
-  // Mirrors i18next resolving a missing key to the supplied default.
-  const translateMissing = (_key: string, defaultValue: string): string => defaultValue;
-
-  it('should translate a known scenario', () => {
-    expect(getTemplateScenarioLabel('USER_INVITE', translate)).toBe(
-      'translated:flows:core.executions.templateScenarios.userInvite',
-    );
+describe('buildTemplateLabels', () => {
+  it('should map each handle to its display name', () => {
+    expect(buildTemplateLabels(templates)).toEqual({
+      'user-invite': 'User Invite',
+      'password-recovery': 'Password Recovery',
+    });
   });
 
-  it('should fall back to the readable label when the key has no translation', () => {
-    expect(getTemplateScenarioLabel('USER_INVITE', translateMissing)).toBe('User Invite');
-    expect(getTemplateScenarioLabel('OTP', translateMissing)).toBe('OTP Verification');
-    expect(getTemplateScenarioLabel('CIBA_NOTIFICATION', translateMissing)).toBe('CIBA Notification');
-  });
-
-  it('should fall back to the raw value for an unknown scenario', () => {
-    expect(getTemplateScenarioLabel('CUSTOM_SCENARIO', translate)).toBe('CUSTOM_SCENARIO');
-  });
-
-  it('should fall back to an empty label for an empty value', () => {
-    expect(getTemplateScenarioLabel('', translate)).toBe('');
+  it('should return an empty map when no templates are loaded yet', () => {
+    expect(buildTemplateLabels(undefined)).toEqual({});
   });
 });

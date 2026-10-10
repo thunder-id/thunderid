@@ -37,7 +37,7 @@ func declaredPolicy(id, resourceID, initiatingOUID string) Policy {
 		InitiatingOUID: initiatingOUID,
 		Stage:          stageShare,
 		Declared:       true,
-		Targets:        []Target{{ID: id + "-t", Scope: targetScopeRoot, OUID: rootOU}},
+		Targets:        []Target{{ID: id + "-t", Scope: ScopeRoot, OUID: rootOU}},
 	}
 }
 
@@ -116,7 +116,7 @@ func (s *FileBasedStoreTestSuite) TestInterfaceReadsReportAMissAsNotFound() {
 	})
 
 	s.Run("for a resource", func() {
-		held, err := s.store.ListPoliciesForResource(ctx, testType, testResource)
+		held, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 100, 0)
 		s.Require().NoError(err)
 		s.Len(held, 1)
 	})
@@ -188,4 +188,50 @@ func (s *FileBasedStoreTestSuite) TestSeedsAndReadsAreSafeTogether() {
 
 	s.Len(s.store.listForResource(testType, testResource), declarations,
 		"every declaration landed, and none replaced another")
+}
+
+// A page of declarations follows declaration order, which is the order the files were replayed in
+// and the only order that survives a restart unchanged.
+func (s *FileBasedStoreTestSuite) TestAPageFollowsDeclarationOrder() {
+	ctx := context.Background()
+	for _, ou := range []string{rootOU, childOU, otherOU} {
+		s.store.seed(declaredPolicy("p-"+ou, testResource, ou))
+	}
+
+	count, err := s.store.CountPoliciesForResource(ctx, testType, testResource)
+	s.Require().NoError(err)
+	s.Equal(3, count)
+
+	page, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 2, 1)
+	s.Require().NoError(err)
+	s.Require().Len(page, 2)
+	s.Equal([]string{"p-" + childOU, "p-" + otherOU}, []string{page[0].ID, page[1].ID})
+}
+
+// A page that starts past the declarations, or runs off their end, is cut rather than refused: the
+// merge above asks each half for more than it holds whenever the other holds most of the set.
+func (s *FileBasedStoreTestSuite) TestAPagePastTheDeclarationsIsCutNotRefused() {
+	ctx := context.Background()
+	s.store.seed(declaredPolicy("p1", testResource, rootOU))
+
+	over, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 10, 0)
+	s.Require().NoError(err)
+	s.Len(over, 1, "asking for more than is declared returns what is declared")
+
+	past, err := s.store.ListPoliciesForResource(ctx, testType, testResource, 10, 5)
+	s.Require().NoError(err)
+	s.Empty(past)
+}
+
+// The whole-set read returns every declaration for a resource, in declaration order.
+func (s *FileBasedStoreTestSuite) TestTheWholeSetReadReturnsEveryDeclaration() {
+	for _, ou := range []string{rootOU, childOU, otherOU} {
+		s.store.seed(declaredPolicy("p-"+ou, testResource, ou))
+	}
+
+	held, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Equal([]string{"p-" + rootOU, "p-" + childOU, "p-" + otherOU},
+		[]string{held[0].ID, held[1].ID, held[2].ID})
 }

@@ -96,8 +96,9 @@ func (ts *PermissionConsentFlowTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	ts.userTypeID, err = testutils.CreateUserType(testutils.UserType{
-		Name: permConsentUserTypeName,
-		OUID: ouID,
+		Handle:      permConsentUserTypeName,
+		DisplayName: "Permission Consent Person",
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -448,4 +449,3 @@ func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_PurposeIsNamedFo
 	ts.Equal("permissions:"+ts.appID, purpose.PurposeName,
 		"the permission purpose is derived from the application it belongs to")
 }
-

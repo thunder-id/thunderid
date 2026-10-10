@@ -15,6 +15,11 @@ const SystemLanguage = "en-US"
 // SystemNamespace is the default namespace for system translations.
 const SystemNamespace = "system"
 
+// NotificationNamespace is the namespace for notification translations.
+// Unlike the system namespace, its default values are seeded from the
+// bootstrap resources (backend/cmd/server/bootstrap) rather than compiled-in defaults.
+const NotificationNamespace = "notification"
+
 // LanguagePreferenceOrder defines the priority of languages for fallback.
 var LanguagePreferenceOrder = map[string]int{
 	"en-US": 0,

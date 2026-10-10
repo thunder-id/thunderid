@@ -17,6 +17,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/cimd"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -26,6 +27,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
@@ -54,7 +56,7 @@ type InboundClientServiceInterface interface {
 	DeleteInboundClient(ctx context.Context, entityID string) error
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
-		oauthProfile *providers.OAuthProfile, hasClientSecret bool) error
+		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error
 	// RevalidateFKs re-runs FK validation for the inbound client identified by entityID. Used after
 	// a referenced resource (e.g. a flow) is updated to detect newly-inconsistent references.
 	RevalidateFKs(ctx context.Context, entityID string) error
@@ -66,6 +68,13 @@ type InboundClientServiceInterface interface {
 	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*providers.OAuthProfile, error)
 	// GetOAuthClientByClientID resolves a full OAuthClient by its public client_id.
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*providers.OAuthClient, error)
+	// IsClientAccessibleFromOU refuses a client that may not act for the given organization unit.
+	IsClientAccessibleFromOU(
+		ctx context.Context, client *providers.OAuthClient, ouID string,
+	) (bool, *tidcommon.ServiceError)
+	// GetOAuthClientByEntityID returns the runtime OAuth client of the entity, or (nil, nil) when the
+	// entity does not exist or has no OAuth client registered.
+	GetOAuthClientByEntityID(ctx context.Context, entityID string) (*providers.OAuthClient, error)
 
 	// GetInboundClientAttributes returns the configured user attributes for a single inbound client.
 	// A missing inbound client is treated as one with no configured attributes.
@@ -95,6 +104,9 @@ type inboundClientService struct {
 	entityType     entitytype.EntityTypeServiceInterface
 	cryptoProvider providers.RuntimeCryptoProvider
 	jweService     jwe.JWEServiceInterface
+	cimdService    cimd.CIMDServiceInterface
+	sharingService sharing.SharingServiceInterface
+	sharedTypes    map[providers.EntityCategory]sharing.ResourceType
 	logger         *log.Logger
 }
 
@@ -108,6 +120,9 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	entityType entitytype.EntityTypeServiceInterface,
 	cryptoProvider providers.RuntimeCryptoProvider,
 	jweService jwe.JWEServiceInterface,
+	cimdService cimd.CIMDServiceInterface,
+	sharingService sharing.SharingServiceInterface,
+	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
 ) InboundClientServiceInterface {
 	return &inboundClientService{
 		store:          store,
@@ -120,6 +135,9 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 		entityType:     entityType,
 		cryptoProvider: cryptoProvider,
 		jweService:     jweService,
+		cimdService:    cimdService,
+		sharingService: sharingService,
+		sharedTypes:    sharedTypes,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientService")),
 	}
 }
@@ -149,7 +167,11 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	if err := validateUserAttributes(validAttrs, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -164,7 +186,6 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 	pruneScopeClaims(oauthProfile, scopeClaimPruneSet(seeded, client.AllowedUserTypes, validAttrs))
 	seedIDTokenUserAttributes(oauthProfile, validAttrs)
 	applyInboundDefaults(client, oauthProfile)
-	oauthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -238,7 +259,17 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		ctx, client.AllowedUserTypes, client.Assertion, oauthProfile); err != nil {
 		return err
 	}
+	// Capture existing OAuth client_id before the caller updates entity system attributes.
+	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if oauthProfile != nil {
+		existing, err := s.store.GetOAuthProfileByEntityID(ctx, client.ID)
+		if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
+			return err
+		}
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, oldOAuthClientID,
+			existing); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -249,8 +280,6 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 		return err
 	}
 	applyInboundDefaults(client, oauthProfile)
-	// Capture existing OAuth client_id before the caller updates entity system attributes.
-	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	if err := validateOAuthCertificateClientID(oauthProfile, oauthClientID); err != nil {
 		return err
 	}
@@ -285,7 +314,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 
 // Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 func (s *inboundClientService) Validate(ctx context.Context, client *inboundmodel.InboundClient,
-	oauthProfile *providers.OAuthProfile, hasClientSecret bool) error {
+	oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string) error {
 	if client == nil {
 		return nil
 	}
@@ -300,6 +329,9 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 		return err
 	}
 	if oauthProfile != nil {
+		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
+			return err
+		}
 		if vErr := validateOAuthProfile(
 			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
@@ -308,6 +340,17 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 	if err := s.validateSubjectAttributeMapping(
 		ctx, client.SubjectAttribute, client.AllowedUserTypes); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateCIMD applies the Client ID Metadata Document rules to the OAuth profile. existing is the
+// stored profile on an update, and nil on a create.
+func (s *inboundClientService) validateCIMD(oauthClientID string, oauthProfile *providers.OAuthProfile,
+	hasClientSecret bool, existingClientID string, existing *providers.OAuthProfile) error {
+	if svcErr := s.cimdService.ValidateOAuthProfile(
+		oauthClientID, oauthProfile, hasClientSecret, existingClientID, existing); svcErr != nil {
+		return &CIMDValidationError{Underlying: svcErr}
 	}
 	return nil
 }
@@ -385,15 +428,7 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 			log.String("entityID", entityID), log.Error(epErr))
 		return ""
 	}
-	if e == nil {
-		return ""
-	}
-	var attrs map[string]interface{}
-	if err := json.Unmarshal(e.SystemAttributes, &attrs); err != nil || attrs == nil {
-		return ""
-	}
-	clientID, _ := attrs["clientId"].(string)
-	return clientID
+	return clientIDFromEntity(e)
 }
 
 // DeleteInboundClient removes the inbound client, OAuth profile, and certificates for the given entity.
@@ -540,16 +575,41 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 	if entityIDPtr == nil {
 		return nil, nil
 	}
-	entityID := *entityIDPtr
+	return s.oauthClientForEntity(ctx, *entityIDPtr, clientID)
+}
+
+// GetOAuthClientByEntityID returns the runtime OAuth client of the entity with the given id. The
+// client id comes from the entity's system attributes; an entity without one has no OAuth client.
+func (s *inboundClientService) GetOAuthClientByEntityID(ctx context.Context, entityID string) (
+	*providers.OAuthClient, error) {
+	if s.entityProvider == nil {
+		return nil, fmt.Errorf("entity provider not configured")
+	}
+	if entityID == "" {
+		return nil, nil
+	}
+	return s.oauthClientForEntity(ctx, entityID, "")
+}
+
+// oauthClientForEntity assembles the runtime OAuth client of an entity from the entity, its stored
+// OAuth profile, and its certificate. clientID may be empty, in which case it is read from the
+// entity's system attributes. It returns (nil, nil) when the entity, its client id, or its profile
+// is missing.
+func (s *inboundClientService) oauthClientForEntity(ctx context.Context, entityID, clientID string) (
+	*providers.OAuthClient, error) {
 	e, epErr := s.entityProvider.GetEntity(entityID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to load entity for client_id: %w", epErr)
+		return nil, fmt.Errorf("failed to load entity for OAuth client: %w", epErr)
 	}
-	ouID := e.OUID
-
+	if clientID == "" {
+		clientID = clientIDFromEntity(e)
+		if clientID == "" {
+			return nil, nil
+		}
+	}
 	oauthProfile, err := s.store.GetOAuthProfileByEntityID(ctx, entityID)
 	if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
 		return nil, err
@@ -557,16 +617,54 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 	if oauthProfile == nil {
 		return nil, nil
 	}
-
-	client := BuildOAuthClient(entityID, clientID, ouID, e.Category, oauthProfile)
-
+	client := BuildOAuthClient(entityID, clientID, e.OUID, e.Category, oauthProfile)
 	certificate, opErr := s.GetCertificate(ctx, cert.CertificateReferenceTypeOAuthApp, clientID)
 	if opErr != nil {
 		return nil, opErr
 	}
 	client.Certificate = certificate
-
 	return client, nil
+}
+
+// clientIDFromEntity returns the OAuth client_id recorded in the entity's system attributes, or "".
+func clientIDFromEntity(e *providers.Entity) string {
+	if e == nil {
+		return ""
+	}
+	var attrs map[string]interface{}
+	if err := json.Unmarshal(e.SystemAttributes, &attrs); err != nil || attrs == nil {
+		return ""
+	}
+	clientID, _ := attrs["clientId"].(string)
+	return clientID
+}
+
+// IsClientAccessibleFromOU reports whether a client may act for the given organization unit.
+func (s *inboundClientService) IsClientAccessibleFromOU(
+	ctx context.Context, client *providers.OAuthClient, accessingOUID string,
+) (bool, *tidcommon.ServiceError) {
+	if accessingOUID == "" || client == nil {
+		return true, nil
+	}
+	// A client's own organization unit needs no policy. The framework would answer the same, but
+	// only after resolving ownership, and this is the common case on the token path.
+	if client.OUID == accessingOUID {
+		return true, nil
+	}
+
+	// A kind of client no resource type is registered for cannot be shared, so it is usable in its
+	// own organization unit alone.
+	rt, shareable := s.sharedTypes[client.EntityCategory]
+	if !shareable || s.sharingService == nil {
+		return false, nil
+	}
+	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, client.ID, accessingOUID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to resolve client access for an organization unit",
+			log.String("clientID", client.ID), log.Any("error", svcErr))
+		return false, svcErr
+	}
+	return accessible, nil
 }
 
 // BuildOAuthClient assembles an OAuthClient from a stored OAuthProfile and entity context.
@@ -587,6 +685,7 @@ func BuildOAuthClient(
 		RequirePushedAuthorizationRequests: p.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              p.DPoPBoundAccessTokens,
 		IncludeActClaim:                    p.IncludeActClaim,
+		ClientIDMetadataDocument:           p.ClientIDMetadataDocument,
 		Scopes:                             p.Scopes,
 		ScopeClaims:                        p.ScopeClaims,
 		Token:                              p.Token,
@@ -1385,8 +1484,8 @@ func (s *inboundClientService) validateAllowedAgentTypes(
 		ErrFKInvalidAgentType, ErrAgentSchemaLookupFailed)
 }
 
-// validateAllowedEntityTypes validates that each name in allowedTypes corresponds to an existing
-// entity type in the given category. invalidErr is returned for an unknown name; lookupErr is
+// validateAllowedEntityTypes validates that each handle in allowedTypes corresponds to an existing
+// entity type in the given category. invalidErr is returned for an unknown handle; lookupErr is
 // returned when the entity type service itself fails, so the caller can tell a client validation
 // failure from a server fault.
 func (s *inboundClientService) validateAllowedEntityTypes(
@@ -1410,7 +1509,7 @@ func (s *inboundClientService) validateAllowedEntityTypes(
 			return lookupErr
 		}
 		for _, schema := range entityTypeList.Types {
-			existingTypes[schema.Name] = true
+			existingTypes[schema.Handle] = true
 		}
 		if len(entityTypeList.Types) == 0 ||
 			offset+len(entityTypeList.Types) >= entityTypeList.TotalResults {

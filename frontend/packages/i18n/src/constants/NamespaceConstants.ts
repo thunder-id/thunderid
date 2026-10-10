@@ -24,6 +24,12 @@ const NamespaceConstants = {
    * Namespace for home page translations
    */
   HOME: 'home',
+  /**
+   * Namespace for notification translations. Like the custom namespace, admins may
+   * add new keys/values to it from the Console (its defaults are seeded from the
+   * server bootstrap resources).
+   */
+  NOTIFICATION: 'notification',
 } as const;
 
 export default NamespaceConstants;

@@ -23,8 +23,9 @@ import {
   IconButton,
 } from '@wso2/oxygen-ui';
 import {Lock, Trash, Plus} from '@wso2/oxygen-ui-icons-react';
-import {useEffect, useState} from 'react';
+import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import useValidationReport from '../../../hooks/useValidationReport';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {OAuth2Config} from '../../../models/oauth';
 import {OAuth2ResponseTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
@@ -37,8 +38,10 @@ import {
   deriveOAuth2Flags,
   getPkceCaption,
   getPublicClientCaption,
+  hasUserAccess,
   isGrantItemDisabled,
 } from '../../../utils/oauth2Rules';
+import BackchannelLogoutUriField from '../../common/BackchannelLogoutUriField';
 
 interface OidcDiscovery {
   grant_types_supported?: string[];
@@ -75,11 +78,13 @@ interface OAuth2ConfigSectionProps {
   /**
    * Whether to show the redirect URI and post-logout redirect URI fields. Hidden for clients
    * with no user-facing grant, and for MCP clients, which manage their redirect URIs on their
-   * own Connect tab.
+   * own Connect tab. The back-channel logout URI field does not follow this: it shows for any
+   * client with a user-facing grant, MCP clients included.
    */
   showRedirectUris?: boolean;
   /**
-   * Callback to report whether the redirect URI fields currently have validation errors.
+   * Callback to report whether the redirect URI, post-logout redirect URI, or back-channel logout URI
+   * fields currently have validation errors.
    */
   onValidationChange?: (hasErrors: boolean) => void;
 }
@@ -91,6 +96,7 @@ interface OAuth2ConfigSectionProps {
  * - Allowed grant types (multi-select dropdown from OIDC discovery)
  * - Allowed response types (multi-select dropdown from OIDC discovery)
  * - Authorized redirect URIs and post-logout redirect URIs (add/remove/edit with validation)
+ * - Back-channel logout URI, for a client with a user-facing grant
  * - Public client status (toggle)
  * - PKCE requirement status (toggle)
  *
@@ -119,12 +125,13 @@ export default function OAuth2ConfigSection({
     () => oauth2Config?.postLogoutRedirectUris ?? [],
   );
   const [postLogoutUriErrors, setPostLogoutUriErrors] = useState<Record<number, string>>({});
+  const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
 
-  useEffect(() => {
-    const hasUriErrors =
-      showRedirectUris && (Object.keys(uriErrors).length > 0 || Object.keys(postLogoutUriErrors).length > 0);
-    onValidationChange?.(hasUriErrors);
-  }, [uriErrors, postLogoutUriErrors, onValidationChange, showRedirectUris]);
+  // These errors all come from drafts, which are lost when the section unmounts, so an unmounted
+  // section has no error to report.
+  const hasRedirectUriErrors =
+    showRedirectUris && (Object.keys(uriErrors).length > 0 || Object.keys(postLogoutUriErrors).length > 0);
+  useValidationReport(onValidationChange, hasRedirectUriErrors || backchannelLogoutUriInvalid);
 
   if (!oauth2Config) return null;
 
@@ -505,6 +512,17 @@ export default function OAuth2ConfigSection({
               </Box>
             </Stack>
           </FormControl>
+        )}
+
+        {/* Only a user-facing grant joins a session, so only then can the client be notified. */}
+        {hasUserAccess(oauth2Config.grantTypes) && (
+          <BackchannelLogoutUriField
+            value={oauth2Config.backchannelLogoutUri}
+            publicClient={oauth2Config.publicClient}
+            onChange={onOAuth2ConfigChange ? (uri) => onOAuth2ConfigChange({backchannelLogoutUri: uri}) : undefined}
+            onValidationChange={setBackchannelLogoutUriInvalid}
+            disabled={!isEditable}
+          />
         )}
 
         {/* Token Endpoint Auth Method */}

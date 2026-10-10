@@ -5,7 +5,6 @@ package authentication
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -72,7 +71,7 @@ var magicLinkAuthFlow = testutils.Flow{
 				},
 			},
 			"properties": map[string]interface{}{
-				"emailTemplate": "MAGIC_LINK",
+				"emailTemplate": "magic-link",
 			},
 			"onSuccess": "verify_magic_link",
 		},
@@ -114,7 +113,8 @@ var magicLinkTestApp = testutils.Application{
 }
 
 var magicLinkTestUserSchema = testutils.UserType{
-	Name: "magic_link_test_user",
+	Handle:      "magic_link_test_user",
+	DisplayName: "Magic Link Test User",
 	Schema: map[string]interface{}{
 		"email": map[string]interface{}{
 			"type": "string",
@@ -129,7 +129,7 @@ var magicLinkTestUserSchema = testutils.UserType{
 }
 
 var magicLinkTestUser = testutils.User{
-	Type: magicLinkTestUserSchema.Name,
+	Type: magicLinkTestUserSchema.Handle,
 	Attributes: json.RawMessage(`{
 		"email": "userA@example.com",
 		"given_name": "user",
@@ -152,6 +152,7 @@ type magicLinkAuthFlowTestSuite struct {
 	shortTTLAppID    string
 	reusedTokenAppID string
 	userSchemaID     string
+	senderID         string
 	originalPatchSet bool
 }
 
@@ -166,17 +167,6 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 
 	patch := map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"username":              "",
-				"password":              "",
-				"from_address":          "no-reply@example.com",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
-		},
 		"jwt": map[string]interface{}{
 			"leeway": 1,
 		},
@@ -188,11 +178,21 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	ts.originalPatchSet = true
 
 	if err := testutils.RestartServer(); err != nil {
-		ts.T().Fatalf("Failed to restart server with SMTP configuration: %v", err)
+		ts.T().Fatalf("Failed to restart server with the patched JWT leeway: %v", err)
 	}
 	if err := testutils.ObtainAdminAccessToken(); err != nil {
 		ts.T().Fatalf("Failed to re-obtain admin token after restart: %v", err)
 	}
+
+	// Email providers are configured only through the connections API, so point one at the mock
+	// SMTP server and name it on the node that sends the magic link. Every flow below is derived
+	// from magicLinkAuthFlow, so setting it here covers all of them.
+	senderID, err := testutils.CreateSMTPEmailProvider("Magic Link Auth Test Provider",
+		"localhost", ts.mockSMTP.GetPort(), "no-reply@example.com")
+	ts.Require().NoError(err, "Failed to create the SMTP email provider")
+	ts.senderID = senderID
+	ts.Require().NoError(testutils.SetFlowNodeProperty(&magicLinkAuthFlow, "email_magic_link", "senderId", senderID),
+		"Failed to set the email provider on the magic link node")
 
 	ouID, err := testutils.CreateOrganizationUnit(magicLinkTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
@@ -227,14 +227,8 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	shortTTLFlow.Handle = "auth_flow_magic_link_test_short_ttl"
 	shortTTLFlow.Name = "Magic Link Auth Flow Short TTL"
 
-	ts.modifyFlowNode(&shortTTLFlow, "send_magic_link", func(node map[string]interface{}) {
-		props, ok := node["properties"].(map[string]interface{})
-		if !ok {
-			props = make(map[string]interface{})
-			node["properties"] = props
-		}
-		props["tokenExpiry"] = "2"
-	})
+	ts.Require().NoError(testutils.SetFlowNodeProperty(&shortTTLFlow, "send_magic_link", "tokenExpiry", "2"),
+		"Failed to set the token expiry on the short TTL flow")
 
 	shortFlowID, err := testutils.CreateFlow(shortTTLFlow)
 	ts.Require().NoError(err, "Failed to create short TTL magic link flow")
@@ -258,9 +252,10 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	reusedTokenFlow.Handle = "auth_flow_magic_link_test_reused"
 	reusedTokenFlow.Name = "Magic Link Auth Flow Reused Token"
 
-	ts.modifyFlowNode(&reusedTokenFlow, "verify_magic_link", func(node map[string]interface{}) {
-		node["onSuccess"] = "dummy_prompt"
-	})
+	ts.Require().NoError(testutils.ModifyFlowNode(&reusedTokenFlow, "verify_magic_link",
+		func(node map[string]interface{}) {
+			node["onSuccess"] = "dummy_prompt"
+		}), "Failed to loop the reused token flow back to verify_magic_link")
 	dummyPromptNode := map[string]interface{}{
 		"id":   "dummy_prompt",
 		"type": "PROMPT",
@@ -335,6 +330,11 @@ func (ts *magicLinkAuthFlowTestSuite) TearDownSuite() {
 	if ts.ouID != "" {
 		_ = testutils.DeleteOrganizationUnit(ts.ouID)
 	}
+	if ts.senderID != "" {
+		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
+			ts.T().Logf("Failed to delete email provider during teardown: %v", err)
+		}
+	}
 	if ts.mockSMTP != nil {
 		_ = ts.mockSMTP.Stop()
 	}
@@ -349,22 +349,6 @@ func (ts *magicLinkAuthFlowTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: failed to re-obtain admin token after restore: %v", err)
 		}
 	}
-}
-
-// modifyFlowNode safely finds a node by ID in a Flow and applies a modifier function to it.
-func (ts *magicLinkAuthFlowTestSuite) modifyFlowNode(flow *testutils.Flow, nodeID string, modifier func(node map[string]interface{})) {
-	nodesArray, ok := flow.Nodes.([]interface{})
-	ts.Require().True(ok, "flow.Nodes is not a slice of interfaces")
-
-	for _, n := range nodesArray {
-		node, ok := n.(map[string]interface{})
-		ts.Require().True(ok, "flow node is not a map[string]interface{}")
-		if node["id"] == nodeID {
-			modifier(node)
-			return
-		}
-	}
-	ts.Require().FailNow(fmt.Sprintf("Node with ID %s not found in flow", nodeID))
 }
 
 // waitForEmail polls the mock SMTP server until an email is received or the timeout is reached.
@@ -408,9 +392,9 @@ func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow() {
 	ts.Require().NotEmpty(completeStep.Assertion)
 
 	claims, err := testutils.ValidateJWTAssertionFields(completeStep.Assertion, ts.appID,
-		magicLinkTestUserSchema.Name, ts.ouID, magicLinkTestOU.Name, magicLinkTestOU.Handle)
+		magicLinkTestUserSchema.Handle, ts.ouID, magicLinkTestOU.Name, magicLinkTestOU.Handle)
 	ts.Require().NoError(err, "Failed to validate JWT assertion")
-	ts.Require().Equal(magicLinkTestUserSchema.Name, claims.UserType)
+	ts.Require().Equal(magicLinkTestUserSchema.Handle, claims.UserType)
 	ts.Require().Equal(ts.ouID, claims.OUID)
 }
 

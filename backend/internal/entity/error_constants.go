@@ -25,6 +25,14 @@ var (
 	// ErrAmbiguousEntity is returned when multiple entities match the provided filters.
 	ErrAmbiguousEntity = errors.New("ambiguous entity")
 
+	// ErrIndexedValueLimitExceeded is returned when an indexed attribute has more values than an
+	// entity may index under one name.
+	ErrIndexedValueLimitExceeded = errors.New("indexed value limit exceeded")
+
+	// ErrLinkedAccountConflict is returned when an account is already linked to another
+	// entity.
+	ErrLinkedAccountConflict = errors.New("account is linked to another entity")
+
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
 

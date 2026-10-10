@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 const (
@@ -35,6 +36,14 @@ type userExporter struct {
 	service           UserServiceInterface
 	entityService     entity.EntityServiceInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
+	// references writes a credential as a secret reference rather than a template placeholder, as a
+	// control plane's export does for every other credential.
+	references bool
+}
+
+// WriteValueReferences sets whether credentials are written as references or as placeholders.
+func (e *userExporter) WriteValueReferences(references bool) {
+	e.references = references
 }
 
 // newUserExporter creates a new user exporter.
@@ -139,8 +148,9 @@ func (e *userExporter) GetResourceByID(
 	return exportUser, username, nil
 }
 
-// exportableCredentials describes the credentials an exported user carries: one template
-// placeholder for each credential the user's type declares and the user has set.
+// exportableCredentials describes the credentials an exported user carries: one placeholder for each
+// credential the user's type declares and the user has set, a secret reference where the export
+// writes references and a template placeholder where it writes templates.
 //
 // A stored credential is a one-way hash, so its value never leaves. The placeholder names it
 // instead, and the importing server fills it from its own secret provider or environment before
@@ -177,8 +187,14 @@ func (e *userExporter) exportableCredentials(
 		if len(stored) == 0 {
 			continue
 		}
-		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}",
-			varname.DeriveVariableName(resourceTypeUser, username, attribute.Attribute))
+		name := varname.DeriveVariableName(resourceTypeUser, username, attribute.Attribute)
+		if e.references {
+			// A control plane holds no values, so the credential names the secret the gateway holds,
+			// which the gateway's import fills in before hashing.
+			credentials[attribute.Attribute] = valueref.SecretReference(name)
+			continue
+		}
+		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}", name)
 	}
 	return credentials, nil
 }

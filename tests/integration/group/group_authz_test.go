@@ -143,8 +143,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 
 	// ---- 2. Create user type for user-manager in OU1 ----
 	schemaOU1ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: entityTypeOU1Name,
-		OUID: ts.groupOU1ID,
+		Handle:      entityTypeOU1Name,
+		DisplayName: "Authz Mgr Schema Ou1",
+		OUID:        ts.groupOU1ID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -180,8 +181,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 
 	// ---- 3c. Create a user type for OU2 ----
 	schemaOU2ID, err := testutils.CreateUserType(testutils.UserType{
-		Name: memberSchemaOU2Name,
-		OUID: ts.groupOU2ID,
+		Handle:      memberSchemaOU2Name,
+		DisplayName: "Authz Member Schema Ou2",
+		OUID:        ts.groupOU2ID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -319,8 +321,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.emptyOUID = emptyOUID
 
 	emptySchemaID, err := testutils.CreateUserType(testutils.UserType{
-		Name: emptyOUSchemaName,
-		OUID: ts.emptyOUID,
+		Handle:      emptyOUSchemaName,
+		DisplayName: "Authz Empty Ou Schema",
+		OUID:        ts.emptyOUID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},
@@ -374,8 +377,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 
 	// ---- 10. Create a manager scoped to the declarative OU ----
 	declSchemaID, err := testutils.CreateUserType(testutils.UserType{
-		Name: declOUSchemaName,
-		OUID: declGroupOUID,
+		Handle:      declOUSchemaName,
+		DisplayName: "Authz Decl Ou Schema",
+		OUID:        declGroupOUID,
 		Schema: map[string]interface{}{
 			"username":     map[string]interface{}{"type": "string"},
 			"password":     map[string]interface{}{"type": "string", "credential": true},

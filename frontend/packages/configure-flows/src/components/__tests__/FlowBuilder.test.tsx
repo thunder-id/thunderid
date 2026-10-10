@@ -7,6 +7,7 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowConstants from '../../constants/FlowConstants';
 import {ElementTypes, ButtonVariants, ButtonTypes, ElementCategories, BlockTypes} from '../../models/elements';
 import type {Element} from '../../models/elements';
+import {ExecutionTypes, StepTypes} from '../../models/steps';
 import FlowBuilder from '../FlowBuilder';
 
 // Use vi.hoisted for mock functions that need to be available during vi.mock hoisting
@@ -540,10 +541,20 @@ vi.mock('../../api/useGetFlowById', () => ({
   }),
 }));
 
+const mockProviderQueries = vi.hoisted(() => {
+  const settled = (): {data?: {id: string; type?: string}[]; isPending: boolean; isError: boolean} => ({
+    data: [],
+    isPending: false,
+    isError: false,
+  });
+  return {settled, identity: settled(), sms: settled(), email: settled()};
+});
+
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
-  useIdentityProviders: () => ({data: [], isLoading: false}),
-  useSMSProviders: () => ({data: [], isLoading: false}),
+  useIdentityProviders: () => mockProviderQueries.identity,
+  useSMSProviders: () => mockProviderQueries.sms,
+  useEmailProviders: () => mockProviderQueries.email,
 }));
 
 // Mock utility functions
@@ -6450,5 +6461,59 @@ describe('Read Error State', () => {
     render(<FlowBuilder />);
 
     expect(screen.getByTestId('flow-builder')).toBeInTheDocument();
+  });
+});
+
+describe('Connection auto-assignment', () => {
+  const smsNode = (): Node => ({
+    id: 'sms-1',
+    type: StepTypes.Execution,
+    position: {x: 0, y: 0},
+    data: {action: {executor: {name: ExecutionTypes.SMSExecutor}}, properties: {senderId: ''}},
+  });
+
+  // The sender ID the auto-assignment wrote to the SMS node, if any. FlowBuilder also calls setNodes
+  // for unrelated work such as loading its starter template, so each functional update is applied to
+  // the test's nodes on its own and only the one that touches the SMS node is read.
+  const assignedSenderId = (nodes: Node[]): string | undefined =>
+    mockSetNodes.mock.calls
+      .map((call: unknown[]) => (typeof call[0] === 'function' ? (call[0] as (prev: Node[]) => Node[])(nodes) : []))
+      .map((updated: Node[]) => updated.find((node: Node) => node.id === 'sms-1'))
+      .map((node?: Node) => (node?.data as {properties?: {senderId?: string}} | undefined)?.properties?.senderId)
+      .find((senderId?: string) => Boolean(senderId));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseParams.mockReturnValue({});
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+    mockUseUpdateNodeInternals.mockReturnValue(vi.fn());
+    mockUseFlowConfig.mockImplementation(() => getDefaultFlowConfigMock());
+    mockProviderQueries.identity = mockProviderQueries.settled();
+    mockProviderQueries.sms = mockProviderQueries.settled();
+    mockProviderQueries.email = mockProviderQueries.settled();
+  });
+
+  // A failed email provider read leaves no email data, which must not hold back the SMS and
+  // identity provider assignment that does not depend on it.
+  it('still assigns the only SMS sender when the email provider read fails', () => {
+    mockProviderQueries.sms = {data: [{id: 'sms-sender-1'}], isPending: false, isError: false};
+    mockProviderQueries.email = {data: undefined, isPending: false, isError: true};
+    const nodes: Node[] = [smsNode()];
+    mockUseNodesState.mockReturnValue([nodes, mockSetNodes, vi.fn()]);
+
+    render(<FlowBuilder />);
+
+    expect(assignedSenderId(nodes)).toBe('sms-sender-1');
+  });
+
+  it('waits while a provider read is still pending', () => {
+    mockProviderQueries.sms = {data: [{id: 'sms-sender-1'}], isPending: false, isError: false};
+    mockProviderQueries.email = {data: undefined, isPending: true, isError: false};
+    const nodes: Node[] = [smsNode()];
+    mockUseNodesState.mockReturnValue([nodes, mockSetNodes, vi.fn()]);
+
+    render(<FlowBuilder />);
+
+    expect(assignedSenderId(nodes)).toBeUndefined();
   });
 });

@@ -139,36 +139,31 @@ func (suite *ServiceTestSuite) TestGetServiceProviderConfig_AuthenticationScheme
 	require.NotEmpty(t, scheme.Description)
 }
 
-// TestGetSchema_ResolvesUserTypeNameCaseInsensitively tests Get Schema for Resolves User Type Name Case Insensitively.
-func (suite *ServiceTestSuite) TestGetSchema_ResolvesUserTypeNameCaseInsensitively() {
+// TestGetSchema_ResolvesUserTypeHandleCaseInsensitively tests Get Schema for Resolves User Type Handle Case
+// Insensitively.
+func (suite *ServiceTestSuite) TestGetSchema_ResolvesUserTypeHandleCaseInsensitively() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	et := &entitytype.EntityType{
-		Name:   "Person",
-		Schema: json.RawMessage(`{"userName":{"type":"string","displayName":"User name"}}`),
+		Handle:      "person",
+		DisplayName: "Person",
+		Schema:      json.RawMessage(`{"userName":{"type":"string","displayName":"User name"}}`),
 	}
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return(
-			&entitytype.EntityTypeListResponse{
-				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Person"}},
-			},
-			(*tidcommon.ServiceError)(nil),
-		).Once()
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Person").
-		Return(et, (*tidcommon.ServiceError)(nil)).Once()
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "person").
+		Return(et, (*tidcommon.ServiceError)(nil))
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
 
 	result, svcErr := svc.GetSchema(
 		context.Background(),
-		"urn:thunderid:params:scim:schemas:person:2.0:User",
+		"urn:thunderid:params:scim:schemas:Person:2.0:User",
 		testGenericBaseURL,
 	)
 
 	require.Nil(t, svcErr)
 	require.NotNil(t, result)
 	require.Equal(t, "urn:thunderid:params:scim:schemas:person:2.0:User", result.ID)
+	require.Equal(t, "Person", result.Name)
 }
 
 // --- buildCoreUserSchema ---
@@ -176,8 +171,9 @@ func (suite *ServiceTestSuite) TestGetSchema_ResolvesUserTypeNameCaseInsensitive
 // testCoreUserType is a designated core user type whose schema defines userName and emails,
 // used by buildCoreUserSchema tests.
 var testCoreUserType = entitytype.EntityType{
-	Name:   "Employee",
-	Schema: json.RawMessage(`{"username":{"type":"string"},"email":{"type":"string","required":true}}`),
+	Handle:      "employee",
+	DisplayName: "Employee",
+	Schema:      json.RawMessage(`{"username":{"type":"string"},"email":{"type":"string","required":true}}`),
 }
 
 // TestBuildCoreUserSchema_IDIsCoreURN tests Build Core User Schema for ID Is Core URN.
@@ -238,7 +234,8 @@ func (suite *ServiceTestSuite) TestBuildCoreUserSchema_OmitsUnmatchedAttributes(
 func (suite *ServiceTestSuite) TestBuildCoreUserSchema_FiltersSubAttributesToMatchedOnly() {
 	t := suite.T()
 	coreType := entitytype.EntityType{
-		Name: "Employee",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: json.RawMessage(
 			`{"given_name":{"type":"string"},"street_address":{"type":"string"}}`,
 		),
@@ -279,7 +276,7 @@ func (suite *ServiceTestSuite) TestBuildCoreUserSchema_FiltersSubAttributesToMat
 // designated core user type surfaces an error instead of silently producing a partial schema.
 func (suite *ServiceTestSuite) TestBuildCoreUserSchema_InvalidSchemaJSON_ReturnsError() {
 	t := suite.T()
-	broken := entitytype.EntityType{Name: "Broken", Schema: json.RawMessage(`{INVALID`)}
+	broken := entitytype.EntityType{Handle: "broken", DisplayName: "Broken", Schema: json.RawMessage(`{INVALID`)}
 	_, err := buildCoreUserSchema(testGenericBaseURL, broken)
 	require.Error(t, err)
 }
@@ -458,8 +455,9 @@ func (suite *ServiceTestSuite) TestMapRawProperty_UniqueField() {
 func (suite *ServiceTestSuite) TestMapUserTypeToSCIMSchema_InvalidJSON_ReturnsError() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		Name:   "Broken",
-		Schema: json.RawMessage(`{INVALID`),
+		Handle:      "broken",
+		DisplayName: "Broken",
+		Schema:      json.RawMessage(`{INVALID`),
 	}
 	_, err := mapUserTypeToSCIMSchema(et, testGenericBaseURL, testSCIMConfig.SchemaURNPrefix)
 	require.Error(t, err)
@@ -469,14 +467,31 @@ func (suite *ServiceTestSuite) TestMapUserTypeToSCIMSchema_InvalidJSON_ReturnsEr
 func (suite *ServiceTestSuite) TestMapUserTypeToSCIMSchema_ValidSchema() {
 	t := suite.T()
 	et := entitytype.EntityType{
-		Name:   "Employee",
-		Schema: json.RawMessage(`{"userName":{"type":"string","displayName":"User Name"}}`),
+		Handle:      "employee",
+		DisplayName: "Employee",
+		Schema:      json.RawMessage(`{"userName":{"type":"string","displayName":"User Name"}}`),
 	}
 	schema, err := mapUserTypeToSCIMSchema(et, testGenericBaseURL, testSCIMConfig.SchemaURNPrefix)
 	require.NoError(t, err)
 	require.Equal(t, "urn:thunderid:params:scim:schemas:employee:2.0:User", schema.ID)
 	require.Len(t, schema.Attributes, 1)
 	require.Equal(t, "userName", schema.Attributes[0].Name)
+}
+
+// TestMapUserTypeToSCIMSchema_UsesHandleForURNAndDisplayNameForLabels tests that the schema URN is built
+// from the handle while the schema name and description use the display name.
+func (suite *ServiceTestSuite) TestMapUserTypeToSCIMSchema_UsesHandleForURNAndDisplayNameForLabels() {
+	t := suite.T()
+	et := entitytype.EntityType{
+		Handle:      "staff-member",
+		DisplayName: "Staff Member",
+		Schema:      json.RawMessage(`{"userName":{"type":"string"}}`),
+	}
+	schema, err := mapUserTypeToSCIMSchema(et, testGenericBaseURL, testSCIMConfig.SchemaURNPrefix)
+	require.NoError(t, err)
+	require.Equal(t, "urn:thunderid:params:scim:schemas:staff-member:2.0:User", schema.ID)
+	require.Equal(t, "Staff Member", schema.Name)
+	require.Equal(t, "Staff Member user type", schema.Description)
 }
 
 // --- GetSchema additional branches ---
@@ -490,11 +505,11 @@ func (suite *ServiceTestSuite) TestGetSchema_CoreUserURN_SingleUserType_DerivesS
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "employee"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return(&testCoreUserType, (*tidcommon.ServiceError)(nil))
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -532,20 +547,21 @@ func (suite *ServiceTestSuite) TestGetSchema_EnterpriseUserURN_Success() {
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "employee"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
 	etWithEnterprise := entitytype.EntityType{
-		ID:   "et-emp",
-		Name: "Employee",
+		ID:          "et-emp",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: []byte(`{
 			"username": {"type": "string"},
 			"department": {"type": "string"},
 			"employee_number": {"type": "string"}
 		}`),
 	}
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return(&etWithEnterprise, (*tidcommon.ServiceError)(nil))
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -565,19 +581,20 @@ func (suite *ServiceTestSuite) TestGetSchema_EnterpriseUserURN_NoEnterpriseAttrs
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "employee"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
 	etWithoutEnterprise := entitytype.EntityType{
-		ID:   "et-emp",
-		Name: "Employee",
+		ID:          "et-emp",
+		Handle:      "employee",
+		DisplayName: "Employee",
 		Schema: []byte(`{
 			"username": {"type": "string"},
 			"email": {"type": "string"}
 		}`),
 	}
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return(&etWithoutEnterprise, (*tidcommon.ServiceError)(nil))
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -601,15 +618,7 @@ func (suite *ServiceTestSuite) TestGetSchema_UnknownURN_Returns404() {
 func (suite *ServiceTestSuite) TestGetSchema_UserTypeNotFound_Returns404() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return(
-			&entitytype.EntityTypeListResponse{
-				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Ghost"}},
-			},
-			(*tidcommon.ServiceError)(nil),
-		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Ghost").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "ghost").
 		Return((*entitytype.EntityType)(nil), &tidcommon.ServiceError{Code: "ET-404"})
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -657,13 +666,15 @@ func (suite *ServiceTestSuite) TestListSchemas_IncludesExtensionSchemasForEachUs
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Customer"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "customer"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Customer").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "customer").
 		Return(
-			&entitytype.EntityType{Name: "Customer", Schema: json.RawMessage(`{"email":{"type":"string"}}`)},
+			&entitytype.EntityType{
+				Handle: "customer", DisplayName: "Customer", Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+			},
 			(*tidcommon.ServiceError)(nil),
 		)
 
@@ -695,14 +706,15 @@ func (suite *ServiceTestSuite) TestListSchemas_IncludesEnterpriseUserSchema() {
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "employee"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return(
 			&entitytype.EntityType{
-				Name: "Employee",
+				Handle:      "employee",
+				DisplayName: "Employee",
 				Schema: json.RawMessage(`{
 					"username": {"type": "string"},
 					"department": {"type": "string"},
@@ -809,8 +821,8 @@ func (suite *ServiceTestSuite) TestGetSchema_AuthErrorFromResolve_Returns404() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	authErr := tidcommon.ErrorUnauthorized
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return((*entitytype.EntityTypeListResponse)(nil), &authErr)
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
+		Return((*entitytype.EntityType)(nil), &authErr)
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
 
@@ -824,48 +836,14 @@ func (suite *ServiceTestSuite) TestGetSchema_AuthErrorFromResolve_Returns404() {
 	require.Equal(t, scim.ErrorSchemaNotFound.Code, svcErr.Code)
 }
 
-// TestGetSchema_UserTypeNameNotFoundAfterList_Returns404 tests Get Schema for User Type Name Not Found After
-// List Returns 404.
-func (suite *ServiceTestSuite) TestGetSchema_UserTypeNameNotFoundAfterList_Returns404() {
-	t := suite.T()
-	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return(
-			&entitytype.EntityTypeListResponse{
-				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "OtherType"}},
-			},
-			(*tidcommon.ServiceError)(nil),
-		)
-
-	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
-
-	schema, svcErr := svc.GetSchema(
-		context.Background(),
-		"urn:thunderid:params:scim:schemas:ghost:2.0:User",
-		testGenericBaseURL,
-	)
-	require.Nil(t, schema)
-	require.NotNil(t, svcErr)
-	require.Equal(t, scim.ErrorSchemaNotFound.Code, svcErr.Code)
-}
-
-// TestGetSchema_AuthErrorFromGetEntityTypeByName_Returns404 tests Get Schema for Auth Error From Get Entity
+// TestGetSchema_AuthErrorFromGetEntityTypeByHandle_Returns404 tests Get Schema for Auth Error From Get Entity
 // Type By Name Returns 404.
-func (suite *ServiceTestSuite) TestGetSchema_AuthErrorFromGetEntityTypeByName_Returns404() {
+func (suite *ServiceTestSuite) TestGetSchema_AuthErrorFromGetEntityTypeByHandle_Returns404() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return(
-			&entitytype.EntityTypeListResponse{
-				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
-			},
-			(*tidcommon.ServiceError)(nil),
-		)
 
 	authErr := tidcommon.ErrorUnauthorized
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Employee").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return((*entitytype.EntityType)(nil), &authErr)
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -884,17 +862,9 @@ func (suite *ServiceTestSuite) TestGetSchema_AuthErrorFromGetEntityTypeByName_Re
 func (suite *ServiceTestSuite) TestGetSchema_MalformedUserTypeSchema_Returns500() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "broken").
 		Return(
-			&entitytype.EntityTypeListResponse{
-				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Broken"}},
-			},
-			(*tidcommon.ServiceError)(nil),
-		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Broken").
-		Return(
-			&entitytype.EntityType{Name: "Broken", Schema: json.RawMessage(`{INVALID JSON`)},
+			&entitytype.EntityType{Handle: "broken", DisplayName: "Broken", Schema: json.RawMessage(`{INVALID JSON`)},
 			(*tidcommon.ServiceError)(nil),
 		)
 
@@ -928,24 +898,24 @@ func (suite *ServiceTestSuite) TestListSchemas_GetEntityTypeListError_ReturnsErr
 	require.Empty(t, resp.Resources)
 }
 
-// TestListSchemas_GetEntityTypeByNameError_SkipsItem tests that a GetEntityTypeByName failure
+// TestListSchemas_GetEntityTypeByHandleError_SkipsItem tests that a GetEntityTypeByHandle failure
 // for the sole (and therefore auto-designated core) user type omits both the core User schema
 // and that type's extension schema from Resources — only the Group schema is returned.
 // TotalResults still counts the registered-but-unloadable user type: computing it from the
 // registered count (not the built-schema count) is what lets ListSchemas fetch only the
 // requested page instead of building every schema up front.
-func (suite *ServiceTestSuite) TestListSchemas_GetEntityTypeByNameError_SkipsItem() {
+func (suite *ServiceTestSuite) TestListSchemas_GetEntityTypeByHandleError_SkipsItem() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Broken"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "broken"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Broken").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "broken").
 		Return((*entitytype.EntityType)(nil), &tidcommon.ServiceError{Code: "ET-404"})
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
@@ -960,7 +930,7 @@ func (suite *ServiceTestSuite) TestListSchemas_GetEntityTypeByNameError_SkipsIte
 // TestListSchemas_MalformedUserTypeSchema_SkipsItem tests that a malformed schema on the sole
 // (and therefore auto-designated core) user type omits both the core User schema and that
 // type's extension schema from Resources — only the Group schema is returned. Same
-// registered-count TotalResults trade-off as TestListSchemas_GetEntityTypeByNameError_SkipsItem.
+// registered-count TotalResults trade-off as TestListSchemas_GetEntityTypeByHandleError_SkipsItem.
 func (suite *ServiceTestSuite) TestListSchemas_MalformedUserTypeSchema_SkipsItem() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
@@ -968,13 +938,13 @@ func (suite *ServiceTestSuite) TestListSchemas_MalformedUserTypeSchema_SkipsItem
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Bad"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "bad"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "Bad").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "bad").
 		Return(
-			&entitytype.EntityType{Name: "Bad", Schema: json.RawMessage(`{BAD`)},
+			&entitytype.EntityType{Handle: "bad", DisplayName: "Bad", Schema: json.RawMessage(`{BAD`)},
 			(*tidcommon.ServiceError)(nil),
 		)
 
@@ -1000,13 +970,15 @@ func (suite *ServiceTestSuite) TestListSchemas_WindowSpansStaticAndDynamicSchema
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 2,
-				Types:        []entitytype.EntityTypeListItem{{Name: "TypeA"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "typea"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		).Twice()
-	mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, "TypeA").
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "typea").
 		Return(
-			&entitytype.EntityType{Name: "TypeA", Schema: json.RawMessage(`{"field":{"type":"string"}}`)},
+			&entitytype.EntityType{
+				Handle: "typea", DisplayName: "TypeA", Schema: json.RawMessage(`{"field":{"type":"string"}}`),
+			},
 			(*tidcommon.ServiceError)(nil),
 		).Once()
 
@@ -1033,7 +1005,7 @@ func (suite *ServiceTestSuite) TestListSchemas_LargeRegistry_ConstantQueryCount(
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 500,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Type0"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "type0"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		).Once()
@@ -1042,17 +1014,19 @@ func (suite *ServiceTestSuite) TestListSchemas_LargeRegistry_ConstantQueryCount(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 500,
 				Types: []entitytype.EntityTypeListItem{
-					{Name: "Type1"}, {Name: "Type2"}, {Name: "Type3"}, {Name: "Type4"}, {Name: "Type5"},
-					{Name: "Type6"}, {Name: "Type7"}, {Name: "Type8"}, {Name: "Type9"}, {Name: "Type10"},
+					{Handle: "type1"}, {Handle: "type2"}, {Handle: "type3"}, {Handle: "type4"}, {Handle: "type5"},
+					{Handle: "type6"}, {Handle: "type7"}, {Handle: "type8"}, {Handle: "type9"}, {Handle: "type10"},
 				},
 			},
 			(*tidcommon.ServiceError)(nil),
 		).Once()
 	for i := 1; i <= 10; i++ {
-		name := fmt.Sprintf("Type%d", i)
-		mockET.On("GetEntityTypeByName", mock.Anything, entitytype.TypeCategoryUser, name).
+		name := fmt.Sprintf("type%d", i)
+		mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, name).
 			Return(
-				&entitytype.EntityType{Name: name, Schema: json.RawMessage(`{"field":{"type":"string"}}`)},
+				&entitytype.EntityType{
+					Handle: name, DisplayName: name, Schema: json.RawMessage(`{"field":{"type":"string"}}`),
+				},
 				(*tidcommon.ServiceError)(nil),
 			).Once()
 	}
@@ -1068,16 +1042,16 @@ func (suite *ServiceTestSuite) TestListSchemas_LargeRegistry_ConstantQueryCount(
 }
 
 // =====================================================================
-// ResolveUserTypeNameForSchemaURN — branch coverage
+// ResolveUserTypeForSchemaURN: branch coverage
 // =====================================================================
 
-// TestResolveUserTypeName_AuthError_Returns404 tests Resolve User Type Name for Auth Error Returns 404.
-func (suite *ServiceTestSuite) TestResolveUserTypeName_AuthError_Returns404() {
+// TestResolveUserType_AuthError_Returns404 tests Resolve User Type for Auth Error Returns 404.
+func (suite *ServiceTestSuite) TestResolveUserType_AuthError_Returns404() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	authErr := tidcommon.ErrorUnauthorized
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return((*entitytype.EntityTypeListResponse)(nil), &authErr)
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "anytype").
+		Return((*entitytype.EntityType)(nil), &authErr)
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
 
@@ -1090,12 +1064,13 @@ func (suite *ServiceTestSuite) TestResolveUserTypeName_AuthError_Returns404() {
 	require.Equal(t, scim.ErrorSchemaNotFound.Code, svcErr.Code)
 }
 
-// TestResolveUserTypeName_NonAuthListError_Returns404 tests Resolve User Type Name for Non Auth List Error Returns 404.
-func (suite *ServiceTestSuite) TestResolveUserTypeName_NonAuthListError_Returns404() {
+// TestResolveUserType_NonAuthLookupError_Returns404 tests Resolve User Type for Non Auth Lookup
+// Error Returns 404.
+func (suite *ServiceTestSuite) TestResolveUserType_NonAuthLookupError_Returns404() {
 	t := suite.T()
 	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
-		Return((*entitytype.EntityTypeListResponse)(nil), &tidcommon.ServiceError{Code: "ET-DB-ERR"})
+	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "anytype").
+		Return((*entitytype.EntityType)(nil), &tidcommon.ServiceError{Code: "ET-DB-ERR"})
 
 	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
 
@@ -1161,7 +1136,7 @@ func (suite *ServiceTestSuite) TestListResourceTypes_IncludesExtensionPerUserTyp
 		Return(
 			&entitytype.EntityTypeListResponse{
 				TotalResults: 1,
-				Types:        []entitytype.EntityTypeListItem{{Name: "Employee"}},
+				Types:        []entitytype.EntityTypeListItem{{Handle: "employee"}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)

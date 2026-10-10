@@ -314,10 +314,14 @@ func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) 
 	}
 
 	attrs := map[string]interface{}{}
+	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, inputData := range i.GetRequiredInputs(ctx) {
+		// External claims are only a fallback and must never take priority over runtime data.
 		if value, ok := ctx.UserInputs[inputData.Identifier]; ok {
 			attrs[inputData.Identifier] = value
 		} else if value, ok := ctx.RuntimeData[inputData.Identifier]; ok {
+			attrs[inputData.Identifier] = value
+		} else if value, ok := extIdentity.Claim(inputData.Identifier); ok {
 			attrs[inputData.Identifier] = value
 		}
 	}

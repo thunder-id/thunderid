@@ -10,7 +10,7 @@ func (s *FederatedMappingSuite) TestCustomAttributeMappingsApplied() {
 	sub := s.nextSubject()
 	user := s.baseUser(sub)
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("given_name", "firstName"),
 		pair("family_name", "lastName"),
 		pair("email", "username"),
@@ -27,7 +27,7 @@ func (s *FederatedMappingSuite) TestNestedClaimPathMapped() {
 	user := s.baseUser(sub)
 	user.Custom["address"] = map[string]interface{}{"locality": "Colombo", "region": "Western"}
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("address.locality", "city"),
 	), user)
@@ -41,7 +41,7 @@ func (s *FederatedMappingSuite) TestOneClaimMappedToTwoAttributes() {
 	sub := s.nextSubject()
 	user := s.baseUser(sub)
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("given_name", "firstName"),
 		pair("given_name", "lastName"),
@@ -57,7 +57,7 @@ func (s *FederatedMappingSuite) TestUnmappedClaimsPassThroughAndSourcesSurvive()
 	sub := s.nextSubject()
 	user := s.baseUser(sub)
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("given_name", "firstName"),
 	), user)
@@ -75,9 +75,9 @@ func (s *FederatedMappingSuite) TestResolvedUserTypeWithoutMappingEntry() {
 
 	step := s.registerExpectingPrompt(&testutils.AttributeConfiguration{
 		// Resolution names fed_person, but the only profile is keyed to fed_contractor.
-		UserTypeResolution: &testutils.UserTypeResolution{Default: fedPersonType.Name},
+		UserTypeResolution: &testutils.UserTypeResolution{Default: fedPersonType.Handle},
 		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
-			UserType:   fedContractorType.Name,
+			UserType:   fedContractorType.Handle,
 			Attributes: []testutils.AttributeMapping{pair("given_name", "firstName")},
 		}},
 	}, user)
@@ -96,7 +96,7 @@ func (s *FederatedMappingSuite) TestResolutionToNonexistentUserTypeAppliesNoMapp
 	step := s.registerExpectingPrompt(&testutils.AttributeConfiguration{
 		UserTypeResolution: &testutils.UserTypeResolution{Default: "no_such_user_type"},
 		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
-			UserType:   fedPersonType.Name,
+			UserType:   fedPersonType.Handle,
 			Attributes: []testutils.AttributeMapping{pair("given_name", "firstName")},
 		}},
 	}, user)
@@ -114,11 +114,11 @@ func (s *FederatedMappingSuite) TestDirectResolutionClaimNamingUnknownTypeApplie
 
 	step := s.registerExpectingPrompt(&testutils.AttributeConfiguration{
 		UserTypeResolution: &testutils.UserTypeResolution{
-			Default:           fedPersonType.Name,
+			Default:           fedPersonType.Handle,
 			ExternalAttribute: "profile_type",
 		},
 		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
-			UserType:   fedPersonType.Name,
+			UserType:   fedPersonType.Handle,
 			Attributes: []testutils.AttributeMapping{pair("given_name", "firstName")},
 		}},
 	}, user)
@@ -134,7 +134,7 @@ func (s *FederatedMappingSuite) TestNestedPathThroughScalarPublishesNothing() {
 	sub := s.nextSubject()
 	user := s.baseUser(sub)
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		// email is a string, so email.locality cannot resolve.
 		pair("email.locality", "city"),
@@ -151,7 +151,7 @@ func (s *FederatedMappingSuite) TestNestedPathWithMissingSegmentPublishesNothing
 	user := s.baseUser(sub)
 	user.Custom["address"] = map[string]interface{}{"locality": "Colombo"}
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("address.region", "city"),
 	), user)
@@ -166,7 +166,7 @@ func (s *FederatedMappingSuite) TestAttributeNamesAreCaseSensitive() {
 	sub := s.nextSubject()
 	user := s.baseUser(sub)
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		// The claim is given_name; Given_Name must not resolve.
 		pair("Given_Name", "firstName"),
@@ -189,7 +189,7 @@ func (s *FederatedMappingSuite) TestNullClaimValueContributesNothing() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["work_city"] = nil
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("work_city", "city"),
 	), user)
@@ -204,7 +204,7 @@ func (s *FederatedMappingSuite) TestNonStringClaimMappedIntoTypedAttribute() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["cost_centre"] = 4200
 
-	attributes := s.register(mapping(fedPersonType.Name,
+	attributes := s.register(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 		pair("cost_centre", "costCenter"),
 	), user)
@@ -218,7 +218,7 @@ func (s *FederatedMappingSuite) TestNonStringClaimMappedIntoTypedAttribute() {
 func (s *FederatedMappingSuite) TestMappingOntoUniqueAttributeThatCollides() {
 	existingEmail := s.nextSubject() + "@example.com"
 	existing, err := testutils.CreateUser(testutils.User{
-		Type: fedPersonType.Name,
+		Type: fedPersonType.Handle,
 		OUID: s.ouID,
 		Attributes: mustJSON(map[string]interface{}{
 			"username": existingEmail,
@@ -235,7 +235,7 @@ func (s *FederatedMappingSuite) TestMappingOntoUniqueAttributeThatCollides() {
 	user := s.baseUser(s.nextSubject())
 	user.Email = existingEmail
 
-	step := s.registerExpectingPrompt(mapping(fedPersonType.Name,
+	step := s.registerExpectingPrompt(mapping(fedPersonType.Handle,
 		pair("email", "username"),
 	), user)
 
@@ -249,7 +249,7 @@ func (s *FederatedMappingSuite) TestMappingOntoUniqueAttributeThatCollides() {
 func (s *FederatedMappingSuite) TestRequiredAttributeLeftAbsentByMissingClaim() {
 	user := s.baseUser(s.nextSubject())
 
-	step := s.registerExpectingPrompt(mapping(fedPersonType.Name,
+	step := s.registerExpectingPrompt(mapping(fedPersonType.Handle,
 		// The identity carries no work_email claim.
 		pair("work_email", "username"),
 	), user)
@@ -263,7 +263,7 @@ func (s *FederatedMappingSuite) TestEmptyClaimValueForRequiredAttribute() {
 	user := s.baseUser(s.nextSubject())
 	user.Custom["work_email"] = ""
 
-	step := s.registerExpectingPrompt(mapping(fedPersonType.Name,
+	step := s.registerExpectingPrompt(mapping(fedPersonType.Handle,
 		pair("work_email", "username"),
 	), user)
 

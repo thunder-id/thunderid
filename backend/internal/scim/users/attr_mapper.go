@@ -395,22 +395,19 @@ func filterAndRenameMultiComplexParts(
 // ============================================================================
 
 // reverseMapCoreAttrsForSchema converts incoming SCIM core attributes into internal user-type attributes
-// based on the target schema. coreAttrs keys matching no CoreAttrRule (e.g. "active") come back in
-// undeclared instead of being silently dropped.
+// based on the target schema. coreAttrs keys matching no CoreAttrRule (e.g. "active"), or whose rules
+// find no matching property in the schema (e.g. "title" on a schema without a title property), come
+// back in undeclared instead of being silently dropped.
 func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 	schema json.RawMessage) (result map[string]json.RawMessage, undeclared []string, err error) {
 	if len(coreAttrs) == 0 {
 		return nil, nil, nil
 	}
-	if len(schema) == 0 {
-		return nil, nil, nil
-	}
 	var rawProps map[string]scim.RawPropertyDef
-	if err := json.Unmarshal(schema, &rawProps); err != nil {
-		return nil, nil, err
-	}
-	if len(rawProps) == 0 {
-		return nil, nil, nil
+	if len(schema) > 0 {
+		if err := json.Unmarshal(schema, &rawProps); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	result = make(map[string]json.RawMessage)
@@ -422,12 +419,12 @@ func reverseMapCoreAttrsForSchema(coreAttrs map[string]json.RawMessage,
 		if len(rawVal) == 0 {
 			continue
 		}
-		matchedKeys[matchedKey] = struct{}{}
 
 		targetAttrName := findTargetAttrName(rawProps, rule.Candidate)
 		if targetAttrName == "" {
 			continue
 		}
+		matchedKeys[matchedKey] = struct{}{}
 
 		if b, ok := reverseMapRuleValue(rule, rawVal, rawProps[targetAttrName]); ok {
 			result[targetAttrName] = b

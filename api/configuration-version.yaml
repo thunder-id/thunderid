@@ -1,0 +1,261 @@
+openapi: 3.0.3
+info:
+  title: Configuration Version API
+  version: "1.0"
+  description: |
+    Captures this deployment's configuration as versions, to apply to the gateways it administers.
+
+    A version is the configuration as the export writes it, one document per resource, recorded at
+    the moment it was captured. Applying a version to a gateway, comparing one with what a gateway
+    holds, and reverting a gateway are operations on that gateway, in the Gateway API.
+
+    ## Authorization
+
+    Every route here requires the **root system permission**, the one named by
+    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
+    `tenant_instance:system` where a prefix is configured). A version describes the whole
+    configuration of the deployment, so reading one is as privileged as capturing one.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Configuration Versions
+    description: The captured versions of this deployment's configuration.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /configuration-versions:
+    get:
+      tags: [Configuration Versions]
+      summary: List configuration versions
+      description: Lists the captured versions of this deployment's configuration, newest first. A listing leaves each version's content out.
+      responses:
+        "200":
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Version'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Configuration Versions]
+      summary: Capture a configuration version
+      description: |
+        Records this deployment's configuration as it is now, through the export, as a new
+        version. Every resource is captured, users and groups included. A user's credentials are
+        captured as references, which the gateway fills in from its own store.
+
+        A resource the export cannot write, such as a user with no username, is left out of the
+        version, as the export leaves it out of its own answer, and is listed in `skipped` with why.
+
+        A version keeps users and groups as they were when it was captured. Applying an older version
+        therefore brings back a user deleted since, with the attributes it had then.
+
+        A control plane exports references, so its versions hold no values. A deployment that exports
+        template placeholders keeps their values with the version, encrypted, and never returns them.
+
+        Only the configured number of versions is kept (`gateway.max_versions`). The oldest is removed
+        first, except a version some gateway holds or could be reverted to. Those are kept even when that
+        leaves more versions than the configured number.
+
+        A version is named by the SHA-256 of the configuration it captured: the exported documents as
+        written, with their references or placeholders, not the values those stand for. Values differ
+        from one gateway to the next, so they are no part of what a version is. Capturing
+        configuration that matches a version already captured answers `200` with that version, marked
+        `unchanged`, rather than keeping it twice, and the version keeps the values it was captured with.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureRequest'
+      responses:
+        "201":
+          description: The captured version, with its content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        "200":
+          description: The configuration matches a version already captured, which is answered, marked `unchanged`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+  /configuration-versions/{version}:
+    parameters:
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The version's hash, a prefix of at least seven of its characters, or `latest`.
+    get:
+      tags: [Configuration Versions]
+      summary: Get a configuration version
+      responses:
+        "200":
+          description: The version, with its content. Its values are not returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+components:
+  responses:
+    BadRequest:
+      description: The request was malformed, or the version was not named by a hash, a prefix of it, or `latest`
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidBody:
+              summary: The body is not one JSON object
+              value:
+                code: "GTW-1007"
+                message:
+                  key: "error.gatewayservice.invalid_request_body"
+                  defaultValue: "The request body is not valid JSON"
+            invalidVersion:
+              summary: The version is not named by a hash, a prefix of it, or latest
+              value:
+                code: "GTW-1014"
+                message:
+                  key: "error.gatewayservice.invalid_version"
+                  defaultValue: "A version is named by its hash, at least seven of its characters, or latest"
+            ambiguousVersion:
+              summary: The prefix names more than one version
+              value:
+                code: "GTW-1020"
+                message:
+                  key: "error.gatewayservice.ambiguous_version"
+                  defaultValue: "More than one version starts with that hash"
+    Unauthorized:
+      description: No valid credentials were presented
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is authenticated but not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No version of that hash was captured
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "GTW-1013"
+            message:
+              key: "error.gatewayservice.version_not_found"
+              defaultValue: "Configuration version not found"
+
+  schemas:
+    Version:
+      type: object
+      properties:
+        version:
+          type: string
+          description: |
+            The SHA-256 of the captured documents, in hex, values left out. Any prefix of at least seven
+            characters that no other version shares also names it; the console shows the first seven.
+          example: 3f9a1c27e5b0d84a6f2c91e07b3d5a8c4e6f1b2d9a7c0e3f5b8d2a4c6e1f0b9a
+        name:
+          type: string
+          description: What the version is called.
+        note:
+          type: string
+        unchanged:
+          type: boolean
+          description: Only in a capture's answer, when the configuration matched this version already captured.
+        createdAt:
+          type: string
+          format: date-time
+        resources:
+          type: string
+          description: The exported configuration, one document per resource. Left out of a listing.
+        skipped:
+          type: array
+          description: |
+            Only in a capture's answer: the resources the export could not write, left out of the
+            version, each with why. Not kept with the version.
+          items:
+            type: object
+            properties:
+              resourceType:
+                type: string
+              resourceId:
+                type: string
+              error:
+                type: string
+              code:
+                type: string
+    CaptureRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: What to call the version.
+        note:
+          type: string
+          description: A note to remember the version by.
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+    I18nMessage:
+      type: object
+      properties:
+        key:
+          type: string
+        defaultValue:
+          type: string
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Manage this deployment

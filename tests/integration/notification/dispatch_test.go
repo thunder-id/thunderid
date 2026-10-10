@@ -30,7 +30,8 @@ var (
 	}
 
 	dispatchEntityType = testutils.UserType{
-		Name: "dispatch_user",
+		Handle:      "dispatch_user",
+		DisplayName: "Dispatch User",
 		Schema: map[string]interface{}{
 			"username":      map[string]interface{}{"type": "string"},
 			"mobile_number": map[string]interface{}{"type": "string"},
@@ -70,7 +71,7 @@ func (ts *DispatchTestSuite) SetupSuite() {
 
 	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
 		OUID: ouID,
-		Type: dispatchEntityType.Name,
+		Type: dispatchEntityType.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "dispatchuser",
 			"mobile_number": "` + ts.mobileNumber + `"

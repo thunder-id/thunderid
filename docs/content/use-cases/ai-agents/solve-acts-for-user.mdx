@@ -111,3 +111,17 @@ indistinguishable from its input.
 
 See [Get a token for the user](../../../guides/agents/authentication/on-behalf-of-user#get-a-token-for-the-user)
 for all three ways an agent obtains one.
+
+## When the Person Is Federated
+
+Everything above assumes <ProductName /> already knows who the customer is. When that person's identity is
+managed by an external identity provider instead, such as an enterprise workforce in Entra ID or Okta,
+delegation still has to land on the right access: an administrator maps the attribute values the provider
+asserts, group membership among them, onto local roles, groups, or permissions, and <ProductName /> applies
+that mapping wherever the identity enters, including when an agent exchanges a token to act on the person's
+behalf. This is what makes the delegated access above match what a direct sign-in from that same person would
+produce.
+
+See [Federated Attribute Mapping](../../../key-concepts/authorization#federated-attribute-mapping) for the
+full pattern, and [Add an OIDC Identity Provider](../../../guides/identity-providers/add-oidc-provider#authorization-mapping)
+to configure it.

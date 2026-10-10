@@ -23,6 +23,8 @@ const (
 	NotificationProviderTypeTwilio NotificationProviderType = "twilio"
 	// NotificationProviderTypeCustom represents a custom messaging provider.
 	NotificationProviderTypeCustom NotificationProviderType = "custom"
+	// NotificationProviderTypeSMTP represents the SMTP email provider.
+	NotificationProviderTypeSMTP NotificationProviderType = "smtp"
 )
 
 // ChannelType defines the type of communication channel.
@@ -31,6 +33,8 @@ type ChannelType string
 const (
 	// ChannelTypeSMS represents the SMS channel.
 	ChannelTypeSMS ChannelType = "sms"
+	// ChannelTypeEmail represents the email channel.
+	ChannelTypeEmail ChannelType = "email"
 )
 
 // OTPVerifyStatus defines the status of OTP verification.
@@ -70,6 +74,32 @@ const (
 	CustomPropKeyHTTPHeaders = "http_headers"
 	// CustomPropKeyContentType is the property key for the content type.
 	CustomPropKeyContentType = "content_type"
+)
+
+const (
+	// SMTPPropKeyHost is the property key for the SMTP host.
+	SMTPPropKeyHost = "host"
+	// SMTPPropKeyPort is the property key for the SMTP port.
+	SMTPPropKeyPort = "port"
+	// SMTPPropKeyFromAddress is the property key for the SMTP from address.
+	SMTPPropKeyFromAddress = "from_address"
+	// SMTPPropKeyFromName is the property key for the display name shown beside the from
+	// address in the From header. Optional: without it the From header carries the bare address.
+	SMTPPropKeyFromName = "from_name"
+	// SMTPPropKeyTLS is the property key for the SMTP TLS mode.
+	SMTPPropKeyTLS = "tls"
+)
+
+// TLSMode defines how the transport to an SMTP server is secured.
+type TLSMode string
+
+const (
+	// TLSModeNone sends over a plaintext connection.
+	TLSModeNone TLSMode = "none"
+	// TLSModeSTARTTLS upgrades a plaintext connection with the STARTTLS command.
+	TLSModeSTARTTLS TLSMode = "starttls"
+	// TLSModeImplicit dials a TLS connection directly (SMTPS).
+	TLSModeImplicit TLSMode = "implicit"
 )
 
 const (

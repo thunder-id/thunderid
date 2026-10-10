@@ -1,0 +1,283 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package token
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
+)
+
+// M2MOUScopedTokenTestSuite covers the accessing-organization-unit form of the token endpoint,
+// /ou/{ouId}/oauth2/token, against the declaratively defined M2M service applications in
+// resources/declarative_resources/applications/m2m-*.yaml.
+//
+// The applications are owned by decl-m2m-root and shared outward four different ways: every
+// organization unit in the deployment, the owning subtree, the owning subtree with one branch
+// carved out, and named children one by one. That is what lets a single credential pair serve many
+// organizations while remaining invisible inside them.
+type M2MOUScopedTokenTestSuite struct {
+	suite.Suite
+}
+
+func TestM2MOUScopedTokenTestSuite(t *testing.T) {
+	suite.Run(t, new(M2MOUScopedTokenTestSuite))
+}
+
+const (
+	m2mRootOUID        = "decl-m2m-root"
+	m2mChildAOUID      = "decl-m2m-child-a"
+	m2mChildBOUID      = "decl-m2m-child-b"
+	m2mChildCOUID      = "decl-m2m-child-c"
+	m2mGrandchildAOUID = "decl-m2m-grandchild-a"
+
+	m2mAllOUsClientID     = "decl-m2m-all-ous-client"
+	m2mAllOUsSecret       = "decl-m2m-all-ous-secret"
+	m2mSubtreeClientID    = "decl-m2m-subtree-client"
+	m2mSubtreeSecret      = "decl-m2m-subtree-secret"
+	m2mCarvedOutClientID  = "decl-m2m-carved-out-client"
+	m2mCarvedOutSecret    = "decl-m2m-carved-out-secret"
+	m2mSelectedClientID   = "decl-m2m-selected-client"
+	m2mSelectedSecret     = "decl-m2m-selected-secret"
+	unrelatedDeclOUHandle = "decl-ou-1"
+)
+
+// requestToken issues a client_credentials request. When ouID is non-empty the request goes to the
+// /ou/{ouId} form of the endpoint, otherwise to the bare one.
+func (suite *M2MOUScopedTokenTestSuite) requestToken(
+	ouID, clientID, clientSecret string,
+) (int, map[string]interface{}) {
+	suite.T().Helper()
+
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+
+	endpoint := testutils.TestServerURL + "/oauth2/token"
+	if ouID != "" {
+		endpoint = testutils.TestServerURL + "/ou/" + ouID + "/oauth2/token"
+	}
+
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(form.Encode()))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	// Raw client: this test sets its own Authorization header (client_secret_basic), so the
+	// harness must not inject an admin bearer over it.
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+
+	parsed := map[string]interface{}{}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &parsed)
+	}
+	return resp.StatusCode, parsed
+}
+
+// TestBareEndpointStillWorks pins the backwards-compatibility guarantee: a request that does not
+// name an accessing organization unit behaves exactly as it did before the prefix existed, with no
+// policy required.
+func (suite *M2MOUScopedTokenTestSuite) TestBareEndpointStillWorks() {
+	status, body := suite.requestToken("", m2mCarvedOutClientID, m2mCarvedOutSecret)
+
+	suite.Equal(http.StatusOK, status, "body: %v", body)
+	suite.NotEmpty(body["access_token"])
+}
+
+// TestAllOUsPolicyReachesEveryOU proves an allOus policy lets the application be used for any
+// organization unit, including ones in an unrelated tree.
+func (suite *M2MOUScopedTokenTestSuite) TestAllOUsPolicyReachesEveryOU() {
+	for _, ouID := range []string{m2mRootOUID, m2mChildAOUID, m2mChildBOUID, unrelatedDeclOUHandle} {
+		suite.Run(ouID, func() {
+			status, body := suite.requestToken(ouID, m2mAllOUsClientID, m2mAllOUsSecret)
+
+			suite.Equal(http.StatusOK, status, "body: %v", body)
+			suite.NotEmpty(body["access_token"])
+		})
+	}
+}
+
+// TestOwnerMayAlwaysNameItself proves the owning organization unit needs no policy of its own.
+func (suite *M2MOUScopedTokenTestSuite) TestOwnerMayAlwaysNameItself() {
+	status, body := suite.requestToken(m2mRootOUID, m2mCarvedOutClientID, m2mCarvedOutSecret)
+
+	suite.Equal(http.StatusOK, status, "body: %v", body)
+	suite.NotEmpty(body["access_token"])
+}
+
+// TestSubtreePolicyCoversChildren proves an allChildren policy reaches the owning root's descendants.
+func (suite *M2MOUScopedTokenTestSuite) TestSubtreePolicyCoversChildren() {
+	for _, ouID := range []string{m2mChildAOUID, m2mChildBOUID} {
+		suite.Run(ouID, func() {
+			status, body := suite.requestToken(ouID, m2mSubtreeClientID, m2mSubtreeSecret)
+
+			suite.Equal(http.StatusOK, status, "body: %v", body)
+			suite.NotEmpty(body["access_token"])
+		})
+	}
+}
+
+// TestSubtreePolicyDoesNotReachAnotherTree proves allChildren stays inside the owning subtree.
+func (suite *M2MOUScopedTokenTestSuite) TestSubtreePolicyDoesNotReachAnotherTree() {
+	status, body := suite.requestToken(unrelatedDeclOUHandle, m2mSubtreeClientID, m2mSubtreeSecret)
+
+	suite.Equal(http.StatusBadRequest, status, "body: %v", body)
+	suite.Equal("unauthorized_client", body["error"])
+}
+
+// TestCarveOutExcludesOneBranch is the case the carve-out exists to express: the whole subtree is
+// reached except child B, which must be refused even though it sits beside a sibling that is not.
+func (suite *M2MOUScopedTokenTestSuite) TestCarveOutExcludesOneBranch() {
+	reachedStatus, reachedBody := suite.requestToken(m2mChildAOUID, m2mCarvedOutClientID, m2mCarvedOutSecret)
+	suite.Equal(http.StatusOK, reachedStatus, "body: %v", reachedBody)
+	suite.NotEmpty(reachedBody["access_token"])
+
+	refusedStatus, refusedBody := suite.requestToken(m2mChildBOUID, m2mCarvedOutClientID, m2mCarvedOutSecret)
+	suite.Equal(http.StatusBadRequest, refusedStatus, "body: %v", refusedBody)
+	suite.Equal("unauthorized_client", refusedBody["error"],
+		"a carved-out organization unit is refused exactly as an unreached one is")
+}
+
+// TestSelectivePolicyReachesOnlyTheNamedChildren is the opposite of the carve-out: instead of
+// granting the subtree and withholding one branch, the policy names the children it grants and
+// nothing else. A sibling that exists in the same tree but appears in no target is refused.
+func (suite *M2MOUScopedTokenTestSuite) TestSelectivePolicyReachesOnlyTheNamedChildren() {
+	for _, ouID := range []string{m2mChildAOUID, m2mChildBOUID} {
+		suite.Run("named "+ouID, func() {
+			status, body := suite.requestToken(ouID, m2mSelectedClientID, m2mSelectedSecret)
+
+			suite.Equal(http.StatusOK, status, "body: %v", body)
+			suite.NotEmpty(body["access_token"])
+		})
+	}
+
+	suite.Run("unnamed sibling "+m2mChildCOUID, func() {
+		status, body := suite.requestToken(m2mChildCOUID, m2mSelectedClientID, m2mSelectedSecret)
+
+		suite.Equal(http.StatusBadRequest, status, "body: %v", body)
+		suite.Equal("unauthorized_client", body["error"],
+			"a sibling no target names is refused exactly as a unit in another tree is")
+	})
+}
+
+// TestSelectivePolicyStopsAtTheNamedChild is what separates a child target from a childSubtree one:
+// naming an organization unit grants that unit alone, never the units beneath it. The subtree
+// application, which does cascade, is checked against the same unit so the difference is the policy
+// shape rather than anything about the organization unit itself.
+func (suite *M2MOUScopedTokenTestSuite) TestSelectivePolicyStopsAtTheNamedChild() {
+	status, body := suite.requestToken(m2mGrandchildAOUID, m2mSelectedClientID, m2mSelectedSecret)
+	suite.Equal(http.StatusBadRequest, status, "body: %v", body)
+	suite.Equal("unauthorized_client", body["error"],
+		"naming a child does not hand the resource to everything beneath it")
+
+	cascaded, cascadedBody := suite.requestToken(m2mGrandchildAOUID, m2mSubtreeClientID, m2mSubtreeSecret)
+	suite.Equal(http.StatusOK, cascaded, "body: %v", cascadedBody)
+	suite.NotEmpty(cascadedBody["access_token"],
+		"the same unit is reached by a policy that does cascade, so the refusal above is the policy shape")
+}
+
+// TestUnknownOUIsRefused proves an organization unit id that resolves to nothing is refused, under a
+// blanket allOus policy just as much as a narrower one. allOus means "every organization unit in the
+// deployment", and a policy check alone cannot reject an id that names none of them, so the accessing
+// organization unit is resolved before any policy is consulted.
+func (suite *M2MOUScopedTokenTestSuite) TestUnknownOUIsRefused() {
+	for _, tc := range []struct{ name, clientID, secret string }{
+		{"carved-out policy", m2mCarvedOutClientID, m2mCarvedOutSecret},
+		{"allOus policy", m2mAllOUsClientID, m2mAllOUsSecret},
+	} {
+		suite.Run(tc.name, func() {
+			status, body := suite.requestToken("no-such-ou", tc.clientID, tc.secret)
+
+			suite.Equal(http.StatusBadRequest, status, "body: %v", body)
+			suite.Equal("unauthorized_client", body["error"])
+		})
+	}
+}
+
+// decodeAccessTokenClaims returns the JWT payload claims of an issued access token.
+func (suite *M2MOUScopedTokenTestSuite) decodeAccessTokenClaims(body map[string]interface{}) map[string]interface{} {
+	suite.T().Helper()
+
+	token, ok := body["access_token"].(string)
+	suite.Require().True(ok, "no access_token in body: %v", body)
+	parts := strings.Split(token, ".")
+	suite.Require().Len(parts, 3, "access token is not a JWS")
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	suite.Require().NoError(err)
+	claims := map[string]interface{}{}
+	suite.Require().NoError(json.Unmarshal(payload, &claims))
+	return claims
+}
+
+// TestClaimsNameTheAccessingOU proves the token states which organization it was issued for: on an
+// /ou/{ouId} request the ouId/ouHandle claims resolve to the accessing organization unit, not to the
+// application's own owner. Without the prefix they fall back to the owner, unchanged.
+func (suite *M2MOUScopedTokenTestSuite) TestClaimsNameTheAccessingOU() {
+	_, accessing := suite.requestToken(m2mChildAOUID, m2mAllOUsClientID, m2mAllOUsSecret)
+	accessingClaims := suite.decodeAccessTokenClaims(accessing)
+	suite.Equal(m2mChildAOUID, accessingClaims["ouId"],
+		"the token must name the organization it was requested against")
+	suite.Equal(m2mChildAOUID, accessingClaims["ouHandle"])
+
+	_, bare := suite.requestToken("", m2mAllOUsClientID, m2mAllOUsSecret)
+	bareClaims := suite.decodeAccessTokenClaims(bare)
+	suite.Equal(m2mRootOUID, bareClaims["ouId"],
+		"without an accessing organization unit the claims stay with the application's owner")
+}
+
+// TestUnknownAndUnreachedOUsAreIndistinguishable is the property the refusal wording exists for.
+//
+// If an organization unit that does not exist answered differently from one the client simply may
+// not act for, an authenticated client could use the endpoint to discover which organization units
+// exist in the deployment. An unauthenticated one learns nothing either way, because everything
+// about the organization unit is decided behind client authentication.
+func (suite *M2MOUScopedTokenTestSuite) TestUnknownAndUnreachedOUsAreIndistinguishable() {
+	// The subtree policy reaches neither: one is in another tree, the other names nothing at all.
+	unreachedStatus, unreached := suite.requestToken(
+		unrelatedDeclOUHandle, m2mSubtreeClientID, m2mSubtreeSecret)
+	unknownStatus, unknown := suite.requestToken("no-such-ou", m2mSubtreeClientID, m2mSubtreeSecret)
+
+	suite.Equal(unreachedStatus, unknownStatus)
+	suite.Equal(unreached["error"], unknown["error"])
+	suite.Equal(unreached["error_description"], unknown["error_description"],
+		"the two refusals must be identical, naming no organization unit at all")
+}
+
+// TestAnUnauthenticatedCallerLearnsNothingAboutTheUnit is the stronger half of the property above:
+// the organization unit is resolved behind client authentication, so a caller without a valid
+// credential is told only that, whichever unit it names. A unit that exists and one that does not
+// answer identically, so the endpoint cannot be probed for which units exist.
+func (suite *M2MOUScopedTokenTestSuite) TestAnUnauthenticatedCallerLearnsNothingAboutTheUnit() {
+	known, knownBody := suite.requestToken(m2mChildAOUID, m2mAllOUsClientID, "definitely-not-the-secret")
+	unknown, unknownBody := suite.requestToken("no-such-ou", m2mAllOUsClientID, "definitely-not-the-secret")
+
+	suite.Equal(http.StatusUnauthorized, known, "body: %v", knownBody)
+	suite.Equal(http.StatusUnauthorized, unknown, "body: %v", unknownBody)
+	suite.Equal(knownBody["error"], unknownBody["error"])
+	suite.Equal(knownBody["error_description"], unknownBody["error_description"],
+		"a caller that cannot authenticate must not learn whether the unit exists")
+}
+
+// TestWrongSecretFailsAsInvalidClient proves client authentication is not bypassed by the
+// organization unit logic: a bad secret is refused as invalid_client regardless of how broadly the
+// application is shared, and stays distinguishable from the unauthorized_client an organization
+// unit the client may not act for gets.
+func (suite *M2MOUScopedTokenTestSuite) TestWrongSecretFailsAsInvalidClient() {
+	status, body := suite.requestToken(m2mChildAOUID, m2mAllOUsClientID, "definitely-not-the-secret")
+
+	suite.Equal(http.StatusUnauthorized, status, "body: %v", body)
+	suite.Equal("invalid_client", body["error"])
+}

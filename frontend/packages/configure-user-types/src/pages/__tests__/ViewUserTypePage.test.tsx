@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
@@ -147,7 +147,8 @@ const addAttribute = async (user: ReturnType<typeof userEvent.setup>, id: string
 describe('ViewUserTypePage', () => {
   const mockUserType: ApiUserType = {
     id: 'schema-123',
-    name: 'Employee Schema',
+    handle: 'employee',
+    displayName: 'Employee Schema',
     ouId: 'root-ou',
     allowSelfRegistration: false,
     schema: {
@@ -264,6 +265,12 @@ describe('ViewUserTypePage', () => {
 
       expect(screen.getByText('Employee Schema')).toBeInTheDocument();
       expect(screen.getByDisplayValue('schema-123')).toBeInTheDocument();
+    });
+
+    it('renders the immutable handle as a read-only copy field', () => {
+      render(<ViewUserTypePage />);
+
+      expect(screen.getByDisplayValue('employee')).toHaveAttribute('readonly');
     });
 
     it('displays General and Schema tabs', () => {
@@ -829,7 +836,7 @@ describe('ViewUserTypePage', () => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userTypeId: 'schema-123',
           data: expect.objectContaining({
-            name: 'Employee Schema',
+            displayName: 'Employee Schema',
             ouId: 'child-ou',
             allowSelfRegistration: false,
             schema: expect.any(Object) as Record<string, unknown>,
@@ -860,10 +867,12 @@ describe('ViewUserTypePage', () => {
         expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
           userTypeId: 'schema-123',
           data: expect.objectContaining({
-            name: 'Updated Schema',
+            displayName: 'Updated Schema',
           }),
         });
       });
+      const [{data: sentData}] = mockUpdateMutateAsync.mock.calls[0] as [{data: Record<string, unknown>}];
+      expect(sentData).not.toHaveProperty('handle');
     });
 
     it('saves schema changes from Schema tab', async () => {

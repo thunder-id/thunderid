@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -132,7 +133,7 @@ func (s *StoreTestSuite) TestCountReadsTheTotal() {
 func (s *StoreTestSuite) TestCreateReturnsTheStoredRow() {
 	s.expectDBClient()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		"gw-1", "production", "https://dp.test", "sealed", "",
+		"gw-1", "production", "https://dp.test", "sealed", "", false,
 		storeDeploymentID, storeDeploymentID, 5).
 		Return([]map[string]interface{}{
 			{"id": "gw-1", "name": "production",
@@ -154,7 +155,7 @@ func (s *StoreTestSuite) TestCreateReturnsTheStoredRow() {
 func (s *StoreTestSuite) TestCreateReturnsNilWhenTheLimitRefusesIt() {
 	s.expectDBClient()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false,
 		storeDeploymentID, storeDeploymentID, 1).
 		Return([]map[string]interface{}{}, nil).Once()
 
@@ -162,6 +163,122 @@ func (s *StoreTestSuite) TestCreateReturnsNilWhenTheLimitRefusesIt() {
 
 	s.Require().NoError(err)
 	s.Nil(created)
+}
+
+// recordingTransactioner runs the work it is given and reports whether that work asked to roll back,
+// which is all the store's use of a transaction depends on.
+type recordingTransactioner struct {
+	ran        bool
+	rolledBack bool
+}
+
+func (r *recordingTransactioner) Transact(ctx context.Context, txFunc func(context.Context) error) error {
+	r.ran = true
+	err := txFunc(ctx)
+	r.rolledBack = err != nil
+	return err
+}
+
+// A gateway registered as the default takes it from whichever gateway held it, and both
+// writes happen in one transaction.
+func (s *StoreTestSuite) TestCreatingTheDefaultGatewayMovesTheDefault() {
+	tx := &recordingTransactioner{}
+	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
+	s.expectDBClient()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
+		Return(int64(1), nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
+		"gw-2", "production", "https://dp.test", "sealed", "", true,
+		storeDeploymentID, storeDeploymentID, 5).
+		Return([]map[string]interface{}{
+			{"id": "gw-2", "name": "production", "base_url": "https://dp.test",
+				"management_key": "sealed", "is_default": true},
+		}, nil).Once()
+
+	created, err := s.store.Create(context.Background(), &Gateway{
+		ID: "gw-2", Name: "production", BaseURL: "https://dp.test", Key: "sealed",
+		IsDefault: true,
+	}, 5)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(created)
+	s.True(created.IsDefault)
+	s.True(tx.ran, "moving the default did not run in a transaction")
+	s.False(tx.rolledBack)
+}
+
+// A default registration the limit refuses is rolled back, so the default stays on the gateway that held
+// it instead of being left on nothing.
+func (s *StoreTestSuite) TestARefusedDefaultRegistrationKeepsTheDefault() {
+	tx := &recordingTransactioner{}
+	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
+	s.expectDBClient()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
+		Return(int64(1), nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true,
+		storeDeploymentID, storeDeploymentID, 1).
+		Return([]map[string]interface{}{}, nil).Once()
+
+	created, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 1)
+
+	s.Require().NoError(err)
+	s.Nil(created)
+	s.True(tx.rolledBack, "the refused registration still released the default")
+}
+
+// A failure releasing the default stops the registration, rather than inserting a second default gateway.
+func (s *StoreTestSuite) TestAFailureReleasingTheDefaultIsReported() {
+	s.providerMock.On("GetConfigDBTransactioner").Return(&recordingTransactioner{}, nil).Once()
+	s.expectDBClient()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
+		Return(int64(0), errors.New("boom")).Once()
+
+	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+
+	s.Require().Error(err)
+	s.dbClientMock.AssertNotCalled(s.T(), "QueryContext", mock.Anything, queryInsertGateway,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A default write the index refuses is reported as the default being taken, which is what the service
+// retries on.
+func (s *StoreTestSuite) TestADefaultWriteTheIndexRefusesReportsTheDefaultTaken() {
+	s.providerMock.On("GetConfigDBTransactioner").Return(&recordingTransactioner{}, nil).Once()
+	s.expectDBClient()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
+		Return(int64(0), nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true,
+		storeDeploymentID, storeDeploymentID, 5).
+		Return(nil, &pq.Error{Code: "23505", Constraint: defaultIndexName}).Once()
+
+	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+
+	s.Require().ErrorIs(err, errDefaultTaken)
+}
+
+func (s *StoreTestSuite) TestAMissingTransactionerIsReported() {
+	s.providerMock.On("GetConfigDBTransactioner").Return(nil, errors.New("no database")).Once()
+
+	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+
+	s.Require().Error(err)
+}
+
+// SQLite stores the flag as an integer and PostgreSQL as a boolean. Both read back the same.
+func (s *StoreTestSuite) TestReadsCarryTheDefaultFromEitherDatabase() {
+	for _, stored := range []interface{}{true, int64(1)} {
+		gw, err := gatewayFromRow(map[string]interface{}{"id": "gw-1", "is_default": stored})
+		s.Require().NoError(err)
+		s.True(gw.IsDefault, "%T %v read as not default", stored, stored)
+	}
+	for _, stored := range []interface{}{false, int64(0), nil} {
+		gw, err := gatewayFromRow(map[string]interface{}{"id": "gw-1", "is_default": stored})
+		s.Require().NoError(err)
+		s.False(gw.IsDefault, "%T %v read as default", stored, stored)
+	}
 }
 
 func (s *StoreTestSuite) TestUpdateIsDeploymentScoped() {
@@ -275,7 +392,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 		s.SetupTest()
 		s.expectDBClient()
 		s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false,
 			storeDeploymentID, storeDeploymentID, 5).Return(nil, failure).Once()
 
 		_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-1"}, 5)

@@ -72,8 +72,9 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 	s.ouID = ouID
 
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: agentTypeAuthzUserTypeName,
-		OUID: s.ouID,
+		Handle:      agentTypeAuthzUserTypeName,
+		DisplayName: "Agent Type Authz Person",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string", "unique": true},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -218,9 +219,10 @@ func (s *AgentTypeAuthzTestSuite) TestListAgentTypesWithoutCategoryPermissionIsR
 // the refused write leaves the stored schema untouched.
 func (s *AgentTypeAuthzTestSuite) TestUpdateAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodPut, agentTypeBasePath+"/"+s.agentTypeID, AgentTypeRequest{
-		Name:   defaultAgentTypeName,
-		OUID:   s.ouID,
-		Schema: json.RawMessage(`{"injected": {"type": "string"}}`),
+		Handle:      defaultAgentTypeName,
+		DisplayName: "Default",
+		OUID:        s.ouID,
+		Schema:      json.RawMessage(`{"injected": {"type": "string"}}`),
 	})
 	defer closeBody(resp)
 
@@ -233,12 +235,13 @@ func (s *AgentTypeAuthzTestSuite) TestUpdateAgentTypeWithoutCategoryPermissionIs
 
 // TestCreateAgentTypeWithoutCategoryPermissionIsRefused verifies the create route is gated, and
 // that the refusal is the permission gate rather than the `default`-only rule — the payload uses a
-// non-`default` name, which an authorized caller would be told about via USRS-1014 instead.
+// non-`default` handle, which an authorized caller would be told about via USRS-1014 instead.
 func (s *AgentTypeAuthzTestSuite) TestCreateAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
-		Name:   "authz-injected-agent-type",
-		OUID:   s.ouID,
-		Schema: json.RawMessage(`{"description": {"type": "string"}}`),
+		Handle:      "authz-injected-agent-type",
+		DisplayName: "Authz Injected Agent Type",
+		OUID:        s.ouID,
+		Schema:      json.RawMessage(`{"description": {"type": "string"}}`),
 	})
 	defer closeBody(resp)
 
@@ -256,7 +259,7 @@ func (s *AgentTypeAuthzTestSuite) TestDeleteAgentTypeWithoutCategoryPermissionIs
 
 	s.requireForbidden(resp)
 
-	s.Equal(defaultAgentTypeName, s.adminGetAgentType().Name,
+	s.Equal(defaultAgentTypeName, s.adminGetAgentType().Handle,
 		"the agent type must still exist after a refused delete")
 }
 

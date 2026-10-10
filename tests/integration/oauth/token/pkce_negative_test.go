@@ -23,7 +23,8 @@ const (
 )
 
 var pkceNegUserType = testutils.UserType{
-	Name: "pkce-negative-person",
+	Handle:      "pkce-negative-person",
+	DisplayName: "Pkce Negative Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},

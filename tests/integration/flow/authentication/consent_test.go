@@ -46,7 +46,8 @@ var (
 	}
 
 	consentTestUserType = testutils.UserType{
-		Name: "consent-test-person",
+		Handle:      "consent-test-person",
+		DisplayName: "Consent Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -266,7 +267,7 @@ func (ts *ConsentFlowTestSuite) SetupSuite() {
 		ClientSecret:     "consent_flow_test_secret",
 		RedirectURIs:     []string{"http://localhost:3000/callback"},
 		OUID:             ouID,
-		AllowedUserTypes: []string{consentTestUserType.Name},
+		AllowedUserTypes: []string{consentTestUserType.Handle},
 		AuthFlowID:       flowID,
 		AssertionConfig:  assertionConfig,
 	})
@@ -290,7 +291,7 @@ func (ts *ConsentFlowTestSuite) SetupSuite() {
 		ClientSecret:     "consent_timeout_flow_test_secret",
 		RedirectURIs:     []string{"http://localhost:3000/callback"},
 		OUID:             ouID,
-		AllowedUserTypes: []string{consentTestUserType.Name},
+		AllowedUserTypes: []string{consentTestUserType.Handle},
 		AuthFlowID:       timeoutFlowID,
 		AssertionConfig:  assertionConfig,
 	})

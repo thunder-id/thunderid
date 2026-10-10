@@ -39,7 +39,8 @@ var (
 	// The optional password is used only in setup to obtain an assertion and enroll the shared
 	// passkey through the direct API. Authentication tests use the resulting passkey.
 	passkeyEntityType = testutils.UserType{
-		Name: "passkey_user",
+		Handle:      "passkey_user",
+		DisplayName: "Passkey User",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -265,7 +266,7 @@ func (suite *PasskeyAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to marshal credential user attributes")
 
 	credentialUserID, err := testutils.CreateUser(testutils.User{
-		Type:       passkeyEntityType.Name,
+		Type:       passkeyEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(credentialAttributes),
 	})

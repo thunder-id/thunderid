@@ -11,10 +11,12 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useConnection from '../api/useConnection';
 import useConnectionInstances from '../api/useConnectionInstances';
+import useConnectionMeta from '../api/useConnectionMeta';
 import useDeleteConnection from '../api/useDeleteConnection';
 import useUpdateConnection from '../api/useUpdateConnection';
 import AccountLinkingSection from '../components/AccountLinkingSection';
 import AttributeMappingSection from '../components/AttributeMappingSection';
+import AuthenticationSection from '../components/AuthenticationSection';
 import AuthorizationMappingSection from '../components/AuthorizationMappingSection';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
 import ConnectionForm from '../components/ConnectionForm';
@@ -34,12 +36,17 @@ import type {
   AttributeConfiguration,
   AuthorizationDirectMapping,
   AuthorizationRuleMapping,
+  ConnectionRequest,
   ConnectionType,
+  OutboundAuthMethod,
   SubjectMappingValues,
 } from '../models/connection';
 import {
+  AUTH_TYPE_FIELD,
+  AUTH_TYPE_NONE,
   type ConnectionFormValues,
   formValuesToRequest,
+  MASKED_SECRET,
   outboundAuthenticationFromFormValues,
   responseToFormValues,
   validateConnectionForm,
@@ -123,6 +130,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
   const updateMutation = useUpdateConnection(connectionType, resolvedId ?? '');
   const deleteMutation = useDeleteConnection(connectionType);
+  const {data: connectionMeta, isError: isConnectionMetaError} = useConnectionMeta(connectionType);
+  const authenticationMethods: OutboundAuthMethod[] = connectionMeta?.authentication.methods ?? [];
 
   useEffect(() => {
     if (!meta) {
@@ -208,6 +217,12 @@ export default function ConnectionDetailPage(): JSX.Element | null {
       : selectedAuthenticationScheme === AuthenticationMethods.BASIC
         ? Boolean(data?.authentication?.basic?.username) && Boolean(data?.authentication?.basic?.password)
         : false);
+  // A provider's credential is stored only for the method it was saved with, and comes back
+  // masked. Switching to another method leaves nothing stored for it, so its credential has to
+  // be entered rather than shown as kept.
+  const hasStoredOutboundCredential: boolean =
+    (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE) === data?.authentication?.type &&
+    Object.values(data?.authentication?.properties ?? {}).includes(MASKED_SECRET);
   const hasStoredHTTPHeaders =
     selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
     selectedAuthenticationScheme === persistedAuthenticationScheme &&
@@ -271,6 +286,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     }
   };
 
+  const handleFieldChange = (name: string, value: string): void => {
+    clearSaveError();
+    setEditedValues((prev) => ({...prev, [name]: value}));
+  };
+
   const handleSave = (): void => {
     if (!valid || !resolvedId) {
       return;
@@ -315,6 +335,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     const requestFields = supportsAuthentication
       ? fields.filter((field) => !AUTHENTICATION_METHOD_FIELD_NAMES.has(field.name))
       : fields;
+    // Only a vendor with PDP-style authentication adds that shape, but the spread cannot tell
+    // which request type the result is, so the type is stated here.
     const payload = {
       ...formValuesToRequest(values, requestFields, {mode: 'edit', secretReplaced: secretReplacing}),
       ...(supportsAuthentication && authenticationChanged
@@ -322,7 +344,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
         : {}),
       ...(supportsAttributes ? {attributeConfiguration: mergedAttributeConfiguration} : {}),
       ...(supportsSubjectMapping ? subjectMappingValues : {}),
-    };
+    } as ConnectionRequest;
     updateMutation
       .mutateAsync(payload)
       .then(() => connectionQuery.refetch())
@@ -496,13 +518,34 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   nameError={nameError}
                   showNameField={isCustom}
                   excludeFieldNames={supportsAuthentication ? AUTHENTICATION_METHOD_FIELD_NAMES : undefined}
-                  onFieldChange={(name, value) => {
-                    clearSaveError();
-                    setEditedValues((prev) => ({...prev, [name]: value}));
-                  }}
+                  showAuthentication={false}
+                  onFieldChange={handleFieldChange}
                   onSecretReplacingChange={setSecretReplacing}
                 />
               </SettingsCard>
+
+              {isConnectionMetaError && (
+                <SettingsCard title={t('detail.authentication.title')}>
+                  <Alert severity="error">{t('form.authentication.loadError')}</Alert>
+                </SettingsCard>
+              )}
+              {!isConnectionMetaError && authenticationMethods.length > 0 && (
+                <SettingsCard
+                  title={t('detail.authentication.title')}
+                  description={t('detail.outboundAuthentication.description')}
+                >
+                  <AuthenticationSection
+                    methods={authenticationMethods}
+                    values={values}
+                    mode="edit"
+                    secretReplacing={secretReplacing}
+                    hasStoredSecret={hasStoredOutboundCredential}
+                    showHeading={false}
+                    onFieldChange={handleFieldChange}
+                    onSecretReplacingChange={setSecretReplacing}
+                  />
+                </SettingsCard>
+              )}
             </Stack>
           </TabPanel>
 

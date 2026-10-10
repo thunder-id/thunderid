@@ -1,6 +1,7 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {generateHandle} from '@thunderid/utils';
 import {useCallback, useState} from 'react';
 
 /**
@@ -51,22 +52,13 @@ export interface UseFlowNamingReturn {
  * });
  * ```
  */
-const generateHandleFromName = (name: string): string =>
-  name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
 const useFlowNaming = (props?: UseFlowNamingProps): UseFlowNamingReturn => {
   const {existingFlowData, defaultName = 'Login Flow', defaultHandle = 'login-flow'} = props ?? {};
 
   const [flowName, setFlowName] = useState<string>(() => existingFlowData?.name ?? defaultName);
   const [flowHandle, setFlowHandle] = useState<string>(() => {
     if (existingFlowData?.handle) return existingFlowData.handle;
-    if (existingFlowData?.name) return generateHandleFromName(existingFlowData.name);
+    if (existingFlowData?.name) return generateHandle(existingFlowData.name);
     return defaultHandle;
   });
   const [needsAutoLayout, setNeedsAutoLayout] = useState<boolean>(false);
@@ -82,7 +74,7 @@ const useFlowNaming = (props?: UseFlowNamingProps): UseFlowNamingReturn => {
     if (handle) {
       setFlowHandle(handle);
     } else if (existingFlowData?.name) {
-      setFlowHandle(generateHandleFromName(existingFlowData.name));
+      setFlowHandle(generateHandle(existingFlowData.name));
     }
   }
 
@@ -96,7 +88,7 @@ const useFlowNaming = (props?: UseFlowNamingProps): UseFlowNamingReturn => {
     (newName: string) => {
       setFlowName(newName);
       if (!isExistingFlow) {
-        setFlowHandle(generateHandleFromName(newName));
+        setFlowHandle(generateHandle(newName));
       }
     },
     [isExistingFlow],

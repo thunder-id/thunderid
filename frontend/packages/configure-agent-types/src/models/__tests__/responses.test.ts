@@ -10,7 +10,7 @@ describe('agent-types response types', () => {
       totalResults: 1,
       startIndex: 0,
       count: 1,
-      types: [{id: 'a1', name: 'default', ouId: 'ou1'}],
+      types: [{id: 'a1', handle: 'default', displayName: 'Default', ouId: 'ou1'}],
     };
     expect(list.types).toHaveLength(1);
   });

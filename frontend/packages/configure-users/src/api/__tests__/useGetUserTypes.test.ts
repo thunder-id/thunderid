@@ -35,8 +35,8 @@ describe('useGetUserTypes', () => {
     startIndex: 0,
     count: 2,
     types: [
-      {id: 'schema-1', name: 'Employee', ouId: 'ou-1'},
-      {id: 'schema-2', name: 'Contractor', ouId: 'ou-2'},
+      {id: 'schema-1', handle: 'employee', displayName: 'Employee', ouId: 'ou-1'},
+      {id: 'schema-2', handle: 'contractor', displayName: 'Contractor', ouId: 'ou-2'},
     ],
   };
 

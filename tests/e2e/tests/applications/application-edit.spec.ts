@@ -34,7 +34,7 @@ test.describe("Application Edit", () => {
 
     // Reuse the Person user type's organization unit, the same way UsersApi.createUser
     // resolves one, rather than re-deriving it from the organization-units list.
-    const personType = await new UserTypesApi(request).findByName("Person");
+    const personType = await new UserTypesApi(request).findByHandle("person");
     if (!personType?.ouId) throw new Error("Person user type not found or missing organization unit");
     suiteOuId = personType.ouId;
 

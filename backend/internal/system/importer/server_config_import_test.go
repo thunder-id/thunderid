@@ -35,7 +35,7 @@ func (f *fakeServerConfigService) SetConfig(
 
 func newServerConfigImportService(sc serverConfigAdapter) ImportServiceInterface {
 	return newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, sc, nil)
+		nil, nil, nil, nil, nil, nil, nil, nil, sc, nil, nil)
 }
 
 const serverConfigImportDoc = `resource_type: server_config

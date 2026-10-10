@@ -49,13 +49,15 @@ type OAuth2AuthorizationServerMetadata struct {
 // OIDCProviderMetadata represents OpenID Connect Provider Metadata (OIDC Discovery 1.0)
 type OIDCProviderMetadata struct {
 	OAuth2AuthorizationServerMetadata
-	UserInfoEndpoint                 string   `json:"userinfo_endpoint"`
-	ScopesSupported                  []string `json:"scopes_supported"`
-	SubjectTypesSupported            []string `json:"subject_types_supported"`
-	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
-	ClaimsSupported                  []string `json:"claims_supported"`
-	AcrValuesSupported               []string `json:"acr_values_supported,omitempty"`
-	EndSessionEndpoint               string   `json:"end_session_endpoint,omitempty"`
+	UserInfoEndpoint                  string   `json:"userinfo_endpoint"`
+	ScopesSupported                   []string `json:"scopes_supported"`
+	SubjectTypesSupported             []string `json:"subject_types_supported"`
+	IDTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported"`
+	ClaimsSupported                   []string `json:"claims_supported"`
+	AcrValuesSupported                []string `json:"acr_values_supported,omitempty"`
+	EndSessionEndpoint                string   `json:"end_session_endpoint,omitempty"`
+	BackchannelLogoutSupported        bool     `json:"backchannel_logout_supported"`
+	BackchannelLogoutSessionSupported bool     `json:"backchannel_logout_session_supported"`
 }
 
 type DiscoveryTestSuite struct {
@@ -215,6 +217,10 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_GET_Success() {
 	// Verify RP-initiated logout endpoint is advertised
 	ts.NotEmpty(metadata.EndSessionEndpoint, "EndSessionEndpoint should be present")
 	ts.Contains(metadata.EndSessionEndpoint, "/oauth2/logout", "EndSessionEndpoint should contain correct path")
+
+	// Verify back-channel logout is advertised, with sid on every logout token
+	ts.True(metadata.BackchannelLogoutSupported, "backchannel_logout_supported should be true")
+	ts.True(metadata.BackchannelLogoutSessionSupported, "backchannel_logout_session_supported should be true")
 
 	// Verify RFC 9207 issuer identification support
 	ts.True(metadata.AuthorizationResponseIssParameterSupported,

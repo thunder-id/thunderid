@@ -53,13 +53,14 @@ func (n *node) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *tidco
 }
 
 // ShouldExecute checks if the node's condition is satisfied and the node should execute.
-// Returns true if no condition is set or if the condition is met.
+// Returns true if no condition is set or if the condition is met. External identity claims are never
+// consulted, so an identity provider cannot select or skip a node by asserting a claim of the same name.
 func (n *node) ShouldExecute(ctx *providers.NodeContext) bool {
 	if n.condition == nil {
 		return true
 	}
 
-	resolvedKey := ResolvePlaceholder(ctx, n.condition.Key, nil, nil, nil)
+	resolvedKey := ResolvePlaceholder(ctx, n.condition.Key, nil, nil, false, nil)
 	return resolvedKey == n.condition.Value
 }
 

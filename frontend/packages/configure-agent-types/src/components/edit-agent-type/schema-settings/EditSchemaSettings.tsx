@@ -33,7 +33,7 @@ import {invalidateI18nCache} from '../../../utils/invalidateI18nCache';
 export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
-  agentTypeName: string;
+  agentTypeHandle: string;
 }
 
 /**
@@ -43,7 +43,7 @@ export interface EditSchemaSettingsProps {
 export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
-  agentTypeName,
+  agentTypeHandle,
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
@@ -206,8 +206,8 @@ export default function EditSchemaSettings({
                 unknownError: t('common:errors.unknown', 'An unknown error occurred'),
               }}
               defaultNewKey={
-                agentTypeName.trim() && property.name.trim()
-                  ? `${agentTypeName.trim()}.${property.name.trim()}`
+                agentTypeHandle.trim() && property.name.trim()
+                  ? `${agentTypeHandle.trim()}.${property.name.trim()}`
                   : undefined
               }
             />

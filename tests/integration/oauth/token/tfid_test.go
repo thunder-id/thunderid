@@ -41,7 +41,8 @@ var (
 	}
 
 	tfidTestUserType = testutils.UserType{
-		Name: "tfid-test-person",
+		Handle:      "tfid-test-person",
+		DisplayName: "Tfid Test Person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},

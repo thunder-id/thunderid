@@ -31,7 +31,8 @@ const (
 )
 
 var actorTokenUserType = testutils.UserType{
-	Name: "actor-token-person",
+	Handle:      "actor-token-person",
+	DisplayName: "Actor Token Person",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{"type": "string"},
 		"password": map[string]interface{}{"type": "string", "credential": true},

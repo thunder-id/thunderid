@@ -13,12 +13,13 @@ import (
 
 // Config holds configuration values required by OAuth services.
 type Config struct {
-	DeploymentID           string
-	RuntimeTransientDBType string
-	BaseURL                string
-	JWT                    engineconfig.JWTConfig
-	OAuth                  engineconfig.OAuthConfig
-	GateClient             engineconfig.GateClientConfig
+	DeploymentID               string
+	RuntimeTransientDBType     string
+	BaseURL                    string
+	JWT                        engineconfig.JWTConfig
+	OAuth                      engineconfig.OAuthConfig
+	GateClient                 engineconfig.GateClientConfig
+	EnableOUQualifiedEndpoints bool
 }
 
 // FromServerRuntime builds OAuth configuration from the global server runtime, seeding the
@@ -29,12 +30,13 @@ func FromServerRuntime() Config {
 	applyOIDCDefaults(&oauth)
 
 	return Config{
-		DeploymentID:           runtime.Config.Server.Identifier,
-		RuntimeTransientDBType: runtime.Config.Database.RuntimeTransient.Type,
-		BaseURL:                config.GetServerURL(&runtime.Config.Server),
-		JWT:                    runtime.Config.JWT,
-		OAuth:                  oauth,
-		GateClient:             runtime.Config.GateClient,
+		DeploymentID:               runtime.Config.Server.Identifier,
+		RuntimeTransientDBType:     runtime.Config.Database.RuntimeTransient.Type,
+		BaseURL:                    config.GetServerURL(&runtime.Config.Server),
+		JWT:                        runtime.Config.JWT,
+		OAuth:                      oauth,
+		GateClient:                 runtime.Config.GateClient,
+		EnableOUQualifiedEndpoints: runtime.Config.Server.EnableOUQualifiedEndpoints,
 	}
 }
 

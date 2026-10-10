@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package idp
@@ -1453,7 +1453,7 @@ func (s *IDPServiceTestSuite) TestValidateAttributeConfiguration_DynamicResoluti
 
 // --- ApplySchemaAwareDefaults ---
 
-const seedUserType = "Person"
+const seedUserType = "person"
 
 // newSeedingService builds a service with a dedicated entity-type mock, bypassing the suite-level
 // catch-all so each case controls exactly what the schema looks like.
@@ -1538,7 +1538,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsLinkingAndMappin
 	for _, tc := range testCases {
 		s.Run(string(tc.idpType), func() {
 			service, mockET := s.newSeedingService()
-			expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+			expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 			expectSchemaFor(mockET, seedUserType, []string{"username", "email"}, []string{"username", "email"})
 
 			idp := seedTestIDP(tc.idpType, tc.scopes)
@@ -1567,9 +1567,9 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsLinkingAndMappin
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_ResolvesWhenOneTypeRequiresUsername() {
 	service, mockET := s.newSeedingService()
 	expectUserTypes(mockET,
-		entitytype.EntityTypeListItem{Name: "Guest", AllowSelfRegistration: true},
-		entitytype.EntityTypeListItem{Name: seedUserType, AllowSelfRegistration: true})
-	expectSchemaFor(mockET, "Guest", []string{"email"}, []string{"email"})
+		entitytype.EntityTypeListItem{Handle: "guest", AllowSelfRegistration: true},
+		entitytype.EntityTypeListItem{Handle: seedUserType, AllowSelfRegistration: true})
+	expectSchemaFor(mockET, "guest", []string{"email"}, []string{"email"})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1591,11 +1591,11 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_ResolvesWhenOneTypeRe
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_MapsEveryTypeRequiringUsername() {
 	service, mockET := s.newSeedingService()
 	expectUserTypes(mockET,
-		entitytype.EntityTypeListItem{Name: "Employee", AllowSelfRegistration: true},
-		entitytype.EntityTypeListItem{Name: "Guest", AllowSelfRegistration: true},
-		entitytype.EntityTypeListItem{Name: seedUserType, AllowSelfRegistration: true})
-	expectSchemaFor(mockET, "Employee", []string{"email"}, []string{"username", "email"})
-	expectSchemaFor(mockET, "Guest", []string{"email"}, []string{"email"})
+		entitytype.EntityTypeListItem{Handle: "employee", AllowSelfRegistration: true},
+		entitytype.EntityTypeListItem{Handle: "guest", AllowSelfRegistration: true},
+		entitytype.EntityTypeListItem{Handle: seedUserType, AllowSelfRegistration: true})
+	expectSchemaFor(mockET, "employee", []string{"email"}, []string{"username", "email"})
+	expectSchemaFor(mockET, "guest", []string{"email"}, []string{"email"})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1611,21 +1611,21 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_MapsEveryTypeRequirin
 		s.Equal("username", entry.Attributes[0].LocalAttribute)
 	}
 	// Guest requires no username, so it is left out.
-	s.Equal([]string{"Employee", seedUserType}, mapped)
+	s.Equal([]string{"employee", seedUserType}, mapped)
 
 	// The first requiring type becomes the default, and it must be one that has a mapping.
 	s.Require().NotNil(idp.AttributeConfiguration.UserTypeResolution)
-	s.Equal("Employee", idp.AttributeConfiguration.UserTypeResolution.Default)
+	s.Equal("employee", idp.AttributeConfiguration.UserTypeResolution.Default)
 }
 
 // Email must be resolvable to a single user whichever type an identity provisions into.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsLinkingWhenACandidateLacksUniqueEmail() {
 	service, mockET := s.newSeedingService()
 	expectUserTypes(mockET,
-		entitytype.EntityTypeListItem{Name: seedUserType, AllowSelfRegistration: true},
-		entitytype.EntityTypeListItem{Name: "Guest", AllowSelfRegistration: true})
+		entitytype.EntityTypeListItem{Handle: seedUserType, AllowSelfRegistration: true},
+		entitytype.EntityTypeListItem{Handle: "guest", AllowSelfRegistration: true})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
-	expectSchemaFor(mockET, "Guest", []string{"username"}, []string{"email"})
+	expectSchemaFor(mockET, "guest", []string{"username"}, []string{"email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
 	service.ApplySchemaAwareDefaults(context.Background(), idp)
@@ -1645,10 +1645,10 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsWhenNothingQuali
 		{name: "no user types", types: nil},
 		{
 			name:  "no type offers a unique email or requires a username",
-			types: []entitytype.EntityTypeListItem{{Name: "Person"}, {Name: "Partner"}},
+			types: []entitytype.EntityTypeListItem{{Handle: "person"}, {Handle: "partner"}},
 			schemas: func(mockET *entitytypemock.EntityTypeServiceInterfaceMock) {
-				expectSchemaFor(mockET, "Person", []string{"username"}, nil)
-				expectSchemaFor(mockET, "Partner", []string{"username"}, nil)
+				expectSchemaFor(mockET, "person", []string{"username"}, nil)
+				expectSchemaFor(mockET, "partner", []string{"username"}, nil)
 			},
 		},
 	}
@@ -1673,7 +1673,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsWhenNothingQuali
 // registration still gets one. Its users may be created manually and still sign in federated.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsTypeWithoutSelfRegistration() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType, AllowSelfRegistration: false})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType, AllowSelfRegistration: false})
 	expectSchemaFor(mockET, seedUserType, []string{"username", "email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1689,7 +1689,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsTypeWithoutSelfR
 // Linking on a non-unique attribute cannot resolve a single user, so it is not seeded.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsLinkingWhenEmailIsNotUnique() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"username"}, []string{"email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1703,7 +1703,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsLinkingWhenEmail
 // Linking on an attribute the connection never returns would match nothing, so it is worse than no default.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsLinkingWhenScopesCannotYieldEmail() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,profile")
@@ -1719,7 +1719,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsLinkingWhenScope
 // a user type, and that default is taken from the types email can match so it agrees with linking.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_DefaultsToEmailTypeWhenUsernameIsOptional() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1738,9 +1738,9 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_DefaultsToEmailTypeWh
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_DefaultSkipsTypeWithoutUniqueEmail() {
 	service, mockET := s.newSeedingService()
 	expectUserTypes(mockET,
-		entitytype.EntityTypeListItem{Name: "Guest", AllowSelfRegistration: true},
-		entitytype.EntityTypeListItem{Name: seedUserType, AllowSelfRegistration: true})
-	expectSchemaFor(mockET, "Guest", []string{"phone"}, []string{"phone"})
+		entitytype.EntityTypeListItem{Handle: "guest", AllowSelfRegistration: true},
+		entitytype.EntityTypeListItem{Handle: seedUserType, AllowSelfRegistration: true})
+	expectSchemaFor(mockET, "guest", []string{"phone"}, []string{"phone"})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1757,7 +1757,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_DefaultSkipsTypeWitho
 // No candidate can be matched on email and none needs a username, so there is nothing to derive.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsNothingWhenNoTypeHasEmail() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"phone"}, []string{"phone"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1770,7 +1770,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SeedsNothingWhenNoTyp
 // anyway would leave an entry resolving to nothing while the connection looked configured.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsMappingWhenScopesCannotYieldEmail() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,profile")
@@ -1782,7 +1782,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_SkipsMappingWhenScope
 // GitHub takes its username from the login claim in the profile, so no email scope is involved.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_GitHubMapsLoginWithoutEmailScope() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGitHub, "read:user")
@@ -1798,7 +1798,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_GitHubMapsLoginWithou
 // A claim-driven resolution the administrator configured must survive the default being filled in.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_PreservesClaimDrivenResolution() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
@@ -1821,7 +1821,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_PreservesClaimDrivenR
 // Generic OAuth carries no scope or claim semantics ThunderID can infer.
 func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_LeavesGenericOAuthAlone() {
 	service, mockET := s.newSeedingService()
-	expectUserTypes(mockET, entitytype.EntityTypeListItem{Name: seedUserType})
+	expectUserTypes(mockET, entitytype.EntityTypeListItem{Handle: seedUserType})
 	expectSchemaFor(mockET, seedUserType, []string{"username", "email"}, []string{"username", "email"})
 
 	idp := seedTestIDP(providers.IDPTypeOAuth, "email")
@@ -1841,9 +1841,9 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_PreservesExplicitConf
 	idp := seedTestIDP(providers.IDPTypeGoogle, "openid,email,profile")
 	idp.AttributeConfiguration = &providers.AttributeConfiguration{
 		AccountLinking:     &providers.AccountLinking{Attributes: []string{"phone_number"}},
-		UserTypeResolution: &providers.UserTypeResolution{Default: "Employee"},
+		UserTypeResolution: &providers.UserTypeResolution{Default: "employee"},
 		UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
-			UserType:   "Employee",
+			UserType:   "employee",
 			Attributes: []providers.AttributeMapping{{ExternalAttribute: "sub", LocalAttribute: "username"}},
 		}},
 	}
@@ -1852,7 +1852,7 @@ func (s *IDPServiceTestSuite) TestApplySchemaAwareDefaults_PreservesExplicitConf
 
 	s.Equal([]string{"phone_number"}, idp.AttributeConfiguration.AccountLinking.Attributes)
 	s.Len(idp.AttributeConfiguration.UserTypeAttributeMappings, 1)
-	s.Equal("Employee", idp.AttributeConfiguration.UserTypeResolution.Default)
+	s.Equal("employee", idp.AttributeConfiguration.UserTypeResolution.Default)
 }
 
 // A transient read failure must not block creating a connection.
@@ -1909,7 +1909,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_DoesNotReSeedRemovedDef
 	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(&entitytype.EntityTypeListResponse{Types: []entitytype.EntityTypeListItem{
-			{Name: seedUserType, AllowSelfRegistration: true},
+			{Handle: seedUserType, AllowSelfRegistration: true},
 		}}, nil).Maybe()
 	expectSchemaFor(mockET, seedUserType, []string{"email"}, []string{"username", "email"})
 	service := &idpService{

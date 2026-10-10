@@ -840,8 +840,9 @@ func (s *GroupRoleResourceImportExportSuite) SetupSuite() {
 	s.ouID = ouID
 
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "grr-person-" + s.handleSuffix,
-		OUID: s.ouID,
+		Handle:      "grr-person-" + s.handleSuffix,
+		DisplayName: "Grr Person",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"email": map[string]interface{}{
 				"type": "string",

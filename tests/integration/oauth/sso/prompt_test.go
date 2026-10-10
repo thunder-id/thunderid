@@ -6,6 +6,7 @@ package sso
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -72,8 +73,8 @@ func (ts *SSOLogoutTestSuite) TestPromptLogin_ForcesReauthentication() {
 	ts.Empty(step.Assertion, "no assertion may be minted before the subject re-authenticates")
 }
 
-// TestPromptNone_WithLiveSessionSucceeds verifies the silent path: with a session already
-// established, prompt=none completes without any credential prompt.
+// TestPromptNone_WithLiveSessionSucceeds: with a live session, prompt=none redirects straight
+// back to the client with a code.
 func (ts *SSOLogoutTestSuite) TestPromptNone_WithLiveSessionSucceeds() {
 	client := ts.newSessionClient()
 	ts.login(client, ssoMaxAgeUsername, "prompt_none_live_1")
@@ -81,19 +82,33 @@ func (ts *SSOLogoutTestSuite) TestPromptNone_WithLiveSessionSucceeds() {
 
 	resp := ts.authorizeRaw(client, "openid", "prompt_none_live_2", map[string]string{"prompt": "none"})
 	defer resp.Body.Close()
-	ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize should redirect to the gate")
+	query := ts.redirectQuery(resp)
 
-	location := resp.Header.Get("Location")
-	ts.Require().NotContains(location, "error=login_required",
-		"prompt=none must be honored when a live session exists")
+	ts.Require().Empty(query.Get("error"), "prompt=none must be honored when a live session exists")
+	ts.Require().True(strings.HasPrefix(resp.Header.Get("Location"), redirectURI),
+		"prompt=none must redirect straight to the client, not to the login page")
+	ts.NotEmpty(query.Get("code"), "the silent redirect should carry an authorization code")
+	ts.Equal("prompt_none_live_2", query.Get("state"), "state must be echoed back to the client")
+}
 
-	_, executionID, err := testutils.ExtractAuthData(location)
-	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
+// TestPromptNone_RejectedAssertionGoesToClient verifies that when a live session completes the flow
+// but the callback rejects the result, here a sub claim constraint naming another subject, the error
+// is redirected to the client rather than ending on the error page.
+func (ts *SSOLogoutTestSuite) TestPromptNone_RejectedAssertionGoesToClient() {
+	client := ts.newSessionClient()
+	ts.login(client, ssoMaxAgeUsername, "prompt_none_reject_1")
+	ts.Require().NotEmpty(ts.ssoCookieNames(client), "an SSO cookie should be set after first login")
 
-	step := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	resp := ts.authorizeRaw(client, "openid", "prompt_none_reject_2", map[string]string{
+		"prompt": "none",
+		"claims": `{"id_token":{"sub":{"value":"another-subject"}}}`,
+	})
+	defer resp.Body.Close()
+	query := ts.redirectQuery(resp)
 
-	ts.Equal("COMPLETE", step.FlowStatus, "prompt=none over a live session should not prompt")
-	ts.NotEmpty(step.Assertion, "the silently satisfied flow should yield an assertion")
+	ts.Equal("access_denied", query.Get("error"), "the rejected assertion must be redirected to the client")
+	ts.Equal("prompt_none_reject_2", query.Get("state"), "state must be echoed back to the client")
+	ts.Empty(query.Get("code"), "no code may be issued when the assertion is rejected")
 }
 
 // TestPromptNone_WithoutSessionIsLoginRequired verifies the refusal path: with no session cookie,
@@ -143,17 +158,11 @@ func (ts *SSOLogoutTestSuite) TestPromptNone_IDTokenHintMatchingSubjectSucceeds(
 		"id_token_hint": idToken,
 	})
 	defer resp.Body.Close()
-	location := resp.Header.Get("Location")
-	ts.Require().NotContains(location, "error=",
+	query := ts.redirectQuery(resp)
+
+	ts.Require().Empty(query.Get("error"),
 		"a hint naming the signed-in subject must not block the silent path")
-
-	_, executionID, err := testutils.ExtractAuthData(location)
-	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
-
-	step := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
-
-	ts.Equal("COMPLETE", step.FlowStatus, "the hinted subject matches, so no prompt is needed")
-	ts.NotEmpty(step.Assertion, "the silently satisfied flow should yield an assertion")
+	ts.NotEmpty(query.Get("code"), "the hinted subject matches, so the client should get a code")
 }
 
 // TestPromptNone_IDTokenHintWithoutSessionIsLoginRequired pins the ordering of the two checks: the
@@ -197,4 +206,75 @@ func (ts *SSOLogoutTestSuite) TestPromptNone_MalformedIDTokenHintIsRejected() {
 	ts.NotEmpty(query.Get("error"), "an unverifiable hint must not be silently ignored")
 	ts.Contains([]string{"invalid_request", "login_required"}, query.Get("error"),
 		"the refusal should name the malformed parameter or fall back to login_required")
+}
+
+// TestPromptNone_InteractiveStepAfterSSOCheckIsLoginRequired verifies that prompt=none never
+// prompts: with a live session, a flow that still needs the user after the SSO check is answered
+// with login_required instead of the login page.
+func (ts *SSOLogoutTestSuite) TestPromptNone_InteractiveStepAfterSSOCheckIsLoginRequired() {
+	// Establish the session: sign in with credentials, which saves the checkpoint, then stop at the
+	// interactive step.
+	client := ts.newSessionClient()
+	resp := ts.authorizeRaw(client, "openid", "step_login_1", map[string]string{"client_id": promptStepClientID})
+	resp.Body.Close()
+	_, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
+
+	initial := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	ts.Require().NotEqual("COMPLETE", initial.FlowStatus, "first login must prompt for credentials")
+	step := ts.flowExecute(client, map[string]interface{}{
+		"executionId":    executionID,
+		"inputs":         map[string]string{"username": ssoMaxAgeUsername, "password": testPassword},
+		"action":         "action_001",
+		"challengeToken": initial.ChallengeToken,
+	})
+	ts.Require().NotEqual("COMPLETE", step.FlowStatus, "the interactive step must prompt after sign-in")
+	ts.Require().NotEmpty(ts.ssoCookieNames(client), "an SSO cookie should be set after sign-in")
+
+	// The session is live, but the flow still needs the user after the SSO check.
+	resp = ts.authorizeRaw(client, "openid", "step_none_2", map[string]string{
+		"client_id": promptStepClientID,
+		"prompt":    "none",
+	})
+	defer resp.Body.Close()
+	query := ts.redirectQuery(resp)
+
+	ts.Equal("login_required", query.Get("error"), "prompt=none must not prompt for the interactive step")
+	ts.Equal("step_none_2", query.Get("state"), "state must be echoed back to the client")
+	ts.Empty(query.Get("code"), "no code may be issued when the flow needs the user")
+}
+
+// TestPromptNone_FlowFailureAfterSSOCheckGoesToClient verifies that prompt=none never ends on the
+// error page: with a live session, a flow that fails after the SSO check redirects its mapped
+// error back to the client.
+func (ts *SSOLogoutTestSuite) TestPromptNone_FlowFailureAfterSSOCheckGoesToClient() {
+	// Establish the session: sign in with credentials, which saves the checkpoint and completes.
+	client := ts.newSessionClient()
+	resp := ts.authorizeRaw(client, "openid", "fail_login_1", map[string]string{"client_id": failOnReuseClientID})
+	resp.Body.Close()
+	_, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "failed to extract auth data from authorize redirect")
+
+	initial := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	ts.Require().NotEqual("COMPLETE", initial.FlowStatus, "first login must prompt for credentials")
+	step := ts.flowExecute(client, map[string]interface{}{
+		"executionId":    executionID,
+		"inputs":         map[string]string{"username": ssoMaxAgeUsername, "password": testPassword},
+		"action":         "action_001",
+		"challengeToken": initial.ChallengeToken,
+	})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "sign-in should complete")
+	ts.Require().NotEmpty(ts.ssoCookieNames(client), "an SSO cookie should be set after sign-in")
+
+	// The session is live, but reusing it fails the flow.
+	resp = ts.authorizeRaw(client, "openid", "fail_none_2", map[string]string{
+		"client_id": failOnReuseClientID,
+		"prompt":    "none",
+	})
+	defer resp.Body.Close()
+	query := ts.redirectQuery(resp)
+
+	ts.Equal("access_denied", query.Get("error"), "the flow failure must be redirected to the client")
+	ts.Equal("fail_none_2", query.Get("state"), "state must be echoed back to the client")
+	ts.Empty(query.Get("code"), "no code may be issued when the flow fails")
 }

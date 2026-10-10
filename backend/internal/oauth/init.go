@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	oauth2logout "github.com/thunder-id/thunderid/internal/oauth/oauth2/logout"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
@@ -57,9 +58,10 @@ func Initialize(
 	enforcementService revocation.EnforcementServiceInterface,
 	revocationSvc revocation.RevocationServiceInterface,
 	ssoSession session.Service,
+	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
-) (tokenservice.TokenValidatorInterface, error) {
+) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
 	// The JWKS targets come from the connection config, so the client keeps
 	// the SSRF dial guard. The redirect policy re-checks each redirect target
@@ -79,7 +81,7 @@ func Initialize(
 	// RFC 7009 routes against the already-built service.
 	if cfg.OAuth.TokenRevocation.IsEnabled() {
 		revocation.RegisterRoutes(mux, jwtService, actorProvider, authnProvider, discoveryService,
-			revocationSvc, jtiStore, cfg.JWT.Leeway)
+			revocationSvc, jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	} else {
 		enforcementService = nil
 		revocationSvc = nil
@@ -90,10 +92,10 @@ func Initialize(
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, revocationSvc, ssoSession, flowProvider, cfg,
+		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider, cfg,
 		runtimeStore, transactioner, jtiStore)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var cibaService ciba.CIBAServiceInterface
@@ -109,9 +111,9 @@ func Initialize(
 		cibaService, revocationSvc, revocationSvc, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
-		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, cfg)
+		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, cfg)
 	introspect.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService, tokenValidator,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, cfg)
@@ -120,5 +122,8 @@ func Initialize(
 	if cfg.OAuth.Logout.IsEnabled() {
 		oauth2logout.Initialize(mux, jwtService, actorProvider, flowExecService, runtimeStore, cfg)
 	}
-	return tokenValidator, nil
+	// Sessions also end without the logout endpoint, such as on user deletion, so delivery follows
+	// only its own flag.
+	dispatcher := backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, cfg)
+	return tokenValidator, dispatcher, nil
 }

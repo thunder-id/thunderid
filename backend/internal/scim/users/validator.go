@@ -18,8 +18,8 @@ import (
 type SCIMUserPayload struct {
 	// ExtensionURN is the full ThunderID extension URN exactly as sent by the client.
 	ExtensionURN string
-	// UserTypeName is the user type name extracted from the extension URN (e.g. "employee").
-	UserTypeName string
+	// UserTypeHandle is the user type handle extracted from the extension URN (e.g. "employee").
+	UserTypeHandle string
 	// CoreAttrs holds top-level request fields that are NOT "schemas", NOT the extension URN object,
 	// and NOT the Enterprise schema URN object.
 	CoreAttrs map[string]json.RawMessage
@@ -49,7 +49,7 @@ func parseAndValidateSCIMUserRequest(body []byte, urnPrefix string) (*SCIMUserPa
 		return nil, svcErr
 	}
 
-	extensionURN, userTypeName, svcErr := resolveThunderIDExtensionURN(raw, schemas, urnPrefix)
+	extensionURN, userTypeHandle, svcErr := resolveThunderIDExtensionURN(raw, schemas, urnPrefix)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -70,7 +70,7 @@ func parseAndValidateSCIMUserRequest(body []byte, urnPrefix string) (*SCIMUserPa
 
 	return &SCIMUserPayload{
 		ExtensionURN:        extensionURN,
-		UserTypeName:        userTypeName,
+		UserTypeHandle:      userTypeHandle,
 		CoreAttrs:           coreAttrs,
 		ExtensionAttrs:      extAttrs,
 		EnterpriseAttrs:     enterpriseAttrs,
@@ -104,7 +104,7 @@ func parseSCIMSchemas(raw map[string]json.RawMessage) ([]string, *tidcommon.Serv
 // resolveThunderIDExtensionURN finds the single ThunderID extension URN declared in schemas, if any.
 func resolveThunderIDExtensionURN(
 	raw map[string]json.RawMessage, schemas []string, urnPrefix string,
-) (extensionURN, userTypeName string, svcErr *tidcommon.ServiceError) {
+) (extensionURN, userTypeHandle string, svcErr *tidcommon.ServiceError) {
 	thunderIDPrefix := strings.ToLower(urnPrefix)
 	var thunderIDURNs []string
 	for _, urn := range schemas {
@@ -125,11 +125,11 @@ func resolveThunderIDExtensionURN(
 	}
 
 	extensionURN = thunderIDURNs[0]
-	userTypeName, ok := scim.ParseUserTypeFromSchemaURN(urnPrefix, extensionURN)
-	if !ok || strings.TrimSpace(userTypeName) == "" {
+	userTypeHandle, ok := scim.ParseUserTypeFromSchemaURN(urnPrefix, extensionURN)
+	if !ok || strings.TrimSpace(userTypeHandle) == "" {
 		return "", "", &scim.ErrorInvalidCustomSchemaURN
 	}
-	return extensionURN, userTypeName, nil
+	return extensionURN, userTypeHandle, nil
 }
 
 // extractExtensionAttrs pulls the extension object keyed by extensionURN from the request body.

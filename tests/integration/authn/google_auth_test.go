@@ -31,7 +31,8 @@ var googleAuthTestOU = testutils.OrganizationUnit{
 }
 
 var googleEntityType = testutils.UserType{
-	Name: "google_user",
+	Handle:      "google_user",
+	DisplayName: "Google User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -110,7 +111,7 @@ func (suite *GoogleAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       googleEntityType.Name,
+		Type:       googleEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(attributesJSON),
 	}

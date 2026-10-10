@@ -17,8 +17,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/template"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // phoneNumberRegex matches phone numbers in various formats including optional +, digits, spaces, dashes,
@@ -28,16 +29,16 @@ var phoneNumberRegex = regexp.MustCompile(`^\+?[0-9\s\-().]{7,20}$`)
 // smsExecutor sends an SMS message using the configured sender from node properties and a template-based body.
 type smsExecutor struct {
 	providers.Executor
-	logger          *log.Logger
-	notifSenderSvc  notification.NotificationSenderServiceInterface
-	templateService template.TemplateServiceInterface
-	entityProvider  entityprovider.EntityProviderInterface
+	logger           *log.Logger
+	notifSenderSvc   notification.NotificationSenderServiceInterface
+	templateRenderer notificationTemplateRenderer
+	entityProvider   entityprovider.EntityProviderInterface
 }
 
 // newSMSExecutor creates a new instance of smsExecutor.
 func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
-	templateService template.TemplateServiceInterface,
+	templateRenderer notificationTemplateRenderer,
 	entityProvider entityprovider.EntityProviderInterface) *smsExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMSExecutor"))
 	base := flowFactory.CreateExecutor(
@@ -55,11 +56,11 @@ func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 		},
 	)
 	return &smsExecutor{
-		Executor:        base,
-		logger:          logger,
-		notifSenderSvc:  notifSenderSvc,
-		templateService: templateService,
-		entityProvider:  entityProvider,
+		Executor:         base,
+		logger:           logger,
+		notifSenderSvc:   notifSenderSvc,
+		templateRenderer: templateRenderer,
+		entityProvider:   entityProvider,
 	}
 }
 
@@ -117,17 +118,21 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 		execResp.Error = &ErrSMSTemplateMissing
 		return execResp, nil
 	}
-	scenario := template.ScenarioType(tmplStr)
+	handle := tmplStr
 
 	templateData := e.resolveTemplateData(ctx)
 
-	rendered, svcErr := e.templateService.Render(ctx.Context, scenario, template.TemplateTypeSMS, templateData)
+	// SMS has no theme; Locale omitted (renderer falls back to system language).
+	rendered, svcErr := e.templateRenderer.Resolve(ctx.Context, notificationtemplate.ChannelTypeSMS, handle,
+		notificationtemplate.RenderInput{
+			Data: templateData,
+		})
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to render SMS template: %s", svcErr.Code)
 	}
 
-	notifSvcErr := e.notifSenderSvc.Send(ctx.Context, notifcm.ChannelTypeSMS, senderID,
-		notifcm.NotificationData{Recipient: recipient, Body: rendered.Body})
+	notifSvcErr := e.notifSenderSvc.SendMessage(ctx.Context, notifcm.ChannelTypeSMS, senderID,
+		notifcm.MessageData{Recipient: recipient, Body: rendered.Body})
 	if notifSvcErr != nil {
 		if ctx.FlowType == providers.FlowTypeUserOnboarding && notifSvcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
@@ -145,10 +150,23 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 }
 
 // resolveTemplateData extracts template data from RuntimeData, Context, and ForwardedData.
-func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
-	templateData := template.TemplateData{}
+func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) map[string]string {
+	templateData := map[string]string{}
 
+	// Claims are added first so runtime data overrides them. External claims must never take
+	// priority over runtime data, but an empty runtime value does not hide a claim.
+	if extIdentity := core.GetExternalIdentity(ctx.RuntimeData); extIdentity != nil {
+		for k, v := range extIdentity.Claims {
+			templateData[k] = systemutils.ConvertInterfaceValueToString(v)
+		}
+	}
 	for k, v := range ctx.RuntimeData {
+		if k == common.RuntimeKeyExternalIdentity {
+			continue
+		}
+		if _, claimed := templateData[k]; claimed && v == "" {
+			continue
+		}
 		templateData[k] = v
 	}
 
@@ -179,6 +197,10 @@ func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAt
 		return mobile
 	}
 	if mobile, ok := ctx.RuntimeData[phoneAttr]; ok && mobile != "" {
+		return mobile
+	}
+	// External claims are only a fallback and must never take priority over runtime data.
+	if mobile, ok := core.GetExternalClaim(ctx.RuntimeData, phoneAttr); ok && mobile != "" {
 		return mobile
 	}
 	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {

@@ -442,6 +442,43 @@ describe('computeValidationNotifications', () => {
 
       expect(result.has('sms-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
     });
+
+    it.each([
+      ['no senderId', {}],
+      ['an empty senderId', {senderId: ''}],
+      ['the {{SENDER_ID}} placeholder', {senderId: '{{SENDER_ID}}'}],
+    ])('should report an email executor with %s as an error', (_label, properties) => {
+      const nodes = [
+        createNode({
+          id: 'email-step-1',
+          data: {
+            action: {executor: {name: 'EmailExecutor'}},
+            properties,
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('email-step-1_EMAIL_NO_SENDER')).toBe(true);
+      expect(result.get('email-step-1_EMAIL_NO_SENDER')!.getType()).toBe(NotificationType.ERROR);
+    });
+
+    it('should not report an email executor with a provider selected', () => {
+      const nodes = [
+        createNode({
+          id: 'email-step-1',
+          data: {
+            action: {executor: {name: 'EmailExecutor'}},
+            properties: {senderId: 'smtp-provider-1'},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('email-step-1_EMAIL_NO_SENDER')).toBe(false);
+    });
   });
 
   describe('Nested element validation', () => {

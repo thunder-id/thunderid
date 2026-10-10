@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package entitytype handles the entity type management operations.
@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -22,7 +23,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-const entityTypeLoggerComponentName = "EntityTypeService"
+const (
+	entityTypeLoggerComponentName = "EntityTypeService"
+	maxDisplayNameLength          = 100
+)
 
 // AttributeInfo is an alias for model.AttributeInfo, exported at the entitytype package
 // level so callers do not need to import the internal model package directly.
@@ -41,8 +45,8 @@ type EntityTypeServiceInterface interface {
 	) (*EntityType, *tidcommon.ServiceError)
 	GetEntityType(ctx context.Context, category TypeCategory, schemaID string,
 		includeDisplay bool) (*EntityType, *tidcommon.ServiceError)
-	GetEntityTypeByName(
-		ctx context.Context, category TypeCategory, schemaName string,
+	GetEntityTypeByHandle(
+		ctx context.Context, category TypeCategory, handle string,
 	) (*EntityType, *tidcommon.ServiceError)
 	UpdateEntityType(ctx context.Context, category TypeCategory, schemaID string,
 		request UpdateEntityTypeRequest) (
@@ -69,12 +73,12 @@ type EntityTypeServiceInterface interface {
 	GetUniqueAttributes(
 		ctx context.Context, category TypeCategory, entityType string,
 	) ([]string, *tidcommon.ServiceError)
-	GetDisplayAttributesByNames(
-		ctx context.Context, category TypeCategory, names []string,
+	GetDisplayAttributesByHandles(
+		ctx context.Context, category TypeCategory, handles []string,
 	) (map[string]string, *tidcommon.ServiceError)
 	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *tidcommon.ServiceError
 	GetEntityTypeSchema(
-		ctx context.Context, category TypeCategory, userTypeName string,
+		ctx context.Context, category TypeCategory, handle string,
 	) (*EntityType, *tidcommon.ServiceError)
 }
 
@@ -207,7 +211,7 @@ func (us *entityTypeService) CreateEntityType(
 		return nil, svcErr
 	}
 
-	if category == TypeCategoryAgent && request.Name != DefaultAgentTypeName {
+	if category == TypeCategoryAgent && request.Handle != DefaultAgentTypeHandle {
 		return nil, &ErrorAgentTypeOnlyDefaultAllowed
 	}
 
@@ -215,21 +219,27 @@ func (us *entityTypeService) CreateEntityType(
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
-	ouOnly := &EntityType{ID: request.ID, Name: request.Name, OUID: request.OUID, OUHandle: request.OUHandle}
+	ouOnly := &EntityType{ID: request.ID, Handle: request.Handle, OUID: request.OUID, OUHandle: request.OUHandle}
 	if svcErr := us.resolveEntityTypeOUHandle(ctx, ouOnly); svcErr != nil {
 		return nil, invalidEntityTypeRequestErr(category, "organization unit with handle not found")
 	}
 	request.OUID = ouOnly.OUID
 
+	if !utils.IsValidHandle(request.Handle) {
+		logger.Debug(ctx, "Invalid entity type handle", log.String("handle", request.Handle))
+		return nil, &ErrorInvalidEntityTypeHandle
+	}
+
 	schemaToValidate := EntityType{
 		Category:         category,
-		Name:             request.Name,
+		Handle:           request.Handle,
+		DisplayName:      request.DisplayName,
 		OUID:             request.OUID,
 		SystemAttributes: request.SystemAttributes,
 		Schema:           request.Schema,
 	}
 	if validationErr := validateEntityTypeDefinition(ctx, category, schemaToValidate); validationErr != nil {
-		logger.Debug(ctx, "Entity type validation failed", log.String("name", request.Name))
+		logger.Debug(ctx, "Entity type validation failed", log.String("handle", request.Handle))
 		return nil, validationErr
 	}
 
@@ -243,9 +253,9 @@ func (us *entityTypeService) CreateEntityType(
 		return nil, svcErr
 	}
 
-	_, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, request.Name)
+	_, err := us.entityTypeStore.GetEntityTypeByHandle(ctx, category, request.Handle)
 	if err == nil {
-		return nil, entityTypeNameConflictErr(category)
+		return nil, entityTypeHandleConflictErr(category)
 	} else if !errors.Is(err, ErrEntityTypeNotFound) {
 		return nil, logAndReturnServerError(ctx, logger, "Failed to check existing entity type", err)
 	}
@@ -262,7 +272,8 @@ func (us *entityTypeService) CreateEntityType(
 	entityType := EntityType{
 		ID:                    id,
 		Category:              category,
-		Name:                  request.Name,
+		Handle:                request.Handle,
+		DisplayName:           request.DisplayName,
 		OUID:                  request.OUID,
 		AllowSelfRegistration: request.AllowSelfRegistration,
 		SystemAttributes:      request.SystemAttributes,
@@ -319,9 +330,9 @@ func (us *entityTypeService) GetEntityType(
 	return &entityType, nil
 }
 
-// GetEntityTypeSchema retrieves the schema config by name without admin access check
+// GetEntityTypeSchema retrieves the schema config by handle without admin access check
 func (us *entityTypeService) GetEntityTypeSchema(
-	ctx context.Context, category TypeCategory, userTypeName string,
+	ctx context.Context, category TypeCategory, handle string,
 ) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
@@ -329,11 +340,11 @@ func (us *entityTypeService) GetEntityTypeSchema(
 		return nil, svcErr
 	}
 
-	if userTypeName == "" {
-		return nil, invalidEntityTypeRequestErr(category, "schema name must not be empty")
+	if handle == "" {
+		return nil, invalidEntityTypeRequestErr(category, "entity type handle must not be empty")
 	}
 
-	entityType, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, userTypeName)
+	entityType, err := us.entityTypeStore.GetEntityTypeByHandle(ctx, category, handle)
 	if err != nil {
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
@@ -344,9 +355,9 @@ func (us *entityTypeService) GetEntityTypeSchema(
 	return &entityType, nil
 }
 
-// GetEntityTypeByName retrieves an entity type by its name within the given category.
-func (us *entityTypeService) GetEntityTypeByName(
-	ctx context.Context, category TypeCategory, schemaName string,
+// GetEntityTypeByHandle retrieves an entity type by its handle within the given category.
+func (us *entityTypeService) GetEntityTypeByHandle(
+	ctx context.Context, category TypeCategory, handle string,
 ) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
@@ -354,16 +365,16 @@ func (us *entityTypeService) GetEntityTypeByName(
 		return nil, svcErr
 	}
 
-	if schemaName == "" {
-		return nil, invalidEntityTypeRequestErr(category, "schema name must not be empty")
+	if handle == "" {
+		return nil, invalidEntityTypeRequestErr(category, "entity type handle must not be empty")
 	}
 
-	entityType, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, schemaName)
+	entityType, err := us.entityTypeStore.GetEntityTypeByHandle(ctx, category, handle)
 	if err != nil {
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type by name", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type by handle", err)
 	}
 
 	if svcErr := us.checkEntityTypeAccess(
@@ -384,7 +395,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		return nil, svcErr
 	}
 
-	if category == TypeCategoryAgent && request.Name != DefaultAgentTypeName {
+	if category == TypeCategoryAgent && request.Handle != "" && request.Handle != DefaultAgentTypeHandle {
 		return nil, &ErrorAgentTypeOnlyDefaultAllowed
 	}
 
@@ -396,7 +407,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
-	ouOnly := &EntityType{ID: schemaID, Name: request.Name, OUID: request.OUID, OUHandle: request.OUHandle}
+	ouOnly := &EntityType{ID: schemaID, Handle: request.Handle, OUID: request.OUID, OUHandle: request.OUHandle}
 	if svcErr := us.resolveEntityTypeOUHandle(ctx, ouOnly); svcErr != nil {
 		return nil, invalidEntityTypeRequestErr(category, "organization unit with handle not found")
 	}
@@ -404,7 +415,8 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 
 	schemaToValidate := EntityType{
 		Category:         category,
-		Name:             request.Name,
+		Handle:           request.Handle,
+		DisplayName:      request.DisplayName,
 		OUID:             request.OUID,
 		SystemAttributes: request.SystemAttributes,
 		Schema:           request.Schema,
@@ -439,19 +451,15 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		}
 	}
 
-	if request.Name != existingSchema.Name {
-		_, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, request.Name)
-		if err == nil {
-			return nil, entityTypeNameConflictErr(category)
-		} else if !errors.Is(err, ErrEntityTypeNotFound) {
-			return nil, logAndReturnServerError(ctx, logger, "Failed to check existing entity type", err)
-		}
+	if request.Handle != "" && request.Handle != existingSchema.Handle {
+		return nil, &ErrorEntityTypeHandleUpdateNotAllowed
 	}
 
 	entityType := EntityType{
 		ID:                    schemaID,
 		Category:              category,
-		Name:                  request.Name,
+		Handle:                existingSchema.Handle,
+		DisplayName:           request.DisplayName,
 		OUID:                  request.OUID,
 		AllowSelfRegistration: request.AllowSelfRegistration,
 		SystemAttributes:      request.SystemAttributes,
@@ -655,9 +663,10 @@ func (us *entityTypeService) GetUniqueAttributes(
 	return compiledSchema.GetUniqueAttributes(), nil
 }
 
-// GetDisplayAttributesByNames returns display attributes for multiple entity types by name within a category.
-func (us *entityTypeService) GetDisplayAttributesByNames(
-	ctx context.Context, category TypeCategory, names []string,
+// GetDisplayAttributesByHandles returns display attributes for multiple entity types by handle within a
+// category.
+func (us *entityTypeService) GetDisplayAttributesByHandles(
+	ctx context.Context, category TypeCategory, handles []string,
 ) (map[string]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
@@ -665,13 +674,13 @@ func (us *entityTypeService) GetDisplayAttributesByNames(
 		return nil, svcErr
 	}
 
-	if len(names) == 0 {
+	if len(handles) == 0 {
 		return map[string]string{}, nil
 	}
 
-	result, err := us.entityTypeStore.GetDisplayAttributesByNames(ctx, category, names)
+	result, err := us.entityTypeStore.GetDisplayAttributesByHandles(ctx, category, handles)
 	if err != nil {
-		return nil, logAndReturnServerError(ctx, logger, "Failed to get display attributes by names", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get display attributes by handles", err)
 	}
 
 	return result, nil
@@ -687,7 +696,7 @@ func (us *entityTypeService) getCompiledSchemaForEntityType(
 		return nil, ErrEntityTypeNotFound
 	}
 
-	found, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, entityType)
+	found, err := us.entityTypeStore.GetEntityTypeByHandle(ctx, category, entityType)
 	if err != nil {
 		return nil, err
 	}
@@ -761,7 +770,7 @@ func (us *entityTypeService) resolveEntityTypeOUHandle(
 	if entityType.OUID != "" && entityType.OUHandle != "" {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 		logger.Warn(ctx, "Both ouId and ouHandle provided for entity type; ouHandle ignored",
-			log.String("entityTypeID", entityType.ID), log.String("name", entityType.Name))
+			log.String("entityTypeID", entityType.ID), log.String("handle", entityType.Handle))
 		return nil
 	}
 	if entityType.OUID == "" && entityType.OUHandle != "" {
@@ -963,9 +972,15 @@ func validateEntityTypeDefinition(
 	ctx context.Context, category TypeCategory, schema EntityType) *tidcommon.ServiceError {
 	logger := log.GetLogger()
 
-	if schema.Name == "" {
-		logger.Debug(ctx, "Entity type validation failed: name is empty")
-		return invalidEntityTypeRequestErr(category, "entity type name must not be empty")
+	if schema.DisplayName == "" {
+		logger.Debug(ctx, "Entity type validation failed: display name is empty")
+		return invalidEntityTypeRequestErr(category, "entity type display name must not be empty")
+	}
+
+	if utf8.RuneCountInString(schema.DisplayName) > maxDisplayNameLength {
+		logger.Debug(ctx, "Entity type validation failed: display name is too long")
+		return invalidEntityTypeRequestErr(category,
+			fmt.Sprintf("entity type display name must not exceed %d characters", maxDisplayNameLength))
 	}
 
 	if schema.OUID == "" {

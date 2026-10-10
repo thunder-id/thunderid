@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -35,6 +34,10 @@ func TestSCIMDiscoveryTestSuite(t *testing.T) {
 // whenever that value changes so the advertisement-to-enforcement assertion remains accurate.
 const scimPaginationMaxPageSize = 100
 
+// scimDiscoveryDisplayName is the display name of the discovery suite's user type. The SCIM schema
+// carries it as its name, while the extension URN is built from the handle.
+const scimDiscoveryDisplayName = "SCIM Discovery Person"
+
 // SetupSuite initializes the test suite environment.
 func (ts *SCIMDiscoveryTestSuite) SetupSuite() {
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
@@ -47,8 +50,9 @@ func (ts *SCIMDiscoveryTestSuite) SetupSuite() {
 
 	ts.entityTypeName = "scim-it-discovery-person"
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: ts.entityTypeName,
-		OUID: ouID,
+		Handle:      ts.entityTypeName,
+		DisplayName: scimDiscoveryDisplayName,
+		OUID:        ouID,
 		Schema: map[string]interface{}{
 			"email":      map[string]interface{}{"type": "string", "required": true},
 			"department": map[string]interface{}{"type": "string"},
@@ -152,7 +156,7 @@ func (ts *SCIMDiscoveryTestSuite) TestSchemasListReflectsEntityTypeRequiredness(
 	for i := range list.Resources {
 		s := list.Resources[i]
 		ids[s.ID] = true
-		if strings.EqualFold(s.Name, ts.entityTypeName) {
+		if schemaURNMatchesHandle(s.ID, ts.entityTypeName) {
 			extSchema = &list.Resources[i]
 		}
 	}
@@ -181,7 +185,19 @@ func (ts *SCIMDiscoveryTestSuite) TestSchemaGetByURN() {
 	var s scimSchema
 	ts.Require().NoError(json.Unmarshal(body, &s))
 	ts.Equal(urn, s.ID)
-	ts.True(strings.EqualFold(s.Name, ts.entityTypeName))
+	ts.True(schemaURNMatchesHandle(s.ID, ts.entityTypeName), "the URN must be built from the handle")
+	ts.Equal(scimDiscoveryDisplayName, s.Name, "the schema name must be the display name")
+}
+
+// TestSchemaGetCoreUserURN verifies the core User schema is served from the designated core user type.
+func (ts *SCIMDiscoveryTestSuite) TestSchemaGetCoreUserURN() {
+	status, body, err := scimRequest(http.MethodGet, "/Schemas/urn:ietf:params:scim:schemas:core:2.0:User", nil, nil)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, "body: %s", string(body))
+
+	var s scimSchema
+	ts.Require().NoError(json.Unmarshal(body, &s))
+	ts.Equal("urn:ietf:params:scim:schemas:core:2.0:User", s.ID)
 }
 
 // TestSchemaGetUnknownURN verifies fetching an unknown schema URN returns 404.

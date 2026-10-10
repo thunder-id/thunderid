@@ -128,7 +128,8 @@ var (
 	}
 
 	passkeyRegEntityType = testutils.UserType{
-		Name:                  "passkey_reg_user",
+		Handle:                "passkey_reg_user",
+		DisplayName:           "Passkey Reg User",
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
@@ -355,7 +356,7 @@ func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_Success() {
 	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 
 	claims, err := testutils.ValidateJWTAssertionFields(finalStep.Assertion, ts.appID,
-		passkeyRegEntityType.Name, passkeyRegTestOU.ID, passkeyRegTestOU.Name, passkeyRegTestOU.Handle)
+		passkeyRegEntityType.Handle, passkeyRegTestOU.ID, passkeyRegTestOU.Name, passkeyRegTestOU.Handle)
 	ts.Require().NoError(err, "Failed to validate JWT assertion fields")
 	ts.Require().NotNil(claims, "JWT claims should not be nil")
 

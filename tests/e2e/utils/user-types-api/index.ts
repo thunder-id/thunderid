@@ -5,7 +5,7 @@
  * User Types API Helper
  *
  * Thin wrapper over the backend `/user-types` endpoint. Owns the "resolve a user type by
- * name" lookup that the users API, the MFA server setup, and the sample-app specs all need.
+ * handle" lookup that the users API, the MFA server setup, and the sample-app specs all need.
  *
  * Constructible directly (`new UserTypesApi(request)`) so `beforeAll`/`afterAll` can use it -
  * Playwright forbids custom test-scoped fixtures in those hooks.
@@ -17,7 +17,8 @@ import { send, sendOk } from "../api-request";
 /** A user type as returned by `/user-types`. `schema` is only present on single-type reads. */
 export type ApiUserType = {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   ouId: string;
   allowSelfRegistration?: boolean;
   systemAttributes?: { display?: string };
@@ -46,11 +47,11 @@ export class UserTypesApi {
   }
 
   /**
-   * Resolve a user type by name, the same way the Console's wizards do, rather than
+   * Resolve a user type by handle, the same way the Console's wizards do, rather than
    * hardcoding the bootstrap-default ids.
    */
-  async findByName(name: string): Promise<ApiUserType | undefined> {
-    return (await this.list()).find(type => type.name === name);
+  async findByHandle(handle: string): Promise<ApiUserType | undefined> {
+    return (await this.list()).find(type => type.handle === handle);
   }
 
   /** Read a single user type by id. Unlike the list endpoint, this includes `schema`. */
@@ -65,22 +66,22 @@ export class UserTypesApi {
   }
 
   /**
-   * Resolve a name to its user type and delete it. Returns whether anything was removed.
+   * Resolve a handle to its user type and delete it. Returns whether anything was removed.
    *
    * Never throws: teardown must not mask the failure that a test already reported. Does not
-   * delete the type's users first - `ENTITY.TYPE` holds the type name, not a foreign key, so
+   * delete the type's users first - `ENTITY.TYPE` holds the type handle, not a foreign key, so
    * removing a type with live users orphans them silently. Callers that create users of this
    * type are responsible for deleting them before calling this.
    */
-  async deleteByName(name: string): Promise<boolean> {
+  async deleteByHandle(handle: string): Promise<boolean> {
     try {
-      const userType = await this.findByName(name);
+      const userType = await this.findByHandle(handle);
       if (!userType) return false;
       if (await this.deleteById(userType.id)) return true;
-      console.warn(`Failed to delete test user type ${userType.id} (${name})`);
+      console.warn(`Failed to delete test user type ${userType.id} (${handle})`);
       return false;
     } catch (error) {
-      console.warn(`Cleanup skipped for user type ${name}: ${String(error)}`);
+      console.warn(`Cleanup skipped for user type ${handle}: ${String(error)}`);
       return false;
     }
   }

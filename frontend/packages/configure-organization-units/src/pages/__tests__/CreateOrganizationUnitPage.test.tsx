@@ -107,6 +107,14 @@ describe('CreateOrganizationUnitPage', () => {
     expect(handleInput).toHaveValue('test-organization');
   });
 
+  it('should replace special characters and trim separators when generating the handle', () => {
+    renderWithProviders(<CreateOrganizationUnitPage />);
+
+    fireEvent.change(screen.getByLabelText(/Name/i), {target: {value: '  R&D (Europe)!  '}});
+
+    expect(screen.getByLabelText(/Handle/i)).toHaveValue('r-d-europe');
+  });
+
   it('should fill name when suggestion is clicked', () => {
     renderWithProviders(<CreateOrganizationUnitPage />);
 

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package group provides group management functionality.
@@ -1112,7 +1112,7 @@ func resolveDisplayAttributePaths(
 		return nil
 	}
 
-	displayPaths, svcErr := schemaService.GetDisplayAttributesByNames(ctx, entitytype.TypeCategoryUser, uniqueTypes)
+	displayPaths, svcErr := schemaService.GetDisplayAttributesByHandles(ctx, entitytype.TypeCategoryUser, uniqueTypes)
 	if svcErr != nil {
 		if logger != nil {
 			logger.Warn(ctx, "Failed to resolve display attribute paths, skipping display resolution",

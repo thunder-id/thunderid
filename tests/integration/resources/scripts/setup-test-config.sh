@@ -169,4 +169,8 @@ oauth:
         - OTP
       "urn:thunder:acr:biometrics":
         - BIO
+  logout:
+    backchannel:
+      # The back-channel logout tests run their receiver on localhost.
+      reject_private_addresses: false
 EOF

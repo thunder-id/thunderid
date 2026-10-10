@@ -27,7 +27,7 @@ func TestDisplayUtilTestSuite(t *testing.T) {
 
 func (suite *DisplayUtilTestSuite) TestResolveDisplayAttributePaths_DeduplicatesTypes() {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything,
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(names []string) bool {
 			if len(names) != 2 {
 				return false
@@ -62,7 +62,7 @@ func (suite *DisplayUtilTestSuite) TestResolveDisplayAttributePaths_AllEmptyStri
 
 func (suite *DisplayUtilTestSuite) TestResolveDisplayAttributePaths_SchemaServiceError() {
 	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
-	schemaMock.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 		Return((map[string]string)(nil),
 			&tidcommon.ServiceError{
 				Code:  "500",

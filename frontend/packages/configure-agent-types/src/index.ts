@@ -8,7 +8,7 @@ export {default as useUpdateAgentType} from './api/useUpdateAgentType';
 
 // Constants
 export {default as AgentTypeQueryKeys} from './constants/agentTypeQueryKeys';
-export {DEFAULT_AGENT_TYPE_NAME} from './constants/agentTypeConstants';
+export {DEFAULT_AGENT_TYPE_HANDLE} from './constants/agentTypeConstants';
 
 // Models
 export * from './models/agent-type';

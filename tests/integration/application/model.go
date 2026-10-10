@@ -46,20 +46,21 @@ type InboundAuthConfig struct {
 
 // OAuthAppConfig represents the OAuth application configuration.
 type OAuthAppConfig struct {
-	ClientID                string              `json:"clientId"`
-	ClientSecret            string              `json:"clientSecret,omitempty"`
-	RedirectURIs            []string            `json:"redirectUris"`
-	GrantTypes              []string            `json:"grantTypes"`
-	ResponseTypes           []string            `json:"responseTypes"`
-	TokenEndpointAuthMethod string              `json:"tokenEndpointAuthMethod"`
-	PKCERequired            bool                `json:"pkceRequired"`
-	PublicClient            bool                `json:"publicClient"`
-	Scopes                  []string            `json:"scopes,omitempty"`
-	Token                   *OAuthTokenConfig   `json:"token,omitempty"`
-	ScopeClaims             map[string][]string `json:"scopeClaims,omitempty"`
-	UserInfo                *UserInfoConfig     `json:"userInfo,omitempty"`
-	Certificate             *ApplicationCert    `json:"certificate,omitempty"`
-	AcrValues               []string            `json:"acrValues,omitempty"`
+	ClientID                 string              `json:"clientId"`
+	ClientSecret             string              `json:"clientSecret,omitempty"`
+	RedirectURIs             []string            `json:"redirectUris"`
+	GrantTypes               []string            `json:"grantTypes"`
+	ResponseTypes            []string            `json:"responseTypes"`
+	TokenEndpointAuthMethod  string              `json:"tokenEndpointAuthMethod"`
+	PKCERequired             bool                `json:"pkceRequired"`
+	PublicClient             bool                `json:"publicClient"`
+	Scopes                   []string            `json:"scopes,omitempty"`
+	Token                    *OAuthTokenConfig   `json:"token,omitempty"`
+	ScopeClaims              map[string][]string `json:"scopeClaims,omitempty"`
+	UserInfo                 *UserInfoConfig     `json:"userInfo,omitempty"`
+	Certificate              *ApplicationCert    `json:"certificate,omitempty"`
+	AcrValues                []string            `json:"acrValues,omitempty"`
+	ClientIDMetadataDocument bool                `json:"clientIdMetadataDocument,omitempty"`
 }
 
 // AttestationConfig represents the platform attestation configuration in the OAuth config.

@@ -44,8 +44,9 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	userType := testutils.UserType{
-		Name: "call-reg-user-type",
-		OUID: ts.ouID,
+		Handle:      "call-reg-user-type",
+		DisplayName: "Call Reg User Type",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type":   "string",
@@ -68,7 +69,7 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 
 	// Pre-create a user whose username the error-path test will attempt to duplicate
 	existingUser := testutils.User{
-		Type: userType.Name,
+		Type: userType.Handle,
 		OUID: ts.ouID,
 		Attributes: []byte(`{
 			"username": "call_reg_existing_user",
@@ -231,7 +232,7 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 		ClientID:                  "call_to_reg_test_client",
 		ClientSecret:              "call_to_reg_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{userType.Name},
+		AllowedUserTypes:          []string{userType.Handle},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId"},
 		},

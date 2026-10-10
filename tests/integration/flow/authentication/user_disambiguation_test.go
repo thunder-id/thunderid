@@ -192,13 +192,13 @@ func (ts *UserDisambiguationTestSuite) SetupSuite() {
 
 	ts.typeAName = "disambiguation-type-a"
 	ts.typeAID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.typeAName, OUID: ts.ouAID, AllowSelfRegistration: true, Schema: disambiguationSchema,
+		Handle: ts.typeAName, DisplayName: "Type A", OUID: ts.ouAID, AllowSelfRegistration: true, Schema: disambiguationSchema,
 	})
 	ts.Require().NoError(err, "Failed to create user type A")
 
 	ts.typeBName = "disambiguation-type-b"
 	ts.typeBID, err = testutils.CreateUserType(testutils.UserType{
-		Name: ts.typeBName, OUID: ts.ouBID, AllowSelfRegistration: true, Schema: disambiguationSchema,
+		Handle: ts.typeBName, DisplayName: "Type B", OUID: ts.ouBID, AllowSelfRegistration: true, Schema: disambiguationSchema,
 	})
 	ts.Require().NoError(err, "Failed to create user type B")
 

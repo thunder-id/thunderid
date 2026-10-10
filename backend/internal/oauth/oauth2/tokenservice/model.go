@@ -43,12 +43,14 @@ type AccessTokenBuildContext struct {
 	// for client_credentials). The token builder embeds them as-is without any subject-specific
 	// handling.
 	SubjectAttributes map[string]interface{}
-	AttributeCacheID  string
-	GrantType         string
-	OAuthApp          *providers.OAuthClient
-	ActorClaims       *SubjectTokenClaims
-	ClaimsRequest     *oauth2model.ClaimsRequest
-	ClaimsLocales     string
+	// OUAttributes holds the organization claims the token is issued for.
+	OUAttributes     map[string]interface{}
+	AttributeCacheID string
+	GrantType        string
+	OAuthApp         *providers.OAuthClient
+	ActorClaims      *SubjectTokenClaims
+	ClaimsRequest    *oauth2model.ClaimsRequest
+	ClaimsLocales    string
 	// ValidityPeriod is the subject's configured access-token validity in seconds (0 to use the
 	// global default), resolved by the grant handler from the subject's access token sub-config.
 	ValidityPeriod int64

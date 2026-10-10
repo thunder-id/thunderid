@@ -22,7 +22,7 @@ export interface ConfigurePropertiesProps {
   displayAttribute: string;
   onDisplayAttributeChange: (displayAttribute: string) => void;
   onReadyChange?: (isReady: boolean) => void;
-  userTypeName?: string;
+  userTypeHandle?: string;
 }
 
 /**
@@ -38,7 +38,7 @@ export default function ConfigureProperties({
   displayAttribute,
   onDisplayAttributeChange,
   onReadyChange = undefined,
-  userTypeName = undefined,
+  userTypeHandle = undefined,
 }: ConfigurePropertiesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
@@ -100,7 +100,7 @@ export default function ConfigureProperties({
         onPropertiesChange={onPropertiesChange}
         enumInput={enumInput}
         onEnumInputChange={onEnumInputChange}
-        userTypeName={userTypeName}
+        userTypeHandle={userTypeHandle}
         footer={
           eligibleDisplayProperties.length > 0 ? (
             <Paper variant="outlined" sx={{px: 3, py: 3, borderRadius: 2}}>

@@ -4,6 +4,7 @@
 package core
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -12,6 +13,29 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// GetExternalIdentity decodes the external identity from runtime data. It returns nil when none is
+// set or the entry does not decode.
+func GetExternalIdentity(runtimeData map[string]string) *ExternalIdentity {
+	raw := runtimeData[common.RuntimeKeyExternalIdentity]
+	if raw == "" {
+		return nil
+	}
+	var identity ExternalIdentity
+	if err := json.Unmarshal([]byte(raw), &identity); err != nil {
+		return nil
+	}
+	return &identity
+}
+
+// GetExternalClaim returns one claim of the external identity as a string, and whether it is present.
+// Readers of attribute values consult it after their own sources. Reads of flow control state never
+// do, which is what keeps an external party from steering the flow.
+// TODO: Extract the UserInputs, RuntimeData and external claim lookup the executors repeat into one
+// helper, so the order in which claims are consulted lives in one place.
+func GetExternalClaim(runtimeData map[string]string, name string) (string, bool) {
+	return GetExternalIdentity(runtimeData).Claim(name)
+}
+
 // placeholderPattern matches {{ctx(key)}} with optional whitespace.
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
 var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
@@ -19,13 +43,17 @@ var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 // ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" syntax.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
+// The external identity's claims are consulted only when allowExternalClaims is set. Flow control
+// reads leave it unset.
 func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager, logger *log.Logger) string {
+	authnProvider providers.AuthnProviderManager, allowExternalClaims bool, logger *log.Logger) string {
 	if ctx == nil {
 		return value
 	}
 
 	var contextUserRef *providers.EntityReference
+	var extIdentity *ExternalIdentity
+	extIdentityDecoded := false
 
 	return placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
 		submatches := placeholderPattern.FindStringSubmatch(match)
@@ -67,6 +95,16 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		// Check runtime data first
 		if runtimeValue, ok := ctx.RuntimeData[key]; ok && runtimeValue != "" {
 			return runtimeValue
+		}
+		// External claims are only a fallback and must never take priority over runtime data.
+		if allowExternalClaims {
+			if !extIdentityDecoded {
+				extIdentity = GetExternalIdentity(ctx.RuntimeData)
+				extIdentityDecoded = true
+			}
+			if claimValue, ok := extIdentity.Claim(key); ok && claimValue != "" {
+				return claimValue
+			}
 		}
 
 		// Check user inputs next
@@ -140,6 +178,7 @@ func IsOptionalInputPrompted(presentedOptionalInputs map[string]struct{}, identi
 func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs map[string]struct{},
 	requiredInputs []providers.Input, logger *log.Logger) []providers.Input {
 	missing := make([]providers.Input, 0, len(requiredInputs))
+	extIdentity := GetExternalIdentity(ctx.RuntimeData)
 	for _, input := range requiredInputs {
 		if _, ok := ctx.UserInputs[input.Identifier]; ok {
 			continue
@@ -155,6 +194,14 @@ func collectMissingInputs(ctx *providers.NodeContext, presentedOptionalInputs ma
 					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
 				continue
 			}
+		}
+		// External claims are only a fallback and must never take priority over runtime data. A
+		// credential is never taken from a claim.
+		if value, ok := extIdentity.Claim(input.Identifier); ok && value != "" &&
+			input.Type != providers.InputTypePassword {
+			logger.Debug(ctx.Context, "Input available in external claims, skipping",
+				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+			continue
 		}
 		if !input.Required && IsOptionalInputPrompted(presentedOptionalInputs, input.Identifier) {
 			logger.Debug(ctx.Context, "Optional input already prompted, skipping",

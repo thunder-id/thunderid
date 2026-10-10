@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
@@ -179,8 +179,22 @@ describe('UserTypesList', () => {
     startIndex: 1,
     count: 2,
     types: [
-      {id: 'schema1', name: 'Employee Schema', ouId: 'root-ou', ouHandle: 'root', allowSelfRegistration: false},
-      {id: 'schema2', name: 'Contractor Schema', ouId: 'child-ou', ouHandle: 'child', allowSelfRegistration: true},
+      {
+        id: 'schema1',
+        handle: 'employee',
+        displayName: 'Employee Schema',
+        ouId: 'root-ou',
+        ouHandle: 'root',
+        allowSelfRegistration: false,
+      },
+      {
+        id: 'schema2',
+        handle: 'contractor',
+        displayName: 'Contractor Schema',
+        ouId: 'child-ou',
+        ouHandle: 'child',
+        allowSelfRegistration: true,
+      },
     ],
   };
 
@@ -221,6 +235,13 @@ describe('UserTypesList', () => {
 
     expect(screen.getByTestId('row-schema1')).toHaveTextContent('Employee Schema');
     expect(screen.getByTestId('row-schema2')).toHaveTextContent('Contractor Schema');
+  });
+
+  it('shows the handle under the display name', () => {
+    render(<UserTypesList />);
+
+    expect(screen.getByTestId('row-schema1')).toHaveTextContent('employee');
+    expect(screen.getByTestId('row-schema2')).toHaveTextContent('contractor');
   });
 
   it('shows organization unit names when available', () => {

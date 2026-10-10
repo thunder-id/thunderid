@@ -40,7 +40,7 @@ func (s *FederatedMappingSuite) knownOIDCIdentity() *testutils.OIDCUserInfo {
 	user := s.baseUser(s.nextSubject())
 	email := user.Sub + "@example.com"
 	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": user.Sub})
-	s.applyConfig(mapping(fedPersonType.Name, pair("email", "email")))
+	s.applyConfig(mapping(fedPersonType.Handle, pair("email", "email")))
 	s.mockOIDC.AddUser(user)
 	return user
 }
@@ -52,7 +52,7 @@ func (s *FederatedMappingSuite) knownOAuthIdentity() *testutils.OIDCUserInfo {
 	email := sub + "@example.com"
 	s.mockOAuth.AddUser(&testutils.OAuthUserInfo{Sub: sub, Email: email, Name: "OAuth User"})
 	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": sub})
-	s.applyConfigTo("oauth", s.oauthIDPID, mapping(fedPersonType.Name, pair("email", "email")))
+	s.applyConfigTo("oauth", s.oauthIDPID, mapping(fedPersonType.Handle, pair("email", "email")))
 	return &testutils.OIDCUserInfo{Sub: sub, Email: email}
 }
 

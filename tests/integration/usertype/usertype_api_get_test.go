@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type GetUserTypeTestSuite struct {
@@ -62,8 +62,9 @@ func (ts *GetUserTypeTestSuite) SetupSuite() {
     }`)
 
 	schema := CreateUserTypeRequest{
-		Name:   ts.testSchemaName,
-		Schema: ts.testSchemaData,
+		Handle:      ts.testSchemaName,
+		DisplayName: "Retrieval Test Schema",
+		Schema:      ts.testSchemaData,
 	}
 
 	ts.testSchemaID = ts.createTestSchema(schema)
@@ -111,7 +112,8 @@ func (ts *GetUserTypeTestSuite) TestGetUserTypeByID() {
 
 	// Verify retrieved schema according to API spec
 	ts.Assert().Equal(ts.testSchemaID, schema.ID, "ID should match")
-	ts.Assert().Equal(ts.testSchemaName, schema.Name, "Name should match")
+	ts.Assert().Equal(ts.testSchemaName, schema.Handle, "Handle should match")
+	ts.Assert().Equal("Retrieval Test Schema", schema.DisplayName, "Display name should match")
 	ts.Assert().JSONEq(string(ts.testSchemaData), string(schema.Schema), "Schema data should match")
 }
 

@@ -1,0 +1,115 @@
+---
+title: Value References
+docType: reference
+description: Name a credential or a configuration value the deployment holds instead of carrying it inline, and have the import put in the value.
+sidebar_position: 5
+---
+
+# Value References
+
+A configuration value can name something the deployment holds instead of carrying it. <ProductName />
+recognizes two prefixes, and an import replaces each with the value held under that name in the
+deployment's variable store.
+
+| Prefix | Refers to | Read back from the store |
+|---|---|---|
+| `sec:` | a secret, such as a client secret | never |
+| `var:` | an ordinary value, such as a client ID | as it is |
+
+```yaml
+resource_type: application
+name: Orders
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: var:APPLICATION_ORDERS_CLIENT_ID
+      clientSecret: sec:APPLICATION_ORDERS_CLIENT_SECRET
+```
+
+The two are independent collections, so the same name may exist in both. The prefix is what says
+which one a reference means. A value with neither prefix is not a reference and is used as it is, and
+so is a value that only contains a reference among other text: a reference is a whole value.
+
+The part after the prefix is the name the store holds the value under. It matches the name an export
+generates for that field, so configuration exported from a control plane and the values a deployment
+holds agree without a second mapping to keep in sync. See [Export Resources](../resource-export.mdx)
+for how those names are derived.
+
+## Why Reference Instead of Store
+
+A reference lets configuration move between deployments without carrying values with it. The
+configuration says which value a resource needs; the deployment says what that value is. Two
+deployments can then run the same configuration with different client IDs and secrets, and the
+configuration itself holds nothing sensitive.
+
+## How a Reference Resolves
+
+Before an imported resource is written, each reference in it is replaced with the value the
+deployment's [variable store](../../apis.mdx) holds: a `var:` reference from its variables, a `sec:`
+reference from its secrets. The resource is then written exactly as if the value had been typed in,
+so it is stored the way that field always is. A client secret is hashed, a secret property is
+encrypted, and a client ID is stored as the identifier it is looked up by.
+
+Because the value is put in when the resource is written, changing a variable or a secret later does
+not change resources already written. Import the configuration again to apply a changed value.
+
+## When a Value Is Not Held
+
+A resource that refers to a name the store does not hold is refused, and the import's result for it
+names every reference it lacked, with the code `IMP-1006`. Other resources in the same import are
+unaffected. The reference text is never written in place of the value: a client secret stored as
+`sec:NAME` would reject every authentication, for a reason that no longer mentions the name.
+
+Set the missing values in the store, then import again.
+
+## On a Control Plane
+
+A control plane keeps configuration as references and holds no values, so an import there leaves
+references as they are. They are resolved by the deployment the configuration is applied to.
+
+## Values Captured on a Control Plane
+
+A control plane writes the values its references name to its default gateway as you create and
+change resources, so the gateway holds them when a configuration version is applied to it. Each
+value is stored under the name the export refers to it by: a client ID among the gateway's variables,
+a client secret or a password among its secrets.
+
+The control plane captures values when you write these resources:
+
+| Resource | Writes that capture values |
+|---|---|
+| Application | create, update |
+| Agent | create, update |
+| User | create, credential update |
+| Connection (identity provider or SMS sender) | create, update |
+
+A captured value comes from the write itself, while the control plane still holds it in plain text.
+This is the only point at which a generated client secret can be captured, because the control plane
+stores only its hash.
+
+Capture follows these rules:
+
+- **Default gateway only.** Values go to the gateway marked `isDefault` in the Gateway API. With no
+  default gateway, nothing is captured. Set a value on any other gateway yourself.
+- **HTTPS only.** The control plane sends a value, and the gateway's management key, only to a
+  gateway whose `baseUrl` starts with `https://`. A gateway on plain HTTP receives nothing.
+- **Never blocks the write.** A capture that fails is logged by name, never by value, and the write
+  that triggered it still succeeds. A capture waits at most 10 seconds for the gateway. A value that
+  did not arrive is reported as missing when you try to apply a version that needs it, and you can
+  set it on the gateway then.
+- **Replaces what is there.** A value is set whether or not the gateway already holds that name, so
+  writing a resource again replaces the value the gateway held under its name.
+
+### Limits
+
+- **Renames.** Renaming an application, agent, or user changes the names its values are exported
+  under. The control plane captures the client ID under the new name, but not a client secret or
+  password it was not given in the same write, because it holds only their hashes. Set the value
+  under the new name on the gateway yourself.
+- **Imported connections.** Configuration imported into a control plane writes connections without
+  capturing their values. Applications, agents, and users imported into a control plane are captured.
+- **Name collisions.** When two resources' names normalize to the same value name, a full export adds
+  a suffix such as `_2` to one of them. A capture sees one resource at a time and uses the name
+  without the suffix, so set the suffixed value on the gateway yourself.
+- **Overlapping updates.** Two updates to the same resource that run at the same moment can be
+  captured in the opposite order, leaving the earlier value on the gateway until the next write.

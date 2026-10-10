@@ -6,6 +6,7 @@ package importer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -23,10 +24,12 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 )
@@ -121,8 +124,8 @@ type entityTypeAdapter interface {
 	GetEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string,
 		includeDisplay bool) (*entitytype.EntityType,
 		*tidcommon.ServiceError)
-	GetEntityTypeByName(ctx context.Context, category entitytype.TypeCategory,
-		schemaName string) (*entitytype.EntityType, *tidcommon.ServiceError)
+	GetEntityTypeByHandle(ctx context.Context, category entitytype.TypeCategory,
+		handle string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string,
 		request entitytype.UpdateEntityTypeRequest) (
 		*entitytype.EntityType,
@@ -230,6 +233,19 @@ type credentialConfigurationAdapter interface {
 	DeleteCredentialConfiguration(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
+// notificationTemplateAdapter exposes the service methods needed by the importer.
+// Delete is omitted because templates require both channel and ID, which shared import-delete cannot provide.
+type notificationTemplateAdapter interface {
+	GetTemplateByHandle(ctx context.Context, channel notificationtemplate.ChannelType, handle string) (
+		*notificationtemplate.Template, *tidcommon.ServiceError)
+	ValidateTemplate(ctx context.Context, channel notificationtemplate.ChannelType,
+		request notificationtemplate.CreateTemplateRequest) *tidcommon.ServiceError
+	CreateTemplate(ctx context.Context, channel notificationtemplate.ChannelType,
+		request notificationtemplate.CreateTemplateRequest) (*notificationtemplate.Template, *tidcommon.ServiceError)
+	UpdateTemplate(ctx context.Context, channel notificationtemplate.ChannelType, id string,
+		request notificationtemplate.UpdateTemplateRequest) (*notificationtemplate.Template, *tidcommon.ServiceError)
+}
+
 // ImportServiceInterface defines runtime resource import and declarative resource deletion operations.
 type ImportServiceInterface interface {
 	ImportResources(ctx context.Context, request *ImportRequest) (*ImportResponse, *tidcommon.ServiceError)
@@ -266,6 +282,11 @@ type importService struct {
 	credentialConfigurationService credentialConfigurationAdapter
 	serverConfigService            serverConfigAdapter
 	gatewayService                 gatewayAdapter
+	notifTemplateService           notificationTemplateAdapter
+	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
+	// references in place, which is what a control plane wants: it keeps configuration as references
+	// and holds no values.
+	references *secretresolver.Resolver
 }
 
 func newImportService(
@@ -288,6 +309,7 @@ func newImportService(
 	credentialConfigurationService credentialConfigurationAdapter,
 	serverConfigService serverConfigAdapter,
 	gatewayService gatewayAdapter,
+	notifTemplateService notificationTemplateAdapter,
 	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
 	var authZENPDPService authZENPDPAdapter
@@ -315,6 +337,7 @@ func newImportService(
 		credentialConfigurationService: credentialConfigurationService,
 		serverConfigService:            serverConfigService,
 		gatewayService:                 gatewayService,
+		notifTemplateService:           notifTemplateService,
 	}
 }
 
@@ -386,7 +409,10 @@ func (s *importService) ImportResources(
 			}
 		}
 
-		outcome := s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases)
+		outcome, resolved := s.resolveReferences(ctx, doc)
+		if resolved {
+			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases)
+		}
 		results = append(results, outcome)
 
 		if doc.ResourceType == resourceTypeFlow && outcome.Status == statusSuccess && originalFlowID != "" &&
@@ -425,6 +451,47 @@ func (s *importService) ImportResources(
 		},
 		Results: results,
 	}, nil
+}
+
+// resolveReferences replaces the var: and sec: references in a document with the values this
+// deployment holds, before the document is imported. The service writing the resource then stores each
+// value as it stores any other.
+//
+// A document whose references the store does not all hold is refused, naming them, rather than written
+// with the reference text where a value belongs: a client secret stored as "sec:NAME" would reject
+// every authentication, for a reason that no longer mentions the name.
+func (s *importService) resolveReferences(ctx context.Context, doc parsedDocument) (ImportItemOutcome, bool) {
+	if s.references == nil {
+		return ImportItemOutcome{}, true
+	}
+	err := s.references.ResolveNode(ctx, doc.Node)
+	if err == nil {
+		return ImportItemOutcome{}, true
+	}
+	outcome := ImportItemOutcome{
+		ResourceType: doc.ResourceType,
+		ResourceName: documentName(doc),
+		Status:       statusFailed,
+		Code:         ErrorUnresolvedReference.Code,
+		Message:      err.Error(),
+	}
+	var unresolved *secretresolver.UnresolvedError
+	if !errors.As(err, &unresolved) {
+		log.GetLogger().Error(ctx, "Failed to resolve the references in an imported document", log.Error(err))
+		outcome.Message = "the values this resource refers to could not be read"
+	}
+	return outcome, false
+}
+
+// documentName reads a document's top-level name, for naming it in an outcome before it is decoded.
+func documentName(doc parsedDocument) string {
+	var named struct {
+		Name string `yaml:"name"`
+	}
+	if doc.Node == nil || doc.Node.Decode(&named) != nil {
+		return ""
+	}
+	return named.Name
 }
 
 func (s *importService) DeleteResource(
@@ -494,6 +561,8 @@ func (s *importService) importDocument(
 		return s.importServerConfig(ctx, doc, dryRun)
 	case resourceTypeGateway:
 		return s.importGateway(ctx, doc, options, dryRun)
+	case resourceTypeNotificationTemplate:
+		return s.importNotificationTemplate(ctx, doc, options, dryRun)
 	default:
 		return ImportItemOutcome{
 			ResourceType: doc.ResourceType,
@@ -1130,6 +1199,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 					RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 					DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
 					IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
+					ClientIDMetadataDocument:           config.OAuthConfig.ClientIDMetadataDocument,
 					Token:                              config.OAuthConfig.Token,
 					Scopes:                             config.OAuthConfig.Scopes,
 					UserInfo:                           config.OAuthConfig.UserInfo,

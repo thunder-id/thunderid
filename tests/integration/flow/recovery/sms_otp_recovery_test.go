@@ -26,7 +26,8 @@ var (
 	}
 
 	smsRecoveryUserSchema = testutils.UserType{
-		Name: "sms-recovery-user-type",
+		Handle:      "sms-recovery-user-type",
+		DisplayName: "Sms Recovery User Type",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -84,7 +85,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	// Create a test user with known credentials and a mobile number
 	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
 		OUID: ts.testOUID,
-		Type: smsRecoveryUserSchema.Name,
+		Type: smsRecoveryUserSchema.Handle,
 		Attributes: json.RawMessage(`{
 			"username":     "` + ts.testUsername + `",
 			"password":     "` + ts.testPassword + `",
@@ -136,7 +137,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 		ClientID:                  "sms_recovery_test_client",
 		ClientSecret:              "sms_recovery_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{smsRecoveryUserSchema.Name},
+		AllowedUserTypes:          []string{smsRecoveryUserSchema.Handle},
 		AuthFlowID:                ts.authFlowID,
 		RecoveryFlowID:            ts.smsFlowID,
 	})
@@ -336,7 +337,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_MissingMobileNumbe
 	usernameNoMobile := common.GenerateUniqueUsername("nomobile")
 	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
 		OUID: ts.testOUID,
-		Type: smsRecoveryUserSchema.Name,
+		Type: smsRecoveryUserSchema.Handle,
 		Attributes: json.RawMessage(`{
 			"username": "` + usernameNoMobile + `",
 			"password": "TestPassword123!"
@@ -442,7 +443,7 @@ func buildSMSOTPRecoveryFlow(senderID string) testutils.Flow {
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
 					"senderId":    senderID,
-					"smsTemplate": "OTP",
+					"smsTemplate": "otp",
 				},
 				"executor": map[string]interface{}{
 					"name": "SMSExecutor",

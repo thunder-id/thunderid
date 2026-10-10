@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 type CreateUserTypeTestSuite struct {
@@ -61,7 +62,8 @@ func (ts *CreateUserTypeTestSuite) TearDownSuite() {
 // TestCreateUserType tests POST /user-types with valid data
 func (ts *CreateUserTypeTestSuite) TestCreateUserType() {
 	schema := CreateUserTypeRequest{
-		Name: "employee-schema-test",
+		Handle:      "employee-schema-test",
+		DisplayName: "Employee Schema Test",
 		Schema: json.RawMessage(`{
             "given_name": {"type": "string"},
             "family_name": {"type": "string", "required": true},
@@ -104,7 +106,8 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserType() {
 
 	// Verify created schema according to API spec
 	ts.Assert().NotEmpty(createdSchema.ID, "Created schema should have ID")
-	ts.Assert().Equal(schema.Name, createdSchema.Name, "Name should match")
+	ts.Assert().Equal(schema.Handle, createdSchema.Handle, "Handle should match")
+	ts.Assert().Equal(schema.DisplayName, createdSchema.DisplayName, "Display name should match")
 	ts.Assert().JSONEq(string(schema.Schema), string(createdSchema.Schema), "Schema data should match")
 
 	// Track for cleanup
@@ -114,7 +117,8 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserType() {
 // TestCreateUserTypeWithComplexSchema tests POST /user-types with complex JSON schema
 func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithComplexSchema() {
 	schema := CreateUserTypeRequest{
-		Name: "complex-customer-schema",
+		Handle:      "complex-customer-schema",
+		DisplayName: "Complex Customer Schema",
 		Schema: json.RawMessage(`{
             "personalInfo": {
                 "type": "object",
@@ -192,29 +196,32 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithComplexSchema() {
 
 	// Verify complex schema was stored correctly
 	ts.Assert().NotEmpty(createdSchema.ID, "Created schema should have ID")
-	ts.Assert().Equal(schema.Name, createdSchema.Name, "Name should match")
+	ts.Assert().Equal(schema.Handle, createdSchema.Handle, "Handle should match")
+	ts.Assert().Equal(schema.DisplayName, createdSchema.DisplayName, "Display name should match")
 	ts.Assert().JSONEq(string(schema.Schema), string(createdSchema.Schema), "Complex schema data should match")
 
 	// Track for cleanup
 	ts.createdSchemas = append(ts.createdSchemas, createdSchema.ID)
 }
 
-// TestCreateUserTypeWithDuplicateName tests POST /user-types with duplicate name
-func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithDuplicateName() {
+// TestCreateUserTypeWithDuplicateHandle tests POST /user-types with a duplicate handle
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithDuplicateHandle() {
 	// First create a schema
 	schema1 := CreateUserTypeRequest{
-		Name:   "duplicate-name-test",
-		Schema: json.RawMessage(`{"field1": {"type": "string"}}`),
+		Handle:      "duplicate-handle-test",
+		DisplayName: "Duplicate Handle Test",
+		Schema:      json.RawMessage(`{"field1": {"type": "string"}}`),
 	}
 	schema1.OUID = ts.oUID
 
 	createdID := ts.createSchemaHelper(schema1)
 	ts.createdSchemas = append(ts.createdSchemas, createdID)
 
-	// Try to create another schema with same name
+	// Try to create another schema with same handle and a different display name
 	schema2 := CreateUserTypeRequest{
-		Name:   "duplicate-name-test", // Same name
-		Schema: json.RawMessage(`{"field2": {"type": "string"}}`),
+		Handle:      "duplicate-handle-test", // Same handle
+		DisplayName: "Duplicate Handle Other Label",
+		Schema:      json.RawMessage(`{"field2": {"type": "string"}}`),
 	}
 	schema2.OUID = ts.oUID
 
@@ -235,7 +242,7 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithDuplicateName() {
 	}
 	defer resp.Body.Close()
 
-	ts.Assert().Equal(http.StatusConflict, resp.StatusCode, "Should return 409 Conflict for duplicate name")
+	ts.Assert().Equal(http.StatusConflict, resp.StatusCode, "Should return 409 Conflict for duplicate handle")
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -248,7 +255,7 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithDuplicateName() {
 		ts.T().Fatalf("Failed to unmarshal error response: %v", err)
 	}
 
-	ts.Assert().NotEmpty(errorResp.Code, "Error should have code")
+	ts.Assert().Equal("USRS-1003", errorResp.Code, "Error should be the handle conflict code")
 	ts.Assert().NotEmpty(errorResp.Message.DefaultValue, "Error should have message")
 }
 
@@ -257,13 +264,15 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypesWithSharedOUID() {
 	sharedOUID := ts.oUID
 
 	firstSchema := CreateUserTypeRequest{
-		Name:   "shared-ou-schema-one",
-		Schema: json.RawMessage(`{"username": {"type": "string", "required": true}}`),
+		Handle:      "shared-ou-schema-one",
+		DisplayName: "Shared Ou Schema One",
+		Schema:      json.RawMessage(`{"username": {"type": "string", "required": true}}`),
 	}
 	firstSchema.OUID = sharedOUID
 
 	secondSchema := CreateUserTypeRequest{
-		Name: "shared-ou-schema-two",
+		Handle:      "shared-ou-schema-two",
+		DisplayName: "Shared Ou Schema Two",
 		Schema: json.RawMessage(`{
             "email": {"type": "string", "required": true, "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"},
             "enabled": {"type": "boolean"}
@@ -311,32 +320,41 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithInvalidData() {
 		requestBody string
 	}{
 		{
-			name:        "empty name",
-			requestBody: `{"name": "", "schema": {"field": {"type": "string"}}}`,
+			name:        "empty handle",
+			requestBody: `{"handle": "", "displayName": "Test Schema", "schema": {"field": {"type": "string"}}}`,
 		},
 		{
-			name:        "missing name",
-			requestBody: `{"schema": {"field": {"type": "string"}}}`,
+			name:        "missing handle",
+			requestBody: `{"displayName": "Test Schema", "schema": {"field": {"type": "string"}}}`,
+		},
+		{
+			name:        "empty display name",
+			requestBody: `{"handle": "test-schema", "displayName": "", "schema": {"field": {"type": "string"}}}`,
+		},
+		{
+			name:        "missing display name",
+			requestBody: `{"handle": "test-schema", "schema": {"field": {"type": "string"}}}`,
 		},
 		{
 			name:        "empty schema",
-			requestBody: `{"name": "test-schema", "schema": {}}`,
+			requestBody: `{"handle": "test-schema", "displayName": "Test Schema", "schema": {}}`,
 		},
 		{
 			name:        "missing schema",
-			requestBody: `{"name": "test-schema"}`,
+			requestBody: `{"handle": "test-schema", "displayName": "Test Schema"}`,
 		},
 		{
 			name:        "invalid JSON",
-			requestBody: `{"name": "test-schema", "schema": invalid}`,
+			requestBody: `{"handle": "test-schema", "displayName": "Test Schema", "schema": invalid}`,
 		},
 		{
 			name:        "malformed JSON",
-			requestBody: `{"name": "test-schema"`,
+			requestBody: `{"handle": "test-schema", "displayName": "Test Schema"`,
 		},
 		{
-			name:        "non-boolean required flag",
-			requestBody: `{"name": "bad-required", "schema": {"email": {"type": "string", "required": "true"}}}`,
+			name: "non-boolean required flag",
+			requestBody: `{"handle": "bad-required", "displayName": "Bad Required", ` +
+				`"schema": {"email": {"type": "string", "required": "true"}}}`,
 		},
 	}
 
@@ -373,11 +391,64 @@ func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithInvalidData() {
 	}
 }
 
+// TestCreateUserTypeWithInvalidHandle tests POST /user-types with a handle that has an invalid format
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithInvalidHandle() {
+	invalidHandles := map[string]string{
+		"upper case":         "Invalid-Handle",
+		"space":              "invalid handle",
+		"leading hyphen":     "-invalid-handle",
+		"trailing hyphen":    "invalid-handle-",
+		"leading underscore": "_invalid_handle",
+		"dot":                "invalid.handle",
+		"longer than 100":    strings.Repeat("a", 101),
+	}
+
+	for name, handle := range invalidHandles {
+		ts.T().Run(name, func(t *testing.T) {
+			status, errorResp := ts.postUserType(CreateUserTypeRequest{
+				Handle:      handle,
+				DisplayName: "Invalid Handle",
+				OUID:        ts.oUID,
+				Schema:      json.RawMessage(`{"field": {"type": "string"}}`),
+			})
+
+			ts.Assert().Equal(http.StatusBadRequest, status, "Should return 400 Bad Request for: %s", name)
+			if len(handle) <= 100 {
+				ts.Assert().Equal("USRS-1016", errorResp.Code, "Error should be the invalid handle code")
+			}
+		})
+	}
+}
+
+// TestCreateUserTypesWithSameDisplayName tests that the display name is not unique
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypesWithSameDisplayName() {
+	for _, handle := range []string{"same-display-name-1", "same-display-name-2"} {
+		createdID := ts.createSchemaHelper(CreateUserTypeRequest{
+			Handle:      handle,
+			DisplayName: "Same Display Name",
+			Schema:      json.RawMessage(`{"field": {"type": "string"}}`),
+		})
+		ts.createdSchemas = append(ts.createdSchemas, createdID)
+	}
+}
+
+// TestCreateUserTypeWithAgentTypeHandle tests that a handle is unique only within its category, so a
+// user type can take the handle of the `default` agent type.
+func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithAgentTypeHandle() {
+	createdID := ts.createSchemaHelper(CreateUserTypeRequest{
+		Handle:      "default",
+		DisplayName: "Default User Type",
+		Schema:      json.RawMessage(`{"field": {"type": "string"}}`),
+	})
+	ts.createdSchemas = append(ts.createdSchemas, createdID)
+}
+
 // TestCreateUserTypeWithoutContentType tests POST /user-types without Content-Type header
 func (ts *CreateUserTypeTestSuite) TestCreateUserTypeWithoutContentType() {
 	schema := CreateUserTypeRequest{
-		Name:   "no-content-type-test",
-		Schema: json.RawMessage(`{"field": {"type": "string"}}`),
+		Handle:      "no-content-type-test",
+		DisplayName: "No Content Type Test",
+		Schema:      json.RawMessage(`{"field": {"type": "string"}}`),
 	}
 	schema.OUID = ts.oUID
 
@@ -473,4 +544,35 @@ func (ts *CreateUserTypeTestSuite) deleteSchema(schemaID string) {
 		body, _ := io.ReadAll(resp.Body)
 		ts.T().Logf("Failed to delete schema %s: status %d, body: %s", schemaID, resp.StatusCode, string(body))
 	}
+}
+
+// postUserType posts a user type and returns the status code and the decoded error response.
+func (ts *CreateUserTypeTestSuite) postUserType(schema CreateUserTypeRequest) (int, ErrorResponse) {
+	jsonData, err := json.Marshal(schema)
+	if err != nil {
+		ts.T().Fatalf("Failed to marshal request: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", testServerURL+"/user-types", bytes.NewBuffer(jsonData))
+	if err != nil {
+		ts.T().Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		ts.T().Fatalf("Failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var errorResp ErrorResponse
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			ts.T().Fatalf("Failed to read response body: %v", err)
+		}
+		_ = json.Unmarshal(bodyBytes, &errorResp)
+	}
+
+	return resp.StatusCode, errorResp
 }

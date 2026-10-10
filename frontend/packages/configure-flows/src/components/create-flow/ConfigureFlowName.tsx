@@ -1,8 +1,9 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
 import {NameSuggestion} from '@thunderid/components';
+import {generateHandle} from '@thunderid/utils';
 import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useEffect, useRef} from 'react';
@@ -35,12 +36,6 @@ interface ConfigureFlowNameProps {
 export default function ConfigureFlowName({value, onChange, onReadyChange}: ConfigureFlowNameProps): JSX.Element {
   const {t} = useTranslation();
   const isHandleManuallyEditedRef = useRef(false);
-
-  const generateHandle = (name: string): string =>
-    name
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
 
   const {
     control,

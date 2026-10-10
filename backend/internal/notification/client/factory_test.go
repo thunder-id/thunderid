@@ -62,6 +62,7 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			name: "twilio",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Twilio",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeTwilio,
 				Properties: []cmodels.Property{
 					createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
@@ -75,6 +76,7 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			name: "vonage",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Vonage",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeVonage,
 				Properties: []cmodels.Property{
 					createTestProperty("api_key", "test-key", true),
@@ -88,6 +90,7 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			name: "custom",
 			sender: common.NotificationSenderDTO{
 				Name:     "Test Custom",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeCustom,
 				Properties: []cmodels.Property{
 					createTestProperty("url", "https://api.example.com/sms", false),
@@ -96,6 +99,20 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 				},
 			},
 			expected: "Test Custom",
+		},
+		{
+			name: "smtp",
+			sender: common.NotificationSenderDTO{
+				Name:     "Test SMTP",
+				Type:     common.NotificationSenderTypeEmail,
+				Provider: common.NotificationProviderTypeSMTP,
+				Properties: []cmodels.Property{
+					createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+					createTestProperty(common.SMTPPropKeyPort, "587", false),
+					createTestProperty(common.SMTPPropKeyFromAddress, "noreply@example.com", false),
+				},
+			},
+			expected: "Test SMTP",
 		},
 	}
 
@@ -127,6 +144,7 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "twilio_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Twilio",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeTwilio,
 				// account_sid is required and marked secret but value will fail decryption
 				Properties: append(makeInvalidSecretProps("account_sid"),
@@ -137,6 +155,7 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "vonage_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Vonage",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeVonage,
 				Properties: append(makeInvalidSecretProps("api_key"),
 					createTestProperty("api_secret", "test-secret", true)),
@@ -146,6 +165,7 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 			name: "custom_decryption_error",
 			sender: common.NotificationSenderDTO{
 				Name:     "Bad Custom",
+				Type:     common.NotificationSenderTypeMessage,
 				Provider: common.NotificationProviderTypeCustom,
 				// url is secret here and invalid ciphertext
 				Properties: makeInvalidSecretProps("url"),

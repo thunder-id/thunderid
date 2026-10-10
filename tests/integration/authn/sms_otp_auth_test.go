@@ -24,7 +24,8 @@ const (
 )
 
 var smsOTPEntityType = testutils.UserType{
-	Name: "smsotp_user",
+	Handle:      "smsotp_user",
+	DisplayName: "Smsotp User",
 	Schema: map[string]interface{}{
 		"username": map[string]interface{}{
 			"type": "string",
@@ -120,7 +121,7 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 
 	user := testutils.User{
-		Type:       smsOTPEntityType.Name,
+		Type:       smsOTPEntityType.Handle,
 		OUID:       suite.ouID,
 		Attributes: userAttributesJSON,
 	}

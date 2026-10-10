@@ -13,12 +13,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -34,6 +37,9 @@ type SharingServiceInterface interface {
 	CreatePolicy(
 		ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
 	) (Policy, *tidcommon.ServiceError)
+	// LoadDeclarativeResources reads a resource type's declarative documents and declares the
+	// sharing policies they carry. Called once per shareable resource type, at startup.
+	LoadDeclarativeResources(ctx context.Context, cfg DeclarativeLoaderConfig) error
 	// CreateDeclarativePolicy records a policy declared by a resource file. It runs the identical
 	// validation, but the policy is held in memory and cannot later be edited through the API.
 	CreateDeclarativePolicy(
@@ -47,8 +53,13 @@ type SharingServiceInterface interface {
 
 	// GetPolicy returns one policy by id.
 	GetPolicy(ctx context.Context, policyID string) (Policy, *tidcommon.ServiceError)
-	// ListPolicies returns every policy recorded for a resource.
+	// ListPolicies returns every policy recorded for a resource, unbounded. This is the whole-set
+	// read the framework itself uses; a management API wants GetPolicyList instead.
 	ListPolicies(ctx context.Context, rt ResourceType, resourceID string) ([]Policy, *tidcommon.ServiceError)
+	// GetPolicyList returns one page of a resource's policies, for a management API to serve.
+	GetPolicyList(
+		ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+	) (PolicyList, *tidcommon.ServiceError)
 	// ExportPolicies returns a resource's policies in an order safe to replay sequentially.
 	ExportPolicies(
 		ctx context.Context, rt ResourceType, resourceID string,
@@ -104,7 +115,7 @@ type sharingService struct {
 	ouHierarchyResolver sysauthz.OUHierarchyResolver
 	// ouEnumerator walks the tree downwards, which policy deletion needs to find the units beneath
 	// a removed target. Kept separate from the resolver above: enumeration is not an access decision.
-	ouEnumerator  OUEnumerator
+	ouEnumerator  oupkg.HierarchyEnumeratorInterface
 	transactioner providers.Transactioner
 
 	// The caches are all derived from the policy graph, so any write clears them wholesale: one
@@ -129,7 +140,7 @@ func newSharingService(
 	dbStore sharingPolicyStoreInterface,
 	fileStore *fileBasedStore,
 	ouHierarchyResolver sysauthz.OUHierarchyResolver,
-	ouEnumerator OUEnumerator,
+	ouEnumerator oupkg.HierarchyEnumeratorInterface,
 	transactioner providers.Transactioner,
 	visibilityCache cache.CacheInterface[bool],
 	overlayRuleCache cache.CacheInterface[ResolvedOverlay],
@@ -163,6 +174,13 @@ func (s *sharingService) CreatePolicy(
 	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, false)
 }
 
+// LoadDeclarativeResources reads a resource type's documents and declares the policies they carry.
+func (s *sharingService) LoadDeclarativeResources(
+	ctx context.Context, cfg DeclarativeLoaderConfig,
+) error {
+	return loadDeclarativeResources(ctx, s, s.fileStore, cfg)
+}
+
 // CreateDeclarativePolicy records a policy a resource file declares.
 func (s *sharingService) CreateDeclarativePolicy(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
@@ -184,11 +202,14 @@ func (s *sharingService) createPolicy(
 	if _, ok := s.registry.get(rt); !ok {
 		return Policy{}, &ErrorResourceTypeNotRegistered
 	}
-	if resourceID == "" || owningOUID == "" {
-		return Policy{}, &ErrorInvalidRequestFormat
+	if resourceID == "" {
+		return Policy{}, withDetail(ErrorInvalidRequestFormat, "the resource is not named")
+	}
+	if owningOUID == "" {
+		return Policy{}, withDetail(ErrorInvalidRequestFormat, "the resource has no owning organization unit")
 	}
 	if !declared {
-		if svcErr := requireDeclarativeForDeploymentWideScope(req.TargetOUScope); svcErr != nil {
+		if svcErr := requireDeclarativeForDeploymentWideScope(req.Targets); svcErr != nil {
 			return Policy{}, svcErr
 		}
 	}
@@ -301,15 +322,14 @@ func (s *sharingService) requireUsableDeclaredID(
 
 // requireDeclarativeForDeploymentWideScope refuses the two scopes whose reach is not bounded by the
 // initiator's own position in the tree, unless the policy comes from a resource file.
-func requireDeclarativeForDeploymentWideScope(scope TargetOUScope) *tidcommon.ServiceError {
-	switch {
-	case scope.AllOUs:
-		return withDetail(ErrorDeploymentWideScopeDeclarativeOnly, "allOus")
-	case scope.AllRoots:
-		return withDetail(ErrorDeploymentWideScopeDeclarativeOnly, "allRoots")
-	default:
-		return nil
+func requireDeclarativeForDeploymentWideScope(targets []TargetRequest) *tidcommon.ServiceError {
+	for _, t := range targets {
+		switch t.Scope {
+		case ScopeAllOUs, ScopeAllRoots:
+			return withDetail(ErrorDeploymentWideScopeDeclarativeOnly, string(t.Scope))
+		}
 	}
+	return nil
 }
 
 // buildPolicy validates a request and materializes its rules against what the initiator holds.
@@ -337,13 +357,12 @@ func (s *sharingService) buildPolicy(
 		parentPolicyID = canonicalParentID(covering)
 	}
 
-	targets, svcErr := s.buildTargets(ctx, req.TargetOUScope, initiatingOUID, owningOUID, stage)
+	targets, svcErr := s.buildTargets(ctx, req.Targets, initiatingOUID, owningOUID, stage)
 	if svcErr != nil {
 		return Policy{}, svcErr
 	}
 
-	excluded := s.collectExclusions(req.TargetOUScope)
-	if svcErr := s.requireExclusionsInReach(ctx, targets, excluded); svcErr != nil {
+	if svcErr := s.requireExclusionsInReach(ctx, targets, initiatingOUID); svcErr != nil {
 		return Policy{}, svcErr
 	}
 
@@ -369,7 +388,6 @@ func (s *sharingService) buildPolicy(
 		Declared:       declared,
 		Version:        1,
 		Targets:        targets,
-		ExcludedOUIDs:  excluded,
 	}
 
 	rules, svcErr := s.materializeRules(ctx, rt, resourceID, owningOUID, initiatingOUID, req, targets)
@@ -389,7 +407,7 @@ func (s *sharingService) buildPolicy(
 func (s *sharingService) requireEditLeavesFrontiersIntact(
 	ctx context.Context, proposed Policy,
 ) *tidcommon.ServiceError {
-	policies, err := s.store.ListPoliciesForResource(ctx, proposed.ResourceType, proposed.ResourceID)
+	policies, err := s.store.ListAllPoliciesForResource(ctx, proposed.ResourceType, proposed.ResourceID)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list policies for resource", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -426,15 +444,30 @@ func reachedByCascadingTarget(targets []Target, ouID string, chain []string) boo
 // own targets reach. Nothing would apply it, and accepting it would read as a withholding that
 // never happened.
 func (s *sharingService) requireExclusionsInReach(
-	ctx context.Context, targets []Target, excluded []string,
+	ctx context.Context, targets []Target, initiatingOUID string,
 ) *tidcommon.ServiceError {
-	for _, ouID := range excluded {
-		chain, svcErr := s.buildChain(ctx, ouID)
-		if svcErr != nil {
-			return svcErr
-		}
-		if !reachedByAnyTarget(targets, ouID, chain) {
-			return withDetail(ErrorExclusionOutOfReach, ouID)
+	for _, t := range targets {
+		for _, ouID := range t.ExcludedOUIDs {
+			// Carving out the unit a target anchors on cancels the target rather than narrowing
+			// it: root and child stop at the unit they name, and childSubtree starts from it, so
+			// in every case nothing is left for the target to reach.
+			if ouID == t.OUID && anchoredScope(t.Scope) {
+				return withDetail(ErrorExclusionEmptiesTarget, ouID)
+			}
+			chain, svcErr := s.buildChain(ctx, ouID)
+			if svcErr != nil {
+				return svcErr
+			}
+			// A target reaching down the initiator's own tree names organization units the way
+			// its targets do, one hop below the issuer. Carving out a grandchild would decide for
+			// the child over its head, and under a cascading target that child holds no policy of
+			// its own to reverse it with.
+			if ownTreeScope(t.Scope) && (len(chain) < 2 || chain[len(chain)-2] != initiatingOUID) {
+				return withDetail(ErrorExclusionNotADirectChild, ouID)
+			}
+			if !reachedByAnyTarget([]Target{t}, ouID, chain) {
+				return withDetail(ErrorExclusionOutOfReach, ouID)
+			}
 		}
 	}
 	return nil
@@ -446,22 +479,22 @@ func (s *sharingService) requireExclusionsInReach(
 func reachedByAnyTarget(targets []Target, ouID string, chain []string) bool {
 	for _, t := range targets {
 		switch t.Scope {
-		case targetScopeAllOUs:
+		case ScopeAllOUs:
 			return true
-		case targetScopeAllRoots:
+		case ScopeAllRoots:
 			if len(chain) > 0 && chain[0] == ouID {
 				return true
 			}
-		case targetScopeAllChildren, targetScopeOUSubtree:
+		case ScopeAllChildren, ScopeChildSubtree:
 			for _, ancestor := range chain {
 				if ancestor == t.OUID && ancestor != ouID {
 					return true
 				}
 			}
-			if t.Scope == targetScopeOUSubtree && t.OUID == ouID {
+			if t.Scope == ScopeChildSubtree && t.OUID == ouID {
 				return true
 			}
-		case targetScopeRoot, targetScopeOU:
+		case ScopeRoot, ScopeChild:
 			if t.OUID == ouID {
 				return true
 			}
@@ -470,13 +503,35 @@ func reachedByAnyTarget(targets []Target, ouID string, chain []string) bool {
 	return false
 }
 
+// ownTreeScope reports whether a target reaches down the initiating organization unit's own tree.
+// The deployment-wide and root scopes are not bounded by where the initiator sits, so the one-hop
+// rule has nothing to say about what they may carve out.
+func ownTreeScope(scope TargetScope) bool {
+	switch scope {
+	case ScopeChild, ScopeChildSubtree, ScopeAllChildren:
+		return true
+	}
+	return false
+}
+
+// anchoredScope reports whether a target's reach is defined by the organization unit it names,
+// rather than by a family of units. allChildren is not one: it carries the issuing unit so the row
+// has an anchor, but it reaches below that unit and never the unit itself.
+func anchoredScope(scope TargetScope) bool {
+	switch scope {
+	case ScopeRoot, ScopeChild, ScopeChildSubtree:
+		return true
+	}
+	return false
+}
+
 // cascadingScope reports whether a target reaches below the organization unit it names, which is
 // what leaves that unit nothing of its own to grant.
-func cascadingScope(scope targetScope) bool {
+func cascadingScope(scope TargetScope) bool {
 	switch scope {
-	case targetScopeAllOUs,
-		targetScopeAllChildren,
-		targetScopeOUSubtree:
+	case ScopeAllOUs,
+		ScopeAllChildren,
+		ScopeChildSubtree:
 		return true
 	}
 	return false
@@ -507,98 +562,153 @@ func (s *sharingService) newTargetID(ctx context.Context) (string, *tidcommon.Se
 	return id, nil
 }
 
-// buildTargets turns a request's scope selector into stored target rows, enforcing the mode,
-// stage and one-hop rules along the way.
+// buildTargets turns a request's targets into stored target rows, enforcing the stage, ownership
+// and one-hop rules along the way.
+//
+// The list is flat and may mix breadths: a broad target carving one organization unit out, beside
+// a target naming that unit on terms of its own, is the whole point of letting it. Each entry is
+// checked on its own, and then the set is checked for a unit named twice.
 func (s *sharingService) buildTargets(
-	ctx context.Context, scope TargetOUScope, initiatingOUID, owningOUID string, stage policyStage,
+	ctx context.Context, requested []TargetRequest, initiatingOUID, owningOUID string, stage policyStage,
 ) ([]Target, *tidcommon.ServiceError) {
-	blanket, root, children, valid := scope.Mode()
-	if !valid {
-		return nil, &ErrorInvalidRequestFormat
+	if len(requested) == 0 {
+		return nil, withDetail(ErrorInvalidRequestFormat, "the policy names no target")
 	}
 
 	isOwner := initiatingOUID == owningOUID
-	switch {
-	case blanket:
-		// Reaching every organization unit is the owner's call alone, and only as a first hop.
-		if !isOwner || stage != stageShare {
-			return nil, withDetail(ErrorInvalidTargetOU, "allOus is owner-only")
+	out := make([]Target, 0, len(requested))
+	// Naming one organization unit twice is rejected rather than deduplicated, because the two
+	// entries carry their own overlay rules and there is no basis for picking a winner. A unit
+	// named by child and by childSubtree is the same clash: the rows differ, so the database
+	// would accept both while the rules attached to one of them alone.
+	seen := make(map[string]struct{}, len(requested))
+
+	for _, t := range requested {
+		ouID := t.OUID
+		switch t.Scope {
+		case ScopeAllOUs:
+			// Reaching every organization unit is the owner's call alone, and only as a first hop.
+			if !isOwner || stage != stageShare {
+				return nil, withDetail(ErrorInvalidTargetOU, "allOus is owner-only")
+			}
+			if ouID != "" {
+				return nil, targetTakesNoOU(t.Scope)
+			}
+			// Reaching every organization unit necessarily leaves the initiator's own tree.
+			if svcErr := s.requireCrossTreeAllowed(ctx, initiatingOUID); svcErr != nil {
+				return nil, svcErr
+			}
+
+		case ScopeAllRoots:
+			if !isOwner {
+				return nil, withDetail(ErrorInvalidTargetOU, "root targeting is owner-only")
+			}
+			if ouID != "" {
+				return nil, targetTakesNoOU(t.Scope)
+			}
+			if svcErr := s.requireCrossTreeAllowed(ctx, initiatingOUID); svcErr != nil {
+				return nil, svcErr
+			}
+
+		case ScopeRoot:
+			if !isOwner {
+				return nil, withDetail(ErrorInvalidTargetOU, "root targeting is owner-only")
+			}
+			if ouID == "" {
+				return nil, targetNeedsOU(t.Scope)
+			}
+			if svcErr := s.validateRootTarget(ctx, ouID, initiatingOUID); svcErr != nil {
+				return nil, svcErr
+			}
+
+		case ScopeAllChildren:
+			if ouID != "" {
+				return nil, targetTakesNoOU(t.Scope)
+			}
+			// The subtree target anchors on the unit issuing it, which the row has to carry.
+			ouID = initiatingOUID
+
+		case ScopeChild, ScopeChildSubtree:
+			if ouID == "" {
+				return nil, targetNeedsOU(t.Scope)
+			}
+			if svcErr := s.validateChildTarget(ctx, ouID, initiatingOUID); svcErr != nil {
+				return nil, svcErr
+			}
+
+		default:
+			return nil, withDetail(ErrorInvalidRequestFormat, fmt.Sprintf("unknown target scope %q", t.Scope))
 		}
-		// Reaching every organization unit necessarily leaves the initiator's own tree.
-		if svcErr := s.requireCrossTreeAllowed(ctx, initiatingOUID); svcErr != nil {
-			return nil, svcErr
+
+		key := ouID
+		if key == "" {
+			key = string(t.Scope)
 		}
+		if _, repeated := seen[key]; repeated {
+			return nil, withDetail(ErrorInvalidTargetOU, key+" is named more than once")
+		}
+		seen[key] = struct{}{}
+
 		id, svcErr := s.newTargetID(ctx)
 		if svcErr != nil {
 			return nil, svcErr
 		}
-		return []Target{{ID: id, Scope: targetScopeAllOUs}}, nil
-
-	case root:
-		if !isOwner {
-			return nil, withDetail(ErrorInvalidTargetOU, "root targeting is owner-only")
-		}
-		if scope.AllRoots {
-			if svcErr := s.requireCrossTreeAllowed(ctx, initiatingOUID); svcErr != nil {
-				return nil, svcErr
-			}
-			id, svcErr := s.newTargetID(ctx)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			return []Target{{ID: id, Scope: targetScopeAllRoots}}, nil
-		}
-		out := make([]Target, 0, len(scope.RootOUIDs))
-		for _, ouID := range utils.UniqueStrings(scope.RootOUIDs) {
-			if svcErr := s.validateRootTarget(ctx, ouID, initiatingOUID); svcErr != nil {
-				return nil, svcErr
-			}
-			id, svcErr := s.newTargetID(ctx)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			out = append(out, Target{ID: id, Scope: targetScopeRoot, OUID: ouID})
-		}
-		return out, nil
-
-	case children:
-		if scope.AllChildren {
-			id, svcErr := s.newTargetID(ctx)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			return []Target{{ID: id, Scope: targetScopeAllChildren, OUID: initiatingOUID}}, nil
-		}
-		out := make([]Target, 0, len(scope.ChildOUIDs))
-		// Naming one organization unit twice is rejected rather than deduplicated, because the two
-		// entries carry their own overlay rules and there is no basis for picking a winner. Two
-		// entries differing only in allChildren also satisfy the target uniqueness constraint, so
-		// the database would accept both rows while per-target rules attached to one of them alone.
-		seen := make(map[string]struct{}, len(scope.ChildOUIDs))
-		for _, entry := range scope.ChildOUIDs {
-			if entry.OUID == "" {
-				return nil, &ErrorInvalidRequestFormat
-			}
-			if _, repeated := seen[entry.OUID]; repeated {
-				return nil, withDetail(ErrorInvalidTargetOU, entry.OUID+" is named more than once")
-			}
-			seen[entry.OUID] = struct{}{}
-			if svcErr := s.validateChildTarget(ctx, entry.OUID, initiatingOUID); svcErr != nil {
-				return nil, svcErr
-			}
-			targetScope := targetScopeOU
-			if entry.AllChildren {
-				targetScope = targetScopeOUSubtree
-			}
-			id, svcErr := s.newTargetID(ctx)
-			if svcErr != nil {
-				return nil, svcErr
-			}
-			out = append(out, Target{ID: id, Scope: targetScope, OUID: entry.OUID})
-		}
-		return out, nil
+		out = append(out, Target{
+			ID:            id,
+			Scope:         t.Scope,
+			OUID:          ouID,
+			ExcludedOUIDs: utils.UniqueStrings(t.ExcludedOUIDs),
+		})
 	}
-	return nil, &ErrorInvalidRequestFormat
+
+	if svcErr := requireDisjointTargets(out); svcErr != nil {
+		return nil, svcErr
+	}
+	return out, nil
+}
+
+// requireDisjointTargets refuses a policy whose targets reach the same organization unit twice.
+//
+// Only three pairings can overlap at all. Every selective target names a direct child of the
+// initiator or a tree root, so two of them are disjoint unless they name the same unit, which is
+// refused earlier as a repeat.
+func requireDisjointTargets(targets []Target) *tidcommon.ServiceError {
+	for i, broad := range targets {
+		for j, narrow := range targets {
+			if i == j || !swallows(broad.Scope, narrow.Scope) {
+				continue
+			}
+			// The unit the narrower target anchors on, which is what the broader one has to carve
+			// out. An exclusion takes the subtree with it, so carving out the anchor is enough.
+			// A target reaching a whole family anchors on nothing and cannot be made room for.
+			anchor := narrow.OUID
+			if anchor == "" {
+				return withDetail(ErrorOverlappingTargets,
+					string(broad.Scope)+" already reaches everything "+string(narrow.Scope)+" names")
+			}
+			if !slices.Contains(broad.ExcludedOUIDs, anchor) {
+				// The unit is named, because a policy may hold several targets of the narrower
+				// scope and the caller has to know which one to carve out.
+				return withDetail(ErrorOverlappingTargets,
+					anchor+" is already reached by "+string(broad.Scope))
+			}
+		}
+	}
+	return nil
+}
+
+// swallows reports whether a target of the broader scope reaches everything one of the narrower
+// scope does, before exclusions are taken into account.
+func swallows(broad, narrow TargetScope) bool {
+	switch broad {
+	case ScopeAllOUs:
+		return narrow != ScopeAllOUs
+	case ScopeAllRoots:
+		return narrow == ScopeRoot
+	case ScopeAllChildren:
+		return narrow == ScopeChild || narrow == ScopeChildSubtree
+	}
+	return false
 }
 
 // validateChildTarget enforces the one-hop rule: a policy may only name organization units directly
@@ -657,9 +767,21 @@ func (s *sharingService) requireCrossTreeAllowed(
 		return svcErr
 	}
 	if len(ancestors) > 0 {
-		return &ErrorCrossTreeShareRestricted
+		return withDetail(ErrorCrossTreeShareRestricted, initiatingOUID+
+			" is not a root organization unit, and sharing outside its own tree is not enabled")
 	}
 	return nil
+}
+
+// targetTakesNoOU reports a target naming an organization unit its scope already decides: every
+// unit, every root, or the initiator's own subtree.
+func targetTakesNoOU(scope TargetScope) *tidcommon.ServiceError {
+	return withDetail(ErrorInvalidRequestFormat, fmt.Sprintf("scope %s takes no ouId", scope))
+}
+
+// targetNeedsOU reports a target leaving out the organization unit its scope anchors on.
+func targetNeedsOU(scope TargetScope) *tidcommon.ServiceError {
+	return withDetail(ErrorInvalidRequestFormat, fmt.Sprintf("scope %s needs an ouId", scope))
 }
 
 // treeRootOf returns the root of the tree an organization unit belongs to, which is the unit itself
@@ -675,14 +797,6 @@ func (s *sharingService) treeRootOf(ctx context.Context, ouID string) (string, *
 	return ancestors[len(ancestors)-1], nil
 }
 
-// collectExclusions merges the two exclusion lists; which one a caller used depends on the mode,
-// and they carve out the same thing.
-func (s *sharingService) collectExclusions(scope TargetOUScope) []string {
-	out := append([]string{}, scope.ExcludedOUIDs...)
-	out = append(out, scope.ExcludedRootOUIDs...)
-	return utils.UniqueStrings(out)
-}
-
 // materializeRules folds every requested rule against what the initiating organization unit itself
 // holds, and stores the result. Resolving at write means a read is one lookup rather than a walk.
 func (s *sharingService) materializeRules(
@@ -694,25 +808,13 @@ func (s *sharingService) materializeRules(
 		return nil, svcErr
 	}
 
-	out := make([]StoredRule, 0, len(req.OverlayRules))
-	for fieldKey, requested := range req.OverlayRules {
-		stored, svcErr := s.narrowOne(ctx, rt, resourceID, fieldKey, "", initiatingOUID, initiatorRules, requested)
-		if svcErr != nil {
-			return nil, svcErr
-		}
-		out = append(out, stored)
-	}
-
-	// A per-target rule overrides the policy-level one for that target alone, and is bounded by
-	// the same ceiling rather than by the policy-level rule it replaces.
-	byOU := make(map[string]string, len(targets))
-	for _, t := range targets {
-		byOU[t.OUID] = t.ID
-	}
-	for _, entry := range req.TargetOUScope.ChildOUIDs {
-		for fieldKey, requested := range entry.OverlayRules {
+	// buildTargets preserved the request's order, so the two lists line up entry for entry and the
+	// rules can be attached to the row that was built from the entry carrying them.
+	out := make([]StoredRule, 0, len(targets))
+	for i, t := range targets {
+		for fieldKey, requested := range req.Targets[i].OverlayRules {
 			stored, svcErr := s.narrowOne(
-				ctx, rt, resourceID, fieldKey, byOU[entry.OUID], initiatingOUID, initiatorRules, requested)
+				ctx, rt, resourceID, fieldKey, t.ID, initiatingOUID, initiatorRules, requested)
 			if svcErr != nil {
 				return nil, svcErr
 			}
@@ -951,7 +1053,7 @@ func (s *sharingService) UpdatePolicy(
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		// Read before the write, for the same reason the delete path does: cleanup needs to know
 		// which organization units the reshares beneath this policy had reached.
-		before, err := s.store.ListPoliciesForResource(txCtx, current.ResourceType, current.ResourceID)
+		before, err := s.store.ListAllPoliciesForResource(txCtx, current.ResourceType, current.ResourceID)
 		if err != nil {
 			return err
 		}
@@ -1000,14 +1102,6 @@ func canonicalParentID(covering []Coverage) string {
 
 // blanketRulesNarrowOnly reports whether an edit keeps every restriction a blanket policy's rules
 // currently carry.
-//
-// A blanket policy already reaches everything in its family, so there is nothing to expand toward
-// and the only edit open to it is a narrowing one. The policy engine holds its targets to that; its
-// rules are held to it here, because the engine's policy carries no rules to compare.
-//
-// Dropping a rule counts as widening rather than as leaving the field alone. A field no policy
-// names falls back to the resource type's declared default, which is the value the rule was put
-// there to override, so omitting it hands back whatever the default allows.
 func (s *sharingService) blanketRulesNarrowOnly(
 	ctx context.Context, current, proposed Policy,
 ) *tidcommon.ServiceError {
@@ -1015,21 +1109,38 @@ func (s *sharingService) blanketRulesNarrowOnly(
 		return nil
 	}
 
-	// ruleKey identifies one stored rule: a field, optionally scoped to a single target. Declared
-	// here because pairing the two is only ever needed to match the edit's rules against the
-	// stored ones, which is what this function does.
+	// ruleKey identifies one stored rule: a field and the target carrying it. The target is keyed
+	// by what it selects rather than by its row id, because an edit mints fresh target rows and
+	// the ids would never line up across the two policies.
 	type ruleKey struct {
 		fieldKey string
-		targetID string
+		scope    TargetScope
+		ouID     string
+	}
+	keyOf := func(p Policy, r StoredRule) (ruleKey, bool) {
+		for _, t := range p.Targets {
+			if t.ID == r.TargetID {
+				return ruleKey{r.FieldKey, t.Scope, t.OUID}, familyOf(t.Scope) == familyBlanket
+			}
+		}
+		return ruleKey{fieldKey: r.FieldKey}, false
 	}
 
 	next := make(map[ruleKey]OverlayRule, len(proposed.Rules))
 	for _, r := range proposed.Rules {
-		next[ruleKey{r.FieldKey, r.TargetID}] = r.Resolved
+		k, _ := keyOf(proposed, r)
+		next[k] = r.Resolved
 	}
 
 	for _, stored := range current.Rules {
-		proposedRule, kept := next[ruleKey{stored.FieldKey, stored.TargetID}]
+		// A policy may hold a selective target beside a blanket one. Only the blanket target has
+		// nothing to expand toward; the named one is bounded by the one-hop rule wherever it
+		// appears, so its terms stay editable in both directions.
+		k, blanket := keyOf(current, stored)
+		if !blanket {
+			continue
+		}
+		proposedRule, kept := next[k]
 		if !kept {
 			return withDetail(ErrorBlanketNarrowOnly, stored.FieldKey)
 		}
@@ -1057,7 +1168,7 @@ func (s *sharingService) blanketRulesNarrowOnly(
 // parent to walk from. The order is shallowest initiator first, since a covering policy's initiator
 // always sits above the unit it covers, so each ceiling is rebuilt before the rules clamped to it.
 func (s *sharingService) rematerializeDependents(ctx context.Context, edited Policy) error {
-	policies, err := s.store.ListPoliciesForResource(ctx, edited.ResourceType, edited.ResourceID)
+	policies, err := s.store.ListAllPoliciesForResource(ctx, edited.ResourceType, edited.ResourceID)
 	if err != nil {
 		return err
 	}
@@ -1159,7 +1270,7 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 		// Listed before the delete, not after. PARENT_POLICY_ID cascades, so the reshares beneath
 		// this policy are gone by the time it returns, and cleanup would never learn which
 		// organization units they had reached. Those units are exactly the ones losing the resource.
-		before, err := s.store.ListPoliciesForResource(txCtx, policy.ResourceType, policy.ResourceID)
+		before, err := s.store.ListAllPoliciesForResource(txCtx, policy.ResourceType, policy.ResourceID)
 		if err != nil {
 			return err
 		}
@@ -1326,7 +1437,7 @@ func (s *sharingService) ousReachedBy(ctx context.Context, p Policy) ([]string, 
 
 	for _, t := range p.Targets {
 		switch t.Scope {
-		case targetScopeAllOUs, targetScopeAllRoots:
+		case ScopeAllOUs, ScopeAllRoots:
 			// Losing a root cuts off everything below it, so the whole deployment is in scope.
 			if s.ouEnumerator == nil {
 				continue
@@ -1336,17 +1447,17 @@ func (s *sharingService) ousReachedBy(ctx context.Context, p Policy) ([]string, 
 				return nil, fmt.Errorf("failed to enumerate organization units: %s", svcErr.Code)
 			}
 			out = append(out, all...)
-		case targetScopeAllChildren:
+		case ScopeAllChildren:
 			// The anchor is the initiator, which keeps its own visibility; only what lies beneath
 			// it was reached by this policy.
 			if err := appendSubtree(t.OUID, false); err != nil {
 				return nil, err
 			}
-		case targetScopeOUSubtree, targetScopeRoot:
+		case ScopeChildSubtree, ScopeRoot:
 			if err := appendSubtree(t.OUID, true); err != nil {
 				return nil, err
 			}
-		case targetScopeOU:
+		case ScopeChild:
 			out = append(out, t.OUID)
 		}
 	}
@@ -1372,12 +1483,62 @@ func (s *sharingService) GetPolicy(ctx context.Context, policyID string) (Policy
 func (s *sharingService) ListPolicies(
 	ctx context.Context, rt ResourceType, resourceID string,
 ) ([]Policy, *tidcommon.ServiceError) {
-	stored, err := s.store.ListPoliciesForResource(ctx, rt, resourceID)
+	stored, err := s.store.ListAllPoliciesForResource(ctx, rt, resourceID)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list sharing policies", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	return stored, nil
+}
+
+// GetPolicyList returns one page of a resource's policies.
+//
+// This is the only read in the framework that may answer with part of a resource's policies. It is
+// safe here because a listing is shown to a person, whereas every evaluation read decides coverage
+// from the set as a whole and goes through ListPoliciesForResource instead.
+func (s *sharingService) GetPolicyList(
+	ctx context.Context, rt ResourceType, resourceID string, limit, offset int,
+) (PolicyList, *tidcommon.ServiceError) {
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return PolicyList{}, svcErr
+	}
+
+	total, err := s.store.CountPoliciesForResource(ctx, rt, resourceID)
+	if err != nil {
+		return PolicyList{}, s.listingError(ctx, err)
+	}
+	policies, err := s.store.ListPoliciesForResource(ctx, rt, resourceID, limit, offset)
+	if err != nil {
+		return PolicyList{}, s.listingError(ctx, err)
+	}
+
+	return PolicyList{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(policies),
+		Policies:     policies,
+	}, nil
+}
+
+// validatePaginationParams refuses a page the store should never be asked for.
+func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return &ErrorInvalidLimit
+	}
+	if offset < 0 {
+		return &ErrorInvalidOffset
+	}
+	return nil
+}
+
+// listingError separates the one failure a caller can act on, by listing a resource with fewer
+// policies, from the ones only an operator can.
+func (s *sharingService) listingError(ctx context.Context, err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrorResultLimitExceededInCompositeMode
+	}
+	s.logger.Error(ctx, "Failed to list sharing policies", log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // ExportPolicies returns a resource's policies in an order safe to replay sequentially: the policy
@@ -1901,23 +2062,13 @@ func contributingRules(
 	return out
 }
 
-// ruleFor returns the rule governing one field for one target, preferring a per-target override.
+// ruleFor returns the rule the covering target carries for one field. Terms travel with the
+// target, so the target that reached the organization unit is the one whose terms apply.
 func ruleFor(p Policy, targetID, fieldKey string) (OverlayRule, bool) {
-	var policyLevel *OverlayRule
-	for i := range p.Rules {
-		r := p.Rules[i]
-		if r.FieldKey != fieldKey {
-			continue
-		}
-		if r.TargetID == targetID && targetID != "" {
+	for _, r := range p.Rules {
+		if r.FieldKey == fieldKey && r.TargetID == targetID {
 			return r.Resolved, true
 		}
-		if r.TargetID == "" {
-			policyLevel = &p.Rules[i].Resolved
-		}
-	}
-	if policyLevel != nil {
-		return *policyLevel, true
 	}
 	return OverlayRule{}, false
 }

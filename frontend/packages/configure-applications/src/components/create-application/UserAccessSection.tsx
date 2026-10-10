@@ -47,15 +47,15 @@ export default function UserAccessSection({
     return null;
   }
 
-  const allNames = userTypes.map((userType) => userType.name);
-  const selectedCount = allNames.filter((name) => selectedUserTypes.includes(name)).length;
-  const allSelected = selectedCount === allNames.length;
+  const allHandles = userTypes.map((userType) => userType.handle);
+  const selectedCount = allHandles.filter((handle) => selectedUserTypes.includes(handle)).length;
+  const allSelected = selectedCount === allHandles.length;
   const noneSelected = selectedCount === 0;
   const indeterminate = !allSelected && !noneSelected;
   const useAutocomplete = userTypes.length > AUTOCOMPLETE_THRESHOLD;
 
   const handleMasterChange = (checked: boolean): void => {
-    onUserTypesChange(checked ? allNames : []);
+    onUserTypesChange(checked ? allHandles : []);
     // Unchecking "allow all" leaves no valid resting selection, so open the list immediately
     // rather than leaving the admin on an empty, still-collapsed state.
     if (!checked) {
@@ -63,8 +63,8 @@ export default function UserAccessSection({
     }
   };
 
-  const handleToggleUserType = (name: string, checked: boolean): void => {
-    onUserTypesChange(checked ? [...selectedUserTypes, name] : selectedUserTypes.filter((n) => n !== name));
+  const handleToggleUserType = (handle: string, checked: boolean): void => {
+    onUserTypesChange(checked ? [...selectedUserTypes, handle] : selectedUserTypes.filter((h) => h !== handle));
   };
 
   const title = t(
@@ -108,12 +108,12 @@ export default function UserAccessSection({
               multiple
               size="small"
               options={userTypes}
-              getOptionLabel={(option) => option.name}
-              value={userTypes.filter((userType) => selectedUserTypes.includes(userType.name))}
+              getOptionLabel={(option) => option.displayName}
+              value={userTypes.filter((userType) => selectedUserTypes.includes(userType.handle))}
               onChange={(_event, newValue: UserTypeListItem[]): void => {
-                onUserTypesChange(newValue.map((userType) => userType.name));
+                onUserTypesChange(newValue.map((userType) => userType.handle));
               }}
-              isOptionEqualToValue={(option, value) => option.name === value.name}
+              isOptionEqualToValue={(option, value) => option.handle === value.handle}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -129,12 +129,12 @@ export default function UserAccessSection({
               {userTypes.map((userType) => (
                 <Box key={userType.id} sx={{display: 'flex', alignItems: 'center', gap: 1}}>
                   <Checkbox
-                    checked={selectedUserTypes.includes(userType.name)}
-                    onChange={(_event, checked) => handleToggleUserType(userType.name, checked)}
-                    inputProps={{'aria-label': userType.name}}
+                    checked={selectedUserTypes.includes(userType.handle)}
+                    onChange={(_event, checked) => handleToggleUserType(userType.handle, checked)}
+                    inputProps={{'aria-label': userType.displayName}}
                     sx={{p: 0.5}}
                   />
-                  <Typography variant="body2">{userType.name}</Typography>
+                  <Typography variant="body2">{userType.displayName}</Typography>
                 </Box>
               ))}
             </Box>

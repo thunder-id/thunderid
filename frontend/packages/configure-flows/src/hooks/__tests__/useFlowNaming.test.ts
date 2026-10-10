@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderHook, act} from '@testing-library/react';
@@ -103,14 +103,14 @@ describe('useFlowNaming', () => {
       expect(result.current.flowHandle).toBe('multiple-spaces-here');
     });
 
-    it('should remove special characters from handle', () => {
+    it('should replace special characters in handle with hyphens', () => {
       const {result} = renderHook(() => useFlowNaming());
 
       act(() => {
         result.current.handleFlowNameChange('Flow@Name#With$Special!Characters');
       });
 
-      expect(result.current.flowHandle).toBe('flownamewithspecialcharacters');
+      expect(result.current.flowHandle).toBe('flow-name-with-special-characters');
     });
 
     it('should remove leading and trailing hyphens', () => {
@@ -265,7 +265,7 @@ describe('useFlowNaming', () => {
       );
 
       // Handle should be generated from the name
-      expect(result.current.flowHandle).toBe('complex-flow-name-with-uppercase-and-specialchars');
+      expect(result.current.flowHandle).toBe('complex-flow-name-with-uppercase-and-special-chars');
     });
 
     it('should prefer explicit handle over generated one', () => {

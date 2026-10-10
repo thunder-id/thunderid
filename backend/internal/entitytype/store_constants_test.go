@@ -39,32 +39,36 @@ func TestBuildGetEntityTypeListByOUIDsQuery(t *testing.T) {
 		{
 			name:  "Empty OUIDs",
 			ouIDs: []string{},
-			wantPG: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+			wantPG: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE 1=0 AND CATEGORY = $1 AND DEPLOYMENT_ID = $2 ORDER BY NAME LIMIT $3 OFFSET $4`,
-			wantSQLite: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+				`WHERE 1=0 AND CATEGORY = $1 AND DEPLOYMENT_ID = $2 ORDER BY DISPLAY_NAME, HANDLE LIMIT $3 OFFSET $4`,
+			wantSQLite: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE 1=0 AND CATEGORY = ? AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+				`WHERE 1=0 AND CATEGORY = ? AND DEPLOYMENT_ID = ? ORDER BY DISPLAY_NAME, HANDLE LIMIT ? OFFSET ?`,
 		},
 		{
 			name:  "Single OUID",
 			ouIDs: []string{"ou-1"},
-			wantPG: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+			wantPG: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE OU_ID IN ($1) AND CATEGORY = $2 AND DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $4 OFFSET $5`,
-			wantSQLite: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+				`WHERE OU_ID IN ($1) AND CATEGORY = $2 AND DEPLOYMENT_ID = $3 ` +
+				`ORDER BY DISPLAY_NAME, HANDLE LIMIT $4 OFFSET $5`,
+			wantSQLite: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE OU_ID IN (?) AND CATEGORY = ? AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+				`WHERE OU_ID IN (?) AND CATEGORY = ? AND DEPLOYMENT_ID = ? ` +
+				`ORDER BY DISPLAY_NAME, HANDLE LIMIT ? OFFSET ?`,
 		},
 		{
 			name:  "Multiple OUIDs",
 			ouIDs: []string{"ou-1", "ou-2", "ou-3"},
-			wantPG: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+			wantPG: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE OU_ID IN ($1, $2, $3) AND CATEGORY = $4 AND DEPLOYMENT_ID = $5 ORDER BY NAME LIMIT $6 OFFSET $7`,
-			wantSQLite: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+				`WHERE OU_ID IN ($1, $2, $3) AND CATEGORY = $4 AND DEPLOYMENT_ID = $5 ` +
+				`ORDER BY DISPLAY_NAME, HANDLE LIMIT $6 OFFSET $7`,
+			wantSQLite: `SELECT ID, CATEGORY, HANDLE, DISPLAY_NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE OU_ID IN (?, ?, ?) AND CATEGORY = ? AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+				`WHERE OU_ID IN (?, ?, ?) AND CATEGORY = ? AND DEPLOYMENT_ID = ? ` +
+				`ORDER BY DISPLAY_NAME, HANDLE LIMIT ? OFFSET ?`,
 		},
 	}
 	runBuildEntityTypeQueryTests(t, testCases, buildGetEntityTypeListByOUIDsQuery, "ASQ-ENTITY_TYPE-008")
@@ -105,7 +109,7 @@ func TestBuildGetEntityTypeCountByOUIDsQuery(t *testing.T) {
 	runBuildEntityTypeQueryTests(t, testCases, buildGetEntityTypeCountByOUIDsQuery, "ASQ-ENTITY_TYPE-009")
 }
 
-func TestBuildGetDisplayAttributesByNamesQuery(t *testing.T) {
+func TestBuildGetDisplayAttributesByHandlesQuery(t *testing.T) {
 	testCases := []struct {
 		name       string
 		ouIDs      []string
@@ -113,29 +117,29 @@ func TestBuildGetDisplayAttributesByNamesQuery(t *testing.T) {
 		wantSQLite string
 	}{
 		{
-			name:  "Empty names",
+			name:  "Empty handles",
 			ouIDs: []string{},
-			wantPG: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" WHERE 1=0 ` +
+			wantPG: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" WHERE 1=0 ` +
 				`AND CATEGORY = $1 AND DEPLOYMENT_ID = $2`,
-			wantSQLite: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" WHERE 1=0 ` +
+			wantSQLite: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" WHERE 1=0 ` +
 				`AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 		},
 		{
-			name:  "Single name",
-			ouIDs: []string{"SchemaA"},
-			wantPG: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE NAME IN ($1) AND CATEGORY = $2 AND DEPLOYMENT_ID = $3`,
-			wantSQLite: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE NAME IN (?) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
+			name:  "Single handle",
+			ouIDs: []string{"schema-a"},
+			wantPG: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+				`WHERE HANDLE IN ($1) AND CATEGORY = $2 AND DEPLOYMENT_ID = $3`,
+			wantSQLite: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+				`WHERE HANDLE IN (?) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 		},
 		{
-			name:  "Multiple names",
-			ouIDs: []string{"SchemaA", "SchemaB", "SchemaC"},
-			wantPG: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE NAME IN ($1, $2, $3) AND CATEGORY = $4 AND DEPLOYMENT_ID = $5`,
-			wantSQLite: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE NAME IN (?, ?, ?) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
+			name:  "Multiple handles",
+			ouIDs: []string{"schema-a", "schema-b", "schema-c"},
+			wantPG: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+				`WHERE HANDLE IN ($1, $2, $3) AND CATEGORY = $4 AND DEPLOYMENT_ID = $5`,
+			wantSQLite: `SELECT HANDLE, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+				`WHERE HANDLE IN (?, ?, ?) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 		},
 	}
-	runBuildEntityTypeQueryTests(t, testCases, buildGetDisplayAttributesByNamesQuery, "ASQ-ENTITY_TYPE-010")
+	runBuildEntityTypeQueryTests(t, testCases, buildGetDisplayAttributesByHandlesQuery, "ASQ-ENTITY_TYPE-010")
 }

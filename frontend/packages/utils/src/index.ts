@@ -5,6 +5,8 @@
 export {default as cn, setCnPrefix, getCnPrefix} from './classnames/cn';
 
 // String Operations
+export {default as generateHandle} from './string/generateHandle';
+export {default as getUserTypeLabel} from './string/getUserTypeLabel';
 export {default as generateRandomHumanReadableIdentifiers} from './string/generateRandomHumanReadableIdentifiers';
 export {default as kebabCase} from './string/kebabCase';
 

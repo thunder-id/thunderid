@@ -250,6 +250,10 @@ const (
 	ClaimExp      string = "exp"
 	ClaimIat      string = "iat"
 	ClaimJTI      string = "jti"
+	ClaimNbf      string = "nbf"
+	ClaimNonce    string = "nonce"
+	ClaimAtHash   string = "at_hash"
+	ClaimCHash    string = "c_hash"
 	ClaimAuthTime string = "auth_time"
 	ClaimACR      string = "acr"
 )
@@ -382,3 +386,12 @@ func GetStandardClaims() []string {
 		ClaimAuthTime,
 	}
 }
+
+// Refusals an organization-unit-scoped token request can receive. OUAccessRefusal is deliberately
+// the same answer whether the unit does not exist or the client has no standing in it.
+const (
+	OUAccessRefusal = "Client is not authorized for the requested organization unit"
+
+	OUScopedGrantRefusal = "The grant type is not supported on the organization unit scoped " +
+		"token endpoint"
+)

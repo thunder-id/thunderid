@@ -42,24 +42,23 @@ preserved after it is made, or a mix of these.
 Account linking stops different authenticators creating different identities for one person. So a user who logs in with
 email password, Google and GitHub is treated as one person rather than having three different user accounts.
 
-Most apps use different methods to link accounts:
+There are two ways to handle a sign-in that matches an existing account:
 
-- **Automatic linking on a trusted signal:** the provider returns an identifier that already matches a record, almost
-  always a verified email address, and the two join silently. The lowest user-friction of the four, and safe only if the
-  provider verifies that signal itself. The downside is an unverified email from a provider that lets anyone claim any
-  address is an account takeover waiting to happen.
-- **User-confirmed linking:** federation spots the match, then asks the person to confirm the link with the matched
-  account through a prompt. They confirm the link, and the link is made. Safer than automatic linking, but still a risk
-  if the provider doesn't verify the signal.
-- **User-verified linking:** federation spots the match, then defers the link until user verification is complete. The
-  person signs in with the original credential or confirms a code sent to the address on file, proving that they are the
-  owner of that account. Slower, and the right default for accounts holding payment details or other sensitive
-  information.
+- **Verified linking:** the provider returns a detail that matches an existing account, usually an email address, and
+  the person is asked whether to link the two. If they agree, they prove they own the existing account by signing in to
+  it with any method it already supports, such as a password, a one-time code, or another connected provider. Only then
+  is the link made. A match alone never links accounts, so a provider that lets anyone claim any email address can't
+  hand over someone else's account.
 - **No linking:** every provider identity stays its own record. Simple, and fine when those identities really are
   separate people. Might result in user confusion.
 
+A person who declines to link continues with a separate account. That account can't reuse a detail that must be unique,
+so when email addresses are unique, a separate account with the same email address can't be created.
+
 Unlinking deserves the same attention. Decide whether a person can detach a provider themselves, and what happens if
 they detach the last sign-in method they have.
+
+Federation can also drive authorization, not just sign-in. An administrator can map attribute values a provider asserts, such as group membership, to local roles, groups, or permissions, so a user's access follows their standing at the provider without being administered a second time inside <ProductName />. This also covers users with no local record at all, seeding a new hire's starting access at account creation, and delegating the decision to an external policy engine when your organization already has one. See [Federated Attribute Mapping](../../../key-concepts/authorization#federated-attribute-mapping) for the full pattern.
 
 ## User Stores
 

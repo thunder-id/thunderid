@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package entitytype
@@ -97,7 +97,8 @@ func (h *entityTypeHandler) HandleEntityTypePostRequest(w http.ResponseWriter, r
 
 	createdEntityType, svcErr := h.entityTypeService.CreateEntityType(ctx, h.category,
 		CreateEntityTypeRequestWithID{
-			Name:                  sanitizedRequest.Name,
+			Handle:                sanitizedRequest.Handle,
+			DisplayName:           sanitizedRequest.DisplayName,
 			OUID:                  sanitizedRequest.OUID,
 			AllowSelfRegistration: sanitizedRequest.AllowSelfRegistration,
 			SystemAttributes:      sanitizedRequest.SystemAttributes,
@@ -112,7 +113,7 @@ func (h *entityTypeHandler) HandleEntityTypePostRequest(w http.ResponseWriter, r
 
 	logger.Debug(ctx, "Successfully created entity type",
 		log.String("category", string(h.category)),
-		log.String("entityTypeID", createdEntityType.ID), log.String("name", createdEntityType.Name))
+		log.String("entityTypeID", createdEntityType.ID), log.String("handle", createdEntityType.Handle))
 }
 
 // HandleEntityTypeGetRequest handles the entity type get request.
@@ -165,7 +166,7 @@ func (h *entityTypeHandler) HandleEntityTypePutRequest(w http.ResponseWriter, r 
 
 	logger.Debug(ctx, "Successfully updated entity type",
 		log.String("category", string(h.category)),
-		log.String("entityTypeID", schemaID), log.String("name", updatedEntityType.Name))
+		log.String("entityTypeID", schemaID), log.String("handle", updatedEntityType.Handle))
 }
 
 // HandleEntityTypeDeleteRequest handles the entity type delete request.
@@ -220,7 +221,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		statusCode = http.StatusBadRequest
 		if svcErr.Code == ErrorEntityTypeNotFound.Code {
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorEntityTypeNameConflict.Code {
+		} else if svcErr.Code == ErrorEntityTypeHandleConflict.Code {
 			statusCode = http.StatusConflict
 		} else if svcErr.Code == ErrorCannotModifyDeclarativeResource.Code {
 			statusCode = http.StatusForbidden
@@ -285,11 +286,11 @@ func validateUpdateEntityTypeRequest(
 func (h *entityTypeHandler) sanitizeCreateEntityTypeRequest(
 	request CreateEntityTypeRequest,
 ) CreateEntityTypeRequest {
-	sanitizedName := sysutils.SanitizeString(request.Name)
 	sanitizedOUID := sysutils.SanitizeString(request.OUID)
 
 	return CreateEntityTypeRequest{
-		Name:                  sanitizedName,
+		Handle:                sysutils.SanitizeString(request.Handle),
+		DisplayName:           sysutils.SanitizeString(request.DisplayName),
 		OUID:                  sanitizedOUID,
 		AllowSelfRegistration: request.AllowSelfRegistration,
 		SystemAttributes:      sanitizeSystemAttributes(request.SystemAttributes),
@@ -303,18 +304,19 @@ func (h *entityTypeHandler) sanitizeUpdateEntityTypeRequest(ctx context.Context,
 ) UpdateEntityTypeRequest {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeHandlerLoggerComponentName))
 
-	originalName := request.Name
-	sanitizedName := sysutils.SanitizeString(request.Name)
+	originalDisplayName := request.DisplayName
+	sanitizedDisplayName := sysutils.SanitizeString(request.DisplayName)
 	sanitizedOUID := sysutils.SanitizeString(request.OUID)
 
-	if originalName != sanitizedName {
-		logger.Debug(ctx, "Sanitized entity type name in update request",
-			log.MaskedString("original", originalName),
-			log.MaskedString("sanitized", sanitizedName))
+	if originalDisplayName != sanitizedDisplayName {
+		logger.Debug(ctx, "Sanitized entity type display name in update request",
+			log.MaskedString("original", originalDisplayName),
+			log.MaskedString("sanitized", sanitizedDisplayName))
 	}
 
 	return UpdateEntityTypeRequest{
-		Name:                  sanitizedName,
+		Handle:                sysutils.SanitizeString(request.Handle),
+		DisplayName:           sanitizedDisplayName,
 		OUID:                  sanitizedOUID,
 		AllowSelfRegistration: request.AllowSelfRegistration,
 		SystemAttributes:      sanitizeSystemAttributes(request.SystemAttributes),

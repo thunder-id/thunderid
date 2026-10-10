@@ -4,7 +4,7 @@
 import {CollisionPriority} from '@dnd-kit/abstract';
 import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
-import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Badge, Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
 import {
@@ -268,11 +268,12 @@ function DecoratedVisualFlow({
 
   const hasErrors = errorCount > 0;
 
-  // Fetch identity providers and SMS providers to compute executor connections
+  // Fetch identity, SMS and email providers to compute executor connections
   const {data: identityProviders} = useIdentityProviders();
   const {data: smsProviders} = useSMSProviders();
+  const {data: emailProviders} = useEmailProviders();
   const computedMetadata: MetadataInterface | undefined = useMemo(() => {
-    const executorConnections = computeExecutorConnections({identityProviders, smsProviders});
+    const executorConnections = computeExecutorConnections({emailProviders, identityProviders, smsProviders});
 
     if (executorConnections.length === 0 && !metadata) {
       return undefined;
@@ -282,7 +283,7 @@ function DecoratedVisualFlow({
       ...metadata,
       executorConnections: executorConnections.length > 0 ? executorConnections : (metadata?.executorConnections ?? []),
     } as MetadataInterface;
-  }, [identityProviders, smsProviders, metadata]);
+  }, [identityProviders, smsProviders, emailProviders, metadata]);
 
   const [isContainerDialogOpen, setIsContainerDialogOpen] = useState<boolean>(false);
   const [dropScenario, setDropScenario] = useState<

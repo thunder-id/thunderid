@@ -85,8 +85,9 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 	ts.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: ts.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},
@@ -94,8 +95,9 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create agent schema")
 
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "agent-oauth-flow-person",
-		OUID: ts.ouID,
+		Handle:      "agent-oauth-flow-person",
+		DisplayName: "Agent Oauth Flow Person",
+		OUID:        ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
@@ -582,8 +584,9 @@ func (s *CCAgentAuthzTestSuite) SetupSuite() {
 	s.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: s.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},
@@ -866,8 +869,9 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 	s.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: s.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"description": map[string]interface{}{"type": "string"},
 		},
@@ -875,8 +879,9 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "agent-te-person",
-		OUID: s.ouID,
+		Handle:      "agent-te-person",
+		DisplayName: "Agent Te Person",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},

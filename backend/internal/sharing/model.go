@@ -30,22 +30,23 @@ const (
 	stageReshare policyStage = "reshare"
 )
 
-// targetScope identifies the breadth of one target entry.
-type targetScope string
+// TargetScope identifies the breadth of one target. It is exported because a policy request names
+// it, in a resource file as much as over the API.
+type TargetScope string
 
 const (
-	// targetScopeAllOUs reaches every organization unit at every depth, current and future.
-	targetScopeAllOUs targetScope = "all_ous"
-	// targetScopeAllRoots reaches every tree's root organization unit.
-	targetScopeAllRoots targetScope = "all_roots"
-	// targetScopeRoot reaches one named root organization unit.
-	targetScopeRoot targetScope = "root"
-	// targetScopeAllChildren reaches every organization unit beneath the initiator, any depth.
-	targetScopeAllChildren targetScope = "all_children"
-	// targetScopeOU reaches one named organization unit alone.
-	targetScopeOU targetScope = "ou"
-	// targetScopeOUSubtree reaches one named organization unit and everything beneath it.
-	targetScopeOUSubtree targetScope = "ou_subtree"
+	// ScopeAllOUs reaches every organization unit at every depth, current and future.
+	ScopeAllOUs TargetScope = "allOus"
+	// ScopeAllRoots reaches every tree's root organization unit.
+	ScopeAllRoots TargetScope = "allRoots"
+	// ScopeRoot reaches one named root organization unit.
+	ScopeRoot TargetScope = "root"
+	// ScopeAllChildren reaches every organization unit beneath the initiator, any depth.
+	ScopeAllChildren TargetScope = "allChildren"
+	// ScopeChild reaches one direct child of the initiator alone.
+	ScopeChild TargetScope = "child"
+	// ScopeChildSubtree reaches one direct child and everything beneath it.
+	ScopeChildSubtree TargetScope = "childSubtree"
 )
 
 // Target is one organization unit selection within a policy.
@@ -53,10 +54,14 @@ type Target struct {
 	// ID identifies the target row, so per-target rules can point at it.
 	ID string
 	// Scope is the breadth this entry reaches.
-	Scope targetScope
-	// OUID is the named organization unit. Empty only for all_ous and all_roots: every other
-	// scope anchors on a unit, all_children included, where it holds the issuing unit itself.
+	Scope TargetScope
+	// OUID is the named organization unit. Empty only for allOus and allRoots: every other
+	// scope anchors on a unit, allChildren included, where it holds the issuing unit itself.
 	OUID string
+	// ExcludedOUIDs carves organization units, and their subtrees, out of this target alone.
+	// Another target of the same policy may still reach them, which is how one unit is given
+	// terms of its own without leaving the broad target to cover everyone else.
+	ExcludedOUIDs []string
 }
 
 // Coverage records which policy and target made one chain position visible.
@@ -114,7 +119,8 @@ type OverlayRule struct {
 type StoredRule struct {
 	// FieldKey is the field the rule governs.
 	FieldKey string
-	// TargetID scopes the rule to one target entry; empty means it applies to the whole policy.
+	// TargetID is the target entry the rule governs. Terms travel with the target that carries
+	// them, so every rule names one.
 	TargetID string
 	// Resolved is the rule after narrowing against the initiator's own effective rule.
 	Resolved OverlayRule
@@ -143,26 +149,29 @@ type Policy struct {
 	Declared bool
 	// Version backs optimistic concurrency on edit.
 	Version int
-	// Targets is the set of organization unit selections.
+	// Targets is the set of organization unit selections, each with the terms it carries.
 	Targets []Target
-	// ExcludedOUIDs carves organization units, and their subtrees, out of every target.
-	ExcludedOUIDs []string
-	// Rules holds the policy-level and per-target overlay rules.
+	// Rules holds the overlay rules, each scoped to one target.
 	Rules []StoredRule
 }
 
-// PolicyLevelRules returns the rules that apply to every target of the policy.
-func (p Policy) PolicyLevelRules() map[string]OverlayRule {
-	out := make(map[string]OverlayRule)
-	for _, r := range p.Rules {
-		if r.TargetID == "" {
-			out[r.FieldKey] = r.Resolved
-		}
-	}
-	return out
+// PolicyList is one page of a resource's policies, for a management API to serve.
+//
+// It carries no pagination links: the framework is shared by every resource type, so the path a
+// policy is listed under belongs to the type's own API rather than to the framework. The handler
+// that knows the path builds the links from these counts.
+type PolicyList struct {
+	// TotalResults is how many policies the resource has, not how many this page holds.
+	TotalResults int
+	// StartIndex is the one-based position of the first policy in this page.
+	StartIndex int
+	// Count is how many policies this page holds.
+	Count int
+	// Policies is the page itself.
+	Policies []Policy
 }
 
-// TargetRules returns the rules that override the policy-level ones for one target.
+// TargetRules returns the overlay rules one target carries.
 func (p Policy) TargetRules(targetID string) map[string]OverlayRule {
 	out := make(map[string]OverlayRule)
 	for _, r := range p.Rules {
@@ -173,55 +182,18 @@ func (p Policy) TargetRules(targetID string) map[string]OverlayRule {
 	return out
 }
 
-// TargetEntry names one organization unit to share to, and optionally overrides the policy-level
-// rules for it alone.
-type TargetEntry struct {
-	// OUID is the organization unit being shared to. It must be a direct child of the initiator.
-	OUID string `json:"ouId" yaml:"ouId"`
-	// AllChildren additionally reaches everything beneath OUID, at any depth.
-	AllChildren bool `json:"allChildren,omitempty" yaml:"allChildren,omitempty"`
-	// OverlayRules override the policy-level rules for this target, per field.
-	OverlayRules map[string]OverlayRule `json:"overlayRules,omitempty" yaml:"overlayRules,omitempty"`
-}
-
-// TargetOUScope is the request-side selector for which organization units a policy reaches.
-// Exactly one of the three modes may be populated.
-type TargetOUScope struct {
-	// AllOUs reaches every organization unit in the deployment. Owner-only, share-stage only.
-	AllOUs bool `json:"allOus,omitempty" yaml:"allOus,omitempty"`
-	// AllRoots reaches every root organization unit. Owner-only.
-	AllRoots bool `json:"allRoots,omitempty" yaml:"allRoots,omitempty"`
-	// RootOUIDs names specific root organization units. Owner-only.
-	RootOUIDs []string `json:"rootOuIds,omitempty" yaml:"rootOuIds,omitempty"`
-	// ExcludedRootOUIDs carves roots out of an AllRoots selection.
-	ExcludedRootOUIDs []string `json:"excludedRootOuIds,omitempty" yaml:"excludedRootOuIds,omitempty"`
-	// AllChildren reaches the initiator's whole subtree.
-	AllChildren bool `json:"allChildren,omitempty" yaml:"allChildren,omitempty"`
-	// ChildOUIDs names direct children of the initiator, each deciding whether its subtree comes too.
-	ChildOUIDs []TargetEntry `json:"childOuIds,omitempty" yaml:"childOuIds,omitempty"`
-	// ExcludedOUIDs carves organization units, and their subtrees, out of the selection.
+// TargetRequest is one organization unit selection in a policy request, together with the terms
+// that selection carries.
+type TargetRequest struct {
+	// Scope is the breadth this target reaches.
+	Scope TargetScope `json:"scope" yaml:"scope"`
+	// OUID names the organization unit the scope anchors on. It is required for root, child and
+	// childSubtree, and must be empty for the scopes that name no unit.
+	OUID string `json:"ouId,omitempty" yaml:"ouId,omitempty"`
+	// ExcludedOUIDs carves organization units, and their subtrees, out of this target alone.
 	ExcludedOUIDs []string `json:"excludedOuIds,omitempty" yaml:"excludedOuIds,omitempty"`
-}
-
-// Mode reports which of the three target modes the scope selects, and whether exactly one is set.
-//
-// A mode's broad flag and its explicit list are also mutually exclusive, even though both belong to
-// the same mode. The flag already reaches everything the list could name, so the list is not a
-// refinement of it: target building would drop the named entries, and the per-target overlay rules
-// riding on a dropped child would then store with no target and govern the whole subtree.
-func (s TargetOUScope) Mode() (blanket, root, children bool, valid bool) {
-	blanket = s.AllOUs
-	root = s.AllRoots || len(s.RootOUIDs) > 0
-	children = s.AllChildren || len(s.ChildOUIDs) > 0
-
-	set := 0
-	for _, m := range []bool{blanket, root, children} {
-		if m {
-			set++
-		}
-	}
-	redundant := (s.AllChildren && len(s.ChildOUIDs) > 0) || (s.AllRoots && len(s.RootOUIDs) > 0)
-	return blanket, root, children, set == 1 && !redundant
+	// OverlayRules are the terms this target holds the resource on.
+	OverlayRules map[string]OverlayRule `json:"overlayRules,omitempty" yaml:"overlayRules,omitempty"`
 }
 
 // PolicyRequest is one create or edit of a policy.
@@ -232,10 +204,8 @@ type PolicyRequest struct {
 	ID string `json:"id,omitempty" yaml:"id,omitempty"`
 	// InitiatingOUID is the organization unit making the decision; empty means the resource's owner.
 	InitiatingOUID string `json:"initiatingOuId,omitempty" yaml:"initiatingOuId,omitempty"`
-	// TargetOUScope selects which organization units the policy reaches.
-	TargetOUScope TargetOUScope `json:"targetOuScope" yaml:"targetOuScope"`
-	// OverlayRules are the policy-level terms, defaulted per target unless a target overrides them.
-	OverlayRules map[string]OverlayRule `json:"overlayRules,omitempty" yaml:"overlayRules,omitempty"`
+	// Targets are the organization unit selections the policy makes, each with its own terms.
+	Targets []TargetRequest `json:"targets" yaml:"targets"`
 	// Version is the policy version the caller believes it is editing. Ignored on create.
 	Version int `json:"version,omitempty" yaml:"version,omitempty"`
 }
@@ -246,6 +216,34 @@ type ReplayablePolicy struct {
 	InitiatingOUID string `json:"initiatingOuId" yaml:"initiatingOuId"`
 	// Request recreates the policy when replayed through the create path.
 	Request PolicyRequest `json:"request" yaml:"request"`
+}
+
+// DeclaredResourcePolicies is the sharing half of one resource's declarative document: the resource
+// the policies belong to, and the policies themselves.
+//
+// It is a bundle rather than a single policy because a document declares a list, and the loader
+// stores one object per document.
+type DeclaredResourcePolicies struct {
+	// ResourceID identifies the resource the policies are declared on.
+	ResourceID string
+	// ResourceName is carried so a startup failure can name the offending document.
+	ResourceName string
+	// OwningOUID is the organization unit that owns the resource.
+	OwningOUID string
+	// Policies are the decisions the document declares, in the order it declares them.
+	Policies []PolicyRequest
+}
+
+// DeclarativeLoaderConfig tells the framework where a resource type's documents live and how to
+// read the sharing half out of them. The directory is the resource type's own: a policy has no
+// document of its own, it is carried inside the resource it shares.
+type DeclarativeLoaderConfig struct {
+	// ResourceType is the sharing resource type the policies are declared for.
+	ResourceType ResourceType
+	// DirectoryName is the declarative resources subdirectory the documents live in.
+	DirectoryName string
+	// Parser reads one document and returns its sharing half, or nil when it declares none.
+	Parser func(data []byte) (*DeclaredResourcePolicies, error)
 }
 
 // FieldDeclaration describes one field a resource type exposes to sharing policies.

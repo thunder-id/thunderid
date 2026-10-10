@@ -102,13 +102,18 @@ func extensionStringValue(resp map[string]interface{}, extensionURN, attr string
 	return v, ok
 }
 
+// schemaURNMatchesHandle reports whether a ThunderID extension URN was built from the given user type
+// handle. The schema name is the display name, which is not unique, so the URN is what identifies the type.
+func schemaURNMatchesHandle(schemaURN, handle string) bool {
+	return strings.HasSuffix(strings.ToLower(schemaURN), ":"+strings.ToLower(handle)+":2.0:user")
+}
+
 // discoverExtensionSchema finds the ThunderID SCIM extension schema for the
-// given entity type name via GET /Schemas — the same discovery step a real
+// given entity type handle via GET /Schemas, the same discovery step a real
 // SCIM client performs before provisioning into a given user type. Returns
 // the schema's URN (the "schemas" array entry / extension object key) and the
 // names of its required attributes.
-// discoverExtensionSchema handles discover extension schema.
-func discoverExtensionSchema(entityTypeName string) (urn string, required []string, err error) {
+func discoverExtensionSchema(entityTypeHandle string) (urn string, required []string, err error) {
 	status, body, err := scimRequest(http.MethodGet, "/Schemas", nil, nil)
 	if err != nil {
 		return "", nil, err
@@ -123,7 +128,7 @@ func discoverExtensionSchema(entityTypeName string) (urn string, required []stri
 	}
 
 	for _, s := range list.Resources {
-		if !strings.EqualFold(s.Name, entityTypeName) {
+		if !schemaURNMatchesHandle(s.ID, entityTypeHandle) {
 			continue
 		}
 		for _, attr := range s.Attributes {
@@ -133,5 +138,5 @@ func discoverExtensionSchema(entityTypeName string) (urn string, required []stri
 		}
 		return s.ID, required, nil
 	}
-	return "", nil, fmt.Errorf("no SCIM extension schema found for entity type %q", entityTypeName)
+	return "", nil, fmt.Errorf("no SCIM extension schema found for entity type %q", entityTypeHandle)
 }

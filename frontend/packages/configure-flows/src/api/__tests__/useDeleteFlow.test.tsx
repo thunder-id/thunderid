@@ -67,9 +67,10 @@ describe('useDeleteFlow', () => {
   });
 
   it('should set pending state during deletion', async () => {
+    let resolveRequest: () => void;
     mockHttpRequest.mockReturnValue(
       new Promise((resolve) => {
-        setTimeout(() => resolve({}), 100);
+        resolveRequest = () => resolve({});
       }),
     );
 
@@ -80,6 +81,8 @@ describe('useDeleteFlow', () => {
     await waitFor(() => {
       expect(result.current.isPending).toBe(true);
     });
+
+    resolveRequest!();
 
     await waitFor(() => {
       expect(result.current.isPending).toBe(false);

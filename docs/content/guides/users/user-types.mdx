@@ -8,7 +8,7 @@ description: Define user type schemas to control the attributes, validation rule
 
 # User Types
 
-Every user in <ProductName /> has a user type that represents a category of users in your organization. The user type determines:
+Every user in <ProductName /> has a user type that represents a category of users in your organization. A user type has a **handle** and a **display name**. The handle is the unique, permanent identifier that others use to refer to the type. The display name is the human-readable label. The user type determines:
 
 - Which attributes the user has in their profile and the data types of those attributes.
 - Which attributes must be unique across all users of that type.
@@ -26,15 +26,21 @@ Each user type belongs to a single OU. Users of that type can only exist under t
 
 <ProductName /> ships with one default user type. Learn more about its schema in [User Type Reference](../user-type-reference).
 
-| User Type | Description | Organization Unit | Self-Registration |
-|-----------|-------------|-------------------|-------------------|
-| **Person** | The general-purpose user type used by the default sign-in and registration flows. | Default | Allowed |
+| Display Name | Handle | Description | Organization Unit | Self-Registration |
+|--------------|--------|-------------|-------------------|-------------------|
+| **Person** | `person` | The general-purpose user type used by the default sign-in and registration flows. | Default | Allowed |
 
+## User Type Handle and Display Name
+
+| Field | Rules |
+|-------|-------|
+| **Handle** | Required. 1 to 100 characters of lowercase letters, numbers, hyphens (`-`), and underscores (`_`). Must start and end with a letter or a number. Unique among the user types in the deployment. Cannot be changed after the user type is created. |
+| **Display name** | Required. Does not need to be unique. Can be changed at any time. |
 
 ## Create a User Type
 
 1. Navigate to **User Types** in the <ProductName /> Console and click **Create User Type**.
-2. Enter a **Name** for the user type. The name is used as the type identifier and must be unique.
+2. Enter a **User Type Name**. This is the display name. The Console suggests a **Handle** from the name, and you can edit it. The handle must be unique and cannot be changed after you create the user type.
 3. Select the **Organization Unit** this user type should belong to. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/) for more information.
 4. Configure **Allow Self Registration**. When enabled, users of this type can sign up through the registration flow assigned to your application.
 5. Set the attributes that the user type should have, including data types and constraint modifiers. See [User Type Reference](../user-type-reference) for details on available settings and attribute options.
@@ -49,6 +55,10 @@ Each user type belongs to a single OU. Users of that type can only exist under t
 1. Navigate to **User Types** and open the user type you want to edit.
 2. Add, remove, or update attribute definitions.
 3. Click **Save**.
+
+:::note
+You can change the display name of a user type at any time. The handle is immutable. An update request that sends a different handle fails with an error.
+:::
 
 :::warning
 Updating a user type schema replaces the entire attribute definition and does not retroactively validate existing users. New users created after the change must conform to the updated schema. Existing users keep their stored values until each user is next saved. See [Manage Users](../manage-users#update-a-user) for what happens to values that no longer fit the schema on the next save.

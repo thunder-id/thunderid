@@ -69,7 +69,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -87,7 +87,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -106,7 +106,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], unique: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -129,7 +129,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -150,7 +150,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -171,7 +171,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -196,7 +196,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], credential: true}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -222,7 +222,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -244,7 +244,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -265,7 +265,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE', 'INACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -281,7 +281,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -303,7 +303,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -324,7 +324,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], type: 'enum' as const, enum: ['ACTIVE', 'INACTIVE']}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -345,7 +345,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -369,7 +369,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -392,7 +392,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -406,7 +406,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [{...baseProperties[0], name: 'phone'}],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -420,7 +420,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: [baseProperties[0]],
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);
@@ -440,7 +440,7 @@ describe('EditSchemaSettings', () => {
     const props = {
       properties: baseProperties,
       onPropertiesChange: mockOnPropertiesChange,
-      userTypeName: 'Test',
+      userTypeHandle: 'test',
     };
 
     render(<EditSchemaSettings {...props} />);

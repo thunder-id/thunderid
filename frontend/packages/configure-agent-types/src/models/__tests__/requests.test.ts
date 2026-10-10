@@ -7,16 +7,16 @@ import type {AgentTypeListParams, UpdateAgentTypeRequest} from '../requests';
 describe('agent-types request types', () => {
   it('accepts UpdateAgentTypeRequest shape', () => {
     const req: UpdateAgentTypeRequest = {
-      name: 'default',
+      displayName: 'Default',
       ouId: 'ou1',
       schema: {foo: {type: 'string'}},
     };
-    expect(req.name).toBe('default');
+    expect(req.displayName).toBe('Default');
   });
 
   it('accepts UpdateAgentTypeRequest with optional systemAttributes', () => {
     const req: UpdateAgentTypeRequest = {
-      name: 'default',
+      displayName: 'Default',
       ouId: 'ou1',
       systemAttributes: {display: 'name'},
       schema: {},

@@ -14,7 +14,7 @@ import (
 // organization unit, because a validation error saying only "invalid policy" costs an afternoon.
 var (
 	// ErrorInvalidRequestFormat is returned when a policy request is malformed, including when it
-	// selects none or more than one target mode.
+	// names no target at all or a target whose scope and organization unit disagree.
 	ErrorInvalidRequestFormat = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SHR-1001",
@@ -24,8 +24,8 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.sharingservice.invalid_request_format_description",
-			DefaultValue: "The request body is malformed, selects more than one target mode, or " +
-				"combines a mode's broad flag with the individual organization units it already reaches",
+			DefaultValue: "The request body is malformed, names no target, or names a target " +
+				"whose scope and organization unit do not go together",
 		},
 	}
 	// ErrorResourceTypeNotRegistered is returned when a resource type has no declaration.
@@ -256,7 +256,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.sharingservice.exclusion_out_of_reach_description",
-			DefaultValue: "The excluded organization unit is not reached by any target of this policy",
+			DefaultValue: "The excluded organization unit is not reached by the target that carves it out",
 		},
 	}
 	// ErrorDeclaredPolicyIDRequired is returned when a resource file declares a policy without an id.
@@ -344,6 +344,94 @@ var (
 				"a whole family, or the reverse; delete it and issue the policy you want instead",
 		},
 	}
+	// ErrorInvalidLimit is returned when a listing asks for a page size outside what is allowed.
+	ErrorInvalidLimit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_limit_parameter",
+			DefaultValue: "Invalid limit parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_limit_parameter_description",
+			DefaultValue: "The limit parameter must be a positive integer within the maximum page size",
+		},
+	}
+	// ErrorInvalidOffset is returned when a listing starts before the first result.
+	ErrorInvalidOffset = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_offset_parameter",
+			DefaultValue: "Invalid offset parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.invalid_offset_parameter_description",
+			DefaultValue: "The offset parameter must be a non-negative integer",
+		},
+	}
+	// ErrorResultLimitExceededInCompositeMode is returned when a resource has more policies across
+	// the two stores than can be merged to page them. Paging is decided after the merge, so the
+	// merge cannot itself be paged, and answering with a truncated page would silently hide
+	// policies that do apply.
+	ErrorResultLimitExceededInCompositeMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.result_limit_exceeded_in_composite_mode",
+			DefaultValue: "Result limit exceeded in composite mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.sharingservice.result_limit_exceeded_in_composite_mode_description",
+			DefaultValue: "The resource has more sharing policies than can be listed while " +
+				"declarative resources are loaded",
+		},
+	}
+	// ErrorOverlappingTargets is returned when two targets of one policy reach the same
+	// organization unit, which leaves no basis for deciding whose terms it holds the resource on.
+	ErrorOverlappingTargets = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.overlapping_targets",
+			DefaultValue: "Overlapping targets",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.sharingservice.overlapping_targets_description",
+			DefaultValue: "Two targets of this policy reach the same organization unit; " +
+				"exclude it from the broader target to give it terms of its own",
+		},
+	}
+	// ErrorExclusionEmptiesTarget is returned when an exclusion names the organization unit its
+	// own target anchors on, which leaves that target reaching nothing at all.
+	ErrorExclusionEmptiesTarget = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.exclusion_empties_target",
+			DefaultValue: "Exclusion empties its target",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.sharingservice.exclusion_empties_target_description",
+			DefaultValue: "The excluded organization unit is the one its target names, so the " +
+				"target would reach nothing; drop the target instead",
+		},
+	}
+	// ErrorExclusionNotADirectChild is returned when a target reaching into the initiating
+	// organization unit's own tree carves out something deeper than one of its direct children.
+	ErrorExclusionNotADirectChild = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.exclusion_not_a_direct_child",
+			DefaultValue: "Exclusion does not name a direct child",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.sharingservice.exclusion_not_a_direct_child_description",
+			DefaultValue: "A target reaching into the initiating organization unit's own tree may " +
+				"only carve out one of that unit's direct children",
+		},
+	}
 )
 
 // errPolicyNotFound is the store's own signal that no row carries an id, kept unexported because
@@ -352,6 +440,11 @@ var (
 // store has also been consulted. The two are separate because absence means different things to
 // different callers, from "the id is free to use" to "another writer moved the row".
 var errPolicyNotFound = errors.New("sharing policy not found")
+
+// errResultLimitExceededInCompositeMode is the composite store's own signal that the two halves
+// together hold more policies than it can merge. The service turns it into
+// ErrorResultLimitExceededInCompositeMode; nothing outside this package sees it.
+var errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 
 // withDetail returns a copy of err whose description names the offending value.
 func withDetail(err tidcommon.ServiceError, detail string) *tidcommon.ServiceError {

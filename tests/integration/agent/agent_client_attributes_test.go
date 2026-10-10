@@ -62,8 +62,9 @@ func (s *AgentClientAttributesTestSuite) SetupSuite() {
 	s.agentTypeSnapshot = snapshot
 
 	_, err = testutils.CreateAgentType(testutils.UserType{
-		Name: "default",
-		OUID: s.ouID,
+		Handle:      "default",
+		DisplayName: "Default",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"modelProvider": map[string]interface{}{"type": "string"},
 			"description":   map[string]interface{}{"type": "string"},
@@ -74,8 +75,9 @@ func (s *AgentClientAttributesTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	entityTypeID, err := testutils.CreateUserType(testutils.UserType{
-		Name: "agent-client-attrs-owner",
-		OUID: s.ouID,
+		Handle:      "agent-client-attrs-owner",
+		DisplayName: "Agent Client Attrs Owner",
+		OUID:        s.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},

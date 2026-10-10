@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
 
 type UtilsTestSuite struct {
@@ -262,6 +263,29 @@ func (suite *UtilsTestSuite) TestValidateCustomProperties() {
 	suite.Nil(err)
 }
 
+// Plaintext stays allowed: the gateway carries any credential in its own headers.
+func (suite *UtilsTestSuite) TestValidateCustomProperties_PlaintextAllowed() {
+	properties := []cmodels.Property{
+		createTestProperty("url", "http://api.example.com/sms", false),
+		createTestProperty("http_method", "POST", false),
+		createTestProperty("content_type", "JSON", false),
+	}
+
+	suite.Nil(validateCustomProperties(properties))
+}
+
+// An Authorization header is how a gateway carries a credential today.
+func (suite *UtilsTestSuite) TestValidateCustomProperties_AuthorizationHeaderAllowed() {
+	properties := []cmodels.Property{
+		createTestProperty("url", "https://api.example.com/sms", false),
+		createTestProperty("http_method", "POST", false),
+		createTestProperty("content_type", "JSON", false),
+		createTestProperty("http_headers", "Authorization:Bearer token", false),
+	}
+
+	suite.Nil(validateCustomProperties(properties))
+}
+
 func (suite *UtilsTestSuite) TestValidateCustomProperties_MissingURL() {
 	properties := []cmodels.Property{
 		createTestProperty("http_method", "POST", false),
@@ -455,4 +479,215 @@ func (suite *UtilsTestSuite) TestValidateMessageNotificationSender_SupportedChan
 	suite.NotNil(errSvc)
 	suite.Equal(ErrorInvalidRequestFormat.Code, errSvc.Code)
 	suite.Contains(errSvc.ErrorDescription.DefaultValue, "failed to read supported channels property")
+}
+
+// smtpProperties builds a valid SMTP property set, applying the given overrides. A nil value
+// removes the property.
+func (suite *UtilsTestSuite) smtpProperties(overrides map[string]*string) []cmodels.Property {
+	values := map[string]string{
+		common.SMTPPropKeyHost:        "smtp.example.com",
+		common.SMTPPropKeyPort:        "587",
+		common.SMTPPropKeyFromAddress: "noreply@example.com",
+	}
+	for name, value := range overrides {
+		if value == nil {
+			delete(values, name)
+			continue
+		}
+		values[name] = *value
+	}
+
+	properties := make([]cmodels.Property, 0, len(values))
+	for name, value := range values {
+		isSecret := name == "authentication_password"
+		properties = append(properties, createTestProperty(name, value, isSecret))
+	}
+	return properties
+}
+
+// basicAuthOverrides configures the basic method with the given credentials. A nil value drops
+// the property, matching the override convention used throughout this suite.
+func basicAuthOverrides(username, password *string) map[string]*string {
+	return map[string]*string{
+		"authentication_type":     new(string(outboundauth.TypeBasic)),
+		"authentication_username": username,
+		"authentication_password": password,
+	}
+}
+
+func (suite *UtilsTestSuite) smtpSender(overrides map[string]*string) common.NotificationSenderDTO {
+	return common.NotificationSenderDTO{
+		Name:       "Test SMTP Sender",
+		Type:       common.NotificationSenderTypeEmail,
+		Provider:   common.NotificationProviderTypeSMTP,
+		Properties: suite.smtpProperties(overrides),
+	}
+}
+
+// withTLS sets the transport security mode on an override map and returns it.
+func withTLS(overrides map[string]*string, mode common.TLSMode) map[string]*string {
+	value := string(mode)
+	overrides[common.SMTPPropKeyTLS] = &value
+	return overrides
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_Valid() {
+	suite.Nil(validateNotificationSender(suite.smtpSender(nil)))
+}
+
+// The declarative loader has no client to send a ServiceError to, so the exported validator
+// surfaces the specific cause rather than the generic error title.
+func (suite *UtilsTestSuite) TestValidateNotificationSender_ReturnsCause() {
+	suite.NoError(ValidateNotificationSender(suite.smtpSender(nil)))
+
+	err := ValidateNotificationSender(suite.smtpSender(map[string]*string{common.SMTPPropKeyPort: new("70000")}))
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "port must be an integer between 1 and 65535")
+
+	sender := suite.smtpSender(nil)
+	sender.Provider = common.NotificationProviderTypeTwilio
+	err = ValidateNotificationSender(sender)
+	suite.Require().Error(err)
+	suite.Equal(ErrorInvalidProvider.ErrorDescription.DefaultValue, err.Error())
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_WithAuthOverTLS() {
+	overrides := basicAuthOverrides(new("user"), new("pass"))
+	overrides[common.SMTPPropKeyTLS] = new(string(common.TLSModeSTARTTLS))
+	suite.Nil(validateNotificationSender(suite.smtpSender(overrides)))
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_InvalidProvider() {
+	sender := suite.smtpSender(nil)
+	sender.Provider = common.NotificationProviderTypeTwilio
+
+	errSvc := validateNotificationSender(sender)
+	suite.Require().NotNil(errSvc)
+	suite.Equal(ErrorInvalidProvider.Code, errSvc.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_EmptyProvider() {
+	sender := suite.smtpSender(nil)
+	sender.Provider = ""
+
+	errSvc := validateNotificationSender(sender)
+	suite.Require().NotNil(errSvc)
+	suite.Equal(ErrorInvalidProvider.Code, errSvc.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_NoProperties() {
+	sender := suite.smtpSender(nil)
+	sender.Properties = nil
+
+	errSvc := validateNotificationSender(sender)
+	suite.Require().NotNil(errSvc)
+	suite.Equal(ErrorInvalidRequestFormat.Code, errSvc.Code)
+	suite.Contains(errSvc.ErrorDescription.DefaultValue, "cannot be empty")
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_WrongSupportedChannel() {
+	sender := suite.smtpSender(map[string]*string{
+		common.SenderPropertySupportedChannels: new(string(common.ChannelTypeSMS)),
+	})
+
+	errSvc := validateNotificationSender(sender)
+	suite.Require().NotNil(errSvc)
+	suite.Contains(errSvc.ErrorDescription.DefaultValue, "invalid supported channel: sms")
+}
+
+// Everything the client needs is checked when the sender is written, so a provider that
+// cannot deliver is rejected at configuration time rather than during a password reset.
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_PropertyErrors() {
+	cases := []struct {
+		name      string
+		overrides map[string]*string
+		contains  string
+	}{
+		{"missing host", map[string]*string{common.SMTPPropKeyHost: nil}, "host"},
+		{"blank host", map[string]*string{common.SMTPPropKeyHost: new("   ")}, "host"},
+		{"missing port", map[string]*string{common.SMTPPropKeyPort: nil}, "port"},
+		{"non numeric port", map[string]*string{common.SMTPPropKeyPort: new("abc")}, "between 1 and 65535"},
+		{"zero port", map[string]*string{common.SMTPPropKeyPort: new("0")}, "between 1 and 65535"},
+		{"port too large", map[string]*string{common.SMTPPropKeyPort: new("70000")}, "between 1 and 65535"},
+		{"missing from address", map[string]*string{common.SMTPPropKeyFromAddress: nil}, "from_address"},
+		{"invalid from address", map[string]*string{
+			common.SMTPPropKeyFromAddress: new("not-an-address")}, "invalid from address"},
+		{"display name from address", map[string]*string{
+			common.SMTPPropKeyFromAddress: new(`"Bot" <bot@example.com>`)}, "invalid from address"},
+		{"from name with a line break", map[string]*string{
+			common.SMTPPropKeyFromName: new("Acme\r\nBcc: attacker@evil.test")}, "from name"},
+		{"invalid tls mode", map[string]*string{
+			common.SMTPPropKeyTLS: new("true")}, "none, starttls or implicit"},
+		{"auth without tls", withTLS(
+			basicAuthOverrides(new("user"), new("pass")), common.TLSModeNone,
+		), "tls must be enabled"},
+		{"auth without credentials", withTLS(
+			basicAuthOverrides(nil, nil), common.TLSModeSTARTTLS,
+		), "username"},
+		{"auth without password", withTLS(
+			basicAuthOverrides(new("user"), nil), common.TLSModeSTARTTLS,
+		), "password"},
+		{"unsupported auth type", map[string]*string{
+			"authentication_type": new("bearer"),
+		}, "unsupported authentication type"},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			errSvc := validateNotificationSender(suite.smtpSender(tc.overrides))
+			suite.Require().NotNil(errSvc)
+			suite.Equal(ErrorInvalidRequestFormat.Code, errSvc.Code)
+			suite.Contains(errSvc.ErrorDescription.DefaultValue, tc.contains)
+		})
+	}
+}
+
+// An omitted tls property is the secure default, so it must validate as STARTTLS rather than
+// being treated as plaintext.
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_OmittedTLSAllowsAuth() {
+	sender := suite.smtpSender(basicAuthOverrides(new("user"), new("pass")))
+	suite.Nil(validateNotificationSender(sender))
+}
+
+// Plaintext transport is only rejected when credentials would actually travel over it.
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_NoAuthAllowsPlaintext() {
+	sender := suite.smtpSender(map[string]*string{
+		common.SMTPPropKeyTLS: new(string(common.TLSModeNone)),
+		"authentication_type": new(string(outboundauth.TypeNone)),
+	})
+	suite.Nil(validateNotificationSender(sender))
+}
+
+func (suite *UtilsTestSuite) TestApplyDefaultSenderProperties_EmailDefaultsToEmailChannel() {
+	sender := suite.smtpSender(nil)
+	applyDefaultSenderProperties(&sender)
+
+	value, found := "", false
+	for _, prop := range sender.Properties {
+		if prop.GetName() == common.SenderPropertySupportedChannels {
+			value, _ = prop.GetValue()
+			found = true
+		}
+	}
+	suite.True(found)
+	suite.Equal(string(common.ChannelTypeEmail), value)
+}
+
+func (suite *UtilsTestSuite) TestApplyDefaultSenderProperties_MessageDefaultsToSMSChannel() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Twilio",
+		Type:     common.NotificationSenderTypeMessage,
+		Provider: common.NotificationProviderTypeTwilio,
+	}
+	applyDefaultSenderProperties(&sender)
+
+	value, found := "", false
+	for _, prop := range sender.Properties {
+		if prop.GetName() == common.SenderPropertySupportedChannels {
+			value, _ = prop.GetValue()
+			found = true
+		}
+	}
+	suite.True(found)
+	suite.Equal(string(common.ChannelTypeSMS), value)
 }

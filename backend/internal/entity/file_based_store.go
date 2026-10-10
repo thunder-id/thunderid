@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -113,6 +114,47 @@ func (f *entityFileBasedStore) UpdateSystemCredentials(ctx context.Context, enti
 // DeleteEntity is not supported in file-based store.
 func (f *entityFileBasedStore) DeleteEntity(ctx context.Context, id string) error {
 	return errors.New("DeleteEntity is not supported in file-based store")
+}
+
+// LockEntity is not supported in file-based store.
+func (f *entityFileBasedStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
+	return providers.Entity{}, errors.New("LockEntity is not supported in file-based store")
+}
+
+// ResolveLinkedAccount finds the declarative entity linked to a subject at a connection.
+func (f *entityFileBasedStore) ResolveLinkedAccount(ctx context.Context,
+	idpID, sub string) (*string, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []string
+	for _, resource := range resources {
+		if len(resource.Entity.SystemAttributes) == 0 {
+			continue
+		}
+		var attrs map[string]interface{}
+		if err := json.Unmarshal(resource.Entity.SystemAttributes, &attrs); err != nil {
+			continue
+		}
+		links, ok := attrs[authnprovidercm.SystemAttrLinkedIDs].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if hasLinkedSubject(links, idpID, sub) {
+			matches = append(matches, resource.Entity.ID)
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	if len(matches) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+
+	return &matches[0], nil
 }
 
 // IdentifyEntity identifies an entity with the given filters by linear search.
@@ -451,12 +493,27 @@ func matchesFilters(attributes json.RawMessage, filters map[string]interface{}) 
 
 	for key, expected := range filters {
 		value, ok := getNestedValue(attrsMap, key)
-		if !ok || !valuesEqual(value, expected) {
+		if !ok || !matchesValue(value, expected) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// matchesValue reports whether an attribute value matches a filter value. An array matches when
+// any of its elements does, the same way the DB store indexes each array element separately.
+func matchesValue(value interface{}, expected interface{}) bool {
+	items, ok := value.([]interface{})
+	if !ok {
+		return valuesEqual(value, expected)
+	}
+	for _, item := range items {
+		if valuesEqual(item, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func getNestedValue(data map[string]interface{}, key string) (interface{}, bool) {

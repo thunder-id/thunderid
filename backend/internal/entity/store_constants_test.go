@@ -35,7 +35,7 @@ func (s *StoreConstantsTestSuite) TestAppendOUIDsINClause_WithOUIDs() {
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQueryByOUIDs_NoFilters() {
-	q, args, err := buildEntityCountQueryByOUIDs("user", []string{"ou1"}, nil, testDeploymentID)
+	q, args, err := buildEntityCountQueryByOUIDs("user", []string{"ou1"}, nil, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -43,14 +43,14 @@ func (s *StoreConstantsTestSuite) TestBuildEntityCountQueryByOUIDs_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQueryByOUIDs_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityCountQueryByOUIDs("user", []string{"ou1"}, filters, testDeploymentID)
+	q, args, err := buildEntityCountQueryByOUIDs("user", []string{"ou1"}, filters, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQueryByOUIDs_NoFilters() {
-	q, args, err := buildEntityListQueryByOUIDs("user", []string{"ou1"}, nil, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQueryByOUIDs("user", []string{"ou1"}, nil, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -58,7 +58,7 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQueryByOUIDs_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQueryByOUIDs_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityListQueryByOUIDs("user", []string{"ou1"}, filters, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQueryByOUIDs("user", []string{"ou1"}, filters, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -115,7 +115,7 @@ func (s *StoreConstantsTestSuite) TestBuildBulkEntityExistsQueryInOUs_WithBoth()
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_NoFilters() {
-	q, args, err := buildEntityListQuery("user", nil, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQuery("user", nil, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -123,14 +123,14 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityListQuery("user", filters, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQuery("user", filters, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_NoFilters() {
-	q, args, err := buildEntityCountQuery("user", nil, testDeploymentID)
+	q, args, err := buildEntityCountQuery("user", nil, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -138,7 +138,7 @@ func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityCountQuery("user", filters, testDeploymentID)
+	q, args, err := buildEntityCountQuery("user", filters, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -203,21 +203,41 @@ func (s *StoreConstantsTestSuite) TestBuildPaginatedQuery_Success() {
 	s.Contains(result, "OFFSET")
 }
 
+const testFilterBaseQuery = `SELECT * FROM "ENTITY" WHERE CATEGORY = $1`
+
 func (s *StoreConstantsTestSuite) TestBuildFilterQueryWithOffset_Success() {
-	base := `SELECT * FROM "ENTITY" WHERE CATEGORY = $1`
+	base := testFilterBaseQuery
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildFilterQueryWithOffset("test-qid", base, filters, 1)
+	q, args, err := buildFilterQueryWithOffset("test-qid", base, filters, nil, 1)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildFilterQueryWithOffset_NoFilters() {
-	base := `SELECT * FROM "ENTITY" WHERE CATEGORY = $1`
-	q, args, err := buildFilterQueryWithOffset("test-qid", base, nil, 1)
+	base := testFilterBaseQuery
+	q, args, err := buildFilterQueryWithOffset("test-qid", base, nil, nil, 1)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	_ = args
+}
+
+func (s *StoreConstantsTestSuite) TestBuildFilterQueryWithOffset_IndexedKeyMatchesIdentifierRows() {
+	base := testFilterBaseQuery
+	filters := map[string]interface{}{"email": "a@b.com", "nickname": "ab"}
+	q, args, err := buildFilterQueryWithOffset("test-qid", base, filters, map[string]bool{"email": true}, 1)
+	s.NoError(err)
+
+	s.Equal(base+` AND (ATTRIBUTES->>'email' = $2 OR EXISTS (SELECT 1 FROM "ENTITY_IDENTIFIER" ei `+
+		`WHERE ei.ENTITY_ID = "ENTITY".ID AND ei.DEPLOYMENT_ID = "ENTITY".DEPLOYMENT_ID `+
+		`AND ei.SOURCE = 'attribute' AND ei.NAME = 'email' AND ei.VALUE = $3))`+
+		` AND ATTRIBUTES->>'nickname' = $4`, q.PostgresQuery)
+	s.Equal(`SELECT * FROM "ENTITY" WHERE CATEGORY = ?`+
+		` AND (json_extract(ATTRIBUTES, '$.email') = ? OR EXISTS (SELECT 1 FROM "ENTITY_IDENTIFIER" ei `+
+		`WHERE ei.ENTITY_ID = "ENTITY".ID AND ei.DEPLOYMENT_ID = "ENTITY".DEPLOYMENT_ID `+
+		`AND ei.SOURCE = 'attribute' AND ei.NAME = 'email' AND ei.VALUE = ?))`+
+		` AND json_extract(ATTRIBUTES, '$.nickname') = ?`, q.SQLiteQuery)
+	s.Equal([]interface{}{"a@b.com", "a@b.com", "ab"}, args)
 }
 
 // TestBuildIdentifyQuery_COALESCE_* verify that the JSON fallback query searches both

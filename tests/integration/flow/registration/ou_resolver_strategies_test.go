@@ -122,9 +122,10 @@ func ouStrategyFlowNodes(resolveFrom string) []map[string]interface{} {
 	}
 }
 
-func ouStrategyUserType(name, ouID string) testutils.UserType {
+func ouStrategyUserType(handle, ouID string) testutils.UserType {
 	return testutils.UserType{
-		Name:                  name,
+		Handle:                handle,
+		DisplayName:           "OU Strategy " + handle,
 		OUID:                  ouID,
 		AllowSelfRegistration: true,
 		Schema: map[string]interface{}{

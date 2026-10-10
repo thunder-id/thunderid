@@ -117,13 +117,22 @@ If any step fails, the exchange returns HTTP 400 with `error=invalid_request` an
 
 ## Attribute Configuration
 
-Attribute configuration for token exchange uses the same `attributeConfiguration` structure as federated sign-in. See [Add an OIDC Identity Provider](../add-oidc-provider#attribute-configuration) for the full reference.
+Attribute configuration for token exchange uses the same `attributeConfiguration` structure as federated sign-in, including [Authorization Mapping](../add-oidc-provider#authorization-mapping). See [Add an OIDC Identity Provider](../add-oidc-provider#attribute-configuration) for the full reference.
+
+When the IdP connection has Authorization Mapping configured, it decides the granted scope instead of the external token's own `scope` claim:
+
+| Request | Resulting scope |
+|---|---|
+| `scope` supplied | The requested scopes, narrowed to whatever the mapping actually authorizes |
+| `scope` omitted | Nothing. An omitted request is not treated as "grant everything the mapping allows" here — unlike the [jwt-bearer grant](../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions), which does bound an omitted request by the assertion's own scope claim, token exchange has no equivalent claim on the subject token to fall back to, since an arbitrary external token's own `scope` claim is never authoritative here either way. |
+
+Without Authorization Mapping configured, the granted scope narrows the requested scope against the external token's own `scope` claim, same as any other token exchange.
 
 ## Limitations
 
 - Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
 - The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
-- No scope mapping is applied; external token scopes use the existing intersection logic. External claims can be renamed to local attributes via the IdP's `attributeConfiguration` (see [Attribute Configuration](#attribute-configuration)); the resulting attributes are still filtered by the application's `userAttributes` configuration.
+- External token scopes are narrowed by the existing intersection logic, or by the connection's Authorization Mapping when one is configured (see [Attribute Configuration](#attribute-configuration) above). External claims can be renamed to local attributes via the IdP's `attributeConfiguration`; the resulting attributes are still filtered by the application's `userAttributes` configuration.
 - Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
 
 ## Next Steps
