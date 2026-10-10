@@ -50,7 +50,7 @@ These steps create a GitHub connection. To change an existing connection, see [M
 
 <ProductName /> automatically uses the GitHub authorization, token, and user profile endpoints. You do not need to supply them.
 
-These outbound calls dial through an SSRF guard: if a configured endpoint host resolves to a loopback, link-local, private, or unspecified address, the request is refused instead of dialed. If you point the GitHub connection at an internal network host (for example through `github_base_url`), its address must be publicly resolvable.
+Server-side requests to the token and user profile endpoints use an SSRF guard: if a configured endpoint host resolves to a loopback, link-local, private, or unspecified address, the request is refused instead of dialed. If you point the GitHub connection at an internal network host (for example through `github_base_url`), its address must be publicly resolvable.
 
 </Stepper>
 
