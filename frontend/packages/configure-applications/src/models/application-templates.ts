@@ -41,6 +41,7 @@ export const PlatformApplicationTemplate = {
   MOBILE: 'MOBILE',
   FULL_STACK: 'FULL_STACK',
   WALLET: 'WALLET',
+  CIMD: 'CIMD',
   CUSTOM: 'CUSTOM',
 } as const;
 
@@ -175,6 +176,11 @@ export interface ApplicationTemplate {
    * entry per platform.
    */
   quickstarts?: QuickstartLink[];
+  /**
+   * Optional known clients offered as quick picks on the Client ID Metadata Document registration step.
+   * Each entry fills in the client's metadata document URL; the document is still fetched and validated.
+   */
+  metadataDocumentClients?: {name: string; clientId: string}[];
   /**
    * Optional runnable playgrounds for this template, shown as a banner on the application's
    * Overview tab when there's exactly one. Distinct from {@link quickstarts}: a quickstart is a

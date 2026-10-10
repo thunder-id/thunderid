@@ -32,6 +32,10 @@ vi.mock('../McpAccessSection', () => ({
   },
 }));
 
+vi.mock('../../cimd/CimdDocumentSection', () => ({
+  default: () => <div data-testid="cimd-document-section">CimdDocumentSection</div>,
+}));
+
 vi.mock('../../../RegenerateSecretDialog', () => ({
   default: ({
     open,
@@ -322,6 +326,48 @@ describe('McpConnectTab', () => {
       );
 
       expect(screen.getByTestId('mcp-access-section')).toHaveTextContent('Clicks: 1');
+    });
+  });
+
+  describe('Client ID Metadata Document clients', () => {
+    const cimdConfig: OAuth2Config = {
+      clientId: 'https://vscode.dev/oauth/client-metadata.json',
+      clientIdMetadataDocument: true,
+      redirectUris: ['http://127.0.0.1/callback'],
+      grantTypes: ['authorization_code', 'refresh_token'],
+      responseTypes: ['code'],
+      tokenEndpointAuthMethod: 'none',
+      publicClient: true,
+      pkceRequired: true,
+    };
+
+    it('shows the metadata document badge and section instead of the editable access section', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={cimdConfig}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.getByText('CIMD')).toBeInTheDocument();
+      expect(screen.getByTestId('cimd-document-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('mcp-access-section')).not.toBeInTheDocument();
+    });
+
+    it('treats an HTTPS client ID without the marker as an ordinary client', () => {
+      render(
+        <McpConnectTab
+          application={buildApplication()}
+          oauth2Config={{...cimdConfig, clientIdMetadataDocument: false}}
+          onFieldChange={mockOnFieldChange}
+          isReadOnly={false}
+        />,
+      );
+
+      expect(screen.queryByTestId('cimd-document-section')).not.toBeInTheDocument();
+      expect(screen.getByTestId('mcp-access-section')).toBeInTheDocument();
     });
   });
 });

@@ -9,8 +9,13 @@
       "docsUrl": "{{applications.templates.mcpClient.docs}}"
     }
   ],
+  "metadataDocumentClients": [
+    {"name": "Claude", "clientId": "https://claude.ai/oauth/mcp-oauth-client-metadata"},
+    {"name": "ChatGPT", "clientId": "https://chatgpt.com/oauth/client.json"},
+    {"name": "Visual Studio Code", "clientId": "https://vscode.dev/oauth/client-metadata.json"}
+  ],
   "creationFlow": {
-    "steps": ["ORGANIZATION_UNIT", "DETAILS", "CLIENT_TYPE", "COMPLETE"],
+    "steps": ["ORGANIZATION_UNIT", "CLIENT_IDENTITY", "DETAILS", "CLIENT_TYPE", "COMPLETE"],
     "previewSteps": []
   },
   "defaults": {

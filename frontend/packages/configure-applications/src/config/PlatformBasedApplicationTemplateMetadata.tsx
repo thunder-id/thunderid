@@ -1,9 +1,10 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Monitor, Server, Smartphone, Code, Settings, Wallet} from '@wso2/oxygen-ui-icons-react';
+import {Monitor, Server, Smartphone, Code, FileBadge, Settings, Wallet} from '@wso2/oxygen-ui-icons-react';
 import BackendPlatformTemplate from '../data/application-templates/platform-based/backend.json';
 import BrowserPlatformTemplate from '../data/application-templates/platform-based/browser.json';
+import CimdPlatformTemplate from '../data/application-templates/platform-based/cimd.json';
 import CustomPlatformTemplate from '../data/application-templates/platform-based/custom.json';
 import FullStackPlatformTemplate from '../data/application-templates/platform-based/full-stack.json';
 import MobilePlatformTemplate from '../data/application-templates/platform-based/mobile.json';
@@ -51,6 +52,14 @@ const PlatformBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Plat
     descriptionKey: 'applications:onboarding.configure.stack.platform.wallet.description',
     template: WalletPlatformTemplate as ApplicationTemplate,
     categories: ['mobile'],
+  },
+  {
+    value: PlatformApplicationTemplate.CIMD,
+    icon: <FileBadge size={32} />,
+    titleKey: 'applications:onboarding.configure.stack.platform.cimd.title',
+    descriptionKey: 'applications:onboarding.configure.stack.platform.cimd.description',
+    template: CimdPlatformTemplate as ApplicationTemplate,
+    categories: ['ai'],
   },
   {
     value: PlatformApplicationTemplate.CUSTOM,

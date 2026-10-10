@@ -77,7 +77,7 @@ describe('Application Templates Models', () => {
     });
 
     it('should have all expected properties', () => {
-      const expectedKeys = ['BACKEND', 'BROWSER', 'MOBILE', 'FULL_STACK', 'WALLET', 'CUSTOM'];
+      const expectedKeys = ['BACKEND', 'BROWSER', 'MOBILE', 'FULL_STACK', 'WALLET', 'CIMD', 'CUSTOM'];
 
       expect(Object.keys(PlatformApplicationTemplate)).toEqual(expectedKeys);
     });

@@ -2633,6 +2633,9 @@ const translations = {
     'onboarding.configure.stack.platform.backend.description': 'Server-to-server APIs and services',
     'onboarding.configure.stack.platform.wallet.title': 'Digital Wallet',
     'onboarding.configure.stack.platform.wallet.description': 'OpenID4VCI wallet that requests verifiable credentials',
+    'onboarding.configure.stack.platform.cimd.title': 'CIMD',
+    'onboarding.configure.stack.platform.cimd.description':
+      'Register a client from the metadata document its vendor publishes.',
     'onboarding.configure.stack.platform.custom.title': 'Custom',
     'onboarding.configure.stack.platform.custom.description':
       'Fully customizable application with all configuration options available',
@@ -3343,6 +3346,62 @@ const translations = {
       'This application cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.APP-1039':
       "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
+    'cimd.document.quickPicks': 'Known clients:',
+    'cimd.document.subtitle':
+      "The client's URL is its client ID. Its name and sign-in details come from its vendor, with no setup in the client itself.",
+    'cimd.document.title': "Enter the client's metadata document",
+    'cimd.document.url.fetch': 'Fetch document',
+    'cimd.document.url.label': 'Metadata document URL',
+    'cimd.edit.badge': 'CIMD',
+    'cimd.edit.description':
+      "These values come from the client's metadata document. Re-fetch it to apply the vendor's changes.",
+    'cimd.edit.device': 'Device',
+    'cimd.edit.documentUrl': 'Document URL',
+    'cimd.edit.refetch': 'Re-fetch document',
+    'cimd.edit.title': 'CIMD',
+    'cimd.errors.generic': "This metadata document can't be used.",
+    'cimd.identity.document.description':
+      "Enter the client's metadata document URL. Its identity and sign-in details come from its vendor.",
+    'cimd.identity.document.title': 'Another client with a CIMD',
+    'cimd.identity.knownClients': 'Known clients',
+    'cimd.identity.manual.description': 'For your own MCP clients. You set the redirect URIs and credentials.',
+    'cimd.identity.manual.title': "I'll configure it myself",
+    'cimd.identity.otherClients': 'Other clients',
+    'cimd.identity.subtitle': 'Known clients register in one step from the metadata document their vendor publishes.',
+    'cimd.identity.title': 'Which MCP client are you connecting?',
+    'cimd.preview.confidential': 'Private key JWT, signed by the vendor',
+    'cimd.preview.grants': 'Grants',
+    'cimd.preview.inlineKeys': 'Included in the document',
+    'cimd.preview.keys': 'Keys',
+    'cimd.preview.loopbackWarning':
+      "This client only returns to the user's device. Any program on the device can present this identity.",
+    'cimd.preview.public': 'Public client, no secret',
+    'cimd.preview.publishedBy': 'Published by {{host}}',
+    'cimd.preview.redirectUris': 'Redirect URIs',
+    'cimd.preview.signInType': 'Sign-in type',
+    'cimd.refetch.apply': 'Apply',
+    'cimd.refetch.authChanged': 'The sign-in type changes from {{from}} to {{to}}.',
+    'cimd.refetch.changed': 'The document has changed. Review the differences before applying them.',
+    'cimd.refetch.noChanges': 'The document matches what this application uses.',
+    'cimd.refetch.title': 'Re-fetch metadata document',
+    'cimd.refetch.unchanged': 'The application is unchanged.',
+    'cimd.refetch.updateDetails': 'Also update the name and links from the document',
+    'edit.page.tabs.metadataDocument': 'Metadata document',
+    'onboarding.steps.clientIdentity': 'Client identity',
+    'onboarding.steps.metadataDocument': 'Metadata document',
+    'errors.CIMD-1001': 'Registering clients from a metadata document is turned off for this deployment.',
+    'errors.CIMD-1002': 'Enter an HTTPS URL with a host name and a path, for example https://example.com/client.json.',
+    'errors.CIMD-1003': "Couldn't retrieve a metadata document from this URL. Check the address and try again.",
+    'errors.CIMD-1004':
+      'This document describes a different client. Its client_id must equal the URL it is served from.',
+    'errors.CIMD-1005':
+      "Each redirect URI must be on the client's own domain or the user's device, and at least one is required.",
+    'errors.CIMD-1006':
+      'Only public clients, and private key JWT clients with exactly one key source, can register from a metadata document.',
+    'errors.CIMD-1007': "This document contains a client secret, which a metadata document can't carry safely.",
+    'errors.CIMD-1008': 'This client must use the authorization code grant, and can add only refresh tokens.',
+    'errors.CIMD-1009': "The metadata document registration and client ID of this application can't be changed.",
+    'errors.CIMD-1010': "The request couldn't be read. Please try again.",
   },
 
   // ============================================================================
