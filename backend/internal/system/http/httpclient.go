@@ -61,6 +61,11 @@ type httpClient struct {
 type HTTPClientConfig struct {
 	// Timeout bounds one request. Zero means the 30s default.
 	Timeout time.Duration
+	// DisableTimeout builds the client with no timeout at all, leaving each
+	// request bounded only by its context. Callers that set their own
+	// per-request deadlines, such as the PDP engine, use this to keep the
+	// client out of deadline enforcement.
+	DisableTimeout bool
 	// DisableRedirects returns a 3xx response instead of following it.
 	DisableRedirects bool
 	// CheckRedirect is a redirect policy for what DisableRedirects can't
@@ -96,8 +101,10 @@ func NewHTTPClient(cfg HTTPClientConfig) HTTPClientInterface {
 		transport.DialContext = ssrfSafeDialContext
 	}
 	client := &http.Client{
-		Timeout:   timeout,
 		Transport: transport,
+	}
+	if !cfg.DisableTimeout {
+		client.Timeout = timeout
 	}
 	switch {
 	case cfg.DisableRedirects:

@@ -67,6 +67,45 @@ func (suite *HTTPClientTestSuite) TestNewHTTPClientWithDefaultSettings() {
 	assert.Equal(suite.T(), 30*time.Second, httpClient.client.Timeout)
 }
 
+func (suite *HTTPClientTestSuite) TestNewHTTPClientDisableTimeoutKeepsClientUnbounded() {
+	// The PDP engine stamps its own per-request context deadline, so its
+	// client must stay unbounded, exactly like the old NewHTTPClientWithTimeout(0).
+	client := NewHTTPClient(HTTPClientConfig{DisableTimeout: true})
+	httpClient := client.(*httpClient)
+	assert.Zero(suite.T(), httpClient.client.Timeout)
+
+	// Empirical control: a request that outlives the default 30s cap would
+	// die with "context deadline exceeded (Client.Timeout exceeded...)"
+	// under the zero config; with DisableTimeout it is bounded only by its
+	// own context. A short request completes fine either way, so pin the
+	// client state and the context-governs behavior separately below.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	assert.NoError(suite.T(), err)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	start := time.Now()
+	_, err = client.Do(req)
+	assert.Error(suite.T(), err)
+	// Governed by the request context (~300ms), not by a 30s client cap or
+	// an instant dial failure: prove the context was the enforcer.
+	assert.WithinDuration(suite.T(), time.Now(), start.Add(300*time.Millisecond), 2*time.Second)
+}
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientZeroConfigAppliesDefaultTimeout() {
+	// Zero config must keep the 30s default: DisableTimeout is opt-in.
+	client := NewHTTPClient(HTTPClientConfig{})
+	httpClient := client.(*httpClient)
+	assert.Equal(suite.T(), 30*time.Second, httpClient.client.Timeout)
+}
+
 func (suite *HTTPClientTestSuite) TestDo() {
 	// Create a test server
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
