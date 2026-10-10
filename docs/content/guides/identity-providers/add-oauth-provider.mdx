@@ -55,6 +55,8 @@ Enter the following fields, then click **Create connection**:
 The user profile endpoint is not an OpenID Connect UserInfo endpoint, and needs no `openid` scope. Provide the URL the provider documents for reading the signed-in user's profile. If your provider exposes a UserInfo endpoint, it implements OpenID Connect, so use [Add an OIDC Identity Provider](../add-oidc-provider) instead.
 
 You can leave the field empty when the provider issues a JWT access token containing a `sub` claim, since <ProductName /> then reads the subject from that token. Sign-in fails with `AUTH-OAUTH-1010` otherwise. Configure the endpoint whenever the provider offers one: the subject is the only attribute the access token supplies, so without it no email or name is available for account linking or provisioning.
+
+The token endpoint and the user profile endpoint are dialed through an SSRF guard: if the configured host resolves to a loopback, link-local, private, or unspecified address, the request is refused instead of dialed. An OAuth 2.0 provider reachable only inside your private network therefore cannot be used; the provider's endpoints must be publicly resolvable.
 :::
 
 </Stepper>

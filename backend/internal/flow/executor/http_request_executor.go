@@ -395,8 +395,11 @@ func (h *httpRequestExecutor) executeRequestWithRetry(ctx *providers.NodeContext
 		retryDelay = config.ErrorHandling.RetryDelay
 	}
 
-	httpClient := httpservice.NewHTTPClientWithTimeout(
-		time.Duration(config.Timeout) * time.Second)
+	// The flow executor dials admin-configured endpoints, which may be internal
+	// hosts, so it keeps no SSRF dial guard.
+	httpClient := httpservice.NewHTTPClient(httpservice.HTTPClientConfig{
+		Timeout: time.Duration(config.Timeout) * time.Second,
+	})
 
 	var lastErr error
 	attempts := retryCount + 1

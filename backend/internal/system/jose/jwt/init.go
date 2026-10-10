@@ -16,6 +16,10 @@ import (
 func Initialize(
 	runtimeProvider providers.RuntimeCryptoProvider, cfg joseconfig.Config,
 ) (JWTServiceInterface, error) {
-	httpClient := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
+	// JWKS URLs come from the connection config, so they get the SSRF dial guard.
+	httpClient := httpservice.NewHTTPClient(httpservice.HTTPClientConfig{
+		Timeout:   10 * time.Second,
+		GuardSSRF: true,
+	})
 	return newJWTService(httpClient, runtimeProvider, cfg)
 }

@@ -45,8 +45,13 @@ type cimdService struct {
 // refuses private and loopback addresses on the connected address and follows no redirects.
 func newCIMDService() CIMDServiceInterface {
 	return &cimdService{
-		httpClient: syshttp.NewHTTPClientWithCheckRedirect(func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
+		// The Client ID Metadata Document URL is attacker-controllable input
+		// (client_id discovery), so the SSRF dial guard stays on and redirects
+		// are never followed: the fetcher must see the 3xx to reject a
+		// document served behind one.
+		httpClient: syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+			GuardSSRF:       true,
+			DisableRedirects: true,
 		}),
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIMDService")),
 	}

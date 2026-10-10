@@ -54,6 +54,8 @@ server:
 
 The JWKS cache time-to-live applies to signing keys fetched from this endpoint and is configured at `server.security.jwks_cache_ttl`, not inside the `trusted_issuer` block. See [Security Configuration](../../deployment/configuration#security-configuration) for details.
 
+`trusted_issuer.jwks_url` is dialed through an SSRF guard: if its host resolves to a loopback, link-local, private, or unspecified address, the request is refused instead of dialed. A central authorization server reachable only inside your private network therefore cannot serve as a trusted issuer; its JWKS endpoint must be publicly resolvable.
+
 ## Configure the Console
 
 The `server.security.trusted_issuer` block controls how <ProductName /> validates incoming API tokens. It does not affect how users sign in to the <ProductName /> Console. By default, the Console still authenticates users against the local <ProductName /> instance.

@@ -62,7 +62,11 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
 		}
 	}
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	// The custom notification webhook is admin-configured and may target an
+	// internal host, so it keeps no SSRF dial guard.
+	client.httpClient = syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		Timeout: httpClientTimeout,
+	})
 
 	return client, nil
 }
