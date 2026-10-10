@@ -71,6 +71,8 @@ Optional settings are not part of the creation wizard. After creation, open the 
 | **Scopes** | Space-separated OIDC scopes to request. Defaults to `openid email profile` if left blank. |
 | **Prompt** | Optional prompt value forwarded to the provider's authorization request, for example `select_account` or `consent`. |
 
+The token endpoint, userinfo endpoint, and JWKS endpoint are dialed through an SSRF guard: if a configured host resolves to a loopback, link-local, private, or unspecified address, the request is refused instead of dialed. An OIDC provider reachable only inside your private network cannot be used; its endpoints must be publicly resolvable.
+
 Under **Federation**, turn on **Enable token exchange** to accept subject tokens from this provider for token exchange. This makes **Issuer** and **JWKS endpoint** required, and reveals an optional **Trusted token audience** field, the accepted audience value for external tokens during token exchange.
 
 ## Attribute Configuration

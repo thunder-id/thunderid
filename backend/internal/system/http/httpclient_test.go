@@ -93,12 +93,14 @@ func (suite *HTTPClientTestSuite) TestNewHTTPClientDisableTimeoutKeepsClientUnbo
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	start := time.Now()
 	_, err = client.Do(req)
 	assert.Error(suite.T(), err)
-	// Governed by the request context (~300ms), not by a 30s client cap or
-	// an instant dial failure: prove the context was the enforcer.
-	assert.WithinDuration(suite.T(), time.Now(), start.Add(300*time.Millisecond), 2*time.Second)
+	// Governed by the request context (~300ms), not by a 30s client cap:
+	// the client stayed unbounded, so the only enforcer is the context.
+	// DeadlineExceeded proves the request was cut off by the context, and
+	// never asserting elapsed time keeps the test deterministic on a slow CI
+	// worker, where the goroutine can be paused well past the deadline.
+	assert.ErrorIs(suite.T(), err, context.DeadlineExceeded)
 }
 
 func (suite *HTTPClientTestSuite) TestNewHTTPClientZeroConfigAppliesDefaultTimeout() {
