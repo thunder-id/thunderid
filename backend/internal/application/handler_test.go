@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -21,6 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -2480,4 +2483,278 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_ForwardsPasskeyAl
 
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 	mockService.AssertExpectations(suite.T())
+}
+
+// ----- Sharing policy handlers -----
+
+// sharingRequest builds a request carrying the path values the mux would have set.
+func sharingRequest(method, target string, body interface{}, pathValues map[string]string,
+) *http.Request {
+	var reader *bytes.Reader
+	if body != nil {
+		raw, _ := json.Marshal(body)
+		reader = bytes.NewReader(raw)
+	} else {
+		reader = bytes.NewReader(nil)
+	}
+	req := httptest.NewRequest(method, target, reader)
+	for k, v := range pathValues {
+		req.SetPathValue(k, v)
+	}
+	return req
+}
+
+// The framework refuses a limit below one, so a listing that names none has to send a page size
+// rather than a zero.
+func (suite *HandlerTestSuite) TestSharingPaginationDefaultsToAPage() {
+	limit, offset, svcErr := parseSharingPagination(url.Values{})
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(serverconst.DefaultPageSize, limit)
+	suite.Equal(0, offset)
+}
+
+// A value the caller did send is passed through, bounds included, because the bounds are the
+// framework's to enforce and its refusal names which one was wrong.
+func (suite *HandlerTestSuite) TestSharingPaginationPassesThroughWhatWasAsked() {
+	limit, offset, svcErr := parseSharingPagination(url.Values{
+		"limit": {"5"}, "offset": {"10"}})
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(5, limit)
+	suite.Equal(10, offset)
+}
+
+// A value that is not a number never reaches the framework, and the refusal names which parameter.
+func (suite *HandlerTestSuite) TestSharingPaginationRefusesNonNumbers() {
+	_, _, svcErr := parseSharingPagination(url.Values{"limit": {"all"}})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidLimit.Code, svcErr.Code)
+
+	_, _, svcErr = parseSharingPagination(url.Values{"offset": {"back"}})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorInvalidOffset.Code, svcErr.Code)
+}
+
+// A page the handler cannot parse and a page the framework refuses are the same mistake, so the
+// caller gets the same answer either way. Without the translation below, limit=0 would come back
+// as APP-1051 and describe a policy the caller never sent.
+func (suite *HandlerTestSuite) TestSharingPaginationAnswersAlikeFromEitherSide() {
+	for _, tc := range []struct {
+		name      string
+		unparsed  url.Values
+		fromStack *tidcommon.ServiceError
+		want      tidcommon.ServiceError
+	}{
+		{
+			name:      "limit",
+			unparsed:  url.Values{"limit": {"all"}},
+			fromStack: &sharing.ErrorInvalidLimit,
+			want:      ErrorInvalidLimit,
+		},
+		{
+			name:      "offset",
+			unparsed:  url.Values{"offset": {"back"}},
+			fromStack: &sharing.ErrorInvalidOffset,
+			want:      ErrorInvalidOffset,
+		},
+	} {
+		suite.Run(tc.name, func() {
+			_, _, parseErr := parseSharingPagination(tc.unparsed)
+			suite.Require().NotNil(parseErr)
+
+			translated := translateSharingError(tc.fromStack)
+			suite.Require().NotNil(translated)
+
+			suite.Equal(tc.want.Code, parseErr.Code, "the handler answers in this package's namespace")
+			suite.Equal(tc.want.Code, translated.Code, "and so does the framework's own refusal")
+			suite.Equal(parseErr.Code, translated.Code)
+			suite.NotEqual(ErrorInvalidSharingPolicy.Code, translated.Code,
+				"a bad page is not an invalid policy")
+		})
+	}
+}
+
+// The status separates the three kinds of refusal a sharing call produces: a malformed request, a
+// policy that is not there, and a conflict with state the caller has not seen.
+func (suite *HandlerTestSuite) TestSharingErrorsCarryTheirOwnStatus() {
+	for _, tc := range []struct {
+		name       string
+		svcErr     *tidcommon.ServiceError
+		wantStatus int
+	}{
+		{"a policy the unit may not write", &ErrorInvalidSharingPolicy, http.StatusBadRequest},
+		{"no such policy", &ErrorSharingPolicyNotFound, http.StatusNotFound},
+		{"a second policy for one unit", &ErrorSharingPolicyExists, http.StatusConflict},
+		{"a stale version", &ErrorSharingPolicyVersionMismatch, http.StatusConflict},
+		{"a declared policy", &ErrorSharingPolicyDeclared, http.StatusBadRequest},
+		{"an unshared organization unit", &ErrorApplicationNotSharedToOU, http.StatusNotFound},
+		{"a framework failure", &tidcommon.InternalServerError, http.StatusInternalServerError},
+	} {
+		suite.Run(tc.name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			handler := newApplicationHandler(mockService)
+			mockService.EXPECT().GetSharingPolicy(mock.Anything, "app-1", "p1").
+				Return(sharing.Policy{}, tc.svcErr)
+
+			w := httptest.NewRecorder()
+			handler.HandleSharingPolicyGetRequest(w,
+				sharingRequest(http.MethodGet, "/applications/app-1/sharing-policies/p1", nil,
+					map[string]string{"id": "app-1", "policyId": "p1"}))
+
+			suite.Equal(tc.wantStatus, w.Code)
+			var body map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+			suite.Equal(tc.svcErr.Code, body["code"])
+		})
+	}
+}
+
+// A create answers 201 with the recorded policy.
+func (suite *HandlerTestSuite) TestSharingPolicyPostAnswersCreated() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.EXPECT().CreateSharingPolicy(mock.Anything, "app-1", mock.Anything).
+		Return(sharing.Policy{ID: "p1", Version: 1,
+			Targets: []sharing.Target{{ID: "t1", Scope: sharing.ScopeAllChildren, OUID: "root"}}}, nil)
+
+	w := httptest.NewRecorder()
+	handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+		"/applications/app-1/sharing-policies",
+		map[string]interface{}{"targets": []map[string]string{{"scope": "allChildren"}}},
+		map[string]string{"id": "app-1"}))
+
+	suite.Require().Equal(http.StatusCreated, w.Code, "body: %s", w.Body.String())
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("p1", body["id"])
+}
+
+// A body that is not a policy request is refused before the service is asked anything.
+func (suite *HandlerTestSuite) TestSharingPolicyPostRefusesAMalformedBody() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/sharing-policies",
+		bytes.NewReader([]byte("{not json")))
+	req.SetPathValue("id", "app-1")
+	handler.HandleSharingPolicyPostRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+// A field name the body gets wrong is refused rather than dropped. The spec marks every target
+// additionalProperties: false, and nothing validates a request against the spec at runtime, so
+// without this a misspelled excludedOuIds would read as a target with no exclusions and share the
+// application with the organization unit the caller named to keep it from.
+func (suite *HandlerTestSuite) TestSharingPolicyPostRefusesAnUnknownField() {
+	for _, tc := range []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{
+			name: "a misspelled exclusion silently widens the share",
+			body: map[string]interface{}{"targets": []map[string]interface{}{
+				{"scope": "allChildren", "excludeOuIds": []string{"acme-trial"}}}},
+		},
+		{
+			name: "an unknown field beside the targets",
+			body: map[string]interface{}{
+				"targets":       []map[string]string{{"scope": "allChildren"}},
+				"totallyMadeUp": "x"},
+		},
+	} {
+		suite.Run(tc.name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			handler := newApplicationHandler(mockService)
+
+			w := httptest.NewRecorder()
+			handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+				"/applications/app-1/sharing-policies", tc.body, map[string]string{"id": "app-1"}))
+
+			// The service mock records no call: the body never gets that far.
+			suite.Equal(http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
+		})
+	}
+}
+
+// The spelling the spec gives still decodes, so the refusal above is about the unknown name and not
+// about exclusions in general.
+func (suite *HandlerTestSuite) TestSharingPolicyPostAcceptsExclusions() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	var recorded sharing.PolicyRequest
+	mockService.EXPECT().CreateSharingPolicy(mock.Anything, "app-1", mock.Anything).
+		Run(func(_ context.Context, _ string, req sharing.PolicyRequest) { recorded = req }).
+		Return(sharing.Policy{ID: "p1", Version: 1}, nil)
+
+	w := httptest.NewRecorder()
+	handler.HandleSharingPolicyPostRequest(w, sharingRequest(http.MethodPost,
+		"/applications/app-1/sharing-policies",
+		map[string]interface{}{"targets": []map[string]interface{}{
+			{"scope": "allChildren", "excludedOuIds": []string{"acme-trial"}}}},
+		map[string]string{"id": "app-1"}))
+
+	suite.Require().Equal(http.StatusCreated, w.Code, "body: %s", w.Body.String())
+	suite.Equal([]string{"acme-trial"}, recorded.Targets[0].ExcludedOUIDs)
+}
+
+// A delete answers 204 with no body.
+func (suite *HandlerTestSuite) TestSharingPolicyDeleteAnswersNoContent() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.EXPECT().DeleteSharingPolicy(mock.Anything, "app-1", "p1").Return(nil)
+
+	w := httptest.NewRecorder()
+	handler.HandleSharingPolicyDeleteRequest(w, sharingRequest(http.MethodDelete,
+		"/applications/app-1/sharing-policies/p1", nil,
+		map[string]string{"id": "app-1", "policyId": "p1"}))
+
+	suite.Equal(http.StatusNoContent, w.Code)
+	suite.Empty(w.Body.String())
+}
+
+// The organization unit to resolve for travels as a query parameter, and the empty collections
+// come back as collections rather than as null, so a client can read them without a nil check.
+func (suite *HandlerTestSuite) TestOverlayRulesReadsTheUnitFromTheQuery() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.EXPECT().ResolveSharingOverlay(mock.Anything, "app-1", "child-a").
+		Return(sharing.ResolvedOverlay{OUID: "child-a", Visible: true}, nil)
+
+	w := httptest.NewRecorder()
+	handler.HandleOverlayRuleGetRequest(w, sharingRequest(http.MethodGet,
+		"/applications/app-1/overlay-rules?ouId=child-a", nil, map[string]string{"id": "app-1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal("child-a", body["ouId"])
+	suite.Equal(true, body["visible"])
+	suite.NotNil(body["rules"], "an absent rule set is an empty object, not null")
+	suite.NotNil(body["policyIds"], "an absent policy list is an empty array, not null")
+}
+
+// A listing shapes every policy it returns and carries the page counts through.
+func (suite *HandlerTestSuite) TestSharingPolicyListShapesThePage() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.EXPECT().ListSharingPolicies(mock.Anything, "app-1", serverconst.DefaultPageSize, 0).
+		Return(sharing.PolicyList{
+			TotalResults: 1, StartIndex: 1, Count: 1,
+			Policies: []sharing.Policy{{ID: "p1", Targets: []sharing.Target{
+				{ID: "t1", Scope: sharing.ScopeChild, OUID: "child-a"}}}},
+		}, nil)
+
+	w := httptest.NewRecorder()
+	handler.HandleSharingPolicyListRequest(w, sharingRequest(http.MethodGet,
+		"/applications/app-1/sharing-policies", nil, map[string]string{"id": "app-1"}))
+
+	suite.Require().Equal(http.StatusOK, w.Code)
+	var body sharing.PolicyListResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	suite.Equal(1, body.TotalResults)
+	suite.Require().Len(body.Policies, 1)
+	suite.Equal("child-a", body.Policies[0].Targets[0].OUID)
 }

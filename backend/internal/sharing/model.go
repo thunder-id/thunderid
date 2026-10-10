@@ -324,3 +324,104 @@ const (
 	// it has chosen nothing or because the field is not its to choose.
 	SourceRule = "rule"
 )
+
+// The types below are the wire shape a management API serves, shared by every resource type that
+// mounts sharing endpoints of its own.
+
+// TargetResponse is one organization unit selection as an API returns it.
+type TargetResponse struct {
+	Scope         string   `json:"scope"`
+	OUID          string   `json:"ouId,omitempty"`
+	ExcludedOUIDs []string `json:"excludedOuIds,omitempty"`
+}
+
+// PolicyResponse is one recorded policy as an API returns it.
+type PolicyResponse struct {
+	ID string `json:"id"`
+	// InitiatingOUID is whose decision this policy is. The owning unit is not carried: it belongs
+	// to the resource, which these endpoints are already mounted under.
+	InitiatingOUID string           `json:"initiatingOuId"`
+	Stage          string           `json:"stage"`
+	ParentPolicyID string           `json:"parentPolicyId,omitempty"`
+	IsReadOnly     bool             `json:"isReadOnly"`
+	Version        int              `json:"version"`
+	Targets        []TargetResponse `json:"targets"`
+}
+
+// PolicyListResponse is one page of a resource's policies.
+type PolicyListResponse struct {
+	TotalResults int              `json:"totalResults"`
+	StartIndex   int              `json:"startIndex"`
+	Count        int              `json:"count"`
+	Policies     []PolicyResponse `json:"policies"`
+}
+
+// ResolvedOverlayResponse is what one organization unit may do with a resource. A type that
+// declares no overlay fields answers with empty rules.
+type ResolvedOverlayResponse struct {
+	OUID      string                 `json:"ouId"`
+	Owned     bool                   `json:"owned"`
+	Visible   bool                   `json:"visible"`
+	PolicyIDs []string               `json:"policyIds"`
+	Rules     map[string]OverlayRule `json:"rules"`
+}
+
+// ToPolicyResponse shapes a stored policy for an API. The scopes that name no organization unit
+// carry one in storage anyway, so the response drops it and returns what a create would have sent.
+func ToPolicyResponse(p Policy) PolicyResponse {
+	targets := make([]TargetResponse, 0, len(p.Targets))
+	for _, t := range p.Targets {
+		ouID := t.OUID
+		if t.Scope == ScopeAllOUs || t.Scope == ScopeAllRoots || t.Scope == ScopeAllChildren {
+			ouID = ""
+		}
+		targets = append(targets, TargetResponse{
+			Scope:         string(t.Scope),
+			OUID:          ouID,
+			ExcludedOUIDs: t.ExcludedOUIDs,
+		})
+	}
+	return PolicyResponse{
+		ID:             p.ID,
+		InitiatingOUID: p.InitiatingOUID,
+		Stage:          string(p.Stage),
+		ParentPolicyID: p.ParentPolicyID,
+		IsReadOnly:     p.Declared,
+		Version:        p.Version,
+		Targets:        targets,
+	}
+}
+
+// ToPolicyListResponse shapes one page of policies for an API.
+func ToPolicyListResponse(list PolicyList) PolicyListResponse {
+	policies := make([]PolicyResponse, 0, len(list.Policies))
+	for _, p := range list.Policies {
+		policies = append(policies, ToPolicyResponse(p))
+	}
+	return PolicyListResponse{
+		TotalResults: list.TotalResults,
+		StartIndex:   list.StartIndex,
+		Count:        list.Count,
+		Policies:     policies,
+	}
+}
+
+// ToResolvedOverlayResponse shapes a resolved overlay for an API. The empty collections are built
+// rather than left nil, so a caller reads them without guarding against null.
+func ToResolvedOverlayResponse(overlay ResolvedOverlay) ResolvedOverlayResponse {
+	rules := overlay.Rules
+	if rules == nil {
+		rules = map[string]OverlayRule{}
+	}
+	policyIDs := overlay.PolicyIDs
+	if policyIDs == nil {
+		policyIDs = []string{}
+	}
+	return ResolvedOverlayResponse{
+		OUID:      overlay.OUID,
+		Owned:     overlay.Owned,
+		Visible:   overlay.Visible,
+		PolicyIDs: policyIDs,
+		Rules:     rules,
+	}
+}

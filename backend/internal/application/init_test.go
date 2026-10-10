@@ -6,6 +6,7 @@ package application
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -561,6 +562,42 @@ func TestRegisterRoutes_Standalone(t *testing.T) {
 	assert.NotPanics(t, func() {
 		registerRoutes(mux, mockHandler)
 	})
+}
+
+// TestRegisterRoutes_SharingPreflight checks that each sharing path's preflight is served by a
+// route whose allowed methods cover what that path accepts. The subtree route under /applications/
+// allows GET, PUT and DELETE, so a collection taking POST needs a route of its own.
+func TestRegisterRoutes_SharingPreflight(t *testing.T) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, &applicationHandler{})
+
+	tests := []struct {
+		path    string
+		pattern string
+	}{
+		{
+			path:    "/applications/app-1/sharing-policies",
+			pattern: "OPTIONS /applications/{id}/sharing-policies",
+		},
+		{
+			path:    "/applications/app-1/sharing-policies/policy-1",
+			pattern: "OPTIONS /applications/",
+		},
+		{
+			path:    "/applications/app-1/overlay-rules",
+			pattern: "OPTIONS /applications/",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodOptions, tt.path, nil)
+			req.Header.Set("Origin", "http://localhost:3000")
+			req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+			_, pattern := mux.Handler(req)
+			assert.Equal(t, tt.pattern, pattern)
+		})
+	}
 }
 
 // TestInitialize_Standalone tests Initialize function without suite dependencies

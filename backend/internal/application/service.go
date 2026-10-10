@@ -20,6 +20,7 @@ import (
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
@@ -56,6 +57,22 @@ type ApplicationServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+
+	// Sharing policies. Each resolves the application first, so a policy is only ever reached
+	// through the application it governs.
+	CreateSharingPolicy(ctx context.Context, appID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	GetSharingPolicy(ctx context.Context, appID, policyID string) (
+		sharing.Policy, *tidcommon.ServiceError)
+	ListSharingPolicies(ctx context.Context, appID string, limit, offset int) (
+		sharing.PolicyList, *tidcommon.ServiceError)
+	UpdateSharingPolicy(ctx context.Context, appID, policyID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	DeleteSharingPolicy(ctx context.Context, appID, policyID string) *tidcommon.ServiceError
+	ResolveSharingOverlay(ctx context.Context, appID, ouID string) (
+		sharing.ResolvedOverlay, *tidcommon.ServiceError)
+	ExportSharingPolicies(ctx context.Context, appID string) (
+		[]sharing.ReplayablePolicy, *tidcommon.ServiceError)
 }
 
 // artifactLifetimeResolver reports how long an artifact issued to the given OAuth client can remain
@@ -76,6 +93,7 @@ type applicationService struct {
 	serverConfigService  serverconfig.ServerConfigService
 	resolveLifetime      artifactLifetimeResolver
 	valueCapturer        declarativeresource.ValueCapturer
+	sharingService       sharing.SharingServiceInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -88,6 +106,7 @@ func newApplicationService(
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
 	valueCapturer declarativeresource.ValueCapturer,
+	sharingService sharing.SharingServiceInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -99,6 +118,7 @@ func newApplicationService(
 		serverConfigService:  serverConfigSvc,
 		resolveLifetime:      artifactLifetime,
 		valueCapturer:        valueCapturer,
+		sharingService:       sharingService,
 	}
 }
 
@@ -107,6 +127,17 @@ func (as *applicationService) deleteEntityCompensation(ctx context.Context, appI
 		as.logger.Error(ctx, "Failed to delete entity during compensation", log.Error(delErr),
 			log.String("appID", appID))
 	}
+}
+
+// deleteApplicationCompensation undoes a create that later failed. Each step is logged and the next
+// still runs, so one unavailable store cannot strand the other half.
+func (as *applicationService) deleteApplicationCompensation(ctx context.Context, appID string) {
+	if delErr := as.inboundClientService.DeleteInboundClient(ctx, appID); delErr != nil &&
+		!errors.Is(delErr, inboundclient.ErrInboundClientNotFound) {
+		as.logger.Error(ctx, "Failed to delete inbound client during compensation",
+			log.Error(delErr), log.String("appID", appID))
+	}
+	as.deleteEntityCompensation(ctx, appID)
 }
 
 // CreateApplication creates the application.
@@ -219,8 +250,108 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		inboundAuthConfig, oauthToken, userInfo, scopeClaims)
 	// Surface the Flow Secret once, on creation only.
 	returnDTO.FlowSecret = flowSecret
+
+	// An import carries the sharing policies in the same document as the application. A policy can
+	// only be written once the application it names exists, so this cannot run before the writes
+	// above and a refusal has to undo them instead: a caller told the create failed gets no id
+	// back, and must be able to retry without colliding with the name the first attempt left.
+	if svcErr := as.syncSharingPolicies(ctx, appID, processedDTO.OUID, app.SharingPolicies); svcErr != nil {
+		as.deleteApplicationCompensation(ctx, appID)
+		return nil, svcErr
+	}
+
 	as.captureValues(ctx, returnDTO)
 	return returnDTO, nil
+}
+
+// syncSharingPolicies records the policies an application document carries, keyed on the
+// organization unit that issues each one rather than on the policy id.
+//
+// One unit holds at most one policy per application, so keying it that way is what lets a document
+// whose policy was rewritten replace the existing one instead of colliding with it.
+func (as *applicationService) syncSharingPolicies(
+	ctx context.Context, appID, owningOUID string, requests []sharing.PolicyRequest,
+) *tidcommon.ServiceError {
+	if len(requests) == 0 {
+		return nil
+	}
+
+	existing, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
+	if svcErr != nil {
+		return translateSharingError(svcErr)
+	}
+	byInitiator := make(map[string]sharing.Policy, len(existing))
+	for _, p := range existing {
+		byInitiator[p.InitiatingOUID] = p
+	}
+
+	var created []string
+	for i, req := range requests {
+		initiator := req.InitiatingOUID
+		if initiator == "" {
+			initiator = owningOUID
+		}
+		current, found := byInitiator[initiator]
+		if !found {
+			// A document is reviewed configuration, so a deployment-wide reach it carries
+			// survives the import.
+			policy, svcErr := as.sharingService.CreatePolicy(
+				ctx, ApplicationSharingType, appID, owningOUID, req, sharing.PolicyFromImport)
+			if svcErr != nil {
+				as.deletePolicyCompensation(ctx, appID, created)
+				return as.sharingPolicyError(ctx, appID, initiator, i, svcErr)
+			}
+			created = append(created, policy.ID)
+			continue
+		}
+		// A declared policy belongs to the file that declares it. The document's own policy for
+		// that organization unit is dropped, and the import still succeeds, so say which one lost:
+		// nothing else in the result tells the operator their policy did not take effect.
+		if current.Declared {
+			as.logger.Warn(ctx,
+				"Sharing policy in the document was skipped; a declared policy governs this unit",
+				log.String("appID", appID), log.Int("policyIndex", i+1),
+				log.String("initiatingOUID", initiator), log.String("declaredPolicyID", current.ID))
+			continue
+		}
+		req.Version = current.Version
+		if _, svcErr := as.sharingService.UpdatePolicy(ctx, current.ID, req); svcErr != nil {
+			as.deletePolicyCompensation(ctx, appID, created)
+			return as.sharingPolicyError(ctx, appID, initiator, i, svcErr)
+		}
+	}
+	return nil
+}
+
+// deletePolicyCompensation removes the policies a failed sync created, so a document refused partway
+// leaves nothing recorded. A policy it replaced in place is not restored: by then the definition it
+// held is no longer kept anywhere.
+func (as *applicationService) deletePolicyCompensation(ctx context.Context, appID string, policyIDs []string) {
+	for _, policyID := range policyIDs {
+		if svcErr := as.sharingService.DeletePolicy(ctx, policyID); svcErr != nil {
+			as.logger.Error(ctx, "Failed to delete sharing policy during compensation",
+				log.String("appID", appID), log.String("policyID", policyID),
+				log.String("code", svcErr.Code))
+		}
+	}
+}
+
+// sharingPolicyError translates a refusal of one policy an application document carries, and says
+// which policy it was, because a document names them only by position.
+//
+// A client refusal is logged as a warning: the document's author has something to fix, not the
+// operator. A framework failure is left alone, already logged where it happened.
+func (as *applicationService) sharingPolicyError(
+	ctx context.Context, appID, initiatingOUID string, index int, svcErr *tidcommon.ServiceError,
+) *tidcommon.ServiceError {
+	translated := translateSharingError(svcErr)
+	if translated.Type == tidcommon.ClientErrorType {
+		as.logger.Warn(ctx, "Refused a sharing policy carried by an application",
+			log.String("appID", appID), log.Int("policyIndex", index+1),
+			log.String("initiatingOUID", initiatingOUID), log.String("code", translated.Code),
+			log.String("reason", translated.ErrorDescription.DefaultValue))
+	}
+	return translated
 }
 
 // ValidateApplication validates the application data transfer object.
@@ -434,6 +565,14 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		inboundAuthConfig.OAuthConfig != nil &&
 		inboundAuthConfig.OAuthConfig.ClientSecret != ""
 
+	// Re-importing a document replays the policies it carries. It runs before the writes below so
+	// a refused policy aborts and leaves the application as it was, the way a failed dependency
+	// cleanup aborts a delete. The application already exists here, and its organization unit is
+	// fixed at creation, so the framework resolves the same owner either side of the update.
+	if svcErr := as.syncSharingPolicies(ctx, appID, processedDTO.OUID, app.SharingPolicies); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Update config first, while entity attributes still hold the previous client_id so the
 	// inbound client service can clean up the old OAuth-app cert.
 	if err := as.inboundClientService.UpdateInboundClient(
@@ -477,6 +616,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	}
 	returnDTO := buildReturnApplicationDTO(appID, &appForReturn, inboundClient.Assertion, processedDTO.Metadata,
 		inboundAuthConfig, oauthToken, userInfo, scopeClaims)
+
 	as.captureValues(ctx, returnDTO)
 	return returnDTO, nil
 }
@@ -2525,4 +2665,167 @@ func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, orig
 		as.logger.Warn(ctx, "Failed to update CORS config with passkey allowed origins",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
 	}
+}
+
+// translateSharingError maps a sharing framework error into this service's own vocabulary.
+//
+// It logs nothing. The framework already logged its own failures, and a client error is the
+// caller's doing rather than an operational event.
+func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return &tidcommon.InternalServerError
+	}
+
+	var mapped tidcommon.ServiceError
+	switch svcErr.Code {
+	case sharing.ErrorPolicyNotFound.Code:
+		mapped = ErrorSharingPolicyNotFound
+	case sharing.ErrorPolicyExists.Code:
+		mapped = ErrorSharingPolicyExists
+	case sharing.ErrorVersionMismatch.Code:
+		mapped = ErrorSharingPolicyVersionMismatch
+	case sharing.ErrorPolicyDeclared.Code:
+		mapped = ErrorSharingPolicyDeclared
+	case sharing.ErrorInvalidLimit.Code:
+		mapped = ErrorInvalidLimit
+	case sharing.ErrorInvalidOffset.Code:
+		mapped = ErrorInvalidOffset
+	default:
+		mapped = ErrorInvalidSharingPolicy
+	}
+	return tidcommon.CustomServiceError(mapped, svcErr.ErrorDescription)
+}
+
+// requireSharing resolves the application a sharing call names and returns its owning organization
+// unit, so an unknown application answers as one rather than as a sharing failure.
+func (as *applicationService) requireSharing(
+	ctx context.Context, appID string,
+) (string, *tidcommon.ServiceError) {
+	if appID == "" {
+		return "", &ErrorInvalidApplicationID
+	}
+	app, svcErr := as.GetApplication(ctx, appID)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	return app.OUID, nil
+}
+
+// requireOwnPolicy fetches a policy and refuses one belonging to another resource. Without it a
+// policy id alone would reach any policy in the deployment through any application's path.
+func (as *applicationService) requireOwnPolicy(
+	ctx context.Context, appID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	policy, svcErr := as.sharingService.GetPolicy(ctx, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, translateSharingError(svcErr)
+	}
+	if policy.ResourceType != ApplicationSharingType || policy.ResourceID != appID {
+		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+	}
+	return policy, nil
+}
+
+// CreateSharingPolicy records which organization units may act for an application.
+func (as *applicationService) CreateSharingPolicy(
+	ctx context.Context, appID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	// A create through the API is not a replay, so the id and the version it starts at are the
+	// framework's, not the caller's. The spec says as much: version is read only on an edit.
+	req.ID = ""
+	req.Version = 0
+	policy, svcErr := as.sharingService.CreatePolicy(ctx, ApplicationSharingType, appID, owningOUID,
+		req, sharing.PolicyFromRequest)
+	return policy, translateSharingError(svcErr)
+}
+
+// GetSharingPolicy returns one of the application's sharing policies.
+func (as *applicationService) GetSharingPolicy(
+	ctx context.Context, appID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	return as.requireOwnPolicy(ctx, appID, policyID)
+}
+
+// ListSharingPolicies returns one page of the application's sharing policies.
+func (as *applicationService) ListSharingPolicies(
+	ctx context.Context, appID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+		return sharing.PolicyList{}, svcErr
+	}
+	list, svcErr := as.sharingService.GetPolicyList(ctx, ApplicationSharingType, appID, limit, offset)
+	return list, translateSharingError(svcErr)
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents.
+func (as *applicationService) UpdateSharingPolicy(
+	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	if _, svcErr := as.requireOwnPolicy(ctx, appID, policyID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	policy, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
+	return policy, translateSharingError(svcErr)
+}
+
+// DeleteSharingPolicy removes a sharing policy and everything that depended on it.
+func (as *applicationService) DeleteSharingPolicy(
+	ctx context.Context, appID, policyID string,
+) *tidcommon.ServiceError {
+	policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	if svcErr != nil {
+		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
+			return nil
+		}
+		return svcErr
+	}
+	if policy.Declared {
+		return &ErrorSharingPolicyDeclared
+	}
+	return translateSharingError(as.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// ResolveSharingOverlay answers what one organization unit may do with the application. An
+// application declares no overlay fields, so the answer is visibility.
+func (as *applicationService) ResolveSharingOverlay(
+	ctx context.Context, appID, ouID string,
+) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
+	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	if ouID == "" {
+		return sharing.ResolvedOverlay{}, &ErrorInvalidRequestFormat
+	}
+	overlay, svcErr := as.sharingService.ResolveOverlayRules(ctx, ApplicationSharingType, appID, ouID)
+	if svcErr != nil {
+		// An id naming no organization unit leaves nothing to resolve either, and answering it as
+		// a malformed policy would describe a mistake the caller did not make.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return sharing.ResolvedOverlay{}, &ErrorApplicationNotSharedToOU
+		}
+		return sharing.ResolvedOverlay{}, translateSharingError(svcErr)
+	}
+	// An organization unit the application never reached holds no terms to answer with.
+	if !overlay.Visible {
+		return sharing.ResolvedOverlay{}, &ErrorApplicationNotSharedToOU
+	}
+	return overlay, nil
+}
+
+// ExportSharingPolicies returns the application's policies in an order safe to replay.
+func (as *applicationService) ExportSharingPolicies(
+	ctx context.Context, appID string,
+) ([]sharing.ReplayablePolicy, *tidcommon.ServiceError) {
+	policies, svcErr := as.sharingService.ExportPolicies(ctx, ApplicationSharingType, appID)
+	return policies, translateSharingError(svcErr)
 }

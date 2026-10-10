@@ -18,6 +18,10 @@ servers:
 tags:
   - name: Applications
     description: CRUD operations for registered client applications.
+  - name: Application Sharing
+    description: |
+      Record which organization units may act for an application, and resolve what one organization
+      unit may do with it.
 
 security:
   - OAuth2: [system]
@@ -712,6 +716,257 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /applications/{id}/sharing-policies:
+    parameters:
+      - $ref: '#/components/parameters/applicationIdPathParam'
+    post:
+      tags:
+        - Application Sharing
+      summary: Create a sharing policy
+      description: |
+        Records one organization unit's decision about which other organization units may act for
+        this application. Exactly one policy exists per application per initiating organization
+        unit; a second create is refused.
+
+        Sharing an application grants one thing: a named organization unit may be given as the
+        accessing organization unit on a token request. It does not place the application in that
+        unit's listings, nor make it readable, editable, or deletable there.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyRequest'
+            examples:
+              wholeSubtree:
+                summary: The initiator's whole subtree
+                value:
+                  targets:
+                    - scope: allChildren
+              wholeSubtreeWithCarveOut:
+                summary: The whole subtree except one branch
+                value:
+                  targets:
+                    - scope: allChildren
+                      excludedOuIds: ["acme-trial-customers"]
+              namedChildren:
+                summary: Named children, one at a time
+                value:
+                  targets:
+                    - scope: child
+                      ouId: "acme-customer-a"
+                    - scope: child
+                      ouId: "acme-customer-b"
+              childAndItsSubtree:
+                summary: One direct child and everything beneath it
+                value:
+                  targets:
+                    - scope: childSubtree
+                      ouId: "acme-customer-a"
+              namedRoots:
+                summary: Named tree roots, owner only
+                value:
+                  targets:
+                    - scope: root
+                      ouId: "partner-root"
+              reshare:
+                summary: A reshare issued by a sharee
+                value:
+                  initiatingOuId: "acme-customer-a"
+                  targets:
+                    - scope: child
+                      ouId: "acme-customer-a-eu"
+      responses:
+        "201":
+          description: Sharing policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "400":
+          $ref: '#/components/responses/SharingBadRequest'
+        "404":
+          $ref: '#/components/responses/ApplicationNotFound'
+        "409":
+          $ref: '#/components/responses/SharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    get:
+      tags:
+        - Application Sharing
+      summary: List sharing policies
+      description: |
+        Returns the application's sharing policies, declared ones included. A policy a resource file
+        declares is listed with `isReadOnly` set to true and cannot be edited or deleted here.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Sharing policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicyListResponse'
+        "400":
+          $ref: '#/components/responses/SharingBadRequest'
+        "404":
+          $ref: '#/components/responses/ApplicationNotFound'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+
+  /applications/{id}/sharing-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/applicationIdPathParam'
+      - $ref: '#/components/parameters/sharingPolicyIdPathParam'
+    get:
+      tags:
+        - Application Sharing
+      summary: Get a sharing policy
+      responses:
+        "200":
+          description: Sharing policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "404":
+          $ref: '#/components/responses/SharingPolicyNotFound'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    put:
+      tags:
+        - Application Sharing
+      summary: Replace a sharing policy
+      description: |
+        Replaces the policy's targets. The request carries the `version` the caller believes it is
+        editing; an edit against a stale version is refused rather than silently flattening another
+        write.
+
+        A policy that already reaches a whole family of organization units cannot change that
+        target. It can still be narrowed by excluding organization units from it, and selective
+        targets beside it may be added or dropped.
+
+        This holds for `allOus` and `allRoots` too, which a create may not name. A policy that was
+        imported with one keeps it: restate the target here and rewrite its `excludedOuIds` to
+        carve units out of it or hand them back. Editing a narrower policy into one of those scopes
+        is refused, so the edit cannot reach where the create could not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyUpdateRequest'
+            examples:
+              addACarveOut:
+                summary: Carve one organization unit out of a subtree target
+                value:
+                  version: 1
+                  targets:
+                    - scope: allChildren
+                      excludedOuIds: ["acme-trial-customers"]
+              carveOutOfADeploymentWideTarget:
+                summary: Rewrite the exclusions on an imported deployment-wide policy
+                description: |
+                  The target is restated unchanged, which is what lets the exclusions beside it
+                  move. A create may not name `allOus`, and an edit may not introduce it.
+                value:
+                  version: 2
+                  targets:
+                    - scope: allOus
+                      excludedOuIds: ["acme-trial-customers", "partner-sandbox"]
+      responses:
+        "200":
+          description: Sharing policy replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "400":
+          $ref: '#/components/responses/SharingBadRequest'
+        "404":
+          $ref: '#/components/responses/SharingPolicyNotFound'
+        "409":
+          $ref: '#/components/responses/SharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+    delete:
+      tags:
+        - Application Sharing
+      summary: Delete a sharing policy
+      description: |
+        Removes the policy and everything that depended on it: the policies its sharees issued, and
+        the per-organization-unit state of every unit that loses sight of the application.
+
+        A declared policy cannot be deleted here (`APP-1055`). Its existence belongs to the resource file that
+        declares it, so it goes away by being removed from that file.
+      responses:
+        "204":
+          description: |
+            Sharing policy deleted, or the application holds no policy under that id.
+        "400":
+          $ref: '#/components/responses/SharingBadRequest'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+
+  /applications/{id}/overlay-rules:
+    parameters:
+      - $ref: '#/components/parameters/applicationIdPathParam'
+    get:
+      tags:
+        - Application Sharing
+      summary: Resolve what an organization unit may do with the application
+      description: |
+        Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
+        application, and which policies reached it.
+
+        An organization unit no policy reaches answers `404`, because the application is not
+        available there and so has no terms to resolve.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200":
+          description: Resolved overlay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedOverlay'
+              examples:
+                reached:
+                  summary: An organization unit a policy reached
+                  value:
+                    ouId: "acme-customer-a"
+                    owned: false
+                    visible: true
+                    policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                    rules: {}
+                owner:
+                  summary: The organization unit that owns the application
+                  value:
+                    ouId: "acme-root"
+                    owned: true
+                    visible: true
+                    policyIds: []
+                    rules: {}
+        "400":
+          $ref: '#/components/responses/SharingBadRequest'
+        "404":
+          $ref: '#/components/responses/OverlayNotResolvable'
+        "500":
+          $ref: '#/components/responses/SharingServerError'
+
+
 components:
   securitySchemes:
     OAuth2:
@@ -747,6 +1002,182 @@ components:
       schema:
         type: integer
         default: 0
+
+    applicationIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: Application ID
+      schema:
+        type: string
+      example: "550e8400-e29b-41d4-a716-446655440000"
+    sharingPolicyIdPathParam:
+      in: path
+      name: policyId
+      required: true
+      description: Sharing policy ID
+      schema:
+        type: string
+      example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+
+  responses:
+    SharingBadRequest:
+      description: |
+        The policy is not one the issuing organization unit may write. The code says which kind of
+        mistake it is, and the description says what is wrong with this request in particular.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noTarget:
+              summary: No target, or a target whose scope and organization unit disagree
+              value:
+                code: "APP-1051"
+                message:
+                  key: "error.applicationservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, names no target, or names a target whose scope and organization unit do not go together"
+            invalidPage:
+              summary: A limit or offset outside its bounds, or not a number at all
+              description: |
+                A value this endpoint cannot parse and one the sharing framework refuses answer the
+                same way, so a caller sees one error for one mistake.
+              value:
+                code: "APP-1057"
+                message:
+                  key: "error.applicationservice.invalid_limit_parameter"
+                  defaultValue: "Invalid limit parameter"
+                description:
+                  key: "error.applicationservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer within the maximum page size"
+            overlappingTargets:
+              summary: Two targets reaching the same organization unit
+              value:
+                code: "APP-1051"
+                message:
+                  key: "error.applicationservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.overlapping_targets_description"
+                  defaultValue: "Two targets of this policy reach the same organization unit; exclude it from the broader target to give it terms of its own: acme-customer-a is already reached by allChildren"
+            declaredPolicy:
+              summary: An edit or delete aimed at a policy a resource file declares
+              value:
+                code: "APP-1055"
+                message:
+                  key: "error.applicationservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.applicationservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+
+    ApplicationNotFound:
+      description: No such application
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "APP-1001"
+            message:
+              key: "error.applicationservice.application_not_found"
+              defaultValue: "Application not found"
+            description:
+              key: "error.applicationservice.application_not_found_description"
+              defaultValue: "The application with the specified id does not exist"
+
+    OverlayNotResolvable:
+      description: |
+        No such application, or no sharing policy reaches the organization unit, so the application
+        is not available there and has no terms to resolve.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notShared:
+              summary: An organization unit no policy reaches
+              value:
+                code: "APP-1056"
+                message:
+                  key: "error.applicationservice.application_not_shared_to_ou"
+                  defaultValue: "Application is not shared to the organization unit"
+                description:
+                  key: "error.applicationservice.application_not_shared_to_ou_description"
+                  defaultValue: "No sharing policy reaches the specified organization unit, so the application is not available there"
+            noSuchApplication:
+              summary: No such application
+              value:
+                code: "APP-1001"
+                message:
+                  key: "error.applicationservice.application_not_found"
+                  defaultValue: "Application not found"
+                description:
+                  key: "error.applicationservice.application_not_found_description"
+                  defaultValue: "The application with the specified id does not exist"
+
+    SharingPolicyNotFound:
+      description: No such sharing policy on this application
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "APP-1052"
+            message:
+              key: "error.applicationservice.sharing_policy_not_found"
+              defaultValue: "Sharing policy not found"
+            description:
+              key: "error.applicationservice.sharing_policy_not_found_description"
+              defaultValue: "The application has no sharing policy with the specified id"
+
+    SharingPolicyConflict:
+      description: |
+        The organization unit already holds a policy for this application, or the policy moved
+        since it was read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            alreadyExists:
+              summary: A second policy for the same organization unit
+              value:
+                code: "APP-1053"
+                message:
+                  key: "error.applicationservice.sharing_policy_exists"
+                  defaultValue: "Sharing policy already exists"
+                description:
+                  key: "error.applicationservice.sharing_policy_exists_description"
+                  defaultValue: "This organization unit already has a sharing policy for the application; edit it instead"
+            staleVersion:
+              summary: An edit against a stale version
+              value:
+                code: "APP-1054"
+                message:
+                  key: "error.applicationservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.applicationservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+
+    SharingServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "APP-5001"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
 
   schemas:
     ApplicationRequest:
@@ -1806,6 +2237,301 @@ components:
             the full list is used as a fallback. When acr_values is omitted from the request,
             this configured list is used as the effective ACR set.
           example: ["urn:thunder:silver", "urn:thunder:gold"]
+
+    SharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [targets]
+      description: |
+        One organization unit's decision about this application. A policy is a flat list of targets,
+        and each target carries its own scope and its own exclusions. Nothing sits outside a target.
+      properties:
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this is. Omitted means the application's owner. A
+            unit other than the owner may only issue a policy where the application already reached
+            it and stopped there.
+          example: "acme-root"
+        targets:
+          type: array
+          minItems: 1
+          description: |
+            The organization unit selections. Two targets of one policy may not reach the same
+            organization unit: to give one unit terms of its own, exclude it from the broader
+            target and name it in a target beside it.
+          items:
+            $ref: '#/components/schemas/SharingTargetRequest'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. Required on an edit, ignored on a
+            create.
+          example: 1
+
+    SharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [targets, version]
+      description: |
+        A replacement for a policy's contents. It differs from a create in what its targets may say:
+        a policy that already reaches every organization unit, or every root, keeps that reach here.
+
+        An edit may not reach wider than the policy already does. The scope a blanket target names
+        is fixed once the policy exists, so a deployment-wide target can be kept and its exclusions
+        rewritten, but one cannot be introduced by editing a narrower policy into it.
+      properties:
+        initiatingOuId:
+          type: string
+          description: The organization unit whose decision this is. Omitted means the owner.
+          example: "acme-root"
+        targets:
+          type: array
+          minItems: 1
+          description: |
+            The organization unit selections, replacing the policy's current ones. Two targets of
+            one policy may not reach the same organization unit.
+          items:
+            $ref: '#/components/schemas/SharingTarget'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. An edit against any other version
+            is refused, so a caller that has not seen the current one cannot overwrite it.
+          example: 1
+
+    SharingTargetRequest:
+      description: |
+        One organization unit selection a request may name. Exactly one of the patterns below.
+
+        The `allOus` and `allRoots` scopes are not listed. A reach not bounded by the issuer's own
+        position in the tree is a deployment decision, so it is written where such decisions are
+        reviewed: a resource file, or a document imported from one. This endpoint is neither. A
+        policy written that way still reads back through these endpoints, which is why the
+        response carries two scopes a request cannot.
+      oneOf:
+        - $ref: '#/components/schemas/TargetAllChildren'
+        - $ref: '#/components/schemas/TargetChild'
+        - $ref: '#/components/schemas/TargetChildSubtree'
+        - $ref: '#/components/schemas/TargetRoot'
+
+    SharingTarget:
+      description: |
+        One organization unit selection as a policy carries it. Every shape a create may send, plus
+        the two that only a resource file or an imported document may introduce.
+
+        An edit sends this shape rather than the create's, because a policy that already holds a
+        deployment-wide target has to be able to restate it to rewrite its exclusions.
+      oneOf:
+        - $ref: '#/components/schemas/TargetAllChildren'
+        - $ref: '#/components/schemas/TargetChild'
+        - $ref: '#/components/schemas/TargetChildSubtree'
+        - $ref: '#/components/schemas/TargetRoot'
+        - $ref: '#/components/schemas/TargetAllOus'
+        - $ref: '#/components/schemas/TargetAllRoots'
+
+    TargetAllOus:
+      type: object
+      additionalProperties: false
+      required: [scope]
+      description: |
+        Every organization unit in the deployment, including units created later. Only a resource
+        file or an imported document may declare it, so it is never sent to these endpoints.
+      properties:
+        scope:
+          type: string
+          enum: [allOus]
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    TargetAllRoots:
+      type: object
+      additionalProperties: false
+      required: [scope]
+      description: |
+        The root organization unit of every tree. Only a resource file or an imported document may
+        declare it, so it is never sent to these endpoints.
+      properties:
+        scope:
+          type: string
+          enum: [allRoots]
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    TargetAllChildren:
+      type: object
+      additionalProperties: false
+      required: [scope]
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        scope:
+          type: string
+          enum: [allChildren]
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    TargetChild:
+      type: object
+      additionalProperties: false
+      required: [scope, ouId]
+      description: One organization unit directly beneath the issuer, and nothing below it.
+      properties:
+        scope:
+          type: string
+          enum: [child]
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    TargetChildSubtree:
+      type: object
+      additionalProperties: false
+      required: [scope, ouId]
+      description: One organization unit directly beneath the issuer, and everything below it at any depth.
+      properties:
+        scope:
+          type: string
+          enum: [childSubtree]
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    TargetRoot:
+      type: object
+      additionalProperties: false
+      required: [scope, ouId]
+      description: |
+        One tree root, and nothing below it. Owner only. Reaching a root outside the owner's own
+        tree additionally requires `resource_sharing.allow_child_ou_cross_tree_sharing` when the
+        owner sits below a root.
+      properties:
+        scope:
+          type: string
+          enum: [root]
+        ouId:
+          type: string
+          description: A root organization unit.
+          example: "partner-root"
+        excludedOuIds:
+          $ref: '#/components/schemas/ExcludedOuIds'
+
+    ExcludedOuIds:
+      type: array
+      description: |
+        Organization units carved out of this target alone, each taking its subtree with it. A
+        target reaching into the issuer's own tree may only exclude organization units directly
+        beneath the issuer, and may not exclude the unit it names, which would leave it reaching
+        nothing.
+      items:
+        type: string
+      example: ["acme-trial-customers"]
+
+    SharingPolicy:
+      type: object
+      description: A recorded sharing policy.
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+        initiatingOuId:
+          type: string
+          description: |
+            The organization unit whose decision this policy is. The owning organization unit is
+            not repeated here: it belongs to the application, which this path already names.
+          example: "acme-root"
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: "`share` when the owner issued it, `reshare` when a sharee did."
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the application. Empty for an owner-issued policy.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharingTarget'
+
+    SharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the application has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharingPolicy'
+
+    ResolvedOverlay:
+      type: object
+      description: What one organization unit may do with the application.
+      properties:
+        ouId:
+          type: string
+          example: "acme-customer-a"
+        owned:
+          type: boolean
+          description: Whether the organization unit owns the application rather than being shared it.
+        visible:
+          type: boolean
+          description: |
+            Whether the organization unit can see the application at all. This is what decides
+            whether it may be named as the accessing organization unit on a token request.
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: |
+            The effective rule per field. Always empty for an application, which declares no
+            overlay fields.
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+
+    OverlayRule:
+      type: object
+      description: What a reached organization unit may do with one field.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
 
     Error:
       type: object

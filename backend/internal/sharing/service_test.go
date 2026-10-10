@@ -547,7 +547,7 @@ func (s *ServiceTestSuite) declarative() SharingServiceInterface {
 // test on a blanket policy has to start from.
 func (s *ServiceTestSuite) storedAllChildren(rules map[string]OverlayRule) Policy {
 	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllChildren, OverlayRules: rules}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllChildren, OverlayRules: rules}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	return p
 }
@@ -573,7 +573,7 @@ func (s *ServiceTestSuite) share(rules map[string]OverlayRule) Policy {
 				OverlayRules: rules,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	return p
 }
@@ -586,7 +586,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnUnregisteredResourceType() {
 				Scope: ScopeAllRoots,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorResourceTypeNotRegistered.Code, svcErr.Code)
@@ -595,7 +595,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnUnregisteredResourceType() {
 // A policy is its list of targets, so a request naming none decides nothing.
 func (s *ServiceTestSuite) TestCreateRejectsAPolicyWithNoTargets() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: nil})
+		PolicyRequest{Targets: nil}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorInvalidRequestFormat.Code, svcErr.Code)
@@ -647,7 +647,7 @@ func (s *ServiceTestSuite) TestCreateAcceptsABroadTargetBesideANamedOne() {
 		PolicyRequest{Targets: []TargetRequest{
 			{Scope: ScopeAllChildren, ExcludedOUIDs: []string{childOU}},
 			{Scope: ScopeChild, OUID: childOU},
-		}})
+		}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 	s.Require().Len(p.Targets, 2)
@@ -710,13 +710,16 @@ func (s *ServiceTestSuite) TestCreateRejectsTargetsThatReachTheSameUnit() {
 			// behind would fail the next case as a duplicate policy rather than on its targets.
 			s.SetupTest()
 
-			create := s.svc.CreatePolicy
-			if tt.declared {
-				create = s.declarative().CreateDeclarativePolicy
+			create := func(req PolicyRequest) (Policy, *tidcommon.ServiceError) {
+				if tt.declared {
+					return s.declarative().CreateDeclarativePolicy(context.Background(), testType,
+						testResource, tt.owner, req)
+				}
+				return s.svc.CreatePolicy(context.Background(), testType, testResource, tt.owner,
+					req, PolicyFromRequest)
 			}
 
-			_, svcErr := create(context.Background(), testType, testResource, tt.owner,
-				PolicyRequest{ID: declaredID, Targets: tt.targets})
+			_, svcErr := create(PolicyRequest{ID: declaredID, Targets: tt.targets})
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorOverlappingTargets.Code, svcErr.Code)
@@ -749,7 +752,7 @@ func (s *ServiceTestSuite) TestCreateAcceptsTargetsThatReachDifferentUnits() {
 			s.SetupTest()
 
 			p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-				PolicyRequest{Targets: tt.targets})
+				PolicyRequest{Targets: tt.targets}, PolicyFromRequest)
 
 			s.Require().Nil(svcErr)
 			s.Len(p.Targets, 2)
@@ -776,7 +779,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnExclusionThatEmptiesItsTarget() {
 			s.SetupTest()
 
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-				PolicyRequest{Targets: []TargetRequest{tt.target}})
+				PolicyRequest{Targets: []TargetRequest{tt.target}}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorExclusionEmptiesTarget.Code, svcErr.Code)
@@ -790,7 +793,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnExclusionThatEmptiesItsTarget() {
 		_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
 			PolicyRequest{Targets: []TargetRequest{
 				{Scope: ScopeRoot, OUID: rootOU, ExcludedOUIDs: []string{rootOU}},
-			}})
+			}}, PolicyFromRequest)
 
 		s.Require().NotNil(svcErr)
 		s.Equal(ErrorExclusionEmptiesTarget.Code, svcErr.Code)
@@ -804,7 +807,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnExclusionThatEmptiesItsTarget() {
 		_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
 			PolicyRequest{Targets: []TargetRequest{
 				{Scope: ScopeAllChildren, ExcludedOUIDs: []string{rootOU}},
-			}})
+			}}, PolicyFromRequest)
 
 		s.Require().NotNil(svcErr)
 		s.Equal(ErrorExclusionNotADirectChild.Code, svcErr.Code)
@@ -826,7 +829,7 @@ func (s *ServiceTestSuite) TestCreateRejectsDeploymentWideScopesFromTheAPI() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-				PolicyRequest{Targets: tt.scope})
+				PolicyRequest{Targets: tt.scope}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorDeploymentWideScopeDeclarativeOnly.Code, svcErr.Code)
@@ -834,6 +837,40 @@ func (s *ServiceTestSuite) TestCreateRejectsDeploymentWideScopesFromTheAPI() {
 				"the refusal names which scope was asked for")
 		})
 	}
+}
+
+// What a create may not introduce, an edit may still carry. A policy imported with a
+// deployment-wide reach is an ordinary stored policy: its exclusions are rewritten, and it is
+// deleted, through the same API as any other. Only widening is out of reach, which is what keeps
+// the create-time refusal from being walked around by editing a narrower policy into one of these
+// scopes.
+func (s *ServiceTestSuite) TestImportedDeploymentWidePolicyIsEditableAndDeletable() {
+	ctx := context.Background()
+
+	imported, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllOUs}}}, PolicyFromImport)
+	s.Require().Nil(svcErr)
+	s.Require().False(imported.Declared, "an imported policy is stored, not declared")
+
+	edited, svcErr := s.svc.UpdatePolicy(ctx, imported.ID, PolicyRequest{
+		Version: imported.Version,
+		Targets: []TargetRequest{{Scope: ScopeAllOUs, ExcludedOUIDs: []string{childOU}}},
+	})
+	s.Require().Nil(svcErr, "restating the target carries its exclusions")
+	s.Require().Len(edited.Targets, 1)
+	s.Equal(ScopeAllOUs, edited.Targets[0].Scope)
+	s.Equal([]string{childOU}, edited.Targets[0].ExcludedOUIDs)
+	s.Equal(imported.Version+1, edited.Version)
+
+	// Handing the unit back is the same edit in the other direction.
+	handedBack, svcErr := s.svc.UpdatePolicy(ctx, imported.ID, PolicyRequest{
+		Version: edited.Version,
+		Targets: []TargetRequest{{Scope: ScopeAllOUs}},
+	})
+	s.Require().Nil(svcErr)
+	s.Empty(handedBack.Targets[0].ExcludedOUIDs)
+
+	s.Nil(s.svc.DeletePolicy(ctx, imported.ID))
 }
 
 // The same two scopes are exactly what a resource file is allowed to declare.
@@ -853,7 +890,8 @@ func (s *ServiceTestSuite) TestCreateDeclarativeAllowsDeploymentWideScopes() {
 // snapshot of the roots that exist today, and it still answers to the cross-tree gate.
 func (s *ServiceTestSuite) TestCreateStillAllowsNamedRootsFromTheAPI() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}, {Scope: ScopeRoot, OUID: otherOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}, {Scope: ScopeRoot, OUID: otherOU}}},
+		PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 }
@@ -887,7 +925,7 @@ func (s *ServiceTestSuite) TestUpdateCannotIntroduceADeploymentWideScope() {
 	s.Run("from a blanket policy of another kind", func() {
 		s.SetupTest()
 		p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-			PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllChildren}}})
+			PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllChildren}}}, PolicyFromRequest)
 		s.Require().Nil(svcErr)
 
 		_, svcErr = s.svc.UpdatePolicy(context.Background(), p.ID, PolicyRequest{
@@ -916,7 +954,7 @@ func (s *ServiceTestSuite) TestCreateRefusesASecondPolicyForTheSameOU() {
 				OUID:  otherOU,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorPolicyExists.Code, svcErr.Code)
@@ -948,7 +986,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAReshareFromAnOUWithNoStanding() {
 				Scope: ScopeAllChildren,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorNotShared.Code, svcErr.Code)
@@ -959,7 +997,7 @@ func (s *ServiceTestSuite) TestCreateRecordsStageAndParent() {
 	owner := s.share(nil)
 
 	reshared, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeAllChildren}}})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeAllChildren}}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 	s.Equal(stageReshare, reshared.Stage)
@@ -981,7 +1019,7 @@ func (s *ServiceTestSuite) TestCreateRejectsAnUnknownFieldKey() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorUnknownFieldKey.Code, svcErr.Code)
@@ -1005,7 +1043,7 @@ func (s *ServiceTestSuite) TestCreateRejectsARuleThatWidens() {
 					},
 				},
 			},
-		})
+		}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorRuleWidens.Code, svcErr.Code)
@@ -1053,7 +1091,7 @@ func (s *ServiceTestSuite) TestResolveIntersectsEveryCoveringPolicy() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	resolved, svcErr := s.svc.ResolveOverlayRules(context.Background(), testType, testResource, childOU)
@@ -1077,7 +1115,7 @@ func (s *ServiceTestSuite) TestEachNamedChildGetsItsOwnRules() {
 				"assignments": {Editable: true, AllowedValues: members("a", "b")},
 			}}, {Scope: ScopeChild, OUID: nestedOwnerOU, OverlayRules: map[string]OverlayRule{
 				"assignments": {Editable: false, Value: members("c")},
-			}}}})
+			}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// Each rule is stored against the target that asked for it, not against the policy.
@@ -1275,7 +1313,7 @@ func (s *ServiceTestSuite) TestDeleteOnlyCleansUpOUsThatActuallyLoseVisibility()
 				OUID:  childOU,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// Removing the owner's policy cuts the root off, and everything under it with it.
@@ -1305,7 +1343,8 @@ func (s *ServiceTestSuite) TestReshareRefusedWhenCoveringPolicyReachesBelow() {
 			setUp: func() {
 				s.share(nil)
 				_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-					PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeAllChildren}}})
+					PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeAllChildren}}},
+					PolicyFromRequest)
 				s.Require().Nil(svcErr)
 			},
 		},
@@ -1315,7 +1354,7 @@ func (s *ServiceTestSuite) TestReshareRefusedWhenCoveringPolicyReachesBelow() {
 				s.share(nil)
 				_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
 					PolicyRequest{InitiatingOUID: rootOU,
-						Targets: []TargetRequest{{Scope: ScopeChildSubtree, OUID: childOU}}})
+						Targets: []TargetRequest{{Scope: ScopeChildSubtree, OUID: childOU}}}, PolicyFromRequest)
 				s.Require().Nil(svcErr)
 			},
 		},
@@ -1327,7 +1366,7 @@ func (s *ServiceTestSuite) TestReshareRefusedWhenCoveringPolicyReachesBelow() {
 			tt.setUp()
 
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-				PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+				PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr, "the covering policy already reaches grandOU")
 			s.Equal(ErrorReshareNotPermitted.Code, svcErr.Code)
@@ -1350,7 +1389,7 @@ func (s *ServiceTestSuite) TestANamedChildKeepsItsOwnTermsBesideAllChildren() {
 				"assignments": {Editable: true, AllowedValues: members("only-for-the-named-child")},
 			}},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	named, svcErr := s.svc.ResolveOverlayRules(ctx, testType, testResource, childOU)
@@ -1370,11 +1409,11 @@ func (s *ServiceTestSuite) TestReshareAllowedFromAFrontierUnit() {
 	s.share(nil)
 
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr, "rootOU was named by a root target, which stops at it")
 
 	_, svcErr = s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr, "childOU was named alone in turn")
 
 	visible, covering, svcErr := s.svc.(*sharingService).resolveVisibility(context.Background(), testType,
@@ -1394,7 +1433,7 @@ func (s *ServiceTestSuite) TestExportOrdersParentsBeforeTheirReshares() {
 				Scope: ScopeAllChildren,
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	exported, svcErr := s.svc.ExportPolicies(context.Background(), testType, testResource)
@@ -1484,7 +1523,7 @@ func (s *ServiceTestSuite) TestCreateRejectsTargetsThatAreNotDirectChildren() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-				PolicyRequest{Targets: entry(tt.ouID)})
+				PolicyRequest{Targets: entry(tt.ouID)}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr, tt.claim)
 			s.Equal(ErrorInvalidTargetOU.Code, svcErr.Code)
@@ -1495,7 +1534,7 @@ func (s *ServiceTestSuite) TestCreateRejectsTargetsThatAreNotDirectChildren() {
 // The ordinary case the one-hop rule allows.
 func (s *ServiceTestSuite) TestCreateAcceptsADirectChildTarget() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-		PolicyRequest{Targets: entry(childOU)})
+		PolicyRequest{Targets: entry(childOU)}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 }
@@ -1503,7 +1542,7 @@ func (s *ServiceTestSuite) TestCreateAcceptsADirectChildTarget() {
 // A subtree target still only names one hop down; the depth beneath it comes from the scope.
 func (s *ServiceTestSuite) TestCreateAcceptsADirectChildCarryingItsSubtree() {
 	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeChildSubtree, OUID: childOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeChildSubtree, OUID: childOU}}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 	s.Require().Len(p.Targets, 1)
@@ -1535,7 +1574,7 @@ func (s *ServiceTestSuite) TestCreateRejectsARepeatedChildTarget() {
 			s.SetupTest()
 
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-				PolicyRequest{Targets: tt.targets})
+				PolicyRequest{Targets: tt.targets}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorInvalidTargetOU.Code, svcErr.Code)
@@ -1546,7 +1585,7 @@ func (s *ServiceTestSuite) TestCreateRejectsARepeatedChildTarget() {
 // Root targeting names a tree root; an organization unit with ancestors is not one.
 func (s *ServiceTestSuite) TestCreateRejectsANamedRootThatIsNotARoot() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: childOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: childOU}}}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorInvalidTargetOU.Code, svcErr.Code)
@@ -1555,7 +1594,7 @@ func (s *ServiceTestSuite) TestCreateRejectsANamedRootThatIsNotARoot() {
 // A root organization unit reaching other roots is the ordinary business-to-business case.
 func (s *ServiceTestSuite) TestCreateAllowsARootOwnerToReachAnotherTree() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 }
@@ -1576,13 +1615,17 @@ func (s *ServiceTestSuite) TestCreateRejectsCrossTreeReachFromANestedOwner() {
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			create := s.svc.CreatePolicy
-			if tt.declared {
-				create = s.declarative().CreateDeclarativePolicy
+			req := PolicyRequest{ID: declaredID, Targets: tt.scope}
+			create := func() (Policy, *tidcommon.ServiceError) {
+				if tt.declared {
+					return s.declarative().CreateDeclarativePolicy(context.Background(), testType,
+						testResource, nestedOwnerOU, req)
+				}
+				return s.svc.CreatePolicy(context.Background(), testType, testResource,
+					nestedOwnerOU, req, PolicyFromRequest)
 			}
 
-			_, svcErr := create(context.Background(), testType, testResource,
-				nestedOwnerOU, PolicyRequest{ID: declaredID, Targets: tt.scope})
+			_, svcErr := create()
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorCrossTreeShareRestricted.Code, svcErr.Code)
@@ -1594,7 +1637,7 @@ func (s *ServiceTestSuite) TestCreateRejectsCrossTreeReachFromANestedOwner() {
 // Reaching the initiator's own tree root never leaves the tree, so it is not gated.
 func (s *ServiceTestSuite) TestCreateAllowsANestedOwnerToReachItsOwnTreeRoot() {
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, nestedOwnerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 }
@@ -1607,7 +1650,7 @@ func (s *ServiceTestSuite) TestCreateAllowsCrossTreeReachWhenConfigured() {
 	permissive.RegisterResourceType(&testDeclaration{})
 
 	_, svcErr := permissive.CreatePolicy(context.Background(), testType, testResource,
-		nestedOwnerOU, PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}})
+		nestedOwnerOU, PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}}, PolicyFromRequest)
 
 	s.Require().Nil(svcErr)
 }
@@ -1615,7 +1658,7 @@ func (s *ServiceTestSuite) TestCreateAllowsCrossTreeReachWhenConfigured() {
 // Editing a policy rebuilds its targets, so an edit is not a way around the one-hop rule.
 func (s *ServiceTestSuite) TestUpdateRejectsATargetThatIsNotADirectChild() {
 	created, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, rootOU,
-		PolicyRequest{Targets: entry(childOU)})
+		PolicyRequest{Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.UpdatePolicy(context.Background(), created.ID,
@@ -1628,7 +1671,7 @@ func (s *ServiceTestSuite) TestUpdateRejectsATargetThatIsNotADirectChild() {
 // The restriction applies to edits too, not only to the first create.
 func (s *ServiceTestSuite) TestUpdateRejectsCrossTreeReachFromANestedOwner() {
 	created, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, nestedOwnerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.UpdatePolicy(context.Background(), created.ID,
@@ -1683,25 +1726,25 @@ func (s *ServiceTestSuite) buildFrontierChain() (upper, mid, reshare Policy) {
 	_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("a", "b", "c")},
-		}}}})
+		}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	upper, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
 		InitiatingOUID: rootOU,
 		Targets:        withRules(entry(childOU), inherit),
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	mid, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
 		InitiatingOUID: childOU,
 		Targets:        withRules(entry(grandOU), inherit),
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	reshare, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
 		InitiatingOUID: grandOU,
 		Targets:        withRules(entry(greatOU), inherit),
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Require().Equal([]string{"a", "b", "c"}, s.resolvedBound(reshare.ID),
@@ -1798,7 +1841,7 @@ func (s *ServiceTestSuite) TestExportKeepsBothPoliciesWhenIDsCollide() {
 	svc.RegisterResourceType(&testDeclaration{})
 
 	stored, svcErr := svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	declStore.seed(Policy{
@@ -2038,7 +2081,7 @@ func (s *ServiceTestSuite) TestACarveOutCannotWidenPastTheInitiatorsOwnCeiling()
 		Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: false},
 		}}},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// rootOU reshares its whole subtree on the same terms, which is all it holds.
@@ -2047,7 +2090,7 @@ func (s *ServiceTestSuite) TestACarveOutCannotWidenPastTheInitiatorsOwnCeiling()
 		Targets: []TargetRequest{{Scope: ScopeAllChildren, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: false},
 		}}},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.UpdatePolicy(ctx, blanket.ID, PolicyRequest{
@@ -2074,7 +2117,7 @@ func (s *ServiceTestSuite) TestUpdateStillLetsASelectivePolicyWidenItsRules() {
 	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("a")},
-		}}}})
+		}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	updated, svcErr := s.svc.UpdatePolicy(context.Background(), p.ID,
@@ -2163,12 +2206,43 @@ func (s *ServiceTestSuite) TestCreateNamesTheWinnerWhenTwoCreatesRace() {
 	}
 
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorPolicyExists.Code, svcErr.Code)
 	s.Contains(svcErr.ErrorDescription.DefaultValue, winner.ID,
 		"the refusal names the policy to edit instead of reporting a server error")
+}
+
+// The row answers to two constraints, and a replay that brings its own id can lose on either. Here
+// the winner holds the id but belongs to a different organization unit, so the lookup by initiator
+// finds nothing and only the id names it. Without that second lookup this is a server error, which
+// describes neither constraint.
+func (s *ServiceTestSuite) TestCreateNamesTheWinnerWhenTwoReplaysShareAnID() {
+	const replayedID = "01900000-0000-7000-8000-00000000beef"
+	winner := Policy{
+		ID:             replayedID,
+		ResourceType:   testType,
+		ResourceID:     testResource,
+		OwningOUID:     ownerOU,
+		InitiatingOUID: childOU,
+		Stage:          stageShare,
+		Version:        1,
+	}
+	s.store.beforeCreate = func() {
+		s.store.policies[winner.ID] = winner
+		s.store.failNext = errors.New("duplicate key value violates unique constraint")
+		s.store.beforeCreate = nil
+	}
+
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{ID: replayedID, Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}},
+		PolicyFromImport)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorPolicyExists.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.DefaultValue, replayedID,
+		"the refusal names the id that was taken rather than reporting a server error")
 }
 
 // A failure that is not a lost race still has to surface as one, or a real write fault would be
@@ -2177,7 +2251,7 @@ func (s *ServiceTestSuite) TestCreateStillReportsAGenuineWriteFailure() {
 	s.store.failNext = errors.New("disk on fire")
 
 	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -2200,7 +2274,7 @@ func (s *ServiceTestSuite) TestDeleteCleansUpEveryOUBeneathAnAllChildrenTarget()
 					},
 				},
 			},
-		})
+		}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Require().Nil(s.svc.DeletePolicy(context.Background(), reshare.ID))
@@ -2246,7 +2320,7 @@ func (s *ServiceTestSuite) TestDeleteCleansUpBeneathASubtreeTarget() {
 					},
 				},
 			},
-		})
+		}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Require().Nil(s.svc.DeletePolicy(context.Background(), p.ID))
@@ -2270,7 +2344,7 @@ func (s *ServiceTestSuite) TestWritesDoNotConsultTheOverlayCache() {
 	owner, svcErr := svc.CreatePolicy(ctx, testType, testResource, ownerOU,
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("a", "b")},
-		}}}})
+		}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	overlay.gets, overlay.sets = 0, 0
@@ -2283,7 +2357,7 @@ func (s *ServiceTestSuite) TestWritesDoNotConsultTheOverlayCache() {
 				Editable: true,
 			},
 		}),
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Zero(overlay.gets, "the write path read the cache")
@@ -2311,7 +2385,7 @@ func (s *ServiceTestSuite) TestReadsStillUseTheOverlayCache() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	overlay.sets = 0
 
@@ -2348,7 +2422,7 @@ func (s *ServiceTestSuite) TestAHierarchicalFieldWithoutAResolvedDelimiterIsRefu
 				PolicyRequest{
 					Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 						"permissions": {Editable: false, Value: members("billing")},
-					}}}})
+					}}}}, PolicyFromRequest)
 
 			s.Require().NotNil(svcErr, "the field cannot be compared, so the policy cannot be written")
 			s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -2367,13 +2441,13 @@ func (s *ServiceTestSuite) TestHierarchyNarrowingUsesTheResourceTypeDelimiter() 
 			PolicyRequest{
 				Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 					"permissions": {Editable: false, Value: members("billing")},
-				}}}})
+				}}}}, PolicyFromRequest)
 		s.Require().Nil(svcErr)
 
 		_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
 			PolicyRequest{InitiatingOUID: rootOU, Targets: withRules(entry(childOU), map[string]OverlayRule{
 				"permissions": {Editable: false, Value: members(path)},
-			})})
+			})}, PolicyFromRequest)
 		return svcErr
 	}
 
@@ -2488,7 +2562,7 @@ func (s *ServiceTestSuite) TestCleanUpCascadesThroughReshares() {
 					},
 				},
 			},
-		})
+		}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.decl.lostCalls = nil
 
@@ -2523,7 +2597,7 @@ func (s *ServiceTestSuite) TestAUnitReachedTwiceByOneCascadeIsNotifiedOnce() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	// And rootOU names childOU again in a reshare of its own, so the cascade reaches it a second
 	// time when rootOU goes dark.
@@ -2540,7 +2614,7 @@ func (s *ServiceTestSuite) TestAUnitReachedTwiceByOneCascadeIsNotifiedOnce() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.decl.lostCalls = nil
 
@@ -2567,7 +2641,7 @@ func (s *ServiceTestSuite) TestOverlayCleanupIsOverridablePerResourceType() {
 	svc.RegisterResourceType(decl)
 
 	p, svcErr := svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.Require().NoError(store.SetOverlayValue(
 		context.Background(), testType, testResource, rootOU, "assignments", []string{"a"}))
@@ -2604,7 +2678,7 @@ func (s *ServiceTestSuite) TestATypeThatCannotResolveOwnershipIsNotRegistered() 
 
 	_, svcErr := svc.CreatePolicy(ctx, testType, testResource, rootOU, PolicyRequest{
 		Targets: entry(childOU),
-	})
+	}, PolicyFromRequest)
 	s.Require().NotNil(svcErr, "the type never registered, so nothing can be shared for it")
 	s.Equal(ErrorResourceTypeNotRegistered.Code, svcErr.Code)
 }
@@ -2657,7 +2731,8 @@ func (s *ServiceTestSuite) TestRematerializeLeavesARuleLessReshareAlone() {
 	owner := s.share(map[string]OverlayRule{"assignments": {Editable: true}})
 
 	reshare, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeChild, OUID: childOU}}})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: []TargetRequest{{Scope: ScopeChild, OUID: childOU}}},
+		PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.Require().Empty(reshare.Rules, "this reshare carries no overlay rules at all")
 	versionBefore := s.store.policies[reshare.ID].Version
@@ -2735,7 +2810,7 @@ func (s *ServiceTestSuite) TestExclusionMustNameADirectChildTheTargetReaches() {
 			s.share(nil)
 
 			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
-				PolicyRequest{InitiatingOUID: rootOU, Targets: tt.targets})
+				PolicyRequest{InitiatingOUID: rootOU, Targets: tt.targets}, PolicyFromRequest)
 
 			if tt.wantCode == "" {
 				s.Require().Nil(svcErr)
@@ -2774,11 +2849,11 @@ func (s *ServiceTestSuite) TestEditCannotReachPastAUnitThatSharedOn() {
 	s.share(nil)
 
 	upper, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.UpdatePolicy(ctx, upper.ID, PolicyRequest{
@@ -2806,7 +2881,7 @@ func (s *ServiceTestSuite) TestEditMayWidenWhenNothingWasSharedOn() {
 	s.share(nil)
 
 	upper, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.UpdatePolicy(ctx, upper.ID, PolicyRequest{
@@ -2869,7 +2944,7 @@ func (s *ServiceTestSuite) TestMemberRefusalRevealsNothingAboutTheMember() {
 			PolicyRequest{
 				Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 					"assignments": {Editable: true, AllowedValues: members(member)},
-				}}}})
+				}}}}, PolicyFromRequest)
 		s.Require().NotNil(svcErr, member+" is refused by the resource type")
 		return svcErr
 	}
@@ -2902,7 +2977,7 @@ func (s *ServiceTestSuite) TestAFailedMemberCheckIsNotReportedAsARefusal() {
 	_, svcErr := svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("unreachable")},
-		}}}})
+		}}}}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -2916,10 +2991,10 @@ func (s *ServiceTestSuite) TestDeleteCleansUpOUsReachedOnlyThroughACascadedResha
 	ctx := context.Background()
 	// rootOU owns the resource, so its policy can name childOU alone: reach stops at childOU.
 	owner, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{Targets: entry(childOU)})
+		PolicyRequest{Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// grandOU holds a value of its own, which is what cleanup exists to remove.
@@ -2982,7 +3057,7 @@ func (s *ServiceTestSuite) TestEvaluationNeverReadsThroughThePagedListing() {
 	// Every path that asks a coverage question: the create's frontier check, the edit's, the
 	// re-materialization an edit and a delete each trigger, and a plain visibility read.
 	reshare, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)})
+		PolicyRequest{InitiatingOUID: rootOU, Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	visible, svcErr := s.svc.IsVisible(ctx, testType, testResource, childOU)
 	s.Require().Nil(svcErr)
@@ -3020,7 +3095,7 @@ func (s *ServiceTestSuite) TestPagingWalksEveryPolicyExactlyOnce() {
 	} {
 		_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
 			InitiatingOUID: reshare.initiator, Targets: entry(reshare.target),
-		})
+		}, PolicyFromRequest)
 		s.Require().Nil(svcErr)
 	}
 
@@ -3162,7 +3237,7 @@ func (s *ServiceTestSuite) TestOwnerMayTightenPastAReshareThatAskedForMore() {
 				AllowedValues: members("b", "c"),
 			},
 		}),
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.Require().Equal([]string{"b", "c"}, s.resolvedBound(reshare.ID))
 
@@ -3266,7 +3341,7 @@ func (s *ServiceTestSuite) TestAReshareRecordsADeclaredParent() {
 	s.Require().Equal(declaredID, declared.ID, "the declaration's own id is what the policy carries")
 
 	reshare, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Equal(declaredID, reshare.ParentPolicyID,
@@ -3312,10 +3387,10 @@ func (s *ServiceTestSuite) TestReapplyingADeclarationKeepsItsID() {
 func (s *ServiceTestSuite) TestDeleteRemovesTheReshareRowsBeneathIt() {
 	ctx := context.Background()
 	owner, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{Targets: entry(childOU)})
+		PolicyRequest{Targets: entry(childOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	reshare, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.Require().Nil(s.svc.DeletePolicy(ctx, owner.ID))
@@ -3337,7 +3412,7 @@ func (s *ServiceTestSuite) TestAnOrphanedReshareGrantsNothing() {
 		PolicyRequest{ID: declaredID, Targets: entry(childOU)})
 	s.Require().Nil(svcErr)
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	visible, svcErr := s.svc.IsVisible(ctx, testType, testResource, grandOU)
@@ -3368,13 +3443,13 @@ func (s *ServiceTestSuite) TestAnOrphanedReshareCannotShareOnward() {
 		PolicyRequest{ID: declaredID, Targets: entry(childOU)})
 	s.Require().Nil(svcErr)
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.declStore.policies = nil
 
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: grandOU, Targets: entry(greatOU)})
+		PolicyRequest{InitiatingOUID: grandOU, Targets: entry(greatOU)}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr, "grandOU's own visibility came through an orphan")
 	s.Equal(ErrorNotShared.Code, svcErr.Code)
@@ -3388,7 +3463,7 @@ func (s *ServiceTestSuite) TestRestoringADeclarationRevivesTheBranch() {
 	_, svcErr := s.svc.CreateDeclarativePolicy(ctx, testType, testResource, rootOU, declared)
 	s.Require().Nil(svcErr)
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, rootOU,
-		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)})
+		PolicyRequest{InitiatingOUID: childOU, Targets: entry(grandOU)}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	s.declStore.policies = nil
@@ -3422,7 +3497,7 @@ func (s *ServiceTestSuite) TestALockedCoarseFieldLocksTheFieldThatFallsBackToIt(
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	eff, svcErr := s.svc.ResolveOverlayRules(ctx, testType, testResource, rootOU)
@@ -3443,7 +3518,7 @@ func (s *ServiceTestSuite) TestAFieldNamedDirectlyBeatsItsFallback() {
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments":      {Editable: true, AllowedValues: members("a", "b")},
 			"assignments.user": {Editable: true, AllowedValues: members("a")},
-		}}}})
+		}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	eff, svcErr := s.svc.ResolveOverlayRules(ctx, testType, testResource, rootOU)
@@ -3469,7 +3544,7 @@ func (s *ServiceTestSuite) TestALockedCoarseFieldCannotBeLaunderedThroughTheFine
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
@@ -3479,7 +3554,7 @@ func (s *ServiceTestSuite) TestALockedCoarseFieldCannotBeLaunderedThroughTheFine
 				Editable: true,
 			},
 		}),
-	})
+	}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr, "rootOU holds assignments locked, so it holds assignments.user locked")
 	s.Equal(ErrorRuleWidens.Code, svcErr.Code)
@@ -3497,7 +3572,7 @@ func (s *ServiceTestSuite) TestAnEditDoesNotRewriteAPolicyItIsAboutToKill() {
 	reshare, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
 		PolicyRequest{InitiatingOUID: rootOU, Targets: withRules(entry(childOU), map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("a", "b", "c")},
-		})})
+		})}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// The owner narrows, so the reshare is clamped to [a] while its request still asks for [a b c].
@@ -3568,7 +3643,7 @@ func (s *ServiceTestSuite) shareWithRule(rule OverlayRule) {
 					},
 				},
 			},
-		})
+		}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 }
 
@@ -3691,7 +3766,7 @@ func (s *ServiceTestSuite) TestAStoredChoiceIsClampedWhenTheRuleNarrows() {
 	owner, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
 		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU, OverlayRules: map[string]OverlayRule{
 			"assignments": {Editable: true, AllowedValues: members("a", "b")},
-		}}}})
+		}}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.Require().Nil(s.svc.SetOverlayValue(ctx, testType, testResource, rootOU, "assignments",
 		[]string{"a", "b"}))
@@ -3724,7 +3799,7 @@ func (s *ServiceTestSuite) TestAStoredChoiceIsIgnoredOnceTheFieldIsPinned() {
 				},
 			},
 		},
-	})
+	}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 	s.Require().Nil(s.svc.SetOverlayValue(ctx, testType, testResource, rootOU, "assignments",
 		[]string{"chosen"}))
@@ -3867,7 +3942,7 @@ func (s *ServiceTestSuite) TestAStoreFailureIsNotReportedAsAnEmptyAnswer() {
 func (s *ServiceTestSuite) TestADeclarationCannotGovernAnOUAStoredPolicyAlreadyDoes() {
 	ctx := context.Background()
 	stored, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.CreateDeclarativePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
@@ -3892,7 +3967,7 @@ func (s *ServiceTestSuite) TestADeclarationCannotGovernAnOUAStoredPolicyAlreadyD
 func (s *ServiceTestSuite) TestAReplayedDeclarationIsStillRefusedAgainstAStoredPolicy() {
 	ctx := context.Background()
 	_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	// A restart replays the file against the same database, through a service holding no declared
@@ -3934,7 +4009,7 @@ func (s *ServiceTestSuite) TestAStoredPolicyCannotGovernAnOUADeclarationAlreadyD
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: otherOU}}}, PolicyFromRequest)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorPolicyExists.Code, svcErr.Code)
@@ -3976,7 +4051,7 @@ func (s *ServiceTestSuite) TestAReappliedDeclarationStillReplacesItsOwn() {
 func (s *ServiceTestSuite) TestADeclarationForAnotherOUIsUnaffectedByAStoredPolicy() {
 	ctx := context.Background()
 	_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, ownerOU,
-		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}})
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
 	s.Require().Nil(svcErr)
 
 	_, svcErr = s.svc.CreateDeclarativePolicy(ctx, testType, testResource, ownerOU, PolicyRequest{
@@ -4114,4 +4189,172 @@ func withRules(targets []TargetRequest, rules map[string]OverlayRule) []TargetRe
 		out[i].OverlayRules = rules
 	}
 	return out
+}
+
+// A request carrying an id is a replay of a policy that already existed, so it keeps that id. An
+// export writes it into the document, and a reshare beneath it points at it, so minting a new one
+// on the way back in would orphan the reference.
+func (s *ServiceTestSuite) TestCreateKeepsAnIDTheRequestCarries() {
+	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{
+			ID:      "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10",
+			Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}},
+		}, PolicyFromRequest)
+
+	s.Require().Nil(svcErr)
+	s.Equal("0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10", p.ID)
+}
+
+// The version a policy was exported at travels with it, so an export of the replayed policy
+// matches the document it came from rather than resetting to a first version.
+func (s *ServiceTestSuite) TestCreateKeepsTheVersionTheRequestCarries() {
+	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{Version: 7, Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
+
+	s.Require().Nil(svcErr)
+	s.Equal(7, p.Version)
+}
+
+// A fresh create starts at the first version, whether the request says nothing or says zero.
+func (s *ServiceTestSuite) TestCreateStartsAtTheFirstVersionWithoutOne() {
+	for _, version := range []int{0, -3} {
+		s.SetupTest()
+		p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+			PolicyRequest{Version: version, Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}},
+			PolicyFromRequest)
+
+		s.Require().Nil(svcErr)
+		s.Equal(1, p.Version)
+	}
+}
+
+// A request carrying none is a fresh create and is given one.
+func (s *ServiceTestSuite) TestCreateMintsAnIDWhenTheRequestCarriesNone() {
+	p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
+
+	s.Require().Nil(svcErr)
+	s.NotEmpty(p.ID)
+}
+
+// An id another policy already holds is answered as a conflict rather than left to fail as a
+// duplicate key deep in the store.
+func (s *ServiceTestSuite) TestCreateRefusesAnIDAnotherPolicyHolds() {
+	first, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{ID: "taken", Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
+	s.Require().Nil(svcErr)
+
+	_, svcErr = s.svc.CreatePolicy(context.Background(), testType, "another-resource", ownerOU,
+		PolicyRequest{ID: first.ID, Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, PolicyFromRequest)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorPolicyExists.Code, svcErr.Code)
+}
+
+// An export replayed through the create path reproduces the policy it was taken from, id included,
+// which is what makes export and import a round trip rather than a copy.
+func (s *ServiceTestSuite) TestAnExportedPolicyReplaysUnderItsOwnID() {
+	original := s.share(nil)
+
+	exported, svcErr := s.svc.ExportPolicies(context.Background(), testType, testResource)
+	s.Require().Nil(svcErr)
+	s.Require().Len(exported, 1)
+	s.Require().Equal(original.ID, exported[0].Request.ID)
+
+	s.Require().Nil(s.svc.DeletePolicy(context.Background(), original.ID))
+
+	replayed, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		exported[0].Request, PolicyFromRequest)
+
+	s.Require().Nil(svcErr)
+	s.Equal(original.ID, replayed.ID, "a replay reproduces the policy, id included")
+	s.Equal(original.Version, replayed.Version, "and at the version it was exported at")
+}
+
+// A reach not bounded by the issuer's own position in the tree is a deployment decision, so it is
+// written where such decisions are reviewed. A resource file and a document replayed from one are
+// both that; an interactive request is not.
+func (s *ServiceTestSuite) TestDeploymentWideScopeIsForConfigurationNotRequests() {
+	for _, scope := range []TargetScope{ScopeAllOUs, ScopeAllRoots} {
+		req := func() PolicyRequest {
+			return PolicyRequest{ID: declaredID, Targets: []TargetRequest{{Scope: scope}}}
+		}
+
+		s.Run(string(scope)+" through an API create", func() {
+			s.SetupTest()
+
+			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+				req(), PolicyFromRequest)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorDeploymentWideScopeDeclarativeOnly.Code, svcErr.Code)
+			s.Contains(svcErr.ErrorDescription.DefaultValue, string(scope),
+				"the refusal names which scope was asked for")
+		})
+
+		s.Run(string(scope)+" imported from a document", func() {
+			s.SetupTest()
+
+			p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+				req(), PolicyFromImport)
+
+			s.Require().Nil(svcErr)
+			s.Require().Len(p.Targets, 1)
+			s.Equal(scope, p.Targets[0].Scope)
+			s.False(p.Declared, "an import is stored, not held in memory")
+		})
+
+		s.Run(string(scope)+" declared in a resource file", func() {
+			s.SetupTest()
+
+			p, svcErr := s.declarative().CreateDeclarativePolicy(context.Background(), testType,
+				testResource, ownerOU, req())
+
+			s.Require().Nil(svcErr)
+			s.True(p.Declared)
+		})
+	}
+}
+
+// Everything else an import is held to is unchanged: it is stored like any other policy, and the
+// one-hop rule still bounds what it may name.
+func (s *ServiceTestSuite) TestImportIsStillHeldToEveryOtherRule() {
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+		PolicyRequest{Targets: []TargetRequest{{Scope: ScopeChild, OUID: grandOU}}},
+		PolicyFromImport)
+
+	s.Require().NotNil(svcErr, "a grandchild is not a direct child, imported or not")
+	s.Equal(ErrorInvalidTargetOU.Code, svcErr.Code)
+}
+
+// An origin this method does not serve gets the stricter half. A caller that passes nothing, or a
+// value from somewhere else, must not end up with the treatment reserved for configuration.
+func (s *ServiceTestSuite) TestAnUnrecognisedOriginIsTreatedAsARequest() {
+	for _, origin := range []PolicyOrigin{"", "declaration", "something-else"} {
+		s.Run(string(origin), func() {
+			s.SetupTest()
+
+			_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+				PolicyRequest{Targets: []TargetRequest{{Scope: ScopeAllOUs}}}, origin)
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorDeploymentWideScopeDeclarativeOnly.Code, svcErr.Code)
+		})
+	}
+}
+
+// A policy created through either origin is stored, so neither can be mistaken for a declaration
+// and so escape an edit or a delete.
+func (s *ServiceTestSuite) TestNeitherOriginProducesADeclaredPolicy() {
+	for _, origin := range []PolicyOrigin{PolicyFromRequest, PolicyFromImport} {
+		s.Run(string(origin), func() {
+			s.SetupTest()
+
+			p, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU,
+				PolicyRequest{Targets: []TargetRequest{{Scope: ScopeRoot, OUID: rootOU}}}, origin)
+
+			s.Require().Nil(svcErr)
+			s.False(p.Declared)
+		})
+	}
 }

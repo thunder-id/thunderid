@@ -50,6 +50,9 @@ func (suite *HandlerTestSuite) SetupTest() {
 
 	// Setup services and handler
 	suite.mockAppService = applicationmock.NewApplicationServiceInterfaceMock(suite.T())
+	// Exporting an application reads the sharing policies recorded for it.
+	suite.mockAppService.EXPECT().ExportSharingPolicies(mock.Anything, mock.Anything).
+		Return(nil, nil).Maybe()
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockNotificationService = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())

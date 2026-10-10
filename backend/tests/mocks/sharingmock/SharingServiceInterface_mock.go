@@ -126,8 +126,8 @@ func (_c *SharingServiceInterfaceMock_CreateDeclarativePolicy_Call) RunAndReturn
 }
 
 // CreatePolicy provides a mock function for the type SharingServiceInterfaceMock
-func (_mock *SharingServiceInterfaceMock) CreatePolicy(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
-	ret := _mock.Called(ctx, rt, resourceID, owningOUID, req)
+func (_mock *SharingServiceInterfaceMock) CreatePolicy(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest, origin sharing.PolicyOrigin) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID, owningOUID, req, origin)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreatePolicy")
@@ -135,16 +135,16 @@ func (_mock *SharingServiceInterfaceMock) CreatePolicy(ctx context.Context, rt s
 
 	var r0 sharing.Policy
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
-		return returnFunc(ctx, rt, resourceID, owningOUID, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest, sharing.PolicyOrigin) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID, owningOUID, req, origin)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest) sharing.Policy); ok {
-		r0 = returnFunc(ctx, rt, resourceID, owningOUID, req)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest, sharing.PolicyOrigin) sharing.Policy); ok {
+		r0 = returnFunc(ctx, rt, resourceID, owningOUID, req, origin)
 	} else {
 		r0 = ret.Get(0).(sharing.Policy)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, rt, resourceID, owningOUID, req)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, sharing.ResourceType, string, string, sharing.PolicyRequest, sharing.PolicyOrigin) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, owningOUID, req, origin)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -164,11 +164,12 @@ type SharingServiceInterfaceMock_CreatePolicy_Call struct {
 //   - resourceID string
 //   - owningOUID string
 //   - req sharing.PolicyRequest
-func (_e *SharingServiceInterfaceMock_Expecter) CreatePolicy(ctx interface{}, rt interface{}, resourceID interface{}, owningOUID interface{}, req interface{}) *SharingServiceInterfaceMock_CreatePolicy_Call {
-	return &SharingServiceInterfaceMock_CreatePolicy_Call{Call: _e.mock.On("CreatePolicy", ctx, rt, resourceID, owningOUID, req)}
+//   - origin sharing.PolicyOrigin
+func (_e *SharingServiceInterfaceMock_Expecter) CreatePolicy(ctx interface{}, rt interface{}, resourceID interface{}, owningOUID interface{}, req interface{}, origin interface{}) *SharingServiceInterfaceMock_CreatePolicy_Call {
+	return &SharingServiceInterfaceMock_CreatePolicy_Call{Call: _e.mock.On("CreatePolicy", ctx, rt, resourceID, owningOUID, req, origin)}
 }
 
-func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) Run(run func(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest)) *SharingServiceInterfaceMock_CreatePolicy_Call {
+func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) Run(run func(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest, origin sharing.PolicyOrigin)) *SharingServiceInterfaceMock_CreatePolicy_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -190,12 +191,17 @@ func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) Run(run func(ctx contex
 		if args[4] != nil {
 			arg4 = args[4].(sharing.PolicyRequest)
 		}
+		var arg5 sharing.PolicyOrigin
+		if args[5] != nil {
+			arg5 = args[5].(sharing.PolicyOrigin)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -206,7 +212,7 @@ func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) Return(policy sharing.P
 	return _c
 }
 
-func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) RunAndReturn(run func(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *SharingServiceInterfaceMock_CreatePolicy_Call {
+func (_c *SharingServiceInterfaceMock_CreatePolicy_Call) RunAndReturn(run func(ctx context.Context, rt sharing.ResourceType, resourceID string, owningOUID string, req sharing.PolicyRequest, origin sharing.PolicyOrigin) (sharing.Policy, *common.ServiceError)) *SharingServiceInterfaceMock_CreatePolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -5,8 +5,11 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -14,6 +17,8 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -512,9 +517,14 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
-		if svcErr.Code == ErrorApplicationNotFound.Code {
+		switch svcErr.Code {
+		case ErrorApplicationNotFound.Code, ErrorSharingPolicyNotFound.Code,
+			ErrorApplicationNotSharedToOU.Code:
 			statusCode = http.StatusNotFound
-		} else {
+		case ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
+			// Both are conflicts with state the caller has not seen, not malformed requests.
+			statusCode = http.StatusConflict
+		default:
 			statusCode = http.StatusBadRequest
 		}
 	}
@@ -573,4 +583,136 @@ func (ah *applicationHandler) processInboundAuthConfigFromRequest(
 		inboundAuthConfigDTOs = append(inboundAuthConfigDTOs, inboundAuthConfigDTO)
 	}
 	return inboundAuthConfigDTOs
+}
+
+// decodeSharingPolicyRequest reads a policy request body, refusing any field it does not know.
+func (ah *applicationHandler) decodeSharingPolicyRequest(
+	ctx context.Context, w http.ResponseWriter, r *http.Request,
+) (*sharing.PolicyRequest, bool) {
+	var req sharing.PolicyRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorInvalidRequestFormat.Code,
+			Message:     ErrorInvalidRequestFormat.Error,
+			Description: ErrorInvalidRequestFormat.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		return nil, false
+	}
+	return &req, true
+}
+
+// HandleSharingPolicyPostRequest records a sharing policy on an application.
+func (ah *applicationHandler) HandleSharingPolicyPostRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	req, ok := ah.decodeSharingPolicyRequest(ctx, w, r)
+	if !ok {
+		return
+	}
+
+	policy, svcErr := ah.service.CreateSharingPolicy(ctx, r.PathValue("id"), *req)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyListRequest returns one page of an application's sharing policies.
+func (ah *applicationHandler) HandleSharingPolicyListRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit, offset, svcErr := parseSharingPagination(r.URL.Query())
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+
+	list, svcErr := ah.service.ListSharingPolicies(ctx, r.PathValue("id"), limit, offset)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyListResponse(list))
+}
+
+// HandleSharingPolicyGetRequest returns one of an application's sharing policies.
+func (ah *applicationHandler) HandleSharingPolicyGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	policy, svcErr := ah.service.GetSharingPolicy(ctx, r.PathValue("id"), r.PathValue("policyId"))
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyPutRequest replaces a sharing policy's contents.
+func (ah *applicationHandler) HandleSharingPolicyPutRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	req, ok := ah.decodeSharingPolicyRequest(ctx, w, r)
+	if !ok {
+		return
+	}
+
+	policy, svcErr := ah.service.UpdateSharingPolicy(
+		ctx, r.PathValue("id"), r.PathValue("policyId"), *req)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyDeleteRequest removes a sharing policy.
+func (ah *applicationHandler) HandleSharingPolicyDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if svcErr := ah.service.DeleteSharingPolicy(
+		ctx, r.PathValue("id"), r.PathValue("policyId")); svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleOverlayRuleGetRequest answers what the organization unit named in ouId may do with the
+// application.
+func (ah *applicationHandler) HandleOverlayRuleGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	overlay, svcErr := ah.service.ResolveSharingOverlay(
+		ctx, r.PathValue("id"), r.URL.Query().Get("ouId"))
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToResolvedOverlayResponse(overlay))
+}
+
+// parseSharingPagination reads limit and offset.
+func parseSharingPagination(query url.Values) (int, int, *tidcommon.ServiceError) {
+	limit, offset := serverconst.DefaultPageSize, 0
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, &ErrorInvalidLimit
+		}
+		limit = parsed
+	}
+	if raw := query.Get("offset"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, &ErrorInvalidOffset
+		}
+		offset = parsed
+	}
+	return limit, offset, nil
 }

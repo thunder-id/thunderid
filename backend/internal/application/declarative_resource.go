@@ -74,7 +74,30 @@ func (e *applicationExporter) GetAllResourceIDs(ctx context.Context) ([]string, 
 	return ids, nil
 }
 
-// GetResourceByID retrieves an application by its ID.
+// ExportedApplication is an application as an export writes it, with the sharing policies that
+// govern it carried alongside.
+//
+// They are not on providers.Application because the sharing framework imports providers, so
+// naming a sharing type there would close an import cycle.
+type ExportedApplication struct {
+	providers.Application `yaml:",inline"`
+	SharingPolicies       []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+}
+
+// applicationOf reads the application out of either shape the export pipeline hands around:
+// the document this package writes, and the bare application PlaceholderValues is called with.
+func applicationOf(resource interface{}) (*providers.Application, bool) {
+	switch v := resource.(type) {
+	case *ExportedApplication:
+		return &v.Application, true
+	case *providers.Application:
+		return v, true
+	default:
+		return nil, false
+	}
+}
+
+// GetResourceByID retrieves an application by its ID, with the sharing policies recorded for it.
 func (e *applicationExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *tidcommon.ServiceError,
 ) {
@@ -82,14 +105,30 @@ func (e *applicationExporter) GetResourceByID(ctx context.Context, id string) (
 	if err != nil {
 		return nil, "", err
 	}
-	return app, app.Name, nil
+
+	// A document that silently lost its sharing would re-import as an application nobody can act
+	// for, so this fails the export rather than thinning it.
+	replayable, err := e.service.ExportSharingPolicies(ctx, id)
+	if err != nil {
+		return nil, "", err
+	}
+	policies := make([]sharing.PolicyRequest, 0, len(replayable))
+	for _, r := range replayable {
+		policies = append(policies, r.Request)
+	}
+
+	exported := &ExportedApplication{Application: *app}
+	if len(policies) > 0 {
+		exported.SharingPolicies = policies
+	}
+	return exported, app.Name, nil
 }
 
 // ValidateResource validates an application resource.
 func (e *applicationExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	app, ok := resource.(*providers.Application)
+	app, ok := applicationOf(resource)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeApplication, id)
 	}
@@ -248,7 +287,7 @@ func (e *applicationExporter) GetResourceRules() *declarativeresource.ResourceRu
 // instance. Public clients do not have a client secret, so the ClientSecret variable is excluded
 // from their export to avoid injecting an empty or invalid placeholder into the YAML template.
 func (e *applicationExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
-	app, ok := resource.(*providers.Application)
+	app, ok := applicationOf(resource)
 	if !ok {
 		return e.GetResourceRules()
 	}

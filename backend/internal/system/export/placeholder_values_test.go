@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent"
@@ -46,6 +47,7 @@ func TestPlaceholderValuesNameWhatTheReferenceExportWrites(t *testing.T) {
 	appService := applicationmock.NewApplicationServiceInterfaceMock(t)
 	// A read returns no secret: it is hashed when stored.
 	appService.On("GetApplication", context.Background(), "app-1").Return(confidentialApp("the-id", ""), nil)
+	appService.On("ExportSharingPolicies", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	svc := referenceExportService(t, application.NewApplicationExporterForTest(appService))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,

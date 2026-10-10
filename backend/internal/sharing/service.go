@@ -36,6 +36,7 @@ type SharingServiceInterface interface {
 	// exists per resource per initiating organization unit; a second create is refused.
 	CreatePolicy(
 		ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
+		origin PolicyOrigin,
 	) (Policy, *tidcommon.ServiceError)
 	// LoadDeclarativeResources reads a resource type's declarative documents and declares the
 	// sharing policies they carry. Called once per shareable resource type, at startup.
@@ -167,11 +168,32 @@ func (s *sharingService) RegisterResourceType(decl ResourceOverlayFieldDeclarati
 	s.registry.register(decl)
 }
 
+// PolicyOrigin says where a create came from, which decides whether the policy may name a reach
+// the issuing organization unit's own position in the tree does not bound. Such a reach is a
+// deployment decision, so it is written where those are reviewed.
+type PolicyOrigin string
+
+const (
+	// PolicyFromRequest is an interactive create through a management API.
+	PolicyFromRequest PolicyOrigin = "request"
+	// PolicyFromImport is a document an export produced, imported back. Reviewed configuration,
+	// the same as a resource file.
+	PolicyFromImport PolicyOrigin = "import"
+	// policyFromDeclaration is a resource file's own policy.
+	policyFromDeclaration PolicyOrigin = "declaration"
+)
+
 // CreatePolicy records one organization unit's decision about one resource.
 func (s *sharingService) CreatePolicy(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
+	origin PolicyOrigin,
 ) (Policy, *tidcommon.ServiceError) {
-	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, false)
+	// Anything but an import is treated as a request, so an origin this method does not serve
+	// gets the stricter half rather than the looser one.
+	if origin != PolicyFromImport {
+		origin = PolicyFromRequest
+	}
+	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, origin)
 }
 
 // LoadDeclarativeResources reads a resource type's documents and declares the policies they carry.
@@ -190,15 +212,17 @@ func (s *sharingService) CreateDeclarativePolicy(
 			log.String("resourceType", string(rt)), log.String("resourceID", resourceID))
 		return Policy{}, &tidcommon.InternalServerError
 	}
-	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, true)
+	return s.createPolicy(ctx, rt, resourceID, owningOUID, req, policyFromDeclaration)
 }
 
 // createPolicy is the shared body behind CreatePolicy and CreateDeclarativePolicy. A declared
 // policy is seeded into the in-memory store instead of the database, which is the only step the
 // two do differently.
 func (s *sharingService) createPolicy(
-	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest, declared bool,
+	ctx context.Context, rt ResourceType, resourceID, owningOUID string, req PolicyRequest,
+	origin PolicyOrigin,
 ) (Policy, *tidcommon.ServiceError) {
+	declared := origin == policyFromDeclaration
 	if _, ok := s.registry.get(rt); !ok {
 		return Policy{}, &ErrorResourceTypeNotRegistered
 	}
@@ -208,8 +232,11 @@ func (s *sharingService) createPolicy(
 	if owningOUID == "" {
 		return Policy{}, withDetail(ErrorInvalidRequestFormat, "the resource has no owning organization unit")
 	}
-	if !declared {
-		if svcErr := requireDeclarativeForDeploymentWideScope(req.Targets); svcErr != nil {
+	// A reach not bounded by the issuer's own position in the tree is a deployment decision, so it
+	// is written where such decisions are reviewed: a resource file, or a document replayed from
+	// one. An interactive request is neither.
+	if origin == PolicyFromRequest {
+		if svcErr := requireDeploymentWideScopeFromConfiguration(req.Targets); svcErr != nil {
 			return Policy{}, svcErr
 		}
 	}
@@ -221,6 +248,10 @@ func (s *sharingService) createPolicy(
 
 	if declared {
 		if svcErr := s.requireUsableDeclaredID(req.ID, rt, resourceID, initiatingOUID); svcErr != nil {
+			return Policy{}, svcErr
+		}
+	} else if req.ID != "" {
+		if svcErr := s.requireUnusedStoredID(ctx, req.ID); svcErr != nil {
 			return Policy{}, svcErr
 		}
 	}
@@ -245,12 +276,22 @@ func (s *sharingService) createPolicy(
 		return s.store.CreatePolicy(txCtx, policy)
 	}); err != nil {
 		// The check above and this insert are not atomic, so a concurrent create can take the one
-		// slot between them and leave this one rejected by the uniqueness constraint. Re-reading
-		// names the policy that won, which is the one to edit, rather than reporting a bare failure.
-		// Asking the database again is also what keeps this free of driver-specific error parsing.
+		// slot between them and leave this one rejected. Re-reading names the policy that won,
+		// which is the one to edit, rather than reporting a bare failure. Asking the database again
+		// is also what keeps this free of driver-specific error parsing.
+		//
+		// The row carries two constraints and either can be the one that rejected it: one policy
+		// per organization unit per resource, and the policy id itself. A replay supplies its own
+		// id, so both are reachable, and the id is looked up as well rather than falling through to
+		// a server error that describes neither.
 		existing, lookupErr := s.store.GetPolicyByInitiator(ctx, rt, resourceID, initiatingOUID)
 		if lookupErr == nil {
 			return Policy{}, withDetail(ErrorPolicyExists, "existing policy "+existing.ID)
+		}
+		if policy.ID != "" {
+			if byID, idErr := s.store.GetPolicy(ctx, policy.ID); idErr == nil {
+				return Policy{}, withDetail(ErrorPolicyExists, "existing policy "+byID.ID)
+			}
 		}
 		s.logger.Error(ctx, "Failed to create sharing policy", log.Error(err))
 		return Policy{}, &tidcommon.InternalServerError
@@ -320,9 +361,20 @@ func (s *sharingService) requireUsableDeclaredID(
 	return withDetail(ErrorDeclaredPolicyIDConflict, id)
 }
 
-// requireDeclarativeForDeploymentWideScope refuses the two scopes whose reach is not bounded by the
-// initiator's own position in the tree, unless the policy comes from a resource file.
-func requireDeclarativeForDeploymentWideScope(targets []TargetRequest) *tidcommon.ServiceError {
+// requireUnusedStoredID refuses a replay that names an id some other policy already holds, so the
+// collision is answered as a conflict rather than as a failed insert.
+func (s *sharingService) requireUnusedStoredID(ctx context.Context, id string) *tidcommon.ServiceError {
+	if _, svcErr := s.GetPolicy(ctx, id); svcErr == nil {
+		return withDetail(ErrorPolicyExists, id)
+	} else if svcErr.Code != ErrorPolicyNotFound.Code {
+		return svcErr
+	}
+	return nil
+}
+
+// requireDeploymentWideScopeFromConfiguration refuses the two scopes whose reach is not bounded by
+// the initiator's own position in the tree, for a request that is not reviewed configuration.
+func requireDeploymentWideScopeFromConfiguration(targets []TargetRequest) *tidcommon.ServiceError {
 	for _, t := range targets {
 		switch t.Scope {
 		case ScopeAllOUs, ScopeAllRoots:
@@ -366,9 +418,12 @@ func (s *sharingService) buildPolicy(
 		return Policy{}, svcErr
 	}
 
-	// A declaration carries its own id; an API create mints one.
+	// A request carrying an id is a replay of one that already existed, so it keeps it: a reshare
+	// beneath it points at that id, and an import that minted a new one would orphan it. A request
+	// carrying none is a fresh create and is given one. The version it was exported at travels the
+	// same way, so an export of the replayed policy matches the document it came from.
 	id := req.ID
-	if !declared {
+	if id == "" {
 		generated, err := utils.GenerateUUIDv7()
 		if err != nil {
 			s.logger.Error(ctx, "Failed to generate a policy identifier", log.Error(err))
@@ -386,7 +441,7 @@ func (s *sharingService) buildPolicy(
 		Stage:          stage,
 		ParentPolicyID: parentPolicyID,
 		Declared:       declared,
-		Version:        1,
+		Version:        max(req.Version, 1),
 		Targets:        targets,
 	}
 

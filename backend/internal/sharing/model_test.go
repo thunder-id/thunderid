@@ -168,3 +168,97 @@ func keysOf(m map[string]interface{}) []string {
 	}
 	return out
 }
+
+// A target that names no organization unit in storage carries the issuing unit as its anchor. The
+// response drops it, so what an API returns is what a create would have sent.
+func (s *ModelTestSuite) TestPolicyResponseDropsTheImpliedAnchor() {
+	response := ToPolicyResponse(Policy{
+		ID: "p1", InitiatingOUID: "root", OwningOUID: "root", Stage: stageShare, Version: 2,
+		Targets: []Target{
+			{ID: "t1", Scope: ScopeAllChildren, OUID: "root", ExcludedOUIDs: []string{"child-b"}},
+			{ID: "t2", Scope: ScopeChild, OUID: "child-b"},
+			{ID: "t3", Scope: ScopeAllOUs},
+		},
+	})
+
+	s.Require().Len(response.Targets, 3)
+	s.Empty(response.Targets[0].OUID, "allChildren anchors on the issuer, which is implied")
+	s.Equal([]string{"child-b"}, response.Targets[0].ExcludedOUIDs)
+	s.Equal("child-b", response.Targets[1].OUID, "a named target keeps the unit it names")
+	s.Empty(response.Targets[2].OUID, "allOus names no unit at all")
+	s.Equal("share", response.Stage)
+	s.Equal(2, response.Version)
+	s.Equal("p1", response.ID)
+}
+
+// A policy a resource file declares is answered as read-only, in the name the rest of the API uses
+// for the same idea. What the caller can act on is that it cannot be changed, not where it came
+// from.
+func (s *ModelTestSuite) TestADeclaredPolicyIsAnsweredAsReadOnly() {
+	declared, err := json.Marshal(ToPolicyResponse(Policy{ID: "p1", Declared: true}))
+	s.Require().NoError(err)
+	stored, err := json.Marshal(ToPolicyResponse(Policy{ID: "p2", Declared: false}))
+	s.Require().NoError(err)
+
+	var asDeclared, asStored map[string]interface{}
+	s.Require().NoError(json.Unmarshal(declared, &asDeclared))
+	s.Require().NoError(json.Unmarshal(stored, &asStored))
+
+	s.Equal(true, asDeclared["isReadOnly"])
+	s.Equal(false, asStored["isReadOnly"])
+	s.NotContains(asDeclared, "declared", "the framework's own word stays inside the framework")
+}
+
+// The row identifiers a policy carries are the framework's own, so they stay out of the response.
+func (s *ModelTestSuite) TestPolicyResponseCarriesNoRowIdentifiers() {
+	encoded, err := json.Marshal(ToPolicyResponse(Policy{
+		ID: "p1", Targets: []Target{{ID: "target-row-id", Scope: ScopeChild, OUID: "child-a"}},
+	}))
+	s.Require().NoError(err)
+	s.NotContains(string(encoded), "target-row-id")
+}
+
+// The owning organization unit is the resource's own, identical on every one of its policies, and
+// these endpoints are mounted under the resource that states it. Repeating it on each policy of a
+// page says nothing the caller did not already supply.
+func (s *ModelTestSuite) TestPolicyResponseDoesNotRepeatTheOwningUnit() {
+	encoded, err := json.Marshal(ToPolicyResponse(Policy{
+		ID: "p1", OwningOUID: "acme-root", InitiatingOUID: "acme-customer-a",
+	}))
+	s.Require().NoError(err)
+
+	var decoded map[string]interface{}
+	s.Require().NoError(json.Unmarshal(encoded, &decoded))
+	s.NotContains(decoded, "owningOuId")
+	s.Equal("acme-customer-a", decoded["initiatingOuId"],
+		"whose decision it is does vary, and is carried")
+}
+
+// A page keeps its counts, and every policy in it is shaped the same way.
+func (s *ModelTestSuite) TestPolicyListResponseShapesEveryPolicy() {
+	response := ToPolicyListResponse(PolicyList{
+		TotalResults: 7, StartIndex: 1, Count: 1,
+		Policies: []Policy{{ID: "p1", Targets: []Target{
+			{ID: "t1", Scope: ScopeAllChildren, OUID: "root"}}}},
+	})
+
+	s.Equal(7, response.TotalResults)
+	s.Equal(1, response.StartIndex)
+	s.Require().Len(response.Policies, 1)
+	s.Empty(response.Policies[0].Targets[0].OUID)
+}
+
+// The empty collections come back as collections rather than as null, so a caller reads them
+// without guarding against two different shapes.
+func (s *ModelTestSuite) TestResolvedOverlayResponseIsNeverNull() {
+	encoded, err := json.Marshal(ToResolvedOverlayResponse(ResolvedOverlay{
+		OUID: "child-a", Visible: true,
+	}))
+	s.Require().NoError(err)
+
+	var decoded map[string]interface{}
+	s.Require().NoError(json.Unmarshal(encoded, &decoded))
+	s.NotNil(decoded["rules"], "an absent rule set is an empty object")
+	s.NotNil(decoded["policyIds"], "an absent policy list is an empty array")
+	s.Equal(true, decoded["visible"])
+}

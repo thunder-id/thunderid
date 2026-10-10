@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
@@ -104,12 +105,53 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 	}
 
 	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(expectedApp, nil)
+	s.mockService.EXPECT().ExportSharingPolicies(mock.Anything, "app1").Return(nil, nil)
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test App", name)
-	assert.Equal(s.T(), expectedApp, resource)
+	assert.Equal(s.T(), &application.ExportedApplication{Application: *expectedApp}, resource)
+}
+
+// An export carries the sharing alongside the application, so a re-import records the same
+// policies rather than producing an application no organization unit can act for.
+func (s *ApplicationExporterTestSuite) TestGetResourceByID_CarriesSharingPolicies() {
+	expectedApp := &providers.Application{ID: "app1", Name: "Test App"}
+	replayable := []sharing.ReplayablePolicy{{
+		InitiatingOUID: "acme-root",
+		Request: sharing.PolicyRequest{
+			ID:             "policy-1",
+			InitiatingOUID: "acme-root",
+			Targets:        []sharing.TargetRequest{{Scope: sharing.ScopeAllChildren}},
+		},
+	}}
+
+	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(expectedApp, nil)
+	s.mockService.EXPECT().ExportSharingPolicies(mock.Anything, "app1").Return(replayable, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "app1")
+
+	assert.Nil(s.T(), err)
+	exported, ok := resource.(*application.ExportedApplication)
+	assert.True(s.T(), ok)
+	assert.Equal(s.T(), []sharing.PolicyRequest{replayable[0].Request}, exported.SharingPolicies)
+}
+
+// A failure to read the policies fails the export rather than writing a document that silently
+// shares with nobody.
+func (s *ApplicationExporterTestSuite) TestGetResourceByID_SharingFailureFailsTheExport() {
+	serviceError := &tidcommon.ServiceError{Code: "SHR-5000"}
+
+	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").
+		Return(&providers.Application{ID: "app1", Name: "Test App"}, nil)
+	s.mockService.EXPECT().ExportSharingPolicies(mock.Anything, "app1").Return(nil, serviceError)
+
+	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
+
+	assert.Nil(s.T(), resource)
+	assert.Empty(s.T(), name)
+	assert.Equal(s.T(), serviceError, err)
 }
 
 func (s *ApplicationExporterTestSuite) TestGetResourceByID_Error() {
@@ -133,7 +175,8 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_Success() {
 		Name: "Valid App",
 	}
 
-	name, err := s.exporter.ValidateResource(context.Background(), app, "app1", s.logger)
+	name, err := s.exporter.ValidateResource(
+		context.Background(), &application.ExportedApplication{Application: *app}, "app1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid App", name)
@@ -157,7 +200,8 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_EmptyName() {
 		Name: "",
 	}
 
-	name, err := s.exporter.ValidateResource(context.Background(), app, "app1", s.logger)
+	name, err := s.exporter.ValidateResource(
+		context.Background(), &application.ExportedApplication{Application: *app}, "app1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -184,7 +228,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_PublicCli
 		},
 	}
 
-	rules := pr.GetResourceRulesForResource(app)
+	rules := pr.GetResourceRulesForResource(&application.ExportedApplication{Application: *app})
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
@@ -209,7 +253,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 		},
 	}
 
-	rules := pr.GetResourceRulesForResource(app)
+	rules := pr.GetResourceRulesForResource(&application.ExportedApplication{Application: *app})
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
