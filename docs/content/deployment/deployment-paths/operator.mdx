@@ -1,0 +1,524 @@
+---
+title: Kubernetes Operator
+docType: guide
+sidebar_position: 4
+persona: iam
+description: Manage {{ProductName}} declaratively on Kubernetes with the {{ProductName}} operator's ThunderIDInstance, ThunderIDResource, and EnvironmentValues CRDs.
+---
+
+import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
+import RepoLink from '@site/src/components/RepoLink';
+
+# Deploy <ProductName /> with the Kubernetes Operator
+
+The <ProductName /> Kubernetes operator manages a full <ProductName /> deployment through custom resources instead of a
+Helm values file. Define a `ThunderIDInstance` for the deployment itself, then declare applications, flows, themes, and
+every other <ProductName /> resource as `ThunderIDResource` objects. The operator renders them into ConfigMaps, mounts
+them into the pod, and restarts it when they change, with no manual API calls needed to manage declarative resources.
+
+:::note
+The operator is under active development and not yet published to a container registry or Helm repository. The
+steps below build it from source out of the <ProductName /> repository itself.
+:::
+
+## Architecture Overview
+
+Instead of hand-managing a `Deployment`, ConfigMaps, and Secrets yourself, you apply one object per thing you want, and
+the operator keeps the cluster in sync with it. Three custom resources cover the whole deployment:
+
+- **`ThunderIDInstance`** is the <ProductName /> deployment itself. Apply one and you get a running pod, reachable
+  through its `Service`, with an `Ingress` and autoscaling available if you ask for them.
+- **`ThunderIDResource`** is one piece of <ProductName /> configuration: an application, a login flow, a user, or any
+  other object <ProductName /> understands. Apply one `ThunderIDResource` per thing you want it to know about; the
+  operator folds it into the instance's config and restarts the pod to pick it up.
+- **`EnvironmentValues`** holds the secret values, such as passwords and OAuth client secrets, that a
+  `ThunderIDResource` needs, so those values never have to live inside the `ThunderIDResource` itself.
+
+Each is covered in its own section below. For the full field reference and troubleshooting guide, see
+<RepoLink path="/blob/main/tools/k8s-operator/README.md">the operator's README</RepoLink>.
+
+## Prerequisites
+
+- A running Kubernetes cluster (v1.28 or later), local or remote. Any distribution works, this guide doesn't set one up
+  for you.
+- `kubectl`, configured to talk to that cluster.
+- Go 1.26+, to run the operator locally (`go run ./cmd/main.go`).
+
+`kubectl` and `go run` talk to the cluster over the network via your kubeconfig, so they run on whatever OS you're on,
+including native Windows, even when the cluster itself is hosted elsewhere (for example inside a Linux VM on the same
+machine). Verify your setup before continuing:
+
+```bash
+kubectl cluster-info
+kubectl get nodes
+go version
+```
+
+## Install the Operator
+
+### Step 1: Install the CRDs
+
+```bash
+git clone https://github.com/thunder-id/thunderid.git
+cd thunderid/tools/k8s-operator
+kubectl apply -f config/crd/bases/
+```
+
+Verify:
+
+```bash
+kubectl get crd | grep thunderid
+```
+
+Expected output:
+
+```text
+environmentvalues.apps.thunderid.io
+thunderidinstances.apps.thunderid.io
+thunderidresources.apps.thunderid.io
+```
+
+### Step 2: Run the Operator
+
+For local development:
+
+```bash
+go run ./cmd/main.go
+```
+
+Keep this terminal open, it must stay running to reconcile resources.
+
+For a production deployment, build and push the image, then install it with the bundled Helm chart:
+
+```bash
+make docker-build docker-push IMG=<your-registry>/thunderid-operator:<tag>
+helm install thunderid-operator ./charts/thunderid-operator \
+  --namespace thunderid-system --create-namespace \
+  --set image.repository=<your-registry>/thunderid-operator \
+  --set image.tag=<tag>
+```
+
+:::note
+Helm installs the chart's `crds/` directory only on `helm install`. It's never upgraded or deleted by a later
+`helm upgrade`/`helm uninstall`. Apply CRD changes manually: `kubectl apply -f charts/thunderid-operator/crds/`.
+:::
+
+By default the operator watches every namespace through a single `ClusterRole`: one operator instance reconciles
+`ThunderIDInstance`, `ThunderIDResource`, and `EnvironmentValues` objects across the whole cluster, and can read and
+write Secrets in any namespace.
+
+To limit it to specific namespaces, set `watchNamespaces`. The chart then grants the same permissions through a `Role`
+in each listed namespace instead of the `ClusterRole`, and the operator only watches those namespaces, so it has no
+access to Secrets or anything else outside them:
+
+```bash
+helm install thunderid-operator ./charts/thunderid-operator \
+  --namespace thunderid-system --create-namespace \
+  --set image.repository=<your-registry>/thunderid-operator \
+  --set image.tag=<tag> \
+  --set 'watchNamespaces={team-a,team-b}'
+```
+
+Each listed namespace must exist before the install. Objects in any other namespace are ignored. The CRDs stay
+cluster-scoped either way, since Kubernetes has no namespaced CRDs. When running the operator directly, pass the same
+list with `--watch-namespaces=team-a,team-b`.
+
+## Deploy a `ThunderIDInstance`
+
+```yaml
+apiVersion: apps.thunderid.io/v1alpha1
+kind: ThunderIDInstance
+metadata:
+  name: thunderid-prod
+  namespace: default
+spec:
+  image: ghcr.io/thunder-id/thunderid:latest
+  replicas: 1
+  dataVolumeSize: '1Gi'
+```
+
+```bash
+kubectl apply -f thunderidinstance.yaml
+kubectl get pod -w
+```
+
+Every `ThunderIDInstance` needs a persistent backend: either `spec.dataVolumeSize` (a PVC-backed SQLite database,
+`replicas` limited to `1`) or every `spec.config.database` scope set to `type: postgres`. A spec with neither is
+rejected, since ephemeral SQLite that resets on every pod restart isn't a supported configuration.
+
+The image bakes in its own default organization unit, user types, and flows, so `spec.resourcesConfigMap` is optional.
+Set it only to seed additional base resources beyond those defaults.
+
+By default `spec.domain` is unset and the instance is reachable with `kubectl port-forward svc/thunderid-prod 8090:8090`
+→ `https://localhost:8090`. Set `spec.domain` (and optionally `spec.tlsSecret`) to create a real `Ingress` instead; this
+requires ingress-nginx installed as the cluster's default `IngressClass`.
+
+Setting an admin password is optional. Point `spec.adminPasswordSecret` at a Secret with a single key to set your
+own; the operator still generates its TLS certs, JWT signing keys, and `direct_auth_secret` itself either way:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thunderid-prod-admin-password
+  namespace: default
+stringData:
+  password: '<your-password>'
+---
+apiVersion: apps.thunderid.io/v1alpha1
+kind: ThunderIDInstance
+metadata:
+  name: thunderid-prod
+  namespace: default
+spec:
+  adminPasswordSecret:
+    name: thunderid-prod-admin-password
+    key: password
+  image: ghcr.io/thunder-id/thunderid:latest
+  replicas: 1
+  dataVolumeSize: '1Gi'
+```
+
+To also set every other key yourself (TLS certs, signing keys, `direct_auth_secret`), use `spec.securitySecret`
+instead, see <RepoLink path="/blob/main/tools/k8s-operator/README.md#thunderidinstance">the operator's README</RepoLink>
+for the full key list; it's mutually exclusive with `spec.adminPasswordSecret`.
+
+On first create, when neither is set, the operator generates a random admin password and stores it
+in the `<instance-name>-security` Secret's `admin-password` key (username is always `admin`). Retrieve it to log in to
+the Console:
+
+```bash
+kubectl get secret thunderid-prod-security -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+To change it, patch the Secret with the new value, then force a re-bootstrap so it actually gets applied, the Secret's
+value is only ever read during bootstrap, never on an ordinary restart:
+
+```bash
+# SQLite (dataVolumeSize-backed): delete the marker that gates bootstrap, not just the pod - the
+# pod alone restarts against the same already-bootstrapped PVC and skips setup.sh entirely.
+kubectl patch secret thunderid-prod-security -p '{"stringData":{"admin-password":"<new-password>"}}'
+kubectl exec deploy/thunderid-prod -- rm -f /opt/thunderid/repository/database/.setup-complete
+kubectl delete pod -l app=thunderid-prod
+
+# PostgreSQL: bootstrap is a separate Job instead; deleting it makes the operator recreate it
+# with the Secret's current value on the next reconcile.
+kubectl patch secret thunderid-prod-security -p '{"stringData":{"admin-password":"<new-password>"}}'
+kubectl delete job -l app=thunderid-prod,thunderid.io/role=bootstrap
+```
+
+This re-imports the entire default resource bundle, not just the password, since it's the same upsert bootstrap uses on
+first-ever create. Harmless on a fresh instance; on one where you've since changed any baked-in default resource outside
+its own CR, that resource gets reset back to the image's defaults too.
+
+To change only the password and leave everything else untouched, use <ProductName />'s own self-service
+credential-update API instead (`POST /users/me/update-credentials`, after logging in), see
+[update-me-credentials](../../../sdks-and-tools/browser/apis/utilities/update-me-credentials).
+
+### PostgreSQL instead of the bundled SQLite
+
+```yaml
+apiVersion: apps.thunderid.io/v1alpha1
+kind: ThunderIDInstance
+metadata:
+  name: thunderid-prod
+  namespace: default
+spec:
+  image: ghcr.io/thunder-id/thunderid:latest
+  replicas: 1
+  config:
+    database:
+      config:
+        type: postgres
+        postgres:
+          hostname: postgres.example.com
+          username: thunderid
+          name: thunderid_config
+          sslmode: require
+          passwordRef:
+            name: thunderid-db
+            key: password
+      entity:
+        type: postgres
+        postgres:
+          hostname: postgres.example.com
+          username: thunderid
+          name: thunderid_config
+          sslmode: require
+          passwordRef:
+            name: thunderid-db
+            key: password
+      runtimeTransient:
+        type: postgres
+        postgres:
+          hostname: postgres.example.com
+          username: thunderid
+          name: thunderid_runtime
+          sslmode: require
+          passwordRef:
+            name: thunderid-db
+            key: password
+      runtimePersistent:
+        type: postgres
+        postgres:
+          hostname: postgres.example.com
+          username: thunderid
+          name: thunderid_runtime
+          sslmode: require
+          passwordRef:
+            name: thunderid-db
+            key: password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thunderid-db
+  namespace: default
+stringData:
+  password: <postgres-password>
+```
+
+This replaces the `dataVolumeSize`-based example above. A `ThunderIDInstance` uses either SQLite (`dataVolumeSize`) or PostgreSQL (every scope set to `type: postgres`, as here), not both.
+
+Each of the four scopes (`config`, `entity`, `runtimeTransient`, `runtimePersistent`) needs its own `passwordRef`,
+there's no shared/top-level fallback. Point them at the same Secret+key, as above, to reuse one password, or at
+different keys to give each scope its own.
+
+The operator doesn't create databases or run migrations. Provision the two physical databases (`config`+`entity` share
+one, `runtimeTransient`+`runtimePersistent` share the other) and load their schema yourself before pointing an instance
+at them. Take the schema scripts from the image the instance runs (`/opt/thunderid/dbscripts/` inside `spec.image`),
+not from a checkout of the repository: the schema changes between versions, and a mismatch fails the bootstrap with
+errors such as `column "name" does not exist`. For the same reason, pin `spec.image` to a specific version rather than
+`:latest`. See <RepoLink path="/blob/main/tools/k8s-operator/README.md">the operator's README</RepoLink> for the exact
+commands, and [Configuration](../../configuration) for every `spec.config` field.
+
+## Register Resources
+
+Every <ProductName /> resource, an application, a flow, a theme, and the rest, is the same `ThunderIDResource` kind,
+distinguished by `spec.resource_type`. The `thunderid.io/instance` label binds it to its owning `ThunderIDInstance`:
+
+```yaml
+apiVersion: apps.thunderid.io/v1alpha1
+kind: ThunderIDResource
+metadata:
+  name: my-console-app
+  namespace: default
+  labels:
+    thunderid.io/instance: thunderid-prod
+spec:
+  resource_type: application
+  name: My Console App
+  ouId: "<id of the 'default' organization unit>"
+  authFlowId: "<id of the 'console-app-flow' flow>"
+  type: browser
+  isRegistrationFlowEnabled: true
+  allowedUserTypes:
+    - Person
+  inboundAuthConfig:
+    - type: oauth2
+      config:
+        clientId: MY_APP_CLIENT
+        redirectUris:
+          - https://localhost:8090/callback
+        grantTypes:
+          - authorization_code
+          - refresh_token
+        responseTypes:
+          - code
+        tokenEndpointAuthMethod: none
+        pkceRequired: true
+        publicClient: true
+```
+
+```bash
+kubectl apply -f my-app.yaml
+kubectl get thunderidresources
+kubectl describe thunderidresource my-console-app
+```
+
+Everything under `spec` besides `resource_type` is <ProductName />'s own field names for that resource type. Copy its
+exported YAML in directly, dropping the `id:` line, which the operator generates itself. The operator forwards it
+essentially as-is: it doesn't validate required fields or resolve handles, so a mistake surfaces at <ProductName />'s
+own bootstrap time, as a `ThunderIDError`/`ThunderIDCrashed` event on the owning `ThunderIDInstance`, not at
+`kubectl apply` time.
+
+| `resource_type`     | Notes                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `application`       | OAuth2/OIDC application. `type` (`browser`, `fullstack`, `mobile`, `m2m`, or `custom`) is required.                       |
+| `flow`              | Authentication, registration, recovery, or sign-out flow. `handle`/`name`/`flowType` required; `nodes` is the flow graph. |
+| `theme`             | UI theme. `displayName` required; `theme` holds the nested theme definition.                                              |
+| `organization_unit` | Container for users, roles, and applications. `handle`/`name` required.                                                   |
+| `role`              | `name` required; `permissions`/`assignments` reference resource servers and users by literal ID.                          |
+| `user_type`         | `category`/`name` required; `schema` defines the attribute schema.                                                        |
+| `user`              | `type` (the owning user type's name) required; `attributes` matches that schema.                                          |
+| `resource_server`   | `name`/`identifier` required.                                                                                             |
+| `group`             | `name` required; `members` reference users by literal ID.                                                                 |
+| `server_config`     | `name` (`cors`, `session`, or `defaultResourceServer`) + `value`.                                                         |
+| `translation`       | `language` (BCP47) + `translations`.                                                                                      |
+
+Cross-references (`ouId`, `authFlowId`, `resourceServerId`, and similar) accept either a literal <ProductName /> ID or a
+`*Handle`-style field (`ouHandle`, `authFlowHandle`) that <ProductName />'s own bootstrap loader resolves itself.
+`themeHandle` is the one exception, unsupported; use `themeId`.
+
+## Secrets and Environment Variables
+
+Keep a literal secret, such as a user's password or an application's OAuth client secret, out of a `ThunderIDResource`
+entirely with a `{{.VAR}}` token, resolved at pod startup against the instance's environment:
+
+```yaml
+apiVersion: apps.thunderid.io/v1alpha1
+kind: EnvironmentValues
+metadata:
+  name: thunderid-env
+  namespace: default
+  labels:
+    thunderid.io/instance: thunderid-prod
+spec:
+  env:
+    JDOE_PASSWORD: change-me
+```
+
+```yaml
+apiVersion: apps.thunderid.io/v1alpha1
+kind: ThunderIDResource
+metadata:
+  name: jdoe
+  namespace: default
+  labels:
+    thunderid.io/instance: thunderid-prod
+spec:
+  resource_type: user
+  type: Person
+  ouHandle: default
+  attributes:
+    username: jdoe
+    sub: jdoe
+    email: jdoe@example.com
+  credentials:
+    password: '{{.JDOE_PASSWORD}}'
+```
+
+A `user` needs at least `type` (one of the instance's user types, `Person` by default), its organization unit
+(`ouHandle` or `ouId`) and its `attributes`. <ProductName /> rejects it at startup otherwise.
+
+Don't name a key `ADMIN_USERNAME` or `ADMIN_PASSWORD`. The operator sets those on the container itself for the
+built-in admin account, and a variable set directly on the container takes precedence over one loaded from
+`EnvironmentValues`, so `{{.ADMIN_PASSWORD}}` would silently resolve to the generated admin password instead.
+
+The `ThunderIDInstance` auto-discovers its env Secret: whichever `EnvironmentValues` in its namespace carries the label
+`thunderid.io/instance: thunderid-prod` is the one whose Secret is mounted whole via `envFrom`. There's no field on
+`ThunderIDInstanceSpec` naming it directly, and at most one `EnvironmentValues` may carry a given instance's label.
+
+The `EnvironmentValues` object masks each key's value in place once it syncs the Secret
+(`thunderid-masked:<prefix>**********`) so `kubectl get environmentvalues` stays inspectable without ever showing the
+plaintext again. To change a value later, re-apply with new plaintext for just that key.
+
+If the generated Secret loses a key that's already masked in `spec.env` (for example, someone deletes it from the Secret
+directly), the marker alone can't be turned back into a real value. The `EnvironmentValues` reports `Phase: Error` with
+a `MissingSecretValue` event naming the affected key(s) and leaves them out of `status.keys`, instead of claiming
+they're still synced. Re-apply with plaintext for that key to resync it.
+
+:::warning
+Always apply `EnvironmentValues` with `kubectl apply --server-side`. A plain (client-side) `kubectl apply`
+copies the whole manifest, plaintext included, into the object's `kubectl.kubernetes.io/last-applied-configuration`
+annotation, bypassing the masking entirely. Never put `EnvironmentValues` under GitOps (Flux) management: a
+continuously-reconciling GitOps tool enforces live-must-match-Git and fights the masking, reverting it to plaintext on
+every reconcile. Also note that `spec.env` holds its values in plaintext in etcd for the brief window between the
+object being applied and the controller's next reconcile masking them, anything reading the object in that window
+(GitOps tooling, audit logs, a watcher) sees the plaintext.
+:::
+
+### Keep Values Out of the Custom Resource
+
+For production secrets, write the Secret yourself, or have a tool such as
+[External Secrets Operator](https://external-secrets.io/) or [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)
+create it, and pair it with an `EnvironmentValues` of the same name that has no `spec.env`. The values then only ever
+live in the Secret, never in a custom resource, so the plaintext window described above doesn't apply:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thunderid-env
+  namespace: default
+  labels:
+    # Opts this Secret in to being used by the EnvironmentValues of the same name.
+    thunderid.io/environment-values: thunderid-env
+stringData:
+  JDOE_PASSWORD: change-me
+---
+apiVersion: apps.thunderid.io/v1alpha1
+kind: EnvironmentValues
+metadata:
+  name: thunderid-env
+  namespace: default
+  labels:
+    thunderid.io/instance: thunderid-prod
+```
+
+The `EnvironmentValues` only exists so the instance can find the Secret through its `thunderid.io/instance` label. With
+no `spec.env`, the operator never writes to the Secret. The `thunderid.io/environment-values` label is required: the
+operator refuses to use an existing Secret that doesn't carry it, so an `EnvironmentValues` can't take over an unrelated
+Secret that happens to share its name. When applying the Secret by hand, use `kubectl apply --server-side`, for the
+same reason as above.
+
+## Checking Status
+
+```bash
+kubectl get thunderidresources -o custom-columns='NAME:.metadata.name,TYPE:.spec.resource_type,PHASE:.status.phase'
+kubectl describe thunderidresource <name>
+```
+
+A `ThunderIDResource` reports `Pending` while a change waits for the pod to restart, `Ready` once <ProductName /> loads
+it successfully, and `Error` if <ProductName /> rejected the config or the pod is crashing.
+
+Pod-crash diagnostics (`CrashLoopBackOff`, `ThunderIDError`, `ThunderIDCrashed`) always land on the `ThunderIDInstance`,
+not on the individual `ThunderIDResource`. The serving pod, and therefore whatever's crashing it, is shared by every
+resource bound to the instance:
+
+```bash
+kubectl describe thunderidinstance <name>
+```
+
+## Uninstalling
+
+Deleting a `ThunderIDInstance` cascades to everything it owns: its `Deployment`, `Service`, `Ingress`, `HPA`,
+ConfigMaps, the generated security Secret, and (for SQLite) its data PVC all carry an owner reference back to the
+instance, so Kubernetes' garbage collector removes them too, taking the SQLite data with the PVC.
+
+One exception: the Secret an `EnvironmentValues` manages is never owned by anything, by design (see
+[Secrets and Environment Variables](#secrets-and-environment-variables) above), so it's never cascade-deleted.
+Deleting the `ThunderIDInstance` or the `EnvironmentValues` CR that targets it leaves that Secret behind; remove it
+yourself if you want it gone too.
+
+Removing the CRDs entirely (`kubectl delete -f config/crd/bases/`, or `make uninstall`) is more drastic than removing
+one instance: CRDs are cluster-scoped, so it deletes every `ThunderIDInstance`/`ThunderIDResource`/`EnvironmentValues`
+across every namespace in the cluster, cascading as above for each one. Only do this once nothing in the cluster
+still needs those instances.
+
+When removing everything, keep the operator running until last. Each `ThunderIDResource` carries a
+`thunderid.io/resource-cleanup` finalizer that only the operator removes, so deleting resources, their namespace, or
+the CRDs after the operator is gone leaves them stuck in `Terminating`. Delete the custom resources (or the CRDs)
+first, wait for them to disappear, then uninstall the operator. If a resource is already stuck, clear its finalizer by
+hand:
+
+```bash
+kubectl patch thunderidresource <name> -n <namespace> --type merge -p '{"metadata":{"finalizers":null}}'
+```
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Kubernetes (Helm)"
+    description="Compare against the Helm-chart deployment path if you don't need per-resource CRDs."
+    href="../kubernetes"
+    cta="Go to the Kubernetes guide"
+  />
+  <NextStepsCard
+    title="Configuration"
+    description="Full reference for every setting the config block and Helm chart values expose."
+    href="../../configuration"
+    cta="Go to Configuration"
+  />
+</NextSteps>

@@ -166,6 +166,9 @@ tools_lint_i18n_extractor: $(I18N_EXTRACTOR_GOLANGCI_LINT)
 tools_test_cli_e2e:
 	cd $(CLI_E2E_DIR) && pnpm install --frozen-lockfile && pnpm test
 
+tools_test_k8s_operator:
+	./build.sh tools_test_k8s_operator
+
 tools_checks_cli: tools_lint_cli tools_test_cli
 
 tools_checks: tools_lint tools_test
@@ -263,6 +266,7 @@ help:
 	@echo "  tools_build_i18n_extractor    - Build the i18n-extractor binary."
 	@echo "  tools_test_i18n_extractor     - Run i18n-extractor tests."
 	@echo "  tools_lint_i18n_extractor     - Run golangci-lint on the i18n-extractor code."
+	@echo "  tools_test_k8s_operator       - Run k8s-operator fake-client unit tests (not part of tools_test)."
 	@echo "  lint                          - Run linting on backend and frontend code."
 	@echo "  lint_backend                  - Run golangci-lint on the backend code."
 	@echo "  lint_frontend                 - Run ESLint on the frontend code."
@@ -285,7 +289,7 @@ help:
 .PHONY: lint lint_backend lint_frontend lint_docs golangci-lint mockery install-mockery
 .PHONY: tools_build tools_test tools_lint tools_build_cli tools_test_cli tools_lint_cli
 .PHONY: tools_build_i18n_extractor tools_test_i18n_extractor tools_lint_i18n_extractor
-.PHONY: tools_test_cli_e2e tools_checks_cli tools_checks
+.PHONY: tools_test_cli_e2e tools_checks_cli tools_checks tools_test_k8s_operator
 .PHONY: verify_mocks format_check test_frontend security_audit test_e2e pr_checks
 .PHONY: run_backend debug_backend run_frontend run_docs
 

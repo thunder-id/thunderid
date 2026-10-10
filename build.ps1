@@ -472,6 +472,26 @@ function Test-I18n-Extractor {
     }
 }
 
+function Test-K8s-Operator {
+    # Standalone on purpose: unlike Test-CLI/Test-I18n-Extractor, this is not called from
+    # Test-Tools, so it never runs as part of `tools_test` or `test` - only via its own
+    # `tools_test_k8s_operator`. Runs `go test` directly rather than the tool's own
+    # `make test-unit`, which also depends on manifests/generate/fmt - those regenerate CRD YAML
+    # and deepcopy code and reformat source, side effects a CI test invocation must not have (this
+    # repo's CRDs are manually maintained on Windows, so a regenerated CRD can legitimately differ
+    # from the committed one - see tools/k8s-operator/Makefile for the envtest-backed `test` tier
+    # and the Kind-cluster-backed `test-e2e` tier, both of which remain local-only).
+    Write-Host "Running k8s-operator tests..."
+    Push-Location "$PSScriptRoot/tools/k8s-operator"
+    try {
+        $packages = (& go list ./...) | Where-Object { $_ -notmatch '/e2e' }
+        & go test $packages
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Lint-CLI {
     # tools/cli is a separate Go module with its own Go directive, and golangci-lint refuses to
     # run when the Go it was built with is older than the module it is linting. The CLI therefore
@@ -1786,6 +1806,9 @@ switch ($Command) {
     'tools_lint_i18n_extractor' {
         Lint-I18n-Extractor
     }
+    'tools_test_k8s_operator' {
+        Test-K8s-Operator
+    }
     'package_samples' {
         Package-Sample-App
     }
@@ -1815,7 +1838,7 @@ switch ($Command) {
         Test-Integration
     }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|tools_build|tools_test|tools_lint|tools_build_cli|tools_test_cli|tools_lint_cli|tools_build_i18n_extractor|tools_test_i18n_extractor|tools_lint_i18n_extractor|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|tools_build|tools_test|tools_lint|tools_build_cli|tools_test_cli|tools_lint_cli|tools_build_i18n_extractor|tools_test_i18n_extractor|tools_lint_i18n_extractor|tools_test_k8s_operator|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
         exit 1
     }
 }

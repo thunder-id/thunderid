@@ -1,0 +1,79 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Default values for thunderid-operator.
+
+replicaCount: 1
+
+image:
+  repository: controller
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount for the operator.
+  create: true
+  # -- Name of the ServiceAccount to use. Defaults to the chart's fullname if not set.
+  name: ""
+  annotations: {}
+
+# -- Extra command-line args appended to the manager binary, e.g. ["--zap-log-level=debug"].
+extraArgs: []
+
+leaderElection:
+  # -- Required whenever replicaCount could ever be >1; also safe (and recommended) at 1.
+  enabled: true
+
+healthProbe:
+  port: 8081
+
+metrics:
+  # -- Expose the /metrics endpoint (HTTPS, authn/authz-protected via the metrics-auth ClusterRole).
+  enabled: true
+  port: 8443
+
+# -- Namespaces the operator watches. Empty (the default) watches every namespace through a
+# ClusterRole. When set, the operator only watches these namespaces and gets a Role in each of
+# them instead, so it has no access to Secrets or anything else outside them. Each namespace
+# must already exist. The CRDs stay cluster-scoped either way.
+watchNamespaces: []
+
+rbac:
+  # -- Install the thunderidinstance-admin/editor/viewer aggregate ClusterRoles.
+  # These are convenience roles for cluster admins to grant end-users access to
+  # apps.thunderid.io resources, the operator itself never uses them.
+  helperRoles: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+terminationGracePeriodSeconds: 10

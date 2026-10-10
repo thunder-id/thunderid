@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Link from '@docusaurus/Link';
+import {useActiveVersion} from '@docusaurus/plugin-content-docs/client';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Box, Typography} from '@wso2/oxygen-ui';
 import React from 'react';
+
+import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 
 
 interface Feature {
@@ -22,6 +26,7 @@ interface Station {
   features: Feature[];
   featured?: boolean;
   animDelay: number;
+  hiddenInVersions?: string[];
 }
 
 const LOGO_STYLE: React.CSSProperties = {display: 'block', height: '26px', objectFit: 'contain', width: '26px'};
@@ -63,7 +68,7 @@ function DashIcon() {
   );
 }
 
-function buildStations(): Station[] {
+function buildStations(productName: string): Station[] {
   return [
   {
     href: './docker',
@@ -98,6 +103,23 @@ function buildStations(): Station[] {
     animDelay: 570,
   },
   {
+    href: './operator',
+    accentColor: '#14b8a6',
+    iconBackground: 'rgba(20,184,166,0.12)',
+    title: 'Kubernetes Operator',
+    chooseIf: `You want to manage ${productName} and every resource inside it, including applications, flows, and users, as native Kubernetes custom resources instead of a values file.`,
+    cta: 'Continue →',
+    icon: <KubernetesLogo />,
+    features: [
+      {text: 'Declarative CRDs (ThunderIDInstance, ThunderIDResource, EnvironmentValues)', available: true},
+      {text: 'Per-resource status and events', available: true},
+      {text: 'GitOps-friendly (Flux) for everything except EnvironmentValues secrets', available: true},
+      {text: 'Auto restart on config change', available: true},
+    ],
+    animDelay: 690,
+    hiddenInVersions: ['v1.0.x'],
+  },
+  {
     href: './openchoreo',
     accentColor: '#8b5cf6',
     iconBackground: 'rgba(139,92,246,0.12)',
@@ -111,12 +133,18 @@ function buildStations(): Station[] {
       {text: 'Advanced networking', available: true},
       {text: 'Service mesh integration', available: true},
     ],
-    animDelay: 690,
+    animDelay: 810,
   },
 ];}
 
 export default function DeploymentCards(): React.ReactElement {
-  const stations = buildStations();
+  const activeVersion = useActiveVersion(undefined);
+  const {siteConfig} = useDocusaurusContext();
+  const project = siteConfig.customFields?.product as DocusaurusProductConfig | undefined;
+  const productName = project?.project?.name ?? siteConfig.title;
+  const stations = buildStations(productName).filter(
+    (s) => !s.hiddenInVersions?.includes(activeVersion?.name ?? ''),
+  );
   return (
     <Box
       sx={{
@@ -143,7 +171,7 @@ export default function DeploymentCards(): React.ReactElement {
           alignItems: 'stretch',
           display: 'grid',
           gap: '1rem',
-          gridTemplateColumns: {xs: '1fr', xl: 'repeat(3, 1fr)'},
+          gridTemplateColumns: {xs: '1fr', xl: `repeat(${stations.length}, 1fr)`},
           marginLeft: 0,
           marginRight: {md: '-2rem'},
         }}

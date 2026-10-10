@@ -1185,6 +1185,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'deployment/deployment-paths/operator',
+              label: 'Kubernetes Operator',
+            },
+            {
+              type: 'doc',
               id: 'deployment/deployment-paths/openchoreo',
               label: 'OpenChoreo',
             },
