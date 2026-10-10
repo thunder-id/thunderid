@@ -33,7 +33,7 @@ See [Authorization](../../../key-concepts/authorization).
 
 ### Create the user onboarding flow
 
-Save the JSON below as `wayfinder-onboarding-flow.json` and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
+Save the JSON below as `wayfinder-onboarding-flow.json`, replace each `<email-provider-id>` with the `id` of the email provider you created in [Build the Flows](../build-flows), and POST it to the flows API. The flow validates admin permission, resolves the user type, prompts for the staff role (Support or DestinationsAdmin), collects the invitee's email, sends the invitation, and on accept provisions the new user with the matching role attached via `properties.assignRole`.
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -158,7 +158,7 @@ curl -k -X POST https://localhost:8090/flows \
     {
       "id": "send_invite_email_support",
       "type": "TASK_EXECUTION",
-      "properties": { "emailTemplate": "USER_INVITE" },
+      "properties": { "senderId": "<email-provider-id>", "emailTemplate": "USER_INVITE" },
       "executor": { "name": "EmailExecutor", "mode": "send" },
       "onSuccess": "email_invite_status_support",
       "onFailure": "email_invite_error_support"
@@ -271,7 +271,7 @@ curl -k -X POST https://localhost:8090/flows \
     {
       "id": "send_invite_email_destinations",
       "type": "TASK_EXECUTION",
-      "properties": { "emailTemplate": "USER_INVITE" },
+      "properties": { "senderId": "<email-provider-id>", "emailTemplate": "USER_INVITE" },
       "executor": { "name": "EmailExecutor", "mode": "send" },
       "onSuccess": "email_invite_status_destinations",
       "onFailure": "email_invite_error_destinations"

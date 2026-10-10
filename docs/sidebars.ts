@@ -673,8 +673,8 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
-                  id: 'guides/smtp-server/smtp-server-configuration',
-                  label: 'SMTP Server',
+                  id: 'guides/notifications/email-providers',
+                  label: 'Email Providers',
                 },
                 {
                   type: 'doc',

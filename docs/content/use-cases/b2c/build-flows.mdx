@@ -214,13 +214,33 @@ The recovery flow drives [Account Recovery](../try-it-out/account-recovery). It:
 - Verifies the token from the email link.
 - Lands the user on a **Set new password** screen and updates the credential.
 
-SMTP must be configured for the recovery email to reach the user. The SMTP step is covered in the [Set Up Account Recovery](../try-it-out/account-recovery/#set-up-account-recovery) and is required regardless of which path you took.
+The recovery flow sends its email through an email provider, so create the provider before the flow.
 
 <Stepper stepNode="h3" as="h3">
 
+### Create the email provider
+
+Point the provider at the Wayfinder sample's local SMTP server on `127.0.0.1:2525`. The local server needs neither TLS nor credentials, so set both to `none`:
+
+```bash
+curl -k -X POST https://localhost:8090/connections/email-smtp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Wayfinder Mock SMTP",
+    "host": "127.0.0.1",
+    "port": 2525,
+    "fromAddress": "noreply@thunderid.dev",
+    "tls": "none",
+    "authentication": { "type": "none" }
+  }'
+```
+
+Copy the `id` from the response. You use it as `senderId` in the recovery flow below and in the [staff onboarding flow](../build-onboarding). To send through a real mail server instead, see [Configure an Email Provider](../../../guides/notifications/email-providers).
+
 ### Create the recovery flow
 
-Save the JSON below as `wayfinder-recovery-flow.json` and POST it to the flows API:
+Save the JSON below as `wayfinder-recovery-flow.json`, replace `<email-provider-id>` with the `id` you copied, and POST it to the flows API:
 
 ```bash
 curl -k -X POST https://localhost:8090/flows \
@@ -283,7 +303,7 @@ curl -k -X POST https://localhost:8090/flows \
     {
       "id": "send_recovery_email",
       "type": "TASK_EXECUTION",
-      "properties": { "emailTemplate": "PASSWORD_RECOVERY" },
+      "properties": { "senderId": "<email-provider-id>", "emailTemplate": "PASSWORD_RECOVERY" },
       "executor": { "name": "EmailExecutor", "mode": "send" },
       "onSuccess": "email_sent_status",
       "onFailure": "email_sent_status"

@@ -379,7 +379,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve OU** | Resolves or selects an organizational unit based on strategy. | Varies by strategy |
 | **Generate Invite** | Generates an invite link for user registration. | - |
 | **Verify Invite** | Verifies an invite token before completing registration. | Generate Invite must have run |
-| **Send Email** | Sends email using configured templates. | Email service configured |
+| **Send Email** | Sends email using configured templates. | Email provider configured |
 | **Send SMS** | Sends SMS using configured templates and sender. | SMS sender configured |
 | **Auth Assertion Generator** | Generates the final authentication assertion on successful flow completion. | User authenticated; assertion settings configured |
 | **End Session** | Terminates the SSO session established by the authentication flow and clears its session cookie. | - |
@@ -1715,7 +1715,7 @@ Sends a transactional email using a configured template. Runs in the background:
 
 **Prerequisites:**
 - `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
-- An email service must be configured in <ProductName />. See [SMTP Server Configuration](../../smtp-server/smtp-server-configuration/). The executor returns failure status if no email client is configured.
+- `senderId` (required at runtime): the ID of the email provider the step sends through. There is no deployment-wide default provider. See [Configure an Email Provider](../../notifications/email-providers).
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments.
 
@@ -1723,6 +1723,7 @@ Sends a transactional email using a configured template. Runs in the background:
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
+| `senderId` | Not shown | Yes, at runtime | - | ID of the email provider the step sends through. The step fails without it. The executor schema marks it optional only because built-in flows include email steps before any provider exists. Set it through the Flow Management API or a declarative flow file. |
 | `emailTemplate` | Email Template | No | `user_invite` | The template scenario to use. If absent or empty, defaults to the user invite template. |
 
 **Input Configuration:** None. The email executor resolves the recipient and template data from runtime context; it has no configurable node input defaults.
@@ -1734,6 +1735,7 @@ Sends a transactional email using a configured template. Runs in the background:
   "id": "send_email",
   "type": "TASK_EXECUTION",
   "properties": {
+    "senderId": "<email-provider-id>",
     "emailTemplate": "UserInvite"
   },
   "executor": {
@@ -1746,10 +1748,10 @@ Sends a transactional email using a configured template. Runs in the background:
 ```
 
 **Failure conditions:**
-- No email client configured
+- `senderId` missing, empty, or not the ID of an email provider (`FET-1038`, Email provider is not configured)
 - Recipient email address not resolvable from context or user entity
 - Template rendering error
-- SMTP or mail provider error
+- SMTP server unreachable or rejecting the message (server error)
 
 </details>
 
