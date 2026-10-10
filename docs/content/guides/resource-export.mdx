@@ -134,6 +134,9 @@ A reference names one of two collections:
 | `var:` | An ordinary value, such as a client ID | `var:APPLICATION_MY_APP_CLIENT_ID` |
 | `sec:` | A credential, such as a client secret | `sec:APPLICATION_MY_APP_CLIENT_SECRET` |
 
+A list, such as an application's redirect URIs, exports as a list holding one `var:` reference. The
+variable it names holds the items, as described in [Value References](./declarative-configurations/value-references.mdx#a-list-of-values).
+
 The prefix is what keeps a credential out of a read. A data plane returns a variable's value when
 asked for it, and never returns a secret's. A client secret, a connection's secret or token, and any
 property marked `isSecret` always export with `sec:`.
@@ -150,9 +153,6 @@ configurations, a reference already placed in one is kept, and a value in the ot
 with a new reference.
 
 ### What a Control Plane Does Not Parameterize
-
-A field parameterized as a list, such as an application's redirect URIs, exports with its values as
-they are. A reference names a single value and has no form that expands into list entries.
 
 A user's credentials are written as template placeholders on either plane, as described in
 [User Credentials](#user-credentials). A control-plane export that includes users who have set a

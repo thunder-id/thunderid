@@ -94,14 +94,14 @@ func newServiceWithCert(certService cert.CertificateServiceInterface) *inboundCl
 		nil, transaction.NewNoOpTransactioner(), certService, nil, nil, nil, nil, nil, nil, nil,
 		noopCIMDService{}, nil, nil,
 	)
-	return svc.(*inboundClientService)
+	return svc
 }
 
 func newServiceWithEntityType(et entitytypepkg.EntityTypeServiceInterface) *inboundClientService {
 	svc := newInboundClientService(
 		nil, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, et, nil, nil, noopCIMDService{}, nil, nil,
 	)
-	return svc.(*inboundClientService)
+	return svc
 }
 
 // userAttrProfile builds an OAuth profile with the three user attribute allow-lists populated.
@@ -1916,6 +1916,38 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_CarriesDefaul
 
 // ----- validateRedirectURIs error branches -----
 
+// A redirect URI that is wholly a variable reference is no address, so a deployment that resolves
+// references refuses one typed in.
+func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_VariableReferenceRefused() {
+	p := &providers.OAuthProfile{
+		RedirectURIs: []string{"var:APPLICATION_ORDERS_REDIRECT_URIS"},
+		GrantTypes:   []string{"authorization_code"},
+	}
+	service := &inboundClientService{}
+	assert.ErrorIs(suite.T(), validateRedirectURIs(service.profileToValidate(p)), ErrOAuthInvalidRedirectURI)
+}
+
+// A control plane keeps a reference to the redirect URIs each deployment holds, so it checks the
+// reference as a valid address and leaves the profile it stores as it was. A secret reference, or one
+// inside a longer value, is still checked as an address.
+func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_ControlPlaneKeepsAVariableReference() {
+	service := &inboundClientService{}
+	KeepingValueReferences()(service)
+	p := &providers.OAuthProfile{
+		RedirectURIs: []string{"var:APPLICATION_ORDERS_REDIRECT_URIS", "https://app/cb"},
+		GrantTypes:   []string{"authorization_code"},
+	}
+
+	assert.NoError(suite.T(), validateRedirectURIs(service.profileToValidate(p)))
+	assert.Equal(suite.T(), "var:APPLICATION_ORDERS_REDIRECT_URIS", p.RedirectURIs[0], "the stored profile changed")
+
+	for _, uri := range []string{"sec:APPLICATION_ORDERS_REDIRECT_URIS", "var:NOT A NAME"} {
+		p.RedirectURIs = []string{uri}
+		assert.ErrorIs(suite.T(), validateRedirectURIs(service.profileToValidate(p)), ErrOAuthInvalidRedirectURI, uri)
+	}
+	assert.Nil(suite.T(), service.profileToValidate(nil))
+}
+
 func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_SchemeWildcardRejected() {
 	p := &providers.OAuthProfile{
 		RedirectURIs: []string{"htt*://app/cb"},
@@ -2850,7 +2882,7 @@ func (suite *InboundClientServiceTestSuite) TestRevalidateFKs_FlowMismatchSurfac
 	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
 		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
 	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(),
-		nil, nil, nil, nil, flowMgt, nil, nil, nil, noopCIMDService{}, nil, nil).(*inboundClientService)
+		nil, nil, nil, nil, flowMgt, nil, nil, nil, noopCIMDService{}, nil, nil)
 
 	err := svc.RevalidateFKs(context.Background(), "app-1")
 	var fm *FlowMismatchError

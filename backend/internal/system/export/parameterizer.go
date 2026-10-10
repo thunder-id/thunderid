@@ -1434,12 +1434,9 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 
 	// Process array variables.
 	//
-	// A reference names one held value, and there is no form of it that expands into list items, so
-	// in reference style the list is left as it is rather than written as something that cannot be
-	// resolved. Nothing here is a credential: what is parameterized as an array is an address list.
-	if p.style == ValueReferences {
-		return nil
-	}
+	// In reference style a list becomes a list of one reference, which the importing deployment
+	// expands into the items its variable holds. Nothing here is a credential: what is parameterized
+	// as an array is an address list.
 	for _, path := range rules.ArrayVariables {
 		varName := p.pathToVariableName(resourceName, path)
 		if err := p.replaceArrayNode(root, path, varName); err != nil {
@@ -1448,6 +1445,19 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 	}
 
 	return nil
+}
+
+// referToList replaces a list's items with one reference to the variable holding them. A list that
+// already holds a variable reference keeps its items as they are, literal ones beside the reference
+// included, so a resource written from an import exports what it read and an import keeps the literal
+// items beside the ones the reference expands into.
+func (p *parameterizer) referToList(list *yaml.Node, varName string) {
+	for _, item := range list.Content {
+		if valueref.IsWellFormedReference(item.Value) && !valueref.IsSecretReference(item.Value) {
+			return
+		}
+	}
+	list.Content = []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!str", Value: valueref.VariableReference(varName)}}
 }
 
 // pathToVariableName converts path to uppercase variable name with app name prefix
@@ -1622,6 +1632,10 @@ func (p *parameterizer) replaceArrayNode(node *yaml.Node, path string, varName s
 						return nil
 					}
 				} else if i == len(parts)-1 {
+					if valueNode.Kind == yaml.SequenceNode && p.style == ValueReferences {
+						p.referToList(valueNode, varName)
+						return nil
+					}
 					// Replace array with template range syntax
 					if valueNode.Kind == yaml.SequenceNode {
 						// Create a new sequence node with template content

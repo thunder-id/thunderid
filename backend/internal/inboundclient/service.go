@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 // InboundClientServiceInterface is the public API of the inbound client subsystem.
@@ -108,6 +109,8 @@ type inboundClientService struct {
 	sharingService sharing.SharingServiceInterface
 	sharedTypes    map[providers.EntityCategory]sharing.ResourceType
 	logger         *log.Logger
+	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
+	keepsReferences bool
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -123,7 +126,7 @@ func newInboundClientService(store inboundClientStoreInterface, transactioner pr
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
-) InboundClientServiceInterface {
+) *inboundClientService {
 	return &inboundClientService{
 		store:          store,
 		transactioner:  transactioner,
@@ -173,7 +176,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -271,7 +274,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -333,7 +336,7 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 			return err
 		}
 		if vErr := validateOAuthProfile(
-			ctx, oauthProfile, hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
 			return vErr
 		}
 	}
@@ -909,6 +912,28 @@ func validateCertificateInput(refID, existingCertID string, in *inboundmodel.Cer
 	default:
 		return nil, ErrCertInvalidType
 	}
+}
+
+// referenceStandIn is checked in place of a redirect URI that is wholly a variable reference.
+const referenceStandIn = "https://reference.invalid/callback"
+
+// profileToValidate returns the profile as it is checked. A control plane keeps a reference to the
+// redirect URIs a deployment holds rather than the URIs, and those are checked where they are put in,
+// on import into that deployment; so each such reference is checked as a valid address would be, and
+// every other check still applies. Anywhere else the profile is checked as it is.
+func (s *inboundClientService) profileToValidate(p *providers.OAuthProfile) *providers.OAuthProfile {
+	if !s.keepsReferences || p == nil {
+		return p
+	}
+	checked := *p
+	checked.RedirectURIs = make([]string, len(p.RedirectURIs))
+	for i, uri := range p.RedirectURIs {
+		if valueref.IsWellFormedReference(uri) && !valueref.IsSecretReference(uri) {
+			uri = referenceStandIn
+		}
+		checked.RedirectURIs[i] = uri
+	}
+	return &checked
 }
 
 // validateOAuthProfile validates all fields of an OAuth profile data object.

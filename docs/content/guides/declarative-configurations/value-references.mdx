@@ -35,6 +35,22 @@ generates for that field, so configuration exported from a control plane and the
 holds agree without a second mapping to keep in sync. See [Export Resources](../resource-export.mdx)
 for how those names are derived.
 
+## A List of Values
+
+A field that takes a list, such as an application's redirect URIs, refers to one variable as the
+list's only item. The variable holds the deployment's items as a JSON list of strings, so each
+deployment can have as many as it needs. A variable holding a plain string stands in for one item.
+
+```yaml
+redirectUris:
+  - var:APPLICATION_ORDERS_REDIRECT_URIS
+```
+
+With `APPLICATION_ORDERS_REDIRECT_URIS` set to `["https://orders.example.com/callback", "https://orders.example.com/silent"]`,
+the application is written with both URIs. A list item that is not a reference is kept beside them.
+Only a `var:` reference expands into items. A `sec:` reference is always one value, even when the
+secret it names reads as a JSON list.
+
 ## Why Reference Instead of Store
 
 A reference lets configuration move between deployments without carrying values with it. The

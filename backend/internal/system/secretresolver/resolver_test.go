@@ -147,3 +147,64 @@ func TestResolveNodeLeavesADocumentWithoutReferences(t *testing.T) {
 
 	assert.Equal(t, map[string]any{"name": "app", "list": []any{"a", "b"}}, render(t, node))
 }
+
+// A list exported as a list of one reference takes as many items as the variable holds, written as a
+// JSON list. A plain value stays one item, a list holding a null is not expanded, and a JSON list
+// where a single value belongs stays text.
+func TestResolveNodeExpandsAListVariableIntoItems(t *testing.T) {
+	lists := heldValues(map[valueref.Collection]map[string]string{
+		valueref.CollectionVariable: {
+			"REDIRECT_URIS": `["https://one.test/cb", "https://two.test/cb"]`,
+			"SINGLE_URI":    "https://only.test/cb",
+			"NO_URIS":       "[]",
+			"NULL_URI":      "[null]",
+		},
+	})
+	node := parse(t, `
+redirectUris:
+  - var:REDIRECT_URIS
+  - https://kept.test/cb
+single:
+  - var:SINGLE_URI
+none:
+  - var:NO_URIS
+nulls:
+  - var:NULL_URI
+scalar: var:REDIRECT_URIS
+`)
+
+	require.NoError(t, New(lists).ResolveNode(context.Background(), node))
+
+	assert.Equal(t, map[string]any{
+		"redirectUris": []any{"https://one.test/cb", "https://two.test/cb", "https://kept.test/cb"},
+		"single":       []any{"https://only.test/cb"},
+		"none":         []any{},
+		"nulls":        []any{"[null]"},
+		"scalar":       `["https://one.test/cb", "https://two.test/cb"]`,
+	}, render(t, node))
+}
+
+// A secret is always one value, so a secret holding a JSON list stays a single item.
+func TestResolveNodeDoesNotExpandASecretIntoItems(t *testing.T) {
+	held := heldValues(map[valueref.Collection]map[string]string{
+		valueref.CollectionSecret: {"KEYS": `["one", "two"]`},
+	})
+	node := parse(t, "keys:\n  - sec:KEYS\n")
+
+	require.NoError(t, New(held).ResolveNode(context.Background(), node))
+
+	assert.Equal(t, map[string]any{"keys": []any{`["one", "two"]`}}, render(t, node))
+}
+
+// An alias to a list item resolved from a list variable expands as the item does.
+func TestResolveNodeExpandsAnAliasToAListItem(t *testing.T) {
+	held := heldValues(map[valueref.Collection]map[string]string{
+		valueref.CollectionVariable: {"URIS": `["https://one.test/cb", "https://two.test/cb"]`},
+	})
+	node := parse(t, "first:\n  - &uris var:URIS\nsecond:\n  - *uris\n")
+
+	require.NoError(t, New(held).ResolveNode(context.Background(), node))
+
+	uris := []any{"https://one.test/cb", "https://two.test/cb"}
+	assert.Equal(t, map[string]any{"first": uris, "second": uris}, render(t, node))
+}

@@ -188,6 +188,32 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 		"the import resolved a reference a Control Plane has no value for")
 }
 
+// A list such as an application's redirect URIs is exported as a list holding one reference, so
+// each deployment supplies its own addresses, as many as it has.
+func (ts *ControlPlaneTestSuite) TestExportRefersToAListAsOneReference() {
+	name := unique("CP List App")
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:         ts.ouID,
+		Name:         name,
+		ClientID:     unique("cp-list-client"),
+		ClientSecret: unique("cp-list-secret"),
+		RedirectURIs: []string{"https://cp-list-one.example.com/callback", "https://cp-list-two.example.com/callback"},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
+	ts.Regexp(`redirectUris:\s*\n\s*- var:APPLICATION_`+variable+`_REDIRECT_URIS\s*\n`, exported.Resources)
+	ts.NotContains(exported.Resources, "cp-list-one.example.com", "the export carried an address")
+	ts.NotContains(exported.Resources, "cp-list-two.example.com", "the export carried an address")
+}
+
 // A Control Plane runs no executor, so a flow is validated against the static executor catalog:
 // a known executor is accepted and an unknown one refused.
 func (ts *ControlPlaneTestSuite) TestFlowsAreValidatedAgainstTheExecutorCatalog() {

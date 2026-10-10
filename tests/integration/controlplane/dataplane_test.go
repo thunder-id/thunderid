@@ -95,6 +95,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
 	clientIDName := "APPLICATION_" + variable + "_CLIENT_ID"
 	clientSecretName := "APPLICATION_" + variable + "_CLIENT_SECRET"
+	redirectURIsName := "APPLICATION_" + variable + "_REDIRECT_URIS"
 
 	outcome := ts.importToDataPlane(exported.Resources)
 	ts.Equal(1, outcome.Summary.Failed, "an application was imported with no values for its references")
@@ -112,6 +113,9 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+clientIDName, map[string]any{"value": clientID})
 	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 	status, raw = ts.toDataPlane(http.MethodPut, "/secrets/"+clientSecretName, map[string]any{"value": clientSecret})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+redirectURIsName,
+		map[string]any{"value": `["https://dp.example.com/callback"]`})
 	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 
 	outcome = ts.importToDataPlane(exported.Resources)

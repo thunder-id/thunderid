@@ -19,6 +19,15 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// Option adjusts the inbound client service for the plane it runs on.
+type Option func(*inboundClientService)
+
+// KeepingValueReferences is for a control plane, which keeps a reference to the redirect URIs each
+// deployment holds where the URIs belong.
+func KeepingValueReferences() Option {
+	return func(s *inboundClientService) { s.keepsReferences = true }
+}
+
 // Initialize initializes the inbound client service.
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
@@ -33,14 +42,19 @@ func Initialize(
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	sharedTypes map[providers.EntityCategory]sharing.ResourceType,
+	options ...Option,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, err
 	}
-	return newInboundClientService(store, transactioner, certService, entityProvider,
+	service := newInboundClientService(store, transactioner, certService, entityProvider,
 		themeMgt, layoutMgt, flowMgt, entityType, cryptoProvider, jweService, cimdService,
-		sharingService, sharedTypes), nil
+		sharingService, sharedTypes)
+	for _, option := range options {
+		option(service)
+	}
+	return service, nil
 }
 
 // initializeStore always creates a composite store (DB + in-memory file store).

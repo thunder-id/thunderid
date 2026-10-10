@@ -12,6 +12,7 @@ package secretresolver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -84,6 +85,7 @@ func (r *Resolver) ResolveNode(ctx context.Context, node *yaml.Node) error {
 	collectReferences(node, &references)
 
 	values := make(map[*yaml.Node]string, len(references))
+	variables := make(map[*yaml.Node]string, len(references))
 	missing := map[string]bool{}
 	for _, reference := range references {
 		value, err := r.Resolve(ctx, reference.Value)
@@ -95,6 +97,9 @@ func (r *Resolver) ResolveNode(ctx context.Context, node *yaml.Node) error {
 			return err
 		}
 		values[reference] = value
+		if !valueref.IsSecretReference(reference.Value) {
+			variables[reference] = value
+		}
 	}
 	if len(missing) > 0 {
 		names := make([]string, 0, len(missing))
@@ -110,7 +115,66 @@ func (r *Resolver) ResolveNode(ctx context.Context, node *yaml.Node) error {
 		reference.Tag = "!!str"
 		reference.Style = 0
 	}
+	expandLists(node, variables)
 	return nil
+}
+
+// expandLists replaces each list item resolved from a variable whose value is a JSON list of strings
+// with one item per string. A list in a document is exported as a list of one reference, and the
+// variable it names holds however many items this deployment uses. A value that is not such a list
+// stays a single item.
+//
+// Only variables expand: an export refers to a list only through a variable, since what it writes as
+// a list is an address list, never a credential, so a secret is always one value. Every list in every
+// resolved document is looked at, not only redirect URIs, because which lists an export refers to is
+// the export's to say. An alias to a resolved item expands as the item does.
+func expandLists(node *yaml.Node, resolved map[*yaml.Node]string) {
+	if node == nil {
+		return
+	}
+	if node.Kind == yaml.SequenceNode {
+		items := make([]*yaml.Node, 0, len(node.Content))
+		for _, item := range node.Content {
+			target := item
+			if item.Kind == yaml.AliasNode && item.Alias != nil {
+				target = item.Alias
+			}
+			value, wasReference := resolved[target]
+			listed, isList := listOf(value)
+			if !wasReference || !isList {
+				items = append(items, item)
+				continue
+			}
+			for _, entry := range listed {
+				items = append(items, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: entry})
+			}
+		}
+		node.Content = items
+	}
+	for _, child := range node.Content {
+		expandLists(child, resolved)
+	}
+}
+
+// listOf reads a value written as a JSON list of strings. A list holding anything but strings, a null
+// included, is not one, so it is not expanded into items it does not name.
+func listOf(value string) ([]string, bool) {
+	if !strings.HasPrefix(strings.TrimSpace(value), "[") {
+		return nil, false
+	}
+	var entries []any
+	if err := json.Unmarshal([]byte(value), &entries); err != nil {
+		return nil, false
+	}
+	listed := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		text, ok := entry.(string)
+		if !ok {
+			return nil, false
+		}
+		listed = append(listed, text)
+	}
+	return listed, true
 }
 
 // collectReferences gathers every scalar node that holds a reference.

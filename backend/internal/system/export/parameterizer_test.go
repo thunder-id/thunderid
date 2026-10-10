@@ -2856,3 +2856,77 @@ func TestToParameterizedYAML_SortsMapKeys(t *testing.T) {
 		assert.Equal(t, first, export(), "a re-export of unchanged data must be identical")
 	}
 }
+
+type listOAuth struct {
+	RedirectURIs []string `yaml:"redirectUris"`
+}
+
+type listConfig struct {
+	OAuthConfig *listOAuth `yaml:"config"`
+}
+
+// listApp carries an address list, the shape array variables parameterize.
+type listApp struct {
+	Name              string       `yaml:"name"`
+	InboundAuthConfig []listConfig `yaml:"inboundAuthConfig"`
+}
+
+var listRules = &declarativeresource.ResourceRules{
+	ArrayVariables: []string{"InboundAuthConfig[].OAuthConfig.RedirectURIs"},
+}
+
+// A control plane writes a list as a list of one reference, so each gateway supplies its own
+// addresses, however many it has. A data plane still writes a template that ranges over them.
+func TestAListBecomesAReferenceToTheVariableHoldingIt(t *testing.T) {
+	resource := func() *listApp {
+		return &listApp{Name: "My App", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+			RedirectURIs: []string{"https://one.test/cb", "https://two.test/cb"},
+		}}}}
+	}
+
+	controlPlane, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+	require.NoError(t, err)
+	dataPlane, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+	require.NoError(t, err)
+
+	var exported listApp
+	require.NoError(t, yaml.Unmarshal([]byte(controlPlane), &exported))
+	assert.Equal(t, []string{"var:APPLICATION_MY_APP_REDIRECT_URIS"},
+		exported.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
+	assert.NotContains(t, controlPlane, "one.test", "an address was exported rather than referenced")
+	assert.Empty(t, secrets, "an address list was reported as a credential")
+
+	assert.Contains(t, dataPlane, "{{- range .APPLICATION_MY_APP_REDIRECT_URIS}}")
+}
+
+// A list that already holds a reference keeps it, so a resource written from an import exports the
+// reference it was written with rather than one derived from its current name.
+func TestAListHoldingAReferenceKeepsIt(t *testing.T) {
+	app := &listApp{Name: "Renamed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+		RedirectURIs: []string{valueref.VariableReference("APPLICATION_ORIGINAL_REDIRECT_URIS")},
+	}}}}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), app, "Application", "Renamed", listRules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "var:APPLICATION_ORIGINAL_REDIRECT_URIS")
+	assert.NotContains(t, doc, "APPLICATION_RENAMED_REDIRECT_URIS")
+}
+
+// A list mixing a reference with literal items keeps both, so an import expands the reference beside
+// the literal items rather than losing them.
+func TestAListMixingAReferenceWithLiteralsKeepsThem(t *testing.T) {
+	app := &listApp{Name: "Mixed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
+		RedirectURIs: []string{valueref.VariableReference("APPLICATION_MIXED_REDIRECT_URIS"), "https://kept.test/cb"},
+	}}}}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), app, "Application", "Mixed", listRules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "var:APPLICATION_MIXED_REDIRECT_URIS")
+	assert.Contains(t, doc, "https://kept.test/cb")
+}
