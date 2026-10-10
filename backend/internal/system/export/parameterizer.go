@@ -289,7 +289,7 @@ func (p *parameterizer) mappedCredentials(
 ) map[string]string {
 	values := map[string]string{}
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return values
 		}
@@ -376,7 +376,7 @@ func (p *parameterizer) extractDynamicPropertyValues(
 	}
 
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return values
 		}
@@ -537,7 +537,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 	obj interface{}, node *yaml.Node, rules *resourceRules, currentPath string, resourceName string,
 ) error {
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			node.Kind = yaml.ScalarNode
 			node.Tag = "!!null"
@@ -646,7 +646,7 @@ func (p *parameterizer) appendInlineStructFields(
 	rules *resourceRules, currentPath, resourceName string,
 ) error {
 	v := fieldValue
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return nil
 		}
@@ -721,7 +721,7 @@ func (p *parameterizer) isEmptyValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	}
 	return false
@@ -1098,7 +1098,7 @@ func (p *parameterizer) handleMapNode(
 func (p *parameterizer) fieldToNode(
 	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
 	// Handle nil pointers
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return &yaml.Node{
 			Kind:  yaml.ScalarNode,
 			Tag:   "!!null",
@@ -1107,7 +1107,7 @@ func (p *parameterizer) fieldToNode(
 	}
 
 	// Dereference pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1178,7 +1178,7 @@ func (p *parameterizer) structToMapIgnoringOmitempty(obj interface{}) (map[strin
 	result := make(map[string]interface{})
 
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1219,12 +1219,12 @@ func (p *parameterizer) structToMapIgnoringOmitempty(obj interface{}) (map[strin
 // handling nested structs, maps, slices, and pointers
 func (p *parameterizer) convertFieldToInterface(v reflect.Value) interface{} {
 	// Handle nil pointers
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return nil
 	}
 
 	// Dereference pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -1289,7 +1289,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 	}
 
 	objType := reflect.TypeOf(obj)
-	if objType.Kind() == reflect.Ptr {
+	if objType.Kind() == reflect.Pointer {
 		objType = objType.Elem()
 	}
 
@@ -1330,7 +1330,7 @@ func (p *parameterizer) convertPathToYAMLPath(objType reflect.Type, path string)
 
 	currentType := objType
 	for _, part := range parts {
-		if currentType.Kind() == reflect.Ptr {
+		if currentType.Kind() == reflect.Pointer {
 			currentType = currentType.Elem()
 		}
 

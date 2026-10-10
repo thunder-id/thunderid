@@ -30,7 +30,7 @@ func (f *versionFixture) excludedKeys(t *testing.T) []string {
 	t.Helper()
 	excluded, err := f.versions.GetExcluded(context.Background(), "gw-1")
 	require.NoError(t, err)
-	keys := []string{}
+	keys := make([]string, 0, len(excluded))
 	for _, resource := range excluded {
 		keys = append(keys, resource.Key)
 	}

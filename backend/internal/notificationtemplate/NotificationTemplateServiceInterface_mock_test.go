@@ -18,10 +18,19 @@ func NewNotificationTemplateServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *NotificationTemplateServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &NotificationTemplateServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type NotificationTemplateServiceInterfaceMock_CreateTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - request CreateTemplateRequest
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) CreateTemplate(ctx interface{}, channel interface{}, request interface{}) *NotificationTemplateServiceInterfaceMock_CreateTemplate_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) CreateTemplate(ctx any, channel any, request any) *NotificationTemplateServiceInterfaceMock_CreateTemplate_Call {
 	return &NotificationTemplateServiceInterfaceMock_CreateTemplate_Call{Call: _e.mock.On("CreateTemplate", ctx, channel, request)}
 }
 
@@ -143,7 +152,7 @@ type NotificationTemplateServiceInterfaceMock_DeleteTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - id string
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) DeleteTemplate(ctx interface{}, channel interface{}, id interface{}) *NotificationTemplateServiceInterfaceMock_DeleteTemplate_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) DeleteTemplate(ctx any, channel any, id any) *NotificationTemplateServiceInterfaceMock_DeleteTemplate_Call {
 	return &NotificationTemplateServiceInterfaceMock_DeleteTemplate_Call{Call: _e.mock.On("DeleteTemplate", ctx, channel, id)}
 }
 
@@ -219,7 +228,7 @@ type NotificationTemplateServiceInterfaceMock_GetTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - id string
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) GetTemplate(ctx interface{}, channel interface{}, id interface{}) *NotificationTemplateServiceInterfaceMock_GetTemplate_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) GetTemplate(ctx any, channel any, id any) *NotificationTemplateServiceInterfaceMock_GetTemplate_Call {
 	return &NotificationTemplateServiceInterfaceMock_GetTemplate_Call{Call: _e.mock.On("GetTemplate", ctx, channel, id)}
 }
 
@@ -295,7 +304,7 @@ type NotificationTemplateServiceInterfaceMock_GetTemplateByHandle_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - handle string
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) GetTemplateByHandle(ctx interface{}, channel interface{}, handle interface{}) *NotificationTemplateServiceInterfaceMock_GetTemplateByHandle_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) GetTemplateByHandle(ctx any, channel any, handle any) *NotificationTemplateServiceInterfaceMock_GetTemplateByHandle_Call {
 	return &NotificationTemplateServiceInterfaceMock_GetTemplateByHandle_Call{Call: _e.mock.On("GetTemplateByHandle", ctx, channel, handle)}
 }
 
@@ -372,7 +381,7 @@ type NotificationTemplateServiceInterfaceMock_ListTemplates_Call struct {
 //   - channel ChannelType
 //   - limit int
 //   - offset int
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ListTemplates(ctx interface{}, channel interface{}, limit interface{}, offset interface{}) *NotificationTemplateServiceInterfaceMock_ListTemplates_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ListTemplates(ctx any, channel any, limit any, offset any) *NotificationTemplateServiceInterfaceMock_ListTemplates_Call {
 	return &NotificationTemplateServiceInterfaceMock_ListTemplates_Call{Call: _e.mock.On("ListTemplates", ctx, channel, limit, offset)}
 }
 
@@ -427,7 +436,7 @@ type NotificationTemplateServiceInterfaceMock_SetDependencyRegistry_Call struct 
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *NotificationTemplateServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *NotificationTemplateServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &NotificationTemplateServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -494,7 +503,7 @@ type NotificationTemplateServiceInterfaceMock_UpdateTemplate_Call struct {
 //   - channel ChannelType
 //   - id string
 //   - request UpdateTemplateRequest
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) UpdateTemplate(ctx interface{}, channel interface{}, id interface{}, request interface{}) *NotificationTemplateServiceInterfaceMock_UpdateTemplate_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) UpdateTemplate(ctx any, channel any, id any, request any) *NotificationTemplateServiceInterfaceMock_UpdateTemplate_Call {
 	return &NotificationTemplateServiceInterfaceMock_UpdateTemplate_Call{Call: _e.mock.On("UpdateTemplate", ctx, channel, id, request)}
 }
 
@@ -564,7 +573,7 @@ type NotificationTemplateServiceInterfaceMock_ValidateTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - request CreateTemplateRequest
-func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ValidateTemplate(ctx interface{}, channel interface{}, request interface{}) *NotificationTemplateServiceInterfaceMock_ValidateTemplate_Call {
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ValidateTemplate(ctx any, channel any, request any) *NotificationTemplateServiceInterfaceMock_ValidateTemplate_Call {
 	return &NotificationTemplateServiceInterfaceMock_ValidateTemplate_Call{Call: _e.mock.On("ValidateTemplate", ctx, channel, request)}
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -143,7 +144,7 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 	// A resource the export could not write, such as a user without a username, is left out of the
 	// version as the export leaves it out of its own answer, and is named in the capture's answer so
 	// the administrator sees what the version is missing.
-	var skipped []export.ExportError
+	var skipped []declarativeresource.ExportError
 	if exported.Summary != nil {
 		skipped = exported.Summary.Errors
 	}

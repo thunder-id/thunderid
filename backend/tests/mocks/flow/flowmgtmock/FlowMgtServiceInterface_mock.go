@@ -21,10 +21,19 @@ func NewFlowMgtServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowMgtServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowMgtServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -80,7 +89,7 @@ type FlowMgtServiceInterfaceMock_CreateFlow_Call struct {
 // CreateFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowDef *flowmgt.FlowDefinition
-func (_e *FlowMgtServiceInterfaceMock_Expecter) CreateFlow(ctx interface{}, flowDef interface{}) *FlowMgtServiceInterfaceMock_CreateFlow_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) CreateFlow(ctx any, flowDef any) *FlowMgtServiceInterfaceMock_CreateFlow_Call {
 	return &FlowMgtServiceInterfaceMock_CreateFlow_Call{Call: _e.mock.On("CreateFlow", ctx, flowDef)}
 }
 
@@ -139,7 +148,7 @@ type FlowMgtServiceInterfaceMock_DeleteFlow_Call struct {
 // DeleteFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) DeleteFlow(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_DeleteFlow_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) DeleteFlow(ctx any, flowID any) *FlowMgtServiceInterfaceMock_DeleteFlow_Call {
 	return &FlowMgtServiceInterfaceMock_DeleteFlow_Call{Call: _e.mock.On("DeleteFlow", ctx, flowID)}
 }
 
@@ -209,7 +218,7 @@ type FlowMgtServiceInterfaceMock_GetFlow_Call struct {
 // GetFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlow(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_GetFlow_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlow(ctx any, flowID any) *FlowMgtServiceInterfaceMock_GetFlow_Call {
 	return &FlowMgtServiceInterfaceMock_GetFlow_Call{Call: _e.mock.On("GetFlow", ctx, flowID)}
 }
 
@@ -280,7 +289,7 @@ type FlowMgtServiceInterfaceMock_GetFlowByHandle_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowByHandle(ctx interface{}, handle interface{}, flowType interface{}) *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowByHandle(ctx any, handle any, flowType any) *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call {
 	return &FlowMgtServiceInterfaceMock_GetFlowByHandle_Call{Call: _e.mock.On("GetFlowByHandle", ctx, handle, flowType)}
 }
 
@@ -355,7 +364,7 @@ type FlowMgtServiceInterfaceMock_GetFlowUsages_Call struct {
 // GetFlowUsages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowUsages(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_GetFlowUsages_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowUsages(ctx any, flowID any) *FlowMgtServiceInterfaceMock_GetFlowUsages_Call {
 	return &FlowMgtServiceInterfaceMock_GetFlowUsages_Call{Call: _e.mock.On("GetFlowUsages", ctx, flowID)}
 }
 
@@ -426,7 +435,7 @@ type FlowMgtServiceInterfaceMock_GetFlowVersion_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - version int
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowVersion(ctx interface{}, flowID interface{}, version interface{}) *FlowMgtServiceInterfaceMock_GetFlowVersion_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowVersion(ctx any, flowID any, version any) *FlowMgtServiceInterfaceMock_GetFlowVersion_Call {
 	return &FlowMgtServiceInterfaceMock_GetFlowVersion_Call{Call: _e.mock.On("GetFlowVersion", ctx, flowID, version)}
 }
 
@@ -501,7 +510,7 @@ type FlowMgtServiceInterfaceMock_GetGraph_Call struct {
 // GetGraph is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetGraph(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_GetGraph_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetGraph(ctx any, flowID any) *FlowMgtServiceInterfaceMock_GetGraph_Call {
 	return &FlowMgtServiceInterfaceMock_GetGraph_Call{Call: _e.mock.On("GetGraph", ctx, flowID)}
 }
 
@@ -571,7 +580,7 @@ type FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call struct {
 // GetReachableCallTargets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetReachableCallTargets(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetReachableCallTargets(ctx any, flowID any) *FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call {
 	return &FlowMgtServiceInterfaceMock_GetReachableCallTargets_Call{Call: _e.mock.On("GetReachableCallTargets", ctx, flowID)}
 }
 
@@ -640,7 +649,7 @@ type FlowMgtServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *FlowMgtServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *FlowMgtServiceInterfaceMock_GetResourceDependencies_Call {
 	return &FlowMgtServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -714,7 +723,7 @@ type FlowMgtServiceInterfaceMock_IsValidFlow_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - flowType providers.FlowType
-func (_e *FlowMgtServiceInterfaceMock_Expecter) IsValidFlow(ctx interface{}, flowID interface{}, flowType interface{}) *FlowMgtServiceInterfaceMock_IsValidFlow_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) IsValidFlow(ctx any, flowID any, flowType any) *FlowMgtServiceInterfaceMock_IsValidFlow_Call {
 	return &FlowMgtServiceInterfaceMock_IsValidFlow_Call{Call: _e.mock.On("IsValidFlow", ctx, flowID, flowType)}
 }
 
@@ -789,7 +798,7 @@ type FlowMgtServiceInterfaceMock_ListFlowVersions_Call struct {
 // ListFlowVersions is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *FlowMgtServiceInterfaceMock_Expecter) ListFlowVersions(ctx interface{}, flowID interface{}) *FlowMgtServiceInterfaceMock_ListFlowVersions_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ListFlowVersions(ctx any, flowID any) *FlowMgtServiceInterfaceMock_ListFlowVersions_Call {
 	return &FlowMgtServiceInterfaceMock_ListFlowVersions_Call{Call: _e.mock.On("ListFlowVersions", ctx, flowID)}
 }
 
@@ -861,7 +870,7 @@ type FlowMgtServiceInterfaceMock_ListFlows_Call struct {
 //   - limit int
 //   - offset int
 //   - flowType providers.FlowType
-func (_e *FlowMgtServiceInterfaceMock_Expecter) ListFlows(ctx interface{}, limit interface{}, offset interface{}, flowType interface{}) *FlowMgtServiceInterfaceMock_ListFlows_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ListFlows(ctx any, limit any, offset any, flowType any) *FlowMgtServiceInterfaceMock_ListFlows_Call {
 	return &FlowMgtServiceInterfaceMock_ListFlows_Call{Call: _e.mock.On("ListFlows", ctx, limit, offset, flowType)}
 }
 
@@ -941,7 +950,7 @@ type FlowMgtServiceInterfaceMock_ResolveEffectiveFlowID_Call struct {
 //   - overriddenFlowID string
 //   - ouID string
 //   - flowType providers.FlowType
-func (_e *FlowMgtServiceInterfaceMock_Expecter) ResolveEffectiveFlowID(ctx interface{}, overriddenFlowID interface{}, ouID interface{}, flowType interface{}) *FlowMgtServiceInterfaceMock_ResolveEffectiveFlowID_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ResolveEffectiveFlowID(ctx any, overriddenFlowID any, ouID any, flowType any) *FlowMgtServiceInterfaceMock_ResolveEffectiveFlowID_Call {
 	return &FlowMgtServiceInterfaceMock_ResolveEffectiveFlowID_Call{Call: _e.mock.On("ResolveEffectiveFlowID", ctx, overriddenFlowID, ouID, flowType)}
 }
 
@@ -1022,7 +1031,7 @@ type FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - version int
-func (_e *FlowMgtServiceInterfaceMock_Expecter) RestoreFlowVersion(ctx interface{}, flowID interface{}, version interface{}) *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) RestoreFlowVersion(ctx any, flowID any, version any) *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call {
 	return &FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call{Call: _e.mock.On("RestoreFlowVersion", ctx, flowID, version)}
 }
 
@@ -1072,7 +1081,7 @@ type FlowMgtServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *FlowMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *FlowMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *FlowMgtServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &FlowMgtServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -1138,7 +1147,7 @@ type FlowMgtServiceInterfaceMock_UpdateFlow_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - flowDef *flowmgt.FlowDefinition
-func (_e *FlowMgtServiceInterfaceMock_Expecter) UpdateFlow(ctx interface{}, flowID interface{}, flowDef interface{}) *FlowMgtServiceInterfaceMock_UpdateFlow_Call {
+func (_e *FlowMgtServiceInterfaceMock_Expecter) UpdateFlow(ctx any, flowID any, flowDef any) *FlowMgtServiceInterfaceMock_UpdateFlow_Call {
 	return &FlowMgtServiceInterfaceMock_UpdateFlow_Call{Call: _e.mock.On("UpdateFlow", ctx, flowID, flowDef)}
 }
 

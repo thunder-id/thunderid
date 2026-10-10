@@ -21,10 +21,19 @@ func NewUserServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *UserServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &UserServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -80,7 +89,7 @@ type UserServiceInterfaceMock_CreateUser_Call struct {
 // CreateUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - user *providers.User
-func (_e *UserServiceInterfaceMock_Expecter) CreateUser(ctx interface{}, user interface{}) *UserServiceInterfaceMock_CreateUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) CreateUser(ctx any, user any) *UserServiceInterfaceMock_CreateUser_Call {
 	return &UserServiceInterfaceMock_CreateUser_Call{Call: _e.mock.On("CreateUser", ctx, user)}
 }
 
@@ -151,7 +160,7 @@ type UserServiceInterfaceMock_CreateUserByPath_Call struct {
 //   - ctx context.Context
 //   - handlePath string
 //   - request CreateUserByPathRequest
-func (_e *UserServiceInterfaceMock_Expecter) CreateUserByPath(ctx interface{}, handlePath interface{}, request interface{}) *UserServiceInterfaceMock_CreateUserByPath_Call {
+func (_e *UserServiceInterfaceMock_Expecter) CreateUserByPath(ctx any, handlePath any, request any) *UserServiceInterfaceMock_CreateUserByPath_Call {
 	return &UserServiceInterfaceMock_CreateUserByPath_Call{Call: _e.mock.On("CreateUserByPath", ctx, handlePath, request)}
 }
 
@@ -215,7 +224,7 @@ type UserServiceInterfaceMock_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) DeleteUser(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_DeleteUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) DeleteUser(ctx any, userID any) *UserServiceInterfaceMock_DeleteUser_Call {
 	return &UserServiceInterfaceMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
 }
 
@@ -286,7 +295,7 @@ type UserServiceInterfaceMock_GetUser_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUser(ctx interface{}, userID interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUser(ctx any, userID any, includeDisplay any) *UserServiceInterfaceMock_GetUser_Call {
 	return &UserServiceInterfaceMock_GetUser_Call{Call: _e.mock.On("GetUser", ctx, userID, includeDisplay)}
 }
 
@@ -363,7 +372,7 @@ type UserServiceInterfaceMock_GetUserGroups_Call struct {
 //   - userID string
 //   - limit int
 //   - offset int
-func (_e *UserServiceInterfaceMock_Expecter) GetUserGroups(ctx interface{}, userID interface{}, limit interface{}, offset interface{}) *UserServiceInterfaceMock_GetUserGroups_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserGroups(ctx any, userID any, limit any, offset any) *UserServiceInterfaceMock_GetUserGroups_Call {
 	return &UserServiceInterfaceMock_GetUserGroups_Call{Call: _e.mock.On("GetUserGroups", ctx, userID, limit, offset)}
 }
 
@@ -446,7 +455,7 @@ type UserServiceInterfaceMock_GetUserList_Call struct {
 //   - offset int
 //   - filters map[string]interface{}
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUserList(ctx interface{}, limit interface{}, offset interface{}, filters interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUserList_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserList(ctx any, limit any, offset any, filters any, includeDisplay any) *UserServiceInterfaceMock_GetUserList_Call {
 	return &UserServiceInterfaceMock_GetUserList_Call{Call: _e.mock.On("GetUserList", ctx, limit, offset, filters, includeDisplay)}
 }
 
@@ -531,7 +540,7 @@ type UserServiceInterfaceMock_GetUserMetadata_Call struct {
 // GetUserMetadata is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) GetUserMetadata(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_GetUserMetadata_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserMetadata(ctx any, userID any) *UserServiceInterfaceMock_GetUserMetadata_Call {
 	return &UserServiceInterfaceMock_GetUserMetadata_Call{Call: _e.mock.On("GetUserMetadata", ctx, userID)}
 }
 
@@ -601,7 +610,7 @@ type UserServiceInterfaceMock_GetUserUsages_Call struct {
 // GetUserUsages is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) GetUserUsages(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_GetUserUsages_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUserUsages(ctx any, userID any) *UserServiceInterfaceMock_GetUserUsages_Call {
 	return &UserServiceInterfaceMock_GetUserUsages_Call{Call: _e.mock.On("GetUserUsages", ctx, userID)}
 }
 
@@ -675,7 +684,7 @@ type UserServiceInterfaceMock_GetUsersByPath_Call struct {
 //   - offset int
 //   - filters map[string]interface{}
 //   - includeDisplay bool
-func (_e *UserServiceInterfaceMock_Expecter) GetUsersByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, filters interface{}, includeDisplay interface{}) *UserServiceInterfaceMock_GetUsersByPath_Call {
+func (_e *UserServiceInterfaceMock_Expecter) GetUsersByPath(ctx any, handlePath any, limit any, offset any, filters any, includeDisplay any) *UserServiceInterfaceMock_GetUsersByPath_Call {
 	return &UserServiceInterfaceMock_GetUsersByPath_Call{Call: _e.mock.On("GetUsersByPath", ctx, handlePath, limit, offset, filters, includeDisplay)}
 }
 
@@ -754,7 +763,7 @@ type UserServiceInterfaceMock_ResolveUserOUHandle_Call struct {
 // ResolveUserOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - user *providers.User
-func (_e *UserServiceInterfaceMock_Expecter) ResolveUserOUHandle(ctx interface{}, user interface{}) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
+func (_e *UserServiceInterfaceMock_Expecter) ResolveUserOUHandle(ctx any, user any) *UserServiceInterfaceMock_ResolveUserOUHandle_Call {
 	return &UserServiceInterfaceMock_ResolveUserOUHandle_Call{Call: _e.mock.On("ResolveUserOUHandle", ctx, user)}
 }
 
@@ -799,7 +808,7 @@ type UserServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *UserServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *UserServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *UserServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *UserServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &UserServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -865,7 +874,7 @@ type UserServiceInterfaceMock_UpdateUser_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - user *providers.User
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUser(ctx interface{}, userID interface{}, user interface{}) *UserServiceInterfaceMock_UpdateUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUser(ctx any, userID any, user any) *UserServiceInterfaceMock_UpdateUser_Call {
 	return &UserServiceInterfaceMock_UpdateUser_Call{Call: _e.mock.On("UpdateUser", ctx, userID, user)}
 }
 
@@ -941,7 +950,7 @@ type UserServiceInterfaceMock_UpdateUserAttributes_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - attributes json.RawMessage
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUserAttributes(ctx interface{}, userID interface{}, attributes interface{}) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUserAttributes(ctx any, userID any, attributes any) *UserServiceInterfaceMock_UpdateUserAttributes_Call {
 	return &UserServiceInterfaceMock_UpdateUserAttributes_Call{Call: _e.mock.On("UpdateUserAttributes", ctx, userID, attributes)}
 }
 
@@ -1006,7 +1015,7 @@ type UserServiceInterfaceMock_UpdateUserCredentials_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - credentials json.RawMessage
-func (_e *UserServiceInterfaceMock_Expecter) UpdateUserCredentials(ctx interface{}, userID interface{}, credentials interface{}) *UserServiceInterfaceMock_UpdateUserCredentials_Call {
+func (_e *UserServiceInterfaceMock_Expecter) UpdateUserCredentials(ctx any, userID any, credentials any) *UserServiceInterfaceMock_UpdateUserCredentials_Call {
 	return &UserServiceInterfaceMock_UpdateUserCredentials_Call{Call: _e.mock.On("UpdateUserCredentials", ctx, userID, credentials)}
 }
 
@@ -1070,7 +1079,7 @@ type UserServiceInterfaceMock_ValidateDeleteUser_Call struct {
 // ValidateDeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *UserServiceInterfaceMock_Expecter) ValidateDeleteUser(ctx interface{}, userID interface{}) *UserServiceInterfaceMock_ValidateDeleteUser_Call {
+func (_e *UserServiceInterfaceMock_Expecter) ValidateDeleteUser(ctx any, userID any) *UserServiceInterfaceMock_ValidateDeleteUser_Call {
 	return &UserServiceInterfaceMock_ValidateDeleteUser_Call{Call: _e.mock.On("ValidateDeleteUser", ctx, userID)}
 }
 

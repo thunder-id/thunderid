@@ -168,13 +168,11 @@ func setupDefaultPathSuccess(
 	store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
 		Return(true, nil).
 		Once()
-	listArgs := []interface{}{mock.Anything, "ou-1", limit, offset}
-	listArgs = append(listArgs, extraArgs...)
+	listArgs := append([]interface{}{mock.Anything, "ou-1", limit, offset}, extraArgs...)
 	store.On(listMethod, listArgs...).
 		Return(listReturn, nil).
 		Once()
-	countArgs := []interface{}{mock.Anything, "ou-1"}
-	countArgs = append(countArgs, extraArgs...)
+	countArgs := append([]interface{}{mock.Anything, "ou-1"}, extraArgs...)
 	store.On(countMethod, countArgs...).
 		Return(countReturn, nil).
 		Once()

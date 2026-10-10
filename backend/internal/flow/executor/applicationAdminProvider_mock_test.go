@@ -18,10 +18,19 @@ func newApplicationAdminProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *applicationAdminProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &applicationAdminProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type applicationAdminProviderMock_ApplyCredentialAction_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - action model.CredentialAction
-func (_e *applicationAdminProviderMock_Expecter) ApplyCredentialAction(ctx interface{}, appID interface{}, action interface{}) *applicationAdminProviderMock_ApplyCredentialAction_Call {
+func (_e *applicationAdminProviderMock_Expecter) ApplyCredentialAction(ctx any, appID any, action any) *applicationAdminProviderMock_ApplyCredentialAction_Call {
 	return &applicationAdminProviderMock_ApplyCredentialAction_Call{Call: _e.mock.On("ApplyCredentialAction", ctx, appID, action)}
 }
 
@@ -140,7 +149,7 @@ type applicationAdminProviderMock_DeleteApplication_Call struct {
 // DeleteApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *applicationAdminProviderMock_Expecter) DeleteApplication(ctx interface{}, appID interface{}) *applicationAdminProviderMock_DeleteApplication_Call {
+func (_e *applicationAdminProviderMock_Expecter) DeleteApplication(ctx any, appID any) *applicationAdminProviderMock_DeleteApplication_Call {
 	return &applicationAdminProviderMock_DeleteApplication_Call{Call: _e.mock.On("DeleteApplication", ctx, appID)}
 }
 
@@ -211,7 +220,7 @@ type applicationAdminProviderMock_ValidateCredentialAction_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - action model.CredentialAction
-func (_e *applicationAdminProviderMock_Expecter) ValidateCredentialAction(ctx interface{}, appID interface{}, action interface{}) *applicationAdminProviderMock_ValidateCredentialAction_Call {
+func (_e *applicationAdminProviderMock_Expecter) ValidateCredentialAction(ctx any, appID any, action any) *applicationAdminProviderMock_ValidateCredentialAction_Call {
 	return &applicationAdminProviderMock_ValidateCredentialAction_Call{Call: _e.mock.On("ValidateCredentialAction", ctx, appID, action)}
 }
 
@@ -286,7 +295,7 @@ type applicationAdminProviderMock_ValidateDeleteApplication_Call struct {
 // ValidateDeleteApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *applicationAdminProviderMock_Expecter) ValidateDeleteApplication(ctx interface{}, appID interface{}) *applicationAdminProviderMock_ValidateDeleteApplication_Call {
+func (_e *applicationAdminProviderMock_Expecter) ValidateDeleteApplication(ctx any, appID any) *applicationAdminProviderMock_ValidateDeleteApplication_Call {
 	return &applicationAdminProviderMock_ValidateDeleteApplication_Call{Call: _e.mock.On("ValidateDeleteApplication", ctx, appID)}
 }
 

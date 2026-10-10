@@ -18,10 +18,19 @@ func NewSCIMGroupsServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SCIMGroupsServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SCIMGroupsServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type SCIMGroupsServiceInterfaceMock_CreateGroup_Call struct {
 //   - displayName string
 //   - members []groups.SCIMGroupMember
 //   - baseURL string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) CreateGroup(ctx interface{}, displayName interface{}, members interface{}, baseURL interface{}) *SCIMGroupsServiceInterfaceMock_CreateGroup_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) CreateGroup(ctx any, displayName any, members any, baseURL any) *SCIMGroupsServiceInterfaceMock_CreateGroup_Call {
 	return &SCIMGroupsServiceInterfaceMock_CreateGroup_Call{Call: _e.mock.On("CreateGroup", ctx, displayName, members, baseURL)}
 }
 
@@ -148,7 +157,7 @@ type SCIMGroupsServiceInterfaceMock_DeleteGroup_Call struct {
 // DeleteGroup is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupID string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) DeleteGroup(ctx interface{}, groupID interface{}) *SCIMGroupsServiceInterfaceMock_DeleteGroup_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) DeleteGroup(ctx any, groupID any) *SCIMGroupsServiceInterfaceMock_DeleteGroup_Call {
 	return &SCIMGroupsServiceInterfaceMock_DeleteGroup_Call{Call: _e.mock.On("DeleteGroup", ctx, groupID)}
 }
 
@@ -219,7 +228,7 @@ type SCIMGroupsServiceInterfaceMock_GetGroup_Call struct {
 //   - ctx context.Context
 //   - groupID string
 //   - baseURL string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) GetGroup(ctx interface{}, groupID interface{}, baseURL interface{}) *SCIMGroupsServiceInterfaceMock_GetGroup_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) GetGroup(ctx any, groupID any, baseURL any) *SCIMGroupsServiceInterfaceMock_GetGroup_Call {
 	return &SCIMGroupsServiceInterfaceMock_GetGroup_Call{Call: _e.mock.On("GetGroup", ctx, groupID, baseURL)}
 }
 
@@ -294,7 +303,7 @@ type SCIMGroupsServiceInterfaceMock_ListGroups_Call struct {
 //   - startIndex int
 //   - count int
 //   - baseURL string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) ListGroups(ctx interface{}, startIndex interface{}, count interface{}, baseURL interface{}) *SCIMGroupsServiceInterfaceMock_ListGroups_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) ListGroups(ctx any, startIndex any, count any, baseURL any) *SCIMGroupsServiceInterfaceMock_ListGroups_Call {
 	return &SCIMGroupsServiceInterfaceMock_ListGroups_Call{Call: _e.mock.On("ListGroups", ctx, startIndex, count, baseURL)}
 }
 
@@ -376,7 +385,7 @@ type SCIMGroupsServiceInterfaceMock_PatchGroup_Call struct {
 //   - groupID string
 //   - actions []groups.SCIMGroupPatchAction
 //   - baseURL string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) PatchGroup(ctx interface{}, groupID interface{}, actions interface{}, baseURL interface{}) *SCIMGroupsServiceInterfaceMock_PatchGroup_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) PatchGroup(ctx any, groupID any, actions any, baseURL any) *SCIMGroupsServiceInterfaceMock_PatchGroup_Call {
 	return &SCIMGroupsServiceInterfaceMock_PatchGroup_Call{Call: _e.mock.On("PatchGroup", ctx, groupID, actions, baseURL)}
 }
 
@@ -459,7 +468,7 @@ type SCIMGroupsServiceInterfaceMock_ReplaceGroup_Call struct {
 //   - displayName string
 //   - members []groups.SCIMGroupMember
 //   - baseURL string
-func (_e *SCIMGroupsServiceInterfaceMock_Expecter) ReplaceGroup(ctx interface{}, groupID interface{}, displayName interface{}, members interface{}, baseURL interface{}) *SCIMGroupsServiceInterfaceMock_ReplaceGroup_Call {
+func (_e *SCIMGroupsServiceInterfaceMock_Expecter) ReplaceGroup(ctx any, groupID any, displayName any, members any, baseURL any) *SCIMGroupsServiceInterfaceMock_ReplaceGroup_Call {
 	return &SCIMGroupsServiceInterfaceMock_ReplaceGroup_Call{Call: _e.mock.On("ReplaceGroup", ctx, groupID, displayName, members, baseURL)}
 }
 

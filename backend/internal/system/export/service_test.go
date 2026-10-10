@@ -1373,10 +1373,11 @@ func (suite *ExportServiceTestSuite) TestExportResources_WithGroupByTypeStructur
 	appFiles := 0
 	idpFiles := 0
 	for _, file := range result.Files {
-		if file.ResourceType == "application" {
+		switch file.ResourceType {
+		case "application":
 			assert.Equal(suite.T(), "applications", file.FolderPath)
 			appFiles++
-		} else if file.ResourceType == "connection" {
+		case "connection":
 			assert.Equal(suite.T(), "connections", file.FolderPath)
 			idpFiles++
 		}

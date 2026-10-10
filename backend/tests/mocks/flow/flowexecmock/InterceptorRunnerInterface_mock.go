@@ -18,10 +18,19 @@ func NewInterceptorRunnerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *InterceptorRunnerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &InterceptorRunnerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type InterceptorRunnerInterfaceMock_runInterceptors_Call struct {
 // runInterceptors is a helper method to define mock.On call
 //   - mode providers.InterceptorMode
 //   - execCtx *flowexec.InterceptorRunnerContext
-func (_e *InterceptorRunnerInterfaceMock_Expecter) runInterceptors(mode interface{}, execCtx interface{}) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
+func (_e *InterceptorRunnerInterfaceMock_Expecter) runInterceptors(mode any, execCtx any) *InterceptorRunnerInterfaceMock_runInterceptors_Call {
 	return &InterceptorRunnerInterfaceMock_runInterceptors_Call{Call: _e.mock.On("runInterceptors", mode, execCtx)}
 }
 

@@ -18,10 +18,19 @@ func newIdentifyingExecutorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *identifyingExecutorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &identifyingExecutorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type identifyingExecutorInterfaceMock_IdentifyEntity_Call struct {
 //   - filters map[string]interface{}
 //   - execResp *providers.ExecutorResponse
 //   - category entitytype.TypeCategory
-func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyEntity(ctx interface{}, filters interface{}, execResp interface{}, category interface{}) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
+func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyEntity(ctx any, filters any, execResp any, category any) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
 	return &identifyingExecutorInterfaceMock_IdentifyEntity_Call{Call: _e.mock.On("IdentifyEntity", ctx, filters, execResp, category)}
 }
 

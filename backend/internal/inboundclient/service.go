@@ -195,7 +195,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		}
 		if oauthProfile != nil {
 			if oauthProfile.Certificate != nil && oauthClientID != "" {
-				if _, vErr, opErr := s.createCertificate(
+				if _, opErr, vErr := s.createCertificate(
 					txCtx, oauthClientID, oauthProfile.Certificate,
 				); vErr != nil {
 					return vErr
@@ -300,7 +300,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			if oauthProfile != nil {
 				oauthCert = oauthProfile.Certificate
 			}
-			if _, vErr, opErr := s.syncCertificate(
+			if _, opErr, vErr := s.syncCertificate(
 				txCtx, oauthClientID, oauthCert,
 			); vErr != nil {
 				return vErr
@@ -818,27 +818,27 @@ func (s *inboundClientService) GetCertificate(ctx context.Context, refType cert.
 
 // createCertificate validates and creates a new OAuth-app certificate record.
 func (s *inboundClientService) createCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	c, vErr := validateCertificateInput(refID, "", in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 	if c == nil {
 		return nil, nil, nil
 	}
 	if _, svcErr := s.certService.CreateCertificate(ctx, c); svcErr != nil {
-		return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpCreate, RefType: c.RefType, Underlying: svcErr}, nil
 	}
 	return &inboundmodel.Certificate{Type: c.Type, Value: c.Value}, nil, nil
 }
 
 // syncCertificate creates, updates, or deletes the OAuth-app certificate to match the desired state.
 func (s *inboundClientService) syncCertificate(ctx context.Context, refID string,
-	in *inboundmodel.Certificate) (*inboundmodel.Certificate, error, *CertOperationError) {
+	in *inboundmodel.Certificate) (*inboundmodel.Certificate, *CertOperationError, error) {
 	refType := cert.CertificateReferenceTypeOAuthApp
 	existing, svcErr := s.certService.GetCertificateByReference(ctx, refType, refID)
 	if svcErr != nil && svcErr.Code != cert.ErrorCertificateNotFound.Code {
-		return nil, nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}
+		return nil, &CertOperationError{Operation: CertOpRetrieve, RefType: refType, Underlying: svcErr}, nil
 	}
 
 	existingID := ""
@@ -847,17 +847,17 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 	}
 	desired, vErr := validateCertificateInput(refID, existingID, in)
 	if vErr != nil {
-		return nil, vErr, nil
+		return nil, nil, vErr
 	}
 
 	if desired != nil {
 		if existing != nil {
 			if _, opErr := s.certService.UpdateCertificateByID(ctx, existing.ID, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpUpdate, RefType: refType, Underlying: opErr}, nil
 			}
 		} else {
 			if _, opErr := s.certService.CreateCertificate(ctx, desired); opErr != nil {
-				return nil, nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}
+				return nil, &CertOperationError{Operation: CertOpCreate, RefType: refType, Underlying: opErr}, nil
 			}
 		}
 		return &inboundmodel.Certificate{Type: desired.Type, Value: desired.Value}, nil, nil
@@ -865,7 +865,7 @@ func (s *inboundClientService) syncCertificate(ctx context.Context, refID string
 
 	if existing != nil {
 		if opErr := s.certService.DeleteCertificateByReference(ctx, refType, refID); opErr != nil {
-			return nil, nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}
+			return nil, &CertOperationError{Operation: CertOpDelete, RefType: refType, Underlying: opErr}, nil
 		}
 	}
 	return nil, nil, nil

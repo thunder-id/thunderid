@@ -137,8 +137,7 @@ func (p *ouInheritancePolicy) getAccessibleResources(ctx context.Context, action
 		return true, nil, svcErr
 	}
 
-	resultIDs := []string{callerOUID}
-	resultIDs = append(resultIDs, ancestorIDs...)
+	resultIDs := append([]string{callerOUID}, ancestorIDs...)
 
 	return true, &AccessibleResources{AllAllowed: false, IDs: resultIDs}, nil
 }

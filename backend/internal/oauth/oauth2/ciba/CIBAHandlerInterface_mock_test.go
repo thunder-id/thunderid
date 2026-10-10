@@ -16,10 +16,19 @@ func NewCIBAHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CIBAHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CIBAHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type CIBAHandlerInterfaceMock_HandleBackchannelAuthRequest_Call struct {
 // HandleBackchannelAuthRequest is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *CIBAHandlerInterfaceMock_Expecter) HandleBackchannelAuthRequest(w interface{}, r interface{}) *CIBAHandlerInterfaceMock_HandleBackchannelAuthRequest_Call {
+func (_e *CIBAHandlerInterfaceMock_Expecter) HandleBackchannelAuthRequest(w any, r any) *CIBAHandlerInterfaceMock_HandleBackchannelAuthRequest_Call {
 	return &CIBAHandlerInterfaceMock_HandleBackchannelAuthRequest_Call{Call: _e.mock.On("HandleBackchannelAuthRequest", w, r)}
 }
 

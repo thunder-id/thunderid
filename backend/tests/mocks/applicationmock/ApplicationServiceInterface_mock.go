@@ -20,10 +20,19 @@ func NewApplicationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ApplicationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ApplicationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type ApplicationServiceInterfaceMock_ApplyCredentialAction_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - action model.CredentialAction
-func (_e *ApplicationServiceInterfaceMock_Expecter) ApplyCredentialAction(ctx interface{}, appID interface{}, action interface{}) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) ApplyCredentialAction(ctx any, appID any, action any) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
 	return &ApplicationServiceInterfaceMock_ApplyCredentialAction_Call{Call: _e.mock.On("ApplyCredentialAction", ctx, appID, action)}
 }
 
@@ -153,7 +162,7 @@ type ApplicationServiceInterfaceMock_CreateApplication_Call struct {
 // CreateApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) CreateApplication(ctx interface{}, app interface{}) *ApplicationServiceInterfaceMock_CreateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) CreateApplication(ctx any, app any) *ApplicationServiceInterfaceMock_CreateApplication_Call {
 	return &ApplicationServiceInterfaceMock_CreateApplication_Call{Call: _e.mock.On("CreateApplication", ctx, app)}
 }
 
@@ -212,7 +221,7 @@ type ApplicationServiceInterfaceMock_DeleteApplication_Call struct {
 // DeleteApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) DeleteApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_DeleteApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) DeleteApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_DeleteApplication_Call {
 	return &ApplicationServiceInterfaceMock_DeleteApplication_Call{Call: _e.mock.On("DeleteApplication", ctx, appID)}
 }
 
@@ -282,7 +291,7 @@ type ApplicationServiceInterfaceMock_GetApplication_Call struct {
 // GetApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_GetApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_GetApplication_Call {
 	return &ApplicationServiceInterfaceMock_GetApplication_Call{Call: _e.mock.On("GetApplication", ctx, appID)}
 }
 
@@ -351,7 +360,7 @@ type ApplicationServiceInterfaceMock_GetApplicationList_Call struct {
 
 // GetApplicationList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx interface{}) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationList(ctx any) *ApplicationServiceInterfaceMock_GetApplicationList_Call {
 	return &ApplicationServiceInterfaceMock_GetApplicationList_Call{Call: _e.mock.On("GetApplicationList", ctx)}
 }
 
@@ -416,7 +425,7 @@ type ApplicationServiceInterfaceMock_GetOAuthApplication_Call struct {
 // GetOAuthApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetOAuthApplication(ctx interface{}, clientID interface{}) *ApplicationServiceInterfaceMock_GetOAuthApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetOAuthApplication(ctx any, clientID any) *ApplicationServiceInterfaceMock_GetOAuthApplication_Call {
 	return &ApplicationServiceInterfaceMock_GetOAuthApplication_Call{Call: _e.mock.On("GetOAuthApplication", ctx, clientID)}
 }
 
@@ -485,7 +494,7 @@ type ApplicationServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *ApplicationServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *ApplicationServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *ApplicationServiceInterfaceMock_GetResourceDependencies_Call {
 	return &ApplicationServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -535,7 +544,7 @@ type ApplicationServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *ApplicationServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &ApplicationServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -601,7 +610,7 @@ type ApplicationServiceInterfaceMock_UpdateApplication_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) UpdateApplication(ctx interface{}, appID interface{}, app interface{}) *ApplicationServiceInterfaceMock_UpdateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) UpdateApplication(ctx any, appID any, app any) *ApplicationServiceInterfaceMock_UpdateApplication_Call {
 	return &ApplicationServiceInterfaceMock_UpdateApplication_Call{Call: _e.mock.On("UpdateApplication", ctx, appID, app)}
 }
 
@@ -684,7 +693,7 @@ type ApplicationServiceInterfaceMock_ValidateApplication_Call struct {
 // ValidateApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - app *model.ApplicationDTO
-func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateApplication(ctx interface{}, app interface{}) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateApplication(ctx any, app any) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
 	return &ApplicationServiceInterfaceMock_ValidateApplication_Call{Call: _e.mock.On("ValidateApplication", ctx, app)}
 }
 
@@ -755,7 +764,7 @@ type ApplicationServiceInterfaceMock_ValidateCredentialAction_Call struct {
 //   - ctx context.Context
 //   - appID string
 //   - action model.CredentialAction
-func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateCredentialAction(ctx interface{}, appID interface{}, action interface{}) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateCredentialAction(ctx any, appID any, action any) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
 	return &ApplicationServiceInterfaceMock_ValidateCredentialAction_Call{Call: _e.mock.On("ValidateCredentialAction", ctx, appID, action)}
 }
 
@@ -830,7 +839,7 @@ type ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call struct {
 // ValidateDeleteApplication is a helper method to define mock.On call
 //   - ctx context.Context
 //   - appID string
-func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateDeleteApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateDeleteApplication(ctx any, appID any) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
 	return &ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call{Call: _e.mock.On("ValidateDeleteApplication", ctx, appID)}
 }
 

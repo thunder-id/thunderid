@@ -16,10 +16,19 @@ func newDeclarativeSystemCredentialHasherMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *declarativeSystemCredentialHasherMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &declarativeSystemCredentialHasherMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type declarativeSystemCredentialHasherMock_hashPlaintextCredentials_Call struct 
 
 // hashPlaintextCredentials is a helper method to define mock.On call
 //   - creds json.RawMessage
-func (_e *declarativeSystemCredentialHasherMock_Expecter) hashPlaintextCredentials(creds interface{}) *declarativeSystemCredentialHasherMock_hashPlaintextCredentials_Call {
+func (_e *declarativeSystemCredentialHasherMock_Expecter) hashPlaintextCredentials(creds any) *declarativeSystemCredentialHasherMock_hashPlaintextCredentials_Call {
 	return &declarativeSystemCredentialHasherMock_hashPlaintextCredentials_Call{Call: _e.mock.On("hashPlaintextCredentials", creds)}
 }
 

@@ -15,10 +15,19 @@ func NewExecutorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ExecutorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ExecutorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type ExecutorInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *ExecutorInterfaceMock_Expecter) Execute(ctx interface{}) *ExecutorInterfaceMock_Execute_Call {
+func (_e *ExecutorInterfaceMock_Expecter) Execute(ctx any) *ExecutorInterfaceMock_Execute_Call {
 	return &ExecutorInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -170,7 +179,7 @@ type ExecutorInterfaceMock_GetExecutionPolicy_Call struct {
 
 // GetExecutionPolicy is a helper method to define mock.On call
 //   - mode string
-func (_e *ExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode interface{}) *ExecutorInterfaceMock_GetExecutionPolicy_Call {
+func (_e *ExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode any) *ExecutorInterfaceMock_GetExecutionPolicy_Call {
 	return &ExecutorInterfaceMock_GetExecutionPolicy_Call{Call: _e.mock.On("GetExecutionPolicy", mode)}
 }
 
@@ -359,7 +368,7 @@ type ExecutorInterfaceMock_GetRequiredInputs_Call struct {
 
 // GetRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *ExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx interface{}) *ExecutorInterfaceMock_GetRequiredInputs_Call {
+func (_e *ExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx any) *ExecutorInterfaceMock_GetRequiredInputs_Call {
 	return &ExecutorInterfaceMock_GetRequiredInputs_Call{Call: _e.mock.On("GetRequiredInputs", ctx)}
 }
 
@@ -456,7 +465,7 @@ type ExecutorInterfaceMock_GetUserIDFromContext_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *ExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx interface{}, execResp interface{}, authnProvider interface{}) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
+func (_e *ExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx any, execResp any, authnProvider any) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
 	return &ExecutorInterfaceMock_GetUserIDFromContext_Call{Call: _e.mock.On("GetUserIDFromContext", ctx, execResp, authnProvider)}
 }
 
@@ -518,7 +527,7 @@ type ExecutorInterfaceMock_HasRequiredInputs_Call struct {
 // HasRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *ExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx interface{}, execResp interface{}) *ExecutorInterfaceMock_HasRequiredInputs_Call {
+func (_e *ExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx any, execResp any) *ExecutorInterfaceMock_HasRequiredInputs_Call {
 	return &ExecutorInterfaceMock_HasRequiredInputs_Call{Call: _e.mock.On("HasRequiredInputs", ctx, execResp)}
 }
 
@@ -576,7 +585,7 @@ type ExecutorInterfaceMock_ValidatePrerequisites_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *ExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx interface{}, execResp interface{}, authnProvider interface{}) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
+func (_e *ExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx any, execResp any, authnProvider any) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
 	return &ExecutorInterfaceMock_ValidatePrerequisites_Call{Call: _e.mock.On("ValidatePrerequisites", ctx, execResp, authnProvider)}
 }
 

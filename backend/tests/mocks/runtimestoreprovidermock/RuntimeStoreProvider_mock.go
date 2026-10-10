@@ -17,10 +17,19 @@ func NewRuntimeStoreProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RuntimeStoreProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RuntimeStoreProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type RuntimeStoreProviderMock_CompareFieldAndSwap_Call struct {
 //   - field string
 //   - expected string
 //   - newValue []byte
-func (_e *RuntimeStoreProviderMock_Expecter) CompareFieldAndSwap(ctx interface{}, namespace interface{}, key interface{}, field interface{}, expected interface{}, newValue interface{}) *RuntimeStoreProviderMock_CompareFieldAndSwap_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) CompareFieldAndSwap(ctx any, namespace any, key any, field any, expected any, newValue any) *RuntimeStoreProviderMock_CompareFieldAndSwap_Call {
 	return &RuntimeStoreProviderMock_CompareFieldAndSwap_Call{Call: _e.mock.On("CompareFieldAndSwap", ctx, namespace, key, field, expected, newValue)}
 }
 
@@ -154,7 +163,7 @@ type RuntimeStoreProviderMock_Delete_Call struct {
 //   - ctx context.Context
 //   - namespace providers.RuntimeStoreNamespace
 //   - key string
-func (_e *RuntimeStoreProviderMock_Expecter) Delete(ctx interface{}, namespace interface{}, key interface{}) *RuntimeStoreProviderMock_Delete_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) Delete(ctx any, namespace any, key any) *RuntimeStoreProviderMock_Delete_Call {
 	return &RuntimeStoreProviderMock_Delete_Call{Call: _e.mock.On("Delete", ctx, namespace, key)}
 }
 
@@ -218,7 +227,7 @@ type RuntimeStoreProviderMock_ExtendTTL_Call struct {
 //   - namespace providers.RuntimeStoreNamespace
 //   - key string
 //   - ttlSeconds int64
-func (_e *RuntimeStoreProviderMock_Expecter) ExtendTTL(ctx interface{}, namespace interface{}, key interface{}, ttlSeconds interface{}) *RuntimeStoreProviderMock_ExtendTTL_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) ExtendTTL(ctx any, namespace any, key any, ttlSeconds any) *RuntimeStoreProviderMock_ExtendTTL_Call {
 	return &RuntimeStoreProviderMock_ExtendTTL_Call{Call: _e.mock.On("ExtendTTL", ctx, namespace, key, ttlSeconds)}
 }
 
@@ -297,7 +306,7 @@ type RuntimeStoreProviderMock_Get_Call struct {
 //   - ctx context.Context
 //   - namespace providers.RuntimeStoreNamespace
 //   - key string
-func (_e *RuntimeStoreProviderMock_Expecter) Get(ctx interface{}, namespace interface{}, key interface{}) *RuntimeStoreProviderMock_Get_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) Get(ctx any, namespace any, key any) *RuntimeStoreProviderMock_Get_Call {
 	return &RuntimeStoreProviderMock_Get_Call{Call: _e.mock.On("Get", ctx, namespace, key)}
 }
 
@@ -362,7 +371,7 @@ type RuntimeStoreProviderMock_Put_Call struct {
 //   - key string
 //   - value []byte
 //   - ttlSeconds int64
-func (_e *RuntimeStoreProviderMock_Expecter) Put(ctx interface{}, namespace interface{}, key interface{}, value interface{}, ttlSeconds interface{}) *RuntimeStoreProviderMock_Put_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) Put(ctx any, namespace any, key any, value any, ttlSeconds any) *RuntimeStoreProviderMock_Put_Call {
 	return &RuntimeStoreProviderMock_Put_Call{Call: _e.mock.On("Put", ctx, namespace, key, value, ttlSeconds)}
 }
 
@@ -446,7 +455,7 @@ type RuntimeStoreProviderMock_PutIfNotExists_Call struct {
 //   - key string
 //   - value []byte
 //   - ttlSeconds int64
-func (_e *RuntimeStoreProviderMock_Expecter) PutIfNotExists(ctx interface{}, namespace interface{}, key interface{}, value interface{}, ttlSeconds interface{}) *RuntimeStoreProviderMock_PutIfNotExists_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) PutIfNotExists(ctx any, namespace any, key any, value any, ttlSeconds any) *RuntimeStoreProviderMock_PutIfNotExists_Call {
 	return &RuntimeStoreProviderMock_PutIfNotExists_Call{Call: _e.mock.On("PutIfNotExists", ctx, namespace, key, value, ttlSeconds)}
 }
 
@@ -530,7 +539,7 @@ type RuntimeStoreProviderMock_Take_Call struct {
 //   - ctx context.Context
 //   - namespace providers.RuntimeStoreNamespace
 //   - key string
-func (_e *RuntimeStoreProviderMock_Expecter) Take(ctx interface{}, namespace interface{}, key interface{}) *RuntimeStoreProviderMock_Take_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) Take(ctx any, namespace any, key any) *RuntimeStoreProviderMock_Take_Call {
 	return &RuntimeStoreProviderMock_Take_Call{Call: _e.mock.On("Take", ctx, namespace, key)}
 }
 
@@ -594,7 +603,7 @@ type RuntimeStoreProviderMock_Update_Call struct {
 //   - namespace providers.RuntimeStoreNamespace
 //   - key string
 //   - value []byte
-func (_e *RuntimeStoreProviderMock_Expecter) Update(ctx interface{}, namespace interface{}, key interface{}, value interface{}) *RuntimeStoreProviderMock_Update_Call {
+func (_e *RuntimeStoreProviderMock_Expecter) Update(ctx any, namespace any, key any, value any) *RuntimeStoreProviderMock_Update_Call {
 	return &RuntimeStoreProviderMock_Update_Call{Call: _e.mock.On("Update", ctx, namespace, key, value)}
 }
 

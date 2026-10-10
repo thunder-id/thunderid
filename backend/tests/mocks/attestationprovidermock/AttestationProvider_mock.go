@@ -18,10 +18,19 @@ func NewAttestationProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AttestationProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AttestationProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type AttestationProviderMock_Verify_Call struct {
 //   - ctx context.Context
 //   - cfg *providers.AttestationConfig
 //   - token string
-func (_e *AttestationProviderMock_Expecter) Verify(ctx interface{}, cfg interface{}, token interface{}) *AttestationProviderMock_Verify_Call {
+func (_e *AttestationProviderMock_Expecter) Verify(ctx any, cfg any, token any) *AttestationProviderMock_Verify_Call {
 	return &AttestationProviderMock_Verify_Call{Call: _e.mock.On("Verify", ctx, cfg, token)}
 }
 

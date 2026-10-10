@@ -1,6 +1,6 @@
 module github.com/thunder-id/thunderid
 
-go 1.26
+go 1.27.2
 
 require (
 	cloud.google.com/go/auth v0.22.0

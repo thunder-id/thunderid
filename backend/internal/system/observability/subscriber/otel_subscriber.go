@@ -99,7 +99,7 @@ func (o *OTelSubscriber) Initialize() error {
 	o.id, err = utils.GenerateUUIDv7()
 	if err != nil {
 		o.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
-		return fmt.Errorf("Failed to generate UUID: %w", err)
+		return fmt.Errorf("failed to generate UUID: %w", err)
 	}
 
 	o.logger.Debug(ctx, "OpenTelemetry subscriber initialized successfully",

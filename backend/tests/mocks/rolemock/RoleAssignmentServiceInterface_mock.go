@@ -19,10 +19,19 @@ func NewRoleAssignmentServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RoleAssignmentServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RoleAssignmentServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -68,7 +77,7 @@ type RoleAssignmentServiceInterfaceMock_AddAssigneesToRoles_Call struct {
 //   - ctx context.Context
 //   - assignments []role.RoleAssignment
 //   - roleIDs []string
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssigneesToRoles(ctx interface{}, assignments interface{}, roleIDs interface{}) *RoleAssignmentServiceInterfaceMock_AddAssigneesToRoles_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssigneesToRoles(ctx any, assignments any, roleIDs any) *RoleAssignmentServiceInterfaceMock_AddAssigneesToRoles_Call {
 	return &RoleAssignmentServiceInterfaceMock_AddAssigneesToRoles_Call{Call: _e.mock.On("AddAssigneesToRoles", ctx, assignments, roleIDs)}
 }
 
@@ -133,7 +142,7 @@ type RoleAssignmentServiceInterfaceMock_AddAssignments_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - assignments []role.RoleAssignment
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssignments(ctx interface{}, id interface{}, assignments interface{}) *RoleAssignmentServiceInterfaceMock_AddAssignments_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) AddAssignments(ctx any, id any, assignments any) *RoleAssignmentServiceInterfaceMock_AddAssignments_Call {
 	return &RoleAssignmentServiceInterfaceMock_AddAssignments_Call{Call: _e.mock.On("AddAssignments", ctx, id, assignments)}
 }
 
@@ -205,7 +214,7 @@ type RoleAssignmentServiceInterfaceMock_CascadeDeleteDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) CascadeDeleteDependencies(ctx interface{}, resourceType interface{}, id interface{}) *RoleAssignmentServiceInterfaceMock_CascadeDeleteDependencies_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) CascadeDeleteDependencies(ctx any, resourceType any, id any) *RoleAssignmentServiceInterfaceMock_CascadeDeleteDependencies_Call {
 	return &RoleAssignmentServiceInterfaceMock_CascadeDeleteDependencies_Call{Call: _e.mock.On("CascadeDeleteDependencies", ctx, resourceType, id)}
 }
 
@@ -279,7 +288,7 @@ type RoleAssignmentServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *RoleAssignmentServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *RoleAssignmentServiceInterfaceMock_GetResourceDependencies_Call {
 	return &RoleAssignmentServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -357,7 +366,7 @@ type RoleAssignmentServiceInterfaceMock_GetRoleAssignments_Call struct {
 //   - limit int
 //   - offset int
 //   - includeDisplay bool
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetRoleAssignments(ctx interface{}, id interface{}, limit interface{}, offset interface{}, includeDisplay interface{}) *RoleAssignmentServiceInterfaceMock_GetRoleAssignments_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetRoleAssignments(ctx any, id any, limit any, offset any, includeDisplay any) *RoleAssignmentServiceInterfaceMock_GetRoleAssignments_Call {
 	return &RoleAssignmentServiceInterfaceMock_GetRoleAssignments_Call{Call: _e.mock.On("GetRoleAssignments", ctx, id, limit, offset, includeDisplay)}
 }
 
@@ -446,7 +455,7 @@ type RoleAssignmentServiceInterfaceMock_GetRoleAssignmentsByType_Call struct {
 //   - offset int
 //   - includeDisplay bool
 //   - assigneeType string
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetRoleAssignmentsByType(ctx interface{}, id interface{}, limit interface{}, offset interface{}, includeDisplay interface{}, assigneeType interface{}) *RoleAssignmentServiceInterfaceMock_GetRoleAssignmentsByType_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetRoleAssignmentsByType(ctx any, id any, limit any, offset any, includeDisplay any, assigneeType any) *RoleAssignmentServiceInterfaceMock_GetRoleAssignmentsByType_Call {
 	return &RoleAssignmentServiceInterfaceMock_GetRoleAssignmentsByType_Call{Call: _e.mock.On("GetRoleAssignmentsByType", ctx, id, limit, offset, includeDisplay, assigneeType)}
 }
 
@@ -526,7 +535,7 @@ type RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - assignments []role.RoleAssignment
-func (_e *RoleAssignmentServiceInterfaceMock_Expecter) RemoveAssignments(ctx interface{}, id interface{}, assignments interface{}) *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call {
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) RemoveAssignments(ctx any, id any, assignments any) *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call {
 	return &RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call{Call: _e.mock.On("RemoveAssignments", ctx, id, assignments)}
 }
 

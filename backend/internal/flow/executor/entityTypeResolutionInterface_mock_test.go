@@ -19,10 +19,19 @@ func newEntityTypeResolutionInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *entityTypeResolutionInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &entityTypeResolutionInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -84,7 +93,7 @@ type entityTypeResolutionInterfaceMock_entityTypeAndOU_Call struct {
 //   - category entitytype.TypeCategory
 //   - name string
 //   - logger *log.Logger
-func (_e *entityTypeResolutionInterfaceMock_Expecter) entityTypeAndOU(ctx interface{}, category interface{}, name interface{}, logger interface{}) *entityTypeResolutionInterfaceMock_entityTypeAndOU_Call {
+func (_e *entityTypeResolutionInterfaceMock_Expecter) entityTypeAndOU(ctx any, category any, name any, logger any) *entityTypeResolutionInterfaceMock_entityTypeAndOU_Call {
 	return &entityTypeResolutionInterfaceMock_entityTypeAndOU_Call{Call: _e.mock.On("entityTypeAndOU", ctx, category, name, logger)}
 }
 
@@ -143,7 +152,7 @@ type entityTypeResolutionInterfaceMock_promptOptions_Call struct {
 //   - options []string
 //   - defaultInputs []providers.Input
 //   - logger *log.Logger
-func (_e *entityTypeResolutionInterfaceMock_Expecter) promptOptions(ctx interface{}, execResp interface{}, options interface{}, defaultInputs interface{}, logger interface{}) *entityTypeResolutionInterfaceMock_promptOptions_Call {
+func (_e *entityTypeResolutionInterfaceMock_Expecter) promptOptions(ctx any, execResp any, options any, defaultInputs any, logger any) *entityTypeResolutionInterfaceMock_promptOptions_Call {
 	return &entityTypeResolutionInterfaceMock_promptOptions_Call{Call: _e.mock.On("promptOptions", ctx, execResp, options, defaultInputs, logger)}
 }
 
@@ -230,7 +239,7 @@ type entityTypeResolutionInterfaceMock_resolve_Call struct {
 //   - defaultInputs []providers.Input
 //   - execResp *providers.ExecutorResponse
 //   - logger *log.Logger
-func (_e *entityTypeResolutionInterfaceMock_Expecter) resolve(ctx interface{}, category interface{}, allowedTypes interface{}, defaultInputs interface{}, execResp interface{}, logger interface{}) *entityTypeResolutionInterfaceMock_resolve_Call {
+func (_e *entityTypeResolutionInterfaceMock_Expecter) resolve(ctx any, category any, allowedTypes any, defaultInputs any, execResp any, logger any) *entityTypeResolutionInterfaceMock_resolve_Call {
 	return &entityTypeResolutionInterfaceMock_resolve_Call{Call: _e.mock.On("resolve", ctx, category, allowedTypes, defaultInputs, execResp, logger)}
 }
 

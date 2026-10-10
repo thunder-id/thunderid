@@ -1425,7 +1425,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignature() {
 		{
 			name: "TamperedToken",
 			setupFunc: func() string {
-				parts := []string{}
+				parts := make([]string, 0, 3)
 				for _, part := range []string{"header", "payload", "signature"} {
 					jsonData, _ := json.Marshal(map[string]string{"tampered": part})
 					parts = append(parts, base64.RawURLEncoding.EncodeToString(jsonData))
@@ -1513,7 +1513,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithPublicKey() {
 
 	wrongKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 
-	parts := []string{}
+	parts := make([]string, 0, 3)
 	for _, part := range []string{"header", "payload", "signature"} {
 		jsonData, _ := json.Marshal(map[string]string{"tampered": part})
 		parts = append(parts, base64.RawURLEncoding.EncodeToString(jsonData))

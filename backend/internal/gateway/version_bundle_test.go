@@ -127,7 +127,7 @@ func TestLineDiffIsAShortestEdit(t *testing.T) {
 	document := func() []string {
 		lines := make([]string, random.Intn(40))
 		for i := range lines {
-			lines[i] = string(rune('a' + random.Intn(4)))
+			lines[i] = string("abcd"[random.Intn(4)])
 		}
 		return lines
 	}
@@ -146,10 +146,10 @@ func TestLineDiffFallsBackToAReplaceOutOfBudget(t *testing.T) {
 		a := make([]string, random.Intn(30))
 		b := make([]string, random.Intn(30))
 		for i := range a {
-			a[i] = string(rune('a' + random.Intn(3)))
+			a[i] = string("abc"[random.Intn(3)])
 		}
 		for i := range b {
-			b[i] = string(rune('a' + random.Intn(3)))
+			b[i] = string("abc"[random.Intn(3)])
 		}
 		assertReplays(t, a, b, diffLines(a, b, 1+random.Intn(20)))
 	}

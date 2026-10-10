@@ -71,7 +71,8 @@ func (s *StoreTestSuite) expectExecError(query dbmodel.DBQuery, argc int, err er
 
 // anyArgs builds the matcher list for a context, a query and argc bound arguments.
 func (s *StoreTestSuite) anyArgs(query dbmodel.DBQuery, argc int) []interface{} {
-	out := []interface{}{mock.Anything, query}
+	out := make([]interface{}, 0, 2+argc)
+	out = append(out, mock.Anything, query)
 	for range argc {
 		out = append(out, mock.Anything)
 	}

@@ -16,10 +16,19 @@ func newNotificationTemplateStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *notificationTemplateStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &notificationTemplateStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type notificationTemplateStoreInterfaceMock_CountTemplates_Call struct {
 // CountTemplates is a helper method to define mock.On call
 //   - ctx context.Context
 //   - channel ChannelType
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) CountTemplates(ctx interface{}, channel interface{}) *notificationTemplateStoreInterfaceMock_CountTemplates_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) CountTemplates(ctx any, channel any) *notificationTemplateStoreInterfaceMock_CountTemplates_Call {
 	return &notificationTemplateStoreInterfaceMock_CountTemplates_Call{Call: _e.mock.On("CountTemplates", ctx, channel)}
 }
 
@@ -128,7 +137,7 @@ type notificationTemplateStoreInterfaceMock_CreateTemplate_Call struct {
 // CreateTemplate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - template templateDAO
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) CreateTemplate(ctx interface{}, template interface{}) *notificationTemplateStoreInterfaceMock_CreateTemplate_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) CreateTemplate(ctx any, template any) *notificationTemplateStoreInterfaceMock_CreateTemplate_Call {
 	return &notificationTemplateStoreInterfaceMock_CreateTemplate_Call{Call: _e.mock.On("CreateTemplate", ctx, template)}
 }
 
@@ -186,7 +195,7 @@ type notificationTemplateStoreInterfaceMock_DeleteTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - id string
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) DeleteTemplate(ctx interface{}, channel interface{}, id interface{}) *notificationTemplateStoreInterfaceMock_DeleteTemplate_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) DeleteTemplate(ctx any, channel any, id any) *notificationTemplateStoreInterfaceMock_DeleteTemplate_Call {
 	return &notificationTemplateStoreInterfaceMock_DeleteTemplate_Call{Call: _e.mock.On("DeleteTemplate", ctx, channel, id)}
 }
 
@@ -258,7 +267,7 @@ type notificationTemplateStoreInterfaceMock_GetTemplate_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - id string
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) GetTemplate(ctx interface{}, channel interface{}, id interface{}) *notificationTemplateStoreInterfaceMock_GetTemplate_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) GetTemplate(ctx any, channel any, id any) *notificationTemplateStoreInterfaceMock_GetTemplate_Call {
 	return &notificationTemplateStoreInterfaceMock_GetTemplate_Call{Call: _e.mock.On("GetTemplate", ctx, channel, id)}
 }
 
@@ -330,7 +339,7 @@ type notificationTemplateStoreInterfaceMock_GetTemplateByHandle_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - handle string
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) GetTemplateByHandle(ctx interface{}, channel interface{}, handle interface{}) *notificationTemplateStoreInterfaceMock_GetTemplateByHandle_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) GetTemplateByHandle(ctx any, channel any, handle any) *notificationTemplateStoreInterfaceMock_GetTemplateByHandle_Call {
 	return &notificationTemplateStoreInterfaceMock_GetTemplateByHandle_Call{Call: _e.mock.On("GetTemplateByHandle", ctx, channel, handle)}
 }
 
@@ -402,7 +411,7 @@ type notificationTemplateStoreInterfaceMock_IsHandleExists_Call struct {
 //   - ctx context.Context
 //   - channel ChannelType
 //   - handle string
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) IsHandleExists(ctx interface{}, channel interface{}, handle interface{}) *notificationTemplateStoreInterfaceMock_IsHandleExists_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) IsHandleExists(ctx any, channel any, handle any) *notificationTemplateStoreInterfaceMock_IsHandleExists_Call {
 	return &notificationTemplateStoreInterfaceMock_IsHandleExists_Call{Call: _e.mock.On("IsHandleExists", ctx, channel, handle)}
 }
 
@@ -477,7 +486,7 @@ type notificationTemplateStoreInterfaceMock_ListTemplates_Call struct {
 //   - channel ChannelType
 //   - limit int
 //   - offset int
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) ListTemplates(ctx interface{}, channel interface{}, limit interface{}, offset interface{}) *notificationTemplateStoreInterfaceMock_ListTemplates_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) ListTemplates(ctx any, channel any, limit any, offset any) *notificationTemplateStoreInterfaceMock_ListTemplates_Call {
 	return &notificationTemplateStoreInterfaceMock_ListTemplates_Call{Call: _e.mock.On("ListTemplates", ctx, channel, limit, offset)}
 }
 
@@ -544,7 +553,7 @@ type notificationTemplateStoreInterfaceMock_UpdateTemplate_Call struct {
 // UpdateTemplate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - template templateDAO
-func (_e *notificationTemplateStoreInterfaceMock_Expecter) UpdateTemplate(ctx interface{}, template interface{}) *notificationTemplateStoreInterfaceMock_UpdateTemplate_Call {
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) UpdateTemplate(ctx any, template any) *notificationTemplateStoreInterfaceMock_UpdateTemplate_Call {
 	return &notificationTemplateStoreInterfaceMock_UpdateTemplate_Call{Call: _e.mock.On("UpdateTemplate", ctx, template)}
 }
 

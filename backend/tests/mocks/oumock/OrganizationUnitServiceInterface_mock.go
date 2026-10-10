@@ -18,10 +18,19 @@ func NewOrganizationUnitServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OrganizationUnitServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OrganizationUnitServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type OrganizationUnitServiceInterfaceMock_CreateOrganizationUnit_Call struct {
 // CreateOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request ou.OrganizationUnitRequestWithID
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) CreateOrganizationUnit(ctx interface{}, request interface{}) *OrganizationUnitServiceInterfaceMock_CreateOrganizationUnit_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) CreateOrganizationUnit(ctx any, request any) *OrganizationUnitServiceInterfaceMock_CreateOrganizationUnit_Call {
 	return &OrganizationUnitServiceInterfaceMock_CreateOrganizationUnit_Call{Call: _e.mock.On("CreateOrganizationUnit", ctx, request)}
 }
 
@@ -134,7 +143,7 @@ type OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnit_Call struct {
 // DeleteOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) DeleteOrganizationUnit(ctx interface{}, id interface{}) *OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnit_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) DeleteOrganizationUnit(ctx any, id any) *OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnit_Call {
 	return &OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnit_Call{Call: _e.mock.On("DeleteOrganizationUnit", ctx, id)}
 }
 
@@ -193,7 +202,7 @@ type OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnitByPath_Call stru
 // DeleteOrganizationUnitByPath is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handlePath string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) DeleteOrganizationUnitByPath(ctx interface{}, handlePath interface{}) *OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnitByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) DeleteOrganizationUnitByPath(ctx any, handlePath any) *OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnitByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_DeleteOrganizationUnitByPath_Call{Call: _e.mock.On("DeleteOrganizationUnitByPath", ctx, handlePath)}
 }
 
@@ -261,7 +270,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnit_Call struct {
 // GetOrganizationUnit is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnit(ctx interface{}, id interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnit_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnit(ctx any, id any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnit_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnit_Call{Call: _e.mock.On("GetOrganizationUnit", ctx, id)}
 }
 
@@ -329,7 +338,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitByPath_Call struct 
 // GetOrganizationUnitByPath is a helper method to define mock.On call
 //   - ctx context.Context
 //   - handlePath string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitByPath(ctx interface{}, handlePath interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitByPath(ctx any, handlePath any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitByPath_Call{Call: _e.mock.On("GetOrganizationUnitByPath", ctx, handlePath)}
 }
 
@@ -402,7 +411,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call struc
 //   - limit int
 //   - offset int
 //   - f *common.FilterGroup
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildren(ctx interface{}, id interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildren(ctx any, id any, limit any, offset any, f any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call{Call: _e.mock.On("GetOrganizationUnitChildren", ctx, id, limit, offset, f)}
 }
 
@@ -490,7 +499,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call
 //   - limit int
 //   - offset int
 //   - f *common.FilterGroup
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildrenByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildrenByPath(ctx any, handlePath any, limit any, offset any, f any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call{Call: _e.mock.On("GetOrganizationUnitChildrenByPath", ctx, handlePath, limit, offset, f)}
 }
 
@@ -577,7 +586,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroups_Call struct 
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitGroups(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroups_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitGroups(ctx any, id any, limit any, offset any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroups_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroups_Call{Call: _e.mock.On("GetOrganizationUnitGroups", ctx, id, limit, offset)}
 }
 
@@ -659,7 +668,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroupsByPath_Call s
 //   - handlePath string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitGroupsByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroupsByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitGroupsByPath(ctx any, handlePath any, limit any, offset any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroupsByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitGroupsByPath_Call{Call: _e.mock.On("GetOrganizationUnitGroupsByPath", ctx, handlePath, limit, offset)}
 }
 
@@ -739,7 +748,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitHandlesByIDs_Call s
 // GetOrganizationUnitHandlesByIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ids []string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitHandlesByIDs(ctx interface{}, ids interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitHandlesByIDs_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitHandlesByIDs(ctx any, ids any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitHandlesByIDs_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitHandlesByIDs_Call{Call: _e.mock.On("GetOrganizationUnitHandlesByIDs", ctx, ids)}
 }
 
@@ -811,7 +820,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call struct {
 //   - limit int
 //   - offset int
 //   - f *common.FilterGroup
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitList(ctx any, limit any, offset any, f any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset, f)}
 }
 
@@ -893,7 +902,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRoles_Call struct {
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitRoles(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRoles_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitRoles(ctx any, id any, limit any, offset any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRoles_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRoles_Call{Call: _e.mock.On("GetOrganizationUnitRoles", ctx, id, limit, offset)}
 }
 
@@ -975,7 +984,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRolesByPath_Call st
 //   - handlePath string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitRolesByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRolesByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitRolesByPath(ctx any, handlePath any, limit any, offset any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRolesByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitRolesByPath_Call{Call: _e.mock.On("GetOrganizationUnitRolesByPath", ctx, handlePath, limit, offset)}
 }
 
@@ -1058,7 +1067,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsers_Call struct {
 //   - limit int
 //   - offset int
 //   - includeDisplay bool
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitUsers(ctx interface{}, id interface{}, limit interface{}, offset interface{}, includeDisplay interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsers_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitUsers(ctx any, id any, limit any, offset any, includeDisplay any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsers_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsers_Call{Call: _e.mock.On("GetOrganizationUnitUsers", ctx, id, limit, offset, includeDisplay)}
 }
 
@@ -1146,7 +1155,7 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsersByPath_Call st
 //   - limit int
 //   - offset int
 //   - includeDisplay bool
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitUsersByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, includeDisplay interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsersByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitUsersByPath(ctx any, handlePath any, limit any, offset any, includeDisplay any) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsersByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitUsersByPath_Call{Call: _e.mock.On("GetOrganizationUnitUsersByPath", ctx, handlePath, limit, offset, includeDisplay)}
 }
 
@@ -1218,7 +1227,7 @@ type OrganizationUnitServiceInterfaceMock_IsOrganizationUnitDeclarative_Call str
 // IsOrganizationUnitDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsOrganizationUnitDeclarative(ctx interface{}, id interface{}) *OrganizationUnitServiceInterfaceMock_IsOrganizationUnitDeclarative_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsOrganizationUnitDeclarative(ctx any, id any) *OrganizationUnitServiceInterfaceMock_IsOrganizationUnitDeclarative_Call {
 	return &OrganizationUnitServiceInterfaceMock_IsOrganizationUnitDeclarative_Call{Call: _e.mock.On("IsOrganizationUnitDeclarative", ctx, id)}
 }
 
@@ -1286,7 +1295,7 @@ type OrganizationUnitServiceInterfaceMock_IsOrganizationUnitExists_Call struct {
 // IsOrganizationUnitExists is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsOrganizationUnitExists(ctx interface{}, id interface{}) *OrganizationUnitServiceInterfaceMock_IsOrganizationUnitExists_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsOrganizationUnitExists(ctx any, id any) *OrganizationUnitServiceInterfaceMock_IsOrganizationUnitExists_Call {
 	return &OrganizationUnitServiceInterfaceMock_IsOrganizationUnitExists_Call{Call: _e.mock.On("IsOrganizationUnitExists", ctx, id)}
 }
 
@@ -1355,7 +1364,7 @@ type OrganizationUnitServiceInterfaceMock_IsParent_Call struct {
 //   - ctx context.Context
 //   - parentID string
 //   - childID string
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsParent(ctx interface{}, parentID interface{}, childID interface{}) *OrganizationUnitServiceInterfaceMock_IsParent_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) IsParent(ctx any, parentID any, childID any) *OrganizationUnitServiceInterfaceMock_IsParent_Call {
 	return &OrganizationUnitServiceInterfaceMock_IsParent_Call{Call: _e.mock.On("IsParent", ctx, parentID, childID)}
 }
 
@@ -1429,7 +1438,7 @@ type OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnit_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - request ou.OrganizationUnitRequestWithID
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) UpdateOrganizationUnit(ctx interface{}, id interface{}, request interface{}) *OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnit_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) UpdateOrganizationUnit(ctx any, id any, request any) *OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnit_Call {
 	return &OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnit_Call{Call: _e.mock.On("UpdateOrganizationUnit", ctx, id, request)}
 }
 
@@ -1503,7 +1512,7 @@ type OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnitByPath_Call stru
 //   - ctx context.Context
 //   - handlePath string
 //   - request ou.OrganizationUnitRequestWithID
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) UpdateOrganizationUnitByPath(ctx interface{}, handlePath interface{}, request interface{}) *OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnitByPath_Call {
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) UpdateOrganizationUnitByPath(ctx any, handlePath any, request any) *OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnitByPath_Call {
 	return &OrganizationUnitServiceInterfaceMock_UpdateOrganizationUnitByPath_Call{Call: _e.mock.On("UpdateOrganizationUnitByPath", ctx, handlePath, request)}
 }
 

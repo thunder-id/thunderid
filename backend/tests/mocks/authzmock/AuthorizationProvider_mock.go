@@ -18,10 +18,19 @@ func NewAuthorizationProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthorizationProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthorizationProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type AuthorizationProviderMock_EvaluateAccess_Call struct {
 // EvaluateAccess is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request providers.AccessEvaluationRequest
-func (_e *AuthorizationProviderMock_Expecter) EvaluateAccess(ctx interface{}, request interface{}) *AuthorizationProviderMock_EvaluateAccess_Call {
+func (_e *AuthorizationProviderMock_Expecter) EvaluateAccess(ctx any, request any) *AuthorizationProviderMock_EvaluateAccess_Call {
 	return &AuthorizationProviderMock_EvaluateAccess_Call{Call: _e.mock.On("EvaluateAccess", ctx, request)}
 }
 
@@ -147,7 +156,7 @@ type AuthorizationProviderMock_EvaluateAccessBatch_Call struct {
 // EvaluateAccessBatch is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request providers.AccessEvaluationsRequest
-func (_e *AuthorizationProviderMock_Expecter) EvaluateAccessBatch(ctx interface{}, request interface{}) *AuthorizationProviderMock_EvaluateAccessBatch_Call {
+func (_e *AuthorizationProviderMock_Expecter) EvaluateAccessBatch(ctx any, request any) *AuthorizationProviderMock_EvaluateAccessBatch_Call {
 	return &AuthorizationProviderMock_EvaluateAccessBatch_Call{Call: _e.mock.On("EvaluateAccessBatch", ctx, request)}
 }
 

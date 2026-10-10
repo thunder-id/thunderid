@@ -196,7 +196,7 @@ func (cs *Schema) Validate(
 	for propName, prop := range cs.properties {
 		value, exists := userAttrs[propName]
 		if !exists {
-			if prop.isRequired() && !(skipCredentialRequired && prop.isCredential()) {
+			if prop.isRequired() && (!skipCredentialRequired || !prop.isCredential()) {
 				return false, nil
 			}
 			continue

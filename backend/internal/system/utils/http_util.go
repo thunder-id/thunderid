@@ -94,7 +94,7 @@ func validateStructNatively(s interface{}) map[string]string {
 	val := reflect.ValueOf(s)
 
 	// Handle pointers automatically
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Struct {

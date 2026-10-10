@@ -17,10 +17,19 @@ func newLayoutMgtStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *layoutMgtStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &layoutMgtStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type layoutMgtStoreInterfaceMock_CreateLayout_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - layout layoutmgt.CreateLayoutRequest
-func (_e *layoutMgtStoreInterfaceMock_Expecter) CreateLayout(ctx interface{}, id interface{}, layout interface{}) *layoutMgtStoreInterfaceMock_CreateLayout_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) CreateLayout(ctx any, id any, layout any) *layoutMgtStoreInterfaceMock_CreateLayout_Call {
 	return &layoutMgtStoreInterfaceMock_CreateLayout_Call{Call: _e.mock.On("CreateLayout", ctx, id, layout)}
 }
 
@@ -126,7 +135,7 @@ type layoutMgtStoreInterfaceMock_DeleteLayout_Call struct {
 // DeleteLayout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) DeleteLayout(ctx interface{}, id interface{}) *layoutMgtStoreInterfaceMock_DeleteLayout_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) DeleteLayout(ctx any, id any) *layoutMgtStoreInterfaceMock_DeleteLayout_Call {
 	return &layoutMgtStoreInterfaceMock_DeleteLayout_Call{Call: _e.mock.On("DeleteLayout", ctx, id)}
 }
 
@@ -192,7 +201,7 @@ type layoutMgtStoreInterfaceMock_GetLayout_Call struct {
 // GetLayout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayout(ctx interface{}, id interface{}) *layoutMgtStoreInterfaceMock_GetLayout_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayout(ctx any, id any) *layoutMgtStoreInterfaceMock_GetLayout_Call {
 	return &layoutMgtStoreInterfaceMock_GetLayout_Call{Call: _e.mock.On("GetLayout", ctx, id)}
 }
 
@@ -261,7 +270,7 @@ type layoutMgtStoreInterfaceMock_GetLayoutList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutList(ctx interface{}, limit interface{}, offset interface{}) *layoutMgtStoreInterfaceMock_GetLayoutList_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutList(ctx any, limit any, offset any) *layoutMgtStoreInterfaceMock_GetLayoutList_Call {
 	return &layoutMgtStoreInterfaceMock_GetLayoutList_Call{Call: _e.mock.On("GetLayoutList", ctx, limit, offset)}
 }
 
@@ -331,7 +340,7 @@ type layoutMgtStoreInterfaceMock_GetLayoutListCount_Call struct {
 
 // GetLayoutListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutListCount(ctx interface{}) *layoutMgtStoreInterfaceMock_GetLayoutListCount_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutListCount(ctx any) *layoutMgtStoreInterfaceMock_GetLayoutListCount_Call {
 	return &layoutMgtStoreInterfaceMock_GetLayoutListCount_Call{Call: _e.mock.On("GetLayoutListCount", ctx)}
 }
 
@@ -383,7 +392,7 @@ type layoutMgtStoreInterfaceMock_IsLayoutDeclarative_Call struct {
 // IsLayoutDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutDeclarative(ctx interface{}, id interface{}) *layoutMgtStoreInterfaceMock_IsLayoutDeclarative_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutDeclarative(ctx any, id any) *layoutMgtStoreInterfaceMock_IsLayoutDeclarative_Call {
 	return &layoutMgtStoreInterfaceMock_IsLayoutDeclarative_Call{Call: _e.mock.On("IsLayoutDeclarative", ctx, id)}
 }
 
@@ -449,7 +458,7 @@ type layoutMgtStoreInterfaceMock_IsLayoutExist_Call struct {
 // IsLayoutExist is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutExist(ctx interface{}, id interface{}) *layoutMgtStoreInterfaceMock_IsLayoutExist_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutExist(ctx any, id any) *layoutMgtStoreInterfaceMock_IsLayoutExist_Call {
 	return &layoutMgtStoreInterfaceMock_IsLayoutExist_Call{Call: _e.mock.On("IsLayoutExist", ctx, id)}
 }
 
@@ -516,7 +525,7 @@ type layoutMgtStoreInterfaceMock_IsLayoutHandleConflict_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - excludeID string
-func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutHandleConflict(ctx interface{}, handle interface{}, excludeID interface{}) *layoutMgtStoreInterfaceMock_IsLayoutHandleConflict_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) IsLayoutHandleConflict(ctx any, handle any, excludeID any) *layoutMgtStoreInterfaceMock_IsLayoutHandleConflict_Call {
 	return &layoutMgtStoreInterfaceMock_IsLayoutHandleConflict_Call{Call: _e.mock.On("IsLayoutHandleConflict", ctx, handle, excludeID)}
 }
 
@@ -579,7 +588,7 @@ type layoutMgtStoreInterfaceMock_UpdateLayout_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - layout layoutmgt.UpdateLayoutRequest
-func (_e *layoutMgtStoreInterfaceMock_Expecter) UpdateLayout(ctx interface{}, id interface{}, layout interface{}) *layoutMgtStoreInterfaceMock_UpdateLayout_Call {
+func (_e *layoutMgtStoreInterfaceMock_Expecter) UpdateLayout(ctx any, id any, layout any) *layoutMgtStoreInterfaceMock_UpdateLayout_Call {
 	return &layoutMgtStoreInterfaceMock_UpdateLayout_Call{Call: _e.mock.On("UpdateLayout", ctx, id, layout)}
 }
 

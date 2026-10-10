@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -729,7 +730,7 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 			WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
 			WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 		}
-		return New(http.NewServeMux(), append(baseOpts, opts...)...)
+		return New(http.NewServeMux(), slices.Concat(baseOpts, opts)...)
 	}
 
 	eng := newEngine(WithOriginConfig(engineconfig.OriginConfig{

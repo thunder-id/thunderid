@@ -207,19 +207,20 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 				RuntimeData: tt.runtimeData,
 			}
 
-			if tt.name == "Data in forwarded data (string)" {
+			switch tt.name {
+			case "Data in forwarded data (string)":
 				ctx.ForwardedData = map[string]interface{}{
 					testInputName: testInputValue,
 				}
-			} else if tt.name == "Data in forwarded data (non-string)" {
+			case "Data in forwarded data (non-string)":
 				ctx.ForwardedData = map[string]interface{}{
 					testInputName: 123,
 				}
-			} else if tt.name == "Partial data with forwarded data" {
+			case "Partial data with forwarded data":
 				ctx.ForwardedData = map[string]interface{}{
 					"password": "pass123",
 				}
-			} else if tt.name == "All sources empty" {
+			case "All sources empty":
 				ctx.ForwardedData = map[string]interface{}{}
 			}
 

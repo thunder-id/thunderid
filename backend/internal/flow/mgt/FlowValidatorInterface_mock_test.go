@@ -17,10 +17,19 @@ func NewFlowValidatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *FlowValidatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &FlowValidatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type FlowValidatorInterfaceMock_ValidateFlowDefinition_Call struct {
 // ValidateFlowDefinition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowDef *FlowDefinition
-func (_e *FlowValidatorInterfaceMock_Expecter) ValidateFlowDefinition(ctx interface{}, flowDef interface{}) *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call {
+func (_e *FlowValidatorInterfaceMock_Expecter) ValidateFlowDefinition(ctx any, flowDef any) *FlowValidatorInterfaceMock_ValidateFlowDefinition_Call {
 	return &FlowValidatorInterfaceMock_ValidateFlowDefinition_Call{Call: _e.mock.On("ValidateFlowDefinition", ctx, flowDef)}
 }
 

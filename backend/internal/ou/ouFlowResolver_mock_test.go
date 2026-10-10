@@ -18,10 +18,19 @@ func newOuFlowResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ouFlowResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ouFlowResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type ouFlowResolverMock_IsValidFlow_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - flowType providers.FlowType
-func (_e *ouFlowResolverMock_Expecter) IsValidFlow(ctx interface{}, flowID interface{}, flowType interface{}) *ouFlowResolverMock_IsValidFlow_Call {
+func (_e *ouFlowResolverMock_Expecter) IsValidFlow(ctx any, flowID any, flowType any) *ouFlowResolverMock_IsValidFlow_Call {
 	return &ouFlowResolverMock_IsValidFlow_Call{Call: _e.mock.On("IsValidFlow", ctx, flowID, flowType)}
 }
 

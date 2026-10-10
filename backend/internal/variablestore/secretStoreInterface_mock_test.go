@@ -16,10 +16,19 @@ func newSecretStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *secretStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &secretStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type secretStoreInterfaceMock_DeleteSecret_Call struct {
 // DeleteSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *secretStoreInterfaceMock_Expecter) DeleteSecret(ctx interface{}, name interface{}) *secretStoreInterfaceMock_DeleteSecret_Call {
+func (_e *secretStoreInterfaceMock_Expecter) DeleteSecret(ctx any, name any) *secretStoreInterfaceMock_DeleteSecret_Call {
 	return &secretStoreInterfaceMock_DeleteSecret_Call{Call: _e.mock.On("DeleteSecret", ctx, name)}
 }
 
@@ -130,7 +139,7 @@ type secretStoreInterfaceMock_GetSecret_Call struct {
 // GetSecret is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *secretStoreInterfaceMock_Expecter) GetSecret(ctx interface{}, name interface{}) *secretStoreInterfaceMock_GetSecret_Call {
+func (_e *secretStoreInterfaceMock_Expecter) GetSecret(ctx any, name any) *secretStoreInterfaceMock_GetSecret_Call {
 	return &secretStoreInterfaceMock_GetSecret_Call{Call: _e.mock.On("GetSecret", ctx, name)}
 }
 
@@ -202,7 +211,7 @@ type secretStoreInterfaceMock_GetSecretValue_Call struct {
 // GetSecretValue is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *secretStoreInterfaceMock_Expecter) GetSecretValue(ctx interface{}, name interface{}) *secretStoreInterfaceMock_GetSecretValue_Call {
+func (_e *secretStoreInterfaceMock_Expecter) GetSecretValue(ctx any, name any) *secretStoreInterfaceMock_GetSecretValue_Call {
 	return &secretStoreInterfaceMock_GetSecretValue_Call{Call: _e.mock.On("GetSecretValue", ctx, name)}
 }
 
@@ -270,7 +279,7 @@ type secretStoreInterfaceMock_InsertSecret_Call struct {
 //   - name string
 //   - encrypted string
 //   - description string
-func (_e *secretStoreInterfaceMock_Expecter) InsertSecret(ctx interface{}, name interface{}, encrypted interface{}, description interface{}) *secretStoreInterfaceMock_InsertSecret_Call {
+func (_e *secretStoreInterfaceMock_Expecter) InsertSecret(ctx any, name any, encrypted any, description any) *secretStoreInterfaceMock_InsertSecret_Call {
 	return &secretStoreInterfaceMock_InsertSecret_Call{Call: _e.mock.On("InsertSecret", ctx, name, encrypted, description)}
 }
 
@@ -354,7 +363,7 @@ type secretStoreInterfaceMock_ListSecrets_Call struct {
 // ListSecrets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - q listQuery
-func (_e *secretStoreInterfaceMock_Expecter) ListSecrets(ctx interface{}, q interface{}) *secretStoreInterfaceMock_ListSecrets_Call {
+func (_e *secretStoreInterfaceMock_Expecter) ListSecrets(ctx any, q any) *secretStoreInterfaceMock_ListSecrets_Call {
 	return &secretStoreInterfaceMock_ListSecrets_Call{Call: _e.mock.On("ListSecrets", ctx, q)}
 }
 
@@ -422,7 +431,7 @@ type secretStoreInterfaceMock_UpsertSecret_Call struct {
 //   - name string
 //   - encrypted string
 //   - description string
-func (_e *secretStoreInterfaceMock_Expecter) UpsertSecret(ctx interface{}, name interface{}, encrypted interface{}, description interface{}) *secretStoreInterfaceMock_UpsertSecret_Call {
+func (_e *secretStoreInterfaceMock_Expecter) UpsertSecret(ctx any, name any, encrypted any, description any) *secretStoreInterfaceMock_UpsertSecret_Call {
 	return &secretStoreInterfaceMock_UpsertSecret_Call{Call: _e.mock.On("UpsertSecret", ctx, name, encrypted, description)}
 }
 

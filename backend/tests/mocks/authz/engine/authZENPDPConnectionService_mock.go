@@ -18,10 +18,19 @@ func newAuthZENPDPConnectionServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *authZENPDPConnectionServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &authZENPDPConnectionServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type authZENPDPConnectionServiceMock_GetAuthZENPDP_Call struct {
 // GetAuthZENPDP is a helper method to define mock.On call
 //   - context1 context.Context
 //   - s string
-func (_e *authZENPDPConnectionServiceMock_Expecter) GetAuthZENPDP(context1 interface{}, s interface{}) *authZENPDPConnectionServiceMock_GetAuthZENPDP_Call {
+func (_e *authZENPDPConnectionServiceMock_Expecter) GetAuthZENPDP(context1 any, s any) *authZENPDPConnectionServiceMock_GetAuthZENPDP_Call {
 	return &authZENPDPConnectionServiceMock_GetAuthZENPDP_Call{Call: _e.mock.On("GetAuthZENPDP", context1, s)}
 }
 

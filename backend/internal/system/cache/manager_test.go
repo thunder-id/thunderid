@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -290,7 +291,7 @@ func (suite *CacheManagerTestSuite) TestConcurrentAccess() {
 		go func(index int) {
 			defer wg.Done()
 			// Use different cache names to avoid collisions
-			cacheName := "concurrentCache" + string(rune('A'+index))
+			cacheName := fmt.Sprintf("concurrentCache%c", 'A'+index)
 			cache := GetCache[string](cm, cacheName)
 			assert.NotNil(t, cache, "Cache should not be nil even with concurrent access")
 			done <- true

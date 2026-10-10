@@ -16,10 +16,19 @@ func NewSessionMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SessionMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SessionMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -61,7 +70,7 @@ type SessionMock_Auth_Call struct {
 
 // Auth is a helper method to define mock.On call
 //   - a smtp.Auth
-func (_e *SessionMock_Expecter) Auth(a interface{}) *SessionMock_Auth_Call {
+func (_e *SessionMock_Expecter) Auth(a any) *SessionMock_Auth_Call {
 	return &SessionMock_Auth_Call{Call: _e.mock.On("Auth", a)}
 }
 

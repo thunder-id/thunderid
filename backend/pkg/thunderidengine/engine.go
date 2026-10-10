@@ -41,7 +41,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/usermgtprovider"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -201,7 +200,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	oauthConfig := oauthconfig.Config{
 		DeploymentID:               engineCtx.serverConfig.Identifier,
 		RuntimeTransientDBType:     engineCtx.runtimeTransientDBType,
-		BaseURL:                    config.GetServerURL(&engineCtx.serverConfig),
+		BaseURL:                    engineconfig.GetServerURL(&engineCtx.serverConfig),
 		JWT:                        engineCtx.jwtConfig,
 		OAuth:                      engineCtx.oauthConfig,
 		GateClient:                 engineCtx.gateClientConfig,

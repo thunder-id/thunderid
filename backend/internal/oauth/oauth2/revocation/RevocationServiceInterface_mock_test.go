@@ -17,10 +17,19 @@ func NewRevocationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RevocationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RevocationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type RevocationServiceInterfaceMock_RevokeByCriteria_Call struct {
 // RevokeByCriteria is a helper method to define mock.On call
 //   - ctx context.Context
 //   - revocation CriteriaRevocation
-func (_e *RevocationServiceInterfaceMock_Expecter) RevokeByCriteria(ctx interface{}, revocation interface{}) *RevocationServiceInterfaceMock_RevokeByCriteria_Call {
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeByCriteria(ctx any, revocation any) *RevocationServiceInterfaceMock_RevokeByCriteria_Call {
 	return &RevocationServiceInterfaceMock_RevokeByCriteria_Call{Call: _e.mock.On("RevokeByCriteria", ctx, revocation)}
 }
 
@@ -121,7 +130,7 @@ type RevocationServiceInterfaceMock_RevokeRefreshToken_Call struct {
 //   - ctx context.Context
 //   - jti string
 //   - expiryTime time.Time
-func (_e *RevocationServiceInterfaceMock_Expecter) RevokeRefreshToken(ctx interface{}, jti interface{}, expiryTime interface{}) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeRefreshToken(ctx any, jti any, expiryTime any) *RevocationServiceInterfaceMock_RevokeRefreshToken_Call {
 	return &RevocationServiceInterfaceMock_RevokeRefreshToken_Call{Call: _e.mock.On("RevokeRefreshToken", ctx, jti, expiryTime)}
 }
 
@@ -194,7 +203,7 @@ type RevocationServiceInterfaceMock_RevokeToken_Call struct {
 //   - token string
 //   - tokenTypeHint string
 //   - authenticatedClientID string
-func (_e *RevocationServiceInterfaceMock_Expecter) RevokeToken(ctx interface{}, token interface{}, tokenTypeHint interface{}, authenticatedClientID interface{}) *RevocationServiceInterfaceMock_RevokeToken_Call {
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeToken(ctx any, token any, tokenTypeHint any, authenticatedClientID any) *RevocationServiceInterfaceMock_RevokeToken_Call {
 	return &RevocationServiceInterfaceMock_RevokeToken_Call{Call: _e.mock.On("RevokeToken", ctx, token, tokenTypeHint, authenticatedClientID)}
 }
 
@@ -262,7 +271,7 @@ type RevocationServiceInterfaceMock_RevokeTokenFamily_Call struct {
 //   - ctx context.Context
 //   - tokenFamilyID string
 //   - reason RevocationReason
-func (_e *RevocationServiceInterfaceMock_Expecter) RevokeTokenFamily(ctx interface{}, tokenFamilyID interface{}, reason interface{}) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeTokenFamily(ctx any, tokenFamilyID any, reason any) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
 	return &RevocationServiceInterfaceMock_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, tokenFamilyID, reason)}
 }
 

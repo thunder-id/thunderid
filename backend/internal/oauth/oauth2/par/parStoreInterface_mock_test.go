@@ -16,10 +16,19 @@ func newParStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *parStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &parStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type parStoreInterfaceMock_Consume_Call struct {
 // Consume is a helper method to define mock.On call
 //   - ctx context.Context
 //   - randomKey string
-func (_e *parStoreInterfaceMock_Expecter) Consume(ctx interface{}, randomKey interface{}) *parStoreInterfaceMock_Consume_Call {
+func (_e *parStoreInterfaceMock_Expecter) Consume(ctx any, randomKey any) *parStoreInterfaceMock_Consume_Call {
 	return &parStoreInterfaceMock_Consume_Call{Call: _e.mock.On("Consume", ctx, randomKey)}
 }
 
@@ -144,7 +153,7 @@ type parStoreInterfaceMock_Store_Call struct {
 //   - ctx context.Context
 //   - request pushedAuthorizationRequest
 //   - expirySeconds int64
-func (_e *parStoreInterfaceMock_Expecter) Store(ctx interface{}, request interface{}, expirySeconds interface{}) *parStoreInterfaceMock_Store_Call {
+func (_e *parStoreInterfaceMock_Expecter) Store(ctx any, request any, expirySeconds any) *parStoreInterfaceMock_Store_Call {
 	return &parStoreInterfaceMock_Store_Call{Call: _e.mock.On("Store", ctx, request, expirySeconds)}
 }
 

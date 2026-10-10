@@ -17,10 +17,19 @@ func NewUpdateValidatorMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *UpdateValidatorMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &UpdateValidatorMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -66,7 +75,7 @@ type UpdateValidatorMock_ValidateReferenceUpdate_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *UpdateValidatorMock_Expecter) ValidateReferenceUpdate(ctx interface{}, resourceType interface{}, id interface{}) *UpdateValidatorMock_ValidateReferenceUpdate_Call {
+func (_e *UpdateValidatorMock_Expecter) ValidateReferenceUpdate(ctx any, resourceType any, id any) *UpdateValidatorMock_ValidateReferenceUpdate_Call {
 	return &UpdateValidatorMock_ValidateReferenceUpdate_Call{Call: _e.mock.On("ValidateReferenceUpdate", ctx, resourceType, id)}
 }
 

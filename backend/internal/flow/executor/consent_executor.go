@@ -102,7 +102,7 @@ func (e *consentExecutor) Execute(ctx *providers.NodeContext) (*providers.Execut
 	authUser, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
-		return execResp, errors.New("Failed to get entity reference from AuthUser")
+		return execResp, errors.New("failed to get entity reference from AuthUser")
 	}
 
 	availableAttrs, svcErr := e.authnProvider.GetUserAvailableAttributes(ctx.Context, execResp.AuthUser)

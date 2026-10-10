@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -142,7 +143,7 @@ func (f *fakeVersionStore) DeleteApplied(_ context.Context, gatewayID string) er
 }
 
 func (f *fakeVersionStore) GetExcluded(_ context.Context, gatewayID string) ([]excludedResource, error) {
-	excluded := []excludedResource{}
+	excluded := make([]excludedResource, 0, len(f.excluded[gatewayID]))
 	for _, resource := range f.excluded[gatewayID] {
 		excluded = append(excluded, resource)
 	}
@@ -393,14 +394,14 @@ func TestAVersionIsNamedByAPrefixOfItsHash(t *testing.T) {
 func TestACaptureSkipsWhatTheExportCouldNotWrite(t *testing.T) {
 	f := newVersionFixture(t)
 	f.exporter.response = exportOf("", "ou-a")
-	failed := export.ExportError{ResourceType: "user", ResourceID: "user-1", Error: "Missing username"}
-	f.exporter.response.Summary = &export.ExportSummary{Errors: []export.ExportError{failed}}
+	failed := declarativeresource.ExportError{ResourceType: "user", ResourceID: "user-1", Error: "Missing username"}
+	f.exporter.response.Summary = &export.ExportSummary{Errors: []declarativeresource.ExportError{failed}}
 
 	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
 
 	require.Nil(t, svcErr)
 	assert.Contains(t, v.Resources, "ou-a")
-	assert.Equal(t, []export.ExportError{failed}, v.Skipped)
+	assert.Equal(t, []declarativeresource.ExportError{failed}, v.Skipped)
 	require.Len(t, f.versions.versions, 1)
 }
 

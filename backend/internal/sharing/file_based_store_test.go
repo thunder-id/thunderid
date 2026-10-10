@@ -5,6 +5,7 @@ package sharing
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -176,8 +177,8 @@ func (s *FileBasedStoreTestSuite) TestSeedsAndReadsAreSafeTogether() {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			s.store.seed(declaredPolicy(string(rune('a'+i%26))+string(rune('0'+i/26)), testResource,
-				string(rune('A'+i%26))+string(rune('0'+i/26))))
+			s.store.seed(declaredPolicy(fmt.Sprintf("%c%c", 'a'+i%26, '0'+i/26), testResource,
+				fmt.Sprintf("%c%c", 'A'+i%26, '0'+i/26)))
 		}(i)
 		go func() {
 			defer wg.Done()

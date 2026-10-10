@@ -18,10 +18,19 @@ func NewTokenBuilderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TokenBuilderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TokenBuilderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type TokenBuilderInterfaceMock_BuildAccessToken_Call struct {
 // BuildAccessToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tokenCtx *tokenservice.AccessTokenBuildContext
-func (_e *TokenBuilderInterfaceMock_Expecter) BuildAccessToken(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildAccessToken_Call {
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildAccessToken(ctx any, tokenCtx any) *TokenBuilderInterfaceMock_BuildAccessToken_Call {
 	return &TokenBuilderInterfaceMock_BuildAccessToken_Call{Call: _e.mock.On("BuildAccessToken", ctx, tokenCtx)}
 }
 
@@ -143,7 +152,7 @@ type TokenBuilderInterfaceMock_BuildIDJAG_Call struct {
 // BuildIDJAG is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tokenCtx *tokenservice.IDJAGBuildContext
-func (_e *TokenBuilderInterfaceMock_Expecter) BuildIDJAG(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildIDJAG_Call {
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildIDJAG(ctx any, tokenCtx any) *TokenBuilderInterfaceMock_BuildIDJAG_Call {
 	return &TokenBuilderInterfaceMock_BuildIDJAG_Call{Call: _e.mock.On("BuildIDJAG", ctx, tokenCtx)}
 }
 
@@ -211,7 +220,7 @@ type TokenBuilderInterfaceMock_BuildIDToken_Call struct {
 // BuildIDToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tokenCtx *tokenservice.IDTokenBuildContext
-func (_e *TokenBuilderInterfaceMock_Expecter) BuildIDToken(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildIDToken_Call {
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildIDToken(ctx any, tokenCtx any) *TokenBuilderInterfaceMock_BuildIDToken_Call {
 	return &TokenBuilderInterfaceMock_BuildIDToken_Call{Call: _e.mock.On("BuildIDToken", ctx, tokenCtx)}
 }
 
@@ -279,7 +288,7 @@ type TokenBuilderInterfaceMock_BuildLogoutToken_Call struct {
 // BuildLogoutToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tokenCtx *tokenservice.LogoutTokenBuildContext
-func (_e *TokenBuilderInterfaceMock_Expecter) BuildLogoutToken(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildLogoutToken(ctx any, tokenCtx any) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
 	return &TokenBuilderInterfaceMock_BuildLogoutToken_Call{Call: _e.mock.On("BuildLogoutToken", ctx, tokenCtx)}
 }
 
@@ -347,7 +356,7 @@ type TokenBuilderInterfaceMock_BuildRefreshToken_Call struct {
 // BuildRefreshToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - tokenCtx *tokenservice.RefreshTokenBuildContext
-func (_e *TokenBuilderInterfaceMock_Expecter) BuildRefreshToken(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildRefreshToken_Call {
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildRefreshToken(ctx any, tokenCtx any) *TokenBuilderInterfaceMock_BuildRefreshToken_Call {
 	return &TokenBuilderInterfaceMock_BuildRefreshToken_Call{Call: _e.mock.On("BuildRefreshToken", ctx, tokenCtx)}
 }
 

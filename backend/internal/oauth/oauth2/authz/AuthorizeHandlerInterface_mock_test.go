@@ -16,10 +16,19 @@ func NewAuthorizeHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthorizeHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthorizeHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type AuthorizeHandlerInterfaceMock_HandleAuthorizeGetRequest_Call struct {
 // HandleAuthorizeGetRequest is a helper method to define mock.On call
 //   - w http.ResponseWriter
 //   - r *http.Request
-func (_e *AuthorizeHandlerInterfaceMock_Expecter) HandleAuthorizeGetRequest(w interface{}, r interface{}) *AuthorizeHandlerInterfaceMock_HandleAuthorizeGetRequest_Call {
+func (_e *AuthorizeHandlerInterfaceMock_Expecter) HandleAuthorizeGetRequest(w any, r any) *AuthorizeHandlerInterfaceMock_HandleAuthorizeGetRequest_Call {
 	return &AuthorizeHandlerInterfaceMock_HandleAuthorizeGetRequest_Call{Call: _e.mock.On("HandleAuthorizeGetRequest", w, r)}
 }
 

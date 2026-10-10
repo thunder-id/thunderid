@@ -19,10 +19,19 @@ func NewOIDCAuthnServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OIDCAuthnServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OIDCAuthnServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type OIDCAuthnServiceInterfaceMock_Authenticate_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - authzData common.AuthorizationData
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, idpID interface{}, authzData interface{}) *OIDCAuthnServiceInterfaceMock_Authenticate_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) Authenticate(ctx any, idpID any, authzData any) *OIDCAuthnServiceInterfaceMock_Authenticate_Call {
 	return &OIDCAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, idpID, authzData)}
 }
 
@@ -160,7 +169,7 @@ type OIDCAuthnServiceInterfaceMock_BuildAuthorizeURL_Call struct {
 // BuildAuthorizeURL is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx interface{}, idpID interface{}) *OIDCAuthnServiceInterfaceMock_BuildAuthorizeURL_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx any, idpID any) *OIDCAuthnServiceInterfaceMock_BuildAuthorizeURL_Call {
 	return &OIDCAuthnServiceInterfaceMock_BuildAuthorizeURL_Call{Call: _e.mock.On("BuildAuthorizeURL", ctx, idpID)}
 }
 
@@ -232,7 +241,7 @@ type OIDCAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call struct {
 //   - idpID string
 //   - sub string
 //   - claims map[string]interface{}
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx interface{}, idpID interface{}, sub interface{}, claims interface{}) *OIDCAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx any, idpID any, sub any, claims any) *OIDCAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call {
 	return &OIDCAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call{Call: _e.mock.On("BuildFederatedAuthResult", ctx, idpID, sub, claims)}
 }
 
@@ -314,7 +323,7 @@ type OIDCAuthnServiceInterfaceMock_ExchangeCodeForToken_Call struct {
 //   - idpID string
 //   - code string
 //   - validateResponse bool
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx interface{}, idpID interface{}, code interface{}, validateResponse interface{}) *OIDCAuthnServiceInterfaceMock_ExchangeCodeForToken_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx any, idpID any, code any, validateResponse any) *OIDCAuthnServiceInterfaceMock_ExchangeCodeForToken_Call {
 	return &OIDCAuthnServiceInterfaceMock_ExchangeCodeForToken_Call{Call: _e.mock.On("ExchangeCodeForToken", ctx, idpID, code, validateResponse)}
 }
 
@@ -395,7 +404,7 @@ type OIDCAuthnServiceInterfaceMock_FetchUserInfo_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - accessToken string
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) FetchUserInfo(ctx interface{}, idpID interface{}, accessToken interface{}) *OIDCAuthnServiceInterfaceMock_FetchUserInfo_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) FetchUserInfo(ctx any, idpID any, accessToken any) *OIDCAuthnServiceInterfaceMock_FetchUserInfo_Call {
 	return &OIDCAuthnServiceInterfaceMock_FetchUserInfo_Call{Call: _e.mock.On("FetchUserInfo", ctx, idpID, accessToken)}
 }
 
@@ -470,7 +479,7 @@ type OIDCAuthnServiceInterfaceMock_GetIDTokenClaims_Call struct {
 // GetIDTokenClaims is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idToken string
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) GetIDTokenClaims(ctx interface{}, idToken interface{}) *OIDCAuthnServiceInterfaceMock_GetIDTokenClaims_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) GetIDTokenClaims(ctx any, idToken any) *OIDCAuthnServiceInterfaceMock_GetIDTokenClaims_Call {
 	return &OIDCAuthnServiceInterfaceMock_GetIDTokenClaims_Call{Call: _e.mock.On("GetIDTokenClaims", ctx, idToken)}
 }
 
@@ -540,7 +549,7 @@ type OIDCAuthnServiceInterfaceMock_GetOAuthClientConfig_Call struct {
 // GetOAuthClientConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx interface{}, idpID interface{}) *OIDCAuthnServiceInterfaceMock_GetOAuthClientConfig_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx any, idpID any) *OIDCAuthnServiceInterfaceMock_GetOAuthClientConfig_Call {
 	return &OIDCAuthnServiceInterfaceMock_GetOAuthClientConfig_Call{Call: _e.mock.On("GetOAuthClientConfig", ctx, idpID)}
 }
 
@@ -600,7 +609,7 @@ type OIDCAuthnServiceInterfaceMock_ValidateIDToken_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - idToken string
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ValidateIDToken(ctx interface{}, idpID interface{}, idToken interface{}) *OIDCAuthnServiceInterfaceMock_ValidateIDToken_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ValidateIDToken(ctx any, idpID any, idToken any) *OIDCAuthnServiceInterfaceMock_ValidateIDToken_Call {
 	return &OIDCAuthnServiceInterfaceMock_ValidateIDToken_Call{Call: _e.mock.On("ValidateIDToken", ctx, idpID, idToken)}
 }
 
@@ -666,7 +675,7 @@ type OIDCAuthnServiceInterfaceMock_ValidateTokenResponse_Call struct {
 //   - idpID string
 //   - tokenResp *oauth.TokenResponse
 //   - validateIDToken bool
-func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ValidateTokenResponse(ctx interface{}, idpID interface{}, tokenResp interface{}, validateIDToken interface{}) *OIDCAuthnServiceInterfaceMock_ValidateTokenResponse_Call {
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) ValidateTokenResponse(ctx any, idpID any, tokenResp any, validateIDToken any) *OIDCAuthnServiceInterfaceMock_ValidateTokenResponse_Call {
 	return &OIDCAuthnServiceInterfaceMock_ValidateTokenResponse_Call{Call: _e.mock.On("ValidateTokenResponse", ctx, idpID, tokenResp, validateIDToken)}
 }
 

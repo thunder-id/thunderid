@@ -16,10 +16,19 @@ func NewAuthenticatorMock[T any](t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthenticatorMock[T] {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthenticatorMock[T]{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type AuthenticatorMock_Authenticate_Call[T any] struct {
 // Authenticate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - target T
-func (_e *AuthenticatorMock_Expecter[T]) Authenticate(ctx interface{}, target interface{}) *AuthenticatorMock_Authenticate_Call[T] {
+func (_e *AuthenticatorMock_Expecter[T]) Authenticate(ctx any, target any) *AuthenticatorMock_Authenticate_Call[T] {
 	return &AuthenticatorMock_Authenticate_Call[T]{Call: _e.mock.On("Authenticate", ctx, target)}
 }
 

@@ -17,10 +17,19 @@ func NewHierarchyEnumeratorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *HierarchyEnumeratorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &HierarchyEnumeratorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type HierarchyEnumeratorInterfaceMock_AllOUIDs_Call struct {
 
 // AllOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *HierarchyEnumeratorInterfaceMock_Expecter) AllOUIDs(ctx interface{}) *HierarchyEnumeratorInterfaceMock_AllOUIDs_Call {
+func (_e *HierarchyEnumeratorInterfaceMock_Expecter) AllOUIDs(ctx any) *HierarchyEnumeratorInterfaceMock_AllOUIDs_Call {
 	return &HierarchyEnumeratorInterfaceMock_AllOUIDs_Call{Call: _e.mock.On("AllOUIDs", ctx)}
 }
 
@@ -140,7 +149,7 @@ type HierarchyEnumeratorInterfaceMock_DescendantOUIDs_Call struct {
 // DescendantOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *HierarchyEnumeratorInterfaceMock_Expecter) DescendantOUIDs(ctx interface{}, ouID interface{}) *HierarchyEnumeratorInterfaceMock_DescendantOUIDs_Call {
+func (_e *HierarchyEnumeratorInterfaceMock_Expecter) DescendantOUIDs(ctx any, ouID any) *HierarchyEnumeratorInterfaceMock_DescendantOUIDs_Call {
 	return &HierarchyEnumeratorInterfaceMock_DescendantOUIDs_Call{Call: _e.mock.On("DescendantOUIDs", ctx, ouID)}
 }
 

@@ -95,8 +95,8 @@ func BuildSQLiteJSONCondition(columnName, key string) string {
 // This validation prevents SQL injection by ensuring keys can be safely used in queries.
 func ValidateKey(key string) error {
 	for _, char := range key {
-		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
-			char >= '0' && char <= '9' || char == '_' || char == '.') {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '_' && char != '.' {
 			return fmt.Errorf("key '%s' contains invalid characters", key)
 		}
 	}

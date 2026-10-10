@@ -18,10 +18,19 @@ func NewAgentMgtProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AgentMgtProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AgentMgtProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type AgentMgtProviderMock_CreateAgent_Call struct {
 //   - ctx context.Context
 //   - agent *providers.Agent
 //   - delegated bool
-func (_e *AgentMgtProviderMock_Expecter) CreateAgent(ctx interface{}, agent interface{}, delegated interface{}) *AgentMgtProviderMock_CreateAgent_Call {
+func (_e *AgentMgtProviderMock_Expecter) CreateAgent(ctx any, agent any, delegated any) *AgentMgtProviderMock_CreateAgent_Call {
 	return &AgentMgtProviderMock_CreateAgent_Call{Call: _e.mock.On("CreateAgent", ctx, agent, delegated)}
 }
 

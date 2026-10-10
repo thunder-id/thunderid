@@ -17,10 +17,19 @@ func newIntegrityTokenDecoderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *integrityTokenDecoderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &integrityTokenDecoderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type integrityTokenDecoderMock_Decode_Call struct {
 //   - credentialsJSON string
 //   - packageName string
 //   - token string
-func (_e *integrityTokenDecoderMock_Expecter) Decode(ctx interface{}, credentialsJSON interface{}, packageName interface{}, token interface{}) *integrityTokenDecoderMock_Decode_Call {
+func (_e *integrityTokenDecoderMock_Expecter) Decode(ctx any, credentialsJSON any, packageName any, token any) *integrityTokenDecoderMock_Decode_Call {
 	return &integrityTokenDecoderMock_Decode_Call{Call: _e.mock.On("Decode", ctx, credentialsJSON, packageName, token)}
 }
 

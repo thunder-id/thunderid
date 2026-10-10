@@ -18,10 +18,19 @@ func NewOUUserResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OUUserResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OUUserResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type OUUserResolverMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *OUUserResolverMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *OUUserResolverMock_GetResourceDependencies_Call {
+func (_e *OUUserResolverMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *OUUserResolverMock_GetResourceDependencies_Call {
 	return &OUUserResolverMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -147,7 +156,7 @@ type OUUserResolverMock_GetUserCountByOUID_Call struct {
 // GetUserCountByOUID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *OUUserResolverMock_Expecter) GetUserCountByOUID(ctx interface{}, ouID interface{}) *OUUserResolverMock_GetUserCountByOUID_Call {
+func (_e *OUUserResolverMock_Expecter) GetUserCountByOUID(ctx any, ouID any) *OUUserResolverMock_GetUserCountByOUID_Call {
 	return &OUUserResolverMock_GetUserCountByOUID_Call{Call: _e.mock.On("GetUserCountByOUID", ctx, ouID)}
 }
 
@@ -218,7 +227,7 @@ type OUUserResolverMock_GetUserListByOUID_Call struct {
 //   - limit int
 //   - offset int
 //   - includeDisplay bool
-func (_e *OUUserResolverMock_Expecter) GetUserListByOUID(ctx interface{}, ouID interface{}, limit interface{}, offset interface{}, includeDisplay interface{}) *OUUserResolverMock_GetUserListByOUID_Call {
+func (_e *OUUserResolverMock_Expecter) GetUserListByOUID(ctx any, ouID any, limit any, offset any, includeDisplay any) *OUUserResolverMock_GetUserListByOUID_Call {
 	return &OUUserResolverMock_GetUserListByOUID_Call{Call: _e.mock.On("GetUserListByOUID", ctx, ouID, limit, offset, includeDisplay)}
 }
 

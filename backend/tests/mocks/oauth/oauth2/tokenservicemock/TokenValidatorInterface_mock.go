@@ -18,10 +18,19 @@ func NewTokenValidatorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TokenValidatorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TokenValidatorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type TokenValidatorInterfaceMock_ValidateAccessToken_Call struct {
 // ValidateAccessToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateAccessToken(ctx interface{}, token interface{}) *TokenValidatorInterfaceMock_ValidateAccessToken_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateAccessToken(ctx any, token any) *TokenValidatorInterfaceMock_ValidateAccessToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateAccessToken_Call{Call: _e.mock.On("ValidateAccessToken", ctx, token)}
 }
 
@@ -144,7 +153,7 @@ type TokenValidatorInterfaceMock_ValidateActorToken_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - oauthApp *providers.OAuthClient
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateActorToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateActorToken_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateActorToken(ctx any, token any, oauthApp any) *TokenValidatorInterfaceMock_ValidateActorToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateActorToken_Call{Call: _e.mock.On("ValidateActorToken", ctx, token, oauthApp)}
 }
 
@@ -217,7 +226,7 @@ type TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call struct {
 // ValidateIDJAGAssertion is a helper method to define mock.On call
 //   - ctx context.Context
 //   - assertion string
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGAssertion(ctx interface{}, assertion interface{}) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGAssertion(ctx any, assertion any) *TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call {
 	return &TokenValidatorInterfaceMock_ValidateIDJAGAssertion_Call{Call: _e.mock.On("ValidateIDJAGAssertion", ctx, assertion)}
 }
 
@@ -286,7 +295,7 @@ type TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - oauthApp *providers.OAuthClient
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGSubjectToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateIDJAGSubjectToken(ctx any, token any, oauthApp any) *TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateIDJAGSubjectToken_Call{Call: _e.mock.On("ValidateIDJAGSubjectToken", ctx, token, oauthApp)}
 }
 
@@ -359,7 +368,7 @@ type TokenValidatorInterfaceMock_ValidateRefreshToken_Call struct {
 // ValidateRefreshToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateRefreshToken(ctx interface{}, token interface{}) *TokenValidatorInterfaceMock_ValidateRefreshToken_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateRefreshToken(ctx any, token any) *TokenValidatorInterfaceMock_ValidateRefreshToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateRefreshToken_Call{Call: _e.mock.On("ValidateRefreshToken", ctx, token)}
 }
 
@@ -428,7 +437,7 @@ type TokenValidatorInterfaceMock_ValidateSubjectToken_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - oauthApp *providers.OAuthClient
-func (_e *TokenValidatorInterfaceMock_Expecter) ValidateSubjectToken(ctx interface{}, token interface{}, oauthApp interface{}) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
+func (_e *TokenValidatorInterfaceMock_Expecter) ValidateSubjectToken(ctx any, token any, oauthApp any) *TokenValidatorInterfaceMock_ValidateSubjectToken_Call {
 	return &TokenValidatorInterfaceMock_ValidateSubjectToken_Call{Call: _e.mock.On("ValidateSubjectToken", ctx, token, oauthApp)}
 }
 

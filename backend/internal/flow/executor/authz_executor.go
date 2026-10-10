@@ -126,7 +126,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	}
 	groupIDs, err := a.extractGroupIDs(ctx, userID)
 	if err != nil {
-		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
+		return nil, errors.Join(errors.New("failed to extract group IDs"), err)
 	}
 
 	// Fold in any roles, groups, and permissions the federated login mapped from IDP claims (via the

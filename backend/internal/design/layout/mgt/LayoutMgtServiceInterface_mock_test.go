@@ -18,10 +18,19 @@ func NewLayoutMgtServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *LayoutMgtServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &LayoutMgtServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type LayoutMgtServiceInterfaceMock_CreateLayout_Call struct {
 // CreateLayout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - layout CreateLayoutRequestWithID
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) CreateLayout(ctx interface{}, layout interface{}) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) CreateLayout(ctx any, layout any) *LayoutMgtServiceInterfaceMock_CreateLayout_Call {
 	return &LayoutMgtServiceInterfaceMock_CreateLayout_Call{Call: _e.mock.On("CreateLayout", ctx, layout)}
 }
 
@@ -136,7 +145,7 @@ type LayoutMgtServiceInterfaceMock_DeleteLayout_Call struct {
 // DeleteLayout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) DeleteLayout(ctx interface{}, id interface{}) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) DeleteLayout(ctx any, id any) *LayoutMgtServiceInterfaceMock_DeleteLayout_Call {
 	return &LayoutMgtServiceInterfaceMock_DeleteLayout_Call{Call: _e.mock.On("DeleteLayout", ctx, id)}
 }
 
@@ -206,7 +215,7 @@ type LayoutMgtServiceInterfaceMock_GetLayout_Call struct {
 // GetLayout is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayout(ctx interface{}, id interface{}) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayout(ctx any, id any) *LayoutMgtServiceInterfaceMock_GetLayout_Call {
 	return &LayoutMgtServiceInterfaceMock_GetLayout_Call{Call: _e.mock.On("GetLayout", ctx, id)}
 }
 
@@ -277,7 +286,7 @@ type LayoutMgtServiceInterfaceMock_GetLayoutList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutList(ctx interface{}, limit interface{}, offset interface{}) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutList(ctx any, limit any, offset any) *LayoutMgtServiceInterfaceMock_GetLayoutList_Call {
 	return &LayoutMgtServiceInterfaceMock_GetLayoutList_Call{Call: _e.mock.On("GetLayoutList", ctx, limit, offset)}
 }
 
@@ -354,7 +363,7 @@ type LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call struct {
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutUsages(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutUsages(ctx any, id any, limit any, offset any) *LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call {
 	return &LayoutMgtServiceInterfaceMock_GetLayoutUsages_Call{Call: _e.mock.On("GetLayoutUsages", ctx, id, limit, offset)}
 }
 
@@ -432,7 +441,7 @@ type LayoutMgtServiceInterfaceMock_IsLayoutExist_Call struct {
 // IsLayoutExist is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) IsLayoutExist(ctx interface{}, id interface{}) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) IsLayoutExist(ctx any, id any) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
 	return &LayoutMgtServiceInterfaceMock_IsLayoutExist_Call{Call: _e.mock.On("IsLayoutExist", ctx, id)}
 }
 
@@ -477,7 +486,7 @@ type LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &LayoutMgtServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -543,7 +552,7 @@ type LayoutMgtServiceInterfaceMock_UpdateLayout_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - layout UpdateLayoutRequest
-func (_e *LayoutMgtServiceInterfaceMock_Expecter) UpdateLayout(ctx interface{}, id interface{}, layout interface{}) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) UpdateLayout(ctx any, id any, layout any) *LayoutMgtServiceInterfaceMock_UpdateLayout_Call {
 	return &LayoutMgtServiceInterfaceMock_UpdateLayout_Call{Call: _e.mock.On("UpdateLayout", ctx, id, layout)}
 }
 

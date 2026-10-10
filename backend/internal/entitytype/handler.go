@@ -219,13 +219,14 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	var statusCode int
 	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = http.StatusBadRequest
-		if svcErr.Code == ErrorEntityTypeNotFound.Code {
+		switch svcErr.Code {
+		case ErrorEntityTypeNotFound.Code:
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorEntityTypeHandleConflict.Code {
+		case ErrorEntityTypeHandleConflict.Code:
 			statusCode = http.StatusConflict
-		} else if svcErr.Code == ErrorCannotModifyDeclarativeResource.Code {
+		case ErrorCannotModifyDeclarativeResource.Code:
 			statusCode = http.StatusForbidden
-		} else if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		}
 	} else {

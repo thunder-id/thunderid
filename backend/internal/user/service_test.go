@@ -77,12 +77,12 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 			Once()
 
 		return &userService{
-				ouService:         ouServiceMock,
-				entityTypeService: entityTypeMock,
-			}, testMocks{
-				ouService:         ouServiceMock,
-				entityTypeService: entityTypeMock,
-			}
+			ouService:         ouServiceMock,
+			entityTypeService: entityTypeMock,
+		}, testMocks{
+			ouService:         ouServiceMock,
+			entityTypeService: entityTypeMock,
+		}
 	}
 
 	testCases := []struct {
@@ -122,10 +122,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitNotFound,
 		},
@@ -142,10 +142,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				}).Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitNotFound,
 		},
@@ -162,10 +162,10 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 				}).Once()
 
 				return &userService{
-						ouService: ouServiceMock,
-					}, testMocks{
-						ouService: ouServiceMock,
-					}
+					ouService: ouServiceMock,
+				}, testMocks{
+					ouService: ouServiceMock,
+				}
 			},
 			expectedErr: &ErrorInvalidOUID,
 		},
@@ -194,12 +194,12 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: &ErrorOrganizationUnitMismatch,
 		},
@@ -226,12 +226,12 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: nil,
 		},
@@ -273,12 +273,12 @@ func TestOUStore_ValidateOrganizationUnitForUserType(t *testing.T) {
 					Once()
 
 				return &userService{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}, testMocks{
-						ouService:         ouServiceMock,
-						entityTypeService: entityTypeMock,
-					}
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}, testMocks{
+					ouService:         ouServiceMock,
+					entityTypeService: entityTypeMock,
+				}
 			},
 			expectedErr: nil,
 		},

@@ -1,7 +1,6 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package discovery provides tests for the OAuth2 and OIDC discovery endpoints.
 package discovery
 
 import (

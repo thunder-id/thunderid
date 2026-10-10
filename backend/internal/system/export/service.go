@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -308,7 +309,7 @@ func (es *exportService) exportResourcesWithExporter(
 	exportErrors := make([]declarativeresource.ExportError, 0, len(resourceIDs))
 	variableValues := make(map[string]string)
 	var resourceIDList []string
-	if len(resourceIDs) == 1 && resourceIDs[0] == "*" {
+	if slices.Equal(resourceIDs, []string{"*"}) {
 		// Export all resources
 		ids, err := exporter.GetAllResourceIDs(ctx)
 		if err != nil {

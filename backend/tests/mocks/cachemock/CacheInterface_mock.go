@@ -17,10 +17,19 @@ func NewCacheInterfaceMock[T any](t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CacheInterfaceMock[T] {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CacheInterfaceMock[T]{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -95,7 +104,7 @@ type CacheInterfaceMock_Clear_Call[T any] struct {
 
 // Clear is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *CacheInterfaceMock_Expecter[T]) Clear(ctx interface{}) *CacheInterfaceMock_Clear_Call[T] {
+func (_e *CacheInterfaceMock_Expecter[T]) Clear(ctx any) *CacheInterfaceMock_Clear_Call[T] {
 	return &CacheInterfaceMock_Clear_Call[T]{Call: _e.mock.On("Clear", ctx)}
 }
 
@@ -147,7 +156,7 @@ type CacheInterfaceMock_Delete_Call[T any] struct {
 // Delete is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key cache.CacheKey
-func (_e *CacheInterfaceMock_Expecter[T]) Delete(ctx interface{}, key interface{}) *CacheInterfaceMock_Delete_Call[T] {
+func (_e *CacheInterfaceMock_Expecter[T]) Delete(ctx any, key any) *CacheInterfaceMock_Delete_Call[T] {
 	return &CacheInterfaceMock_Delete_Call[T]{Call: _e.mock.On("Delete", ctx, key)}
 }
 
@@ -215,7 +224,7 @@ type CacheInterfaceMock_Get_Call[T any] struct {
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
 //   - key cache.CacheKey
-func (_e *CacheInterfaceMock_Expecter[T]) Get(ctx interface{}, key interface{}) *CacheInterfaceMock_Get_Call[T] {
+func (_e *CacheInterfaceMock_Expecter[T]) Get(ctx any, key any) *CacheInterfaceMock_Get_Call[T] {
 	return &CacheInterfaceMock_Get_Call[T]{Call: _e.mock.On("Get", ctx, key)}
 }
 
@@ -405,7 +414,7 @@ type CacheInterfaceMock_Set_Call[T any] struct {
 //   - ctx context.Context
 //   - key cache.CacheKey
 //   - value T
-func (_e *CacheInterfaceMock_Expecter[T]) Set(ctx interface{}, key interface{}, value interface{}) *CacheInterfaceMock_Set_Call[T] {
+func (_e *CacheInterfaceMock_Expecter[T]) Set(ctx any, key any, value any) *CacheInterfaceMock_Set_Call[T] {
 	return &CacheInterfaceMock_Set_Call[T]{Call: _e.mock.On("Set", ctx, key, value)}
 }
 

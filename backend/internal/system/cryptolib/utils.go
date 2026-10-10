@@ -124,9 +124,7 @@ func ecdhAESKeyWrap(kek, cek []byte) ([]byte, error) {
 			copy(b[8:], r[i*8:i*8+8])
 			block.Encrypt(b, b)
 			t := uint64(j)*uint64(n) + uint64(i) // nolint:gosec // G115
-			for k := 0; k < 8; k++ {
-				b[7-k] ^= byte(t >> (8 * k))
-			}
+			binary.BigEndian.PutUint64(b[:8], binary.BigEndian.Uint64(b[:8])^t)
 			copy(r[:8], b[:8])
 			copy(r[i*8:i*8+8], b[8:])
 		}
@@ -154,9 +152,7 @@ func ecdhAESKeyUnwrap(kek, wrapped []byte) ([]byte, error) {
 			t := uint64(j)*uint64(n) + uint64(i) // nolint:gosec // G115
 			b := make([]byte, 16)
 			copy(b[:8], r[:8])
-			for k := 0; k < 8; k++ {
-				b[7-k] ^= byte(t >> (8 * k))
-			}
+			binary.BigEndian.PutUint64(b[:8], binary.BigEndian.Uint64(b[:8])^t)
 			copy(b[8:], r[i*8:i*8+8])
 			block.Decrypt(b, b)
 			copy(r[:8], b[:8])

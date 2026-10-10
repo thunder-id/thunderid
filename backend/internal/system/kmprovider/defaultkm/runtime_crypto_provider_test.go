@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -18,7 +19,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -808,7 +808,7 @@ func TestVerify_UnsupportedAlgorithm(t *testing.T) {
 
 func TestVerify_GetPublicKeysError(t *testing.T) {
 	pki := pkimock.NewPKIServiceInterfaceMock(t)
-	pki.EXPECT().GetAllX509Certificates(mock.Anything).Return(nil, &common.InternalServerError)
+	pki.EXPECT().GetAllX509Certificates(mock.Anything).Return(nil, &tidcommon.InternalServerError)
 
 	svc := &runtimeCryptoService{pkiService: pki, logger: newTestLogger()}
 	err := svc.Verify(context.Background(), providers.KeyRef{KeyID: "kid-1"}, "ES256", []byte("data"), []byte("sig"))
@@ -930,15 +930,19 @@ func TestGetTLSMaterial_Success(t *testing.T) {
 
 // TestMLDSA_RuntimeSignVerifyAndGetPublicKeys exercises the full ML-DSA path
 // through the runtime provider: GetPublicKeys derives the public key from the
-// private key (the certificate carries no parseable public key), and a signature
-// produced by Sign verifies through Verify.
+// private key (the certificate carries a crypto/mldsa public key, as Go 1.27 parses it),
+// and a signature produced by Sign verifies through Verify.
 func TestMLDSA_RuntimeSignVerifyAndGetPublicKeys(t *testing.T) {
 	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
 	require.NoError(t, err)
 
 	const keyID = "mldsa-key"
 	const thumbprint = "mldsa-thumbprint"
-	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw")} // PublicKey is nil for ML-DSA.
+	pubBytes, ok := cryptolib.MLDSAPublicKeyBytes(signer.Public())
+	require.True(t, ok)
+	certPub, err := mldsa.NewPublicKey(mldsa.MLDSA65(), pubBytes)
+	require.NoError(t, err)
+	cert := &x509.Certificate{Raw: []byte("mldsa-cert-raw"), PublicKey: certPub}
 
 	pki := pkimock.NewPKIServiceInterfaceMock(t)
 	pki.EXPECT().GetAllX509Certificates(mock.Anything).
@@ -1290,16 +1294,15 @@ func (suite *JWKTestSuite) TestJWKToOKPPublicKeyInvalidKeyLength() {
 }
 
 func (suite *JWKTestSuite) TestJWKToPublicKeyEC() {
-	xBytes := make([]byte, 32)
-	yBytes := make([]byte, 32)
-	suite.ecPublicKey.X.FillBytes(xBytes)
-	suite.ecPublicKey.Y.FillBytes(yBytes)
+	// Uncompressed P-256 point: 0x04 || X (32 bytes) || Y (32 bytes).
+	point, err := suite.ecPublicKey.Bytes()
+	assert.NoError(suite.T(), err)
 
 	jwk := map[string]interface{}{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(xBytes),
-		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
+		"x":   base64.RawURLEncoding.EncodeToString(point[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(point[33:]),
 	}
 
 	publicKey, err := JWKToPublicKey(jwk)
@@ -1308,8 +1311,7 @@ func (suite *JWKTestSuite) TestJWKToPublicKeyEC() {
 	assert.NotNil(suite.T(), publicKey)
 	ecKey, ok := publicKey.(*ecdsa.PublicKey)
 	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), suite.ecPublicKey.X, ecKey.X)
-	assert.Equal(suite.T(), suite.ecPublicKey.Y, ecKey.Y)
+	assert.True(suite.T(), suite.ecPublicKey.Equal(ecKey))
 }
 
 func (suite *JWKTestSuite) TestJWKToPublicKeyInvalidEC() {

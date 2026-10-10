@@ -17,10 +17,19 @@ func NewCriteriaRevokerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CriteriaRevokerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CriteriaRevokerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type CriteriaRevokerInterfaceMock_RevokeByCriteria_Call struct {
 // RevokeByCriteria is a helper method to define mock.On call
 //   - ctx context.Context
 //   - revocation1 revocation.CriteriaRevocation
-func (_e *CriteriaRevokerInterfaceMock_Expecter) RevokeByCriteria(ctx interface{}, revocation1 interface{}) *CriteriaRevokerInterfaceMock_RevokeByCriteria_Call {
+func (_e *CriteriaRevokerInterfaceMock_Expecter) RevokeByCriteria(ctx any, revocation1 any) *CriteriaRevokerInterfaceMock_RevokeByCriteria_Call {
 	return &CriteriaRevokerInterfaceMock_RevokeByCriteria_Call{Call: _e.mock.On("RevokeByCriteria", ctx, revocation1)}
 }
 
@@ -121,7 +130,7 @@ type CriteriaRevokerInterfaceMock_RevokeTokenFamily_Call struct {
 //   - ctx context.Context
 //   - tokenFamilyID string
 //   - reason revocation.RevocationReason
-func (_e *CriteriaRevokerInterfaceMock_Expecter) RevokeTokenFamily(ctx interface{}, tokenFamilyID interface{}, reason interface{}) *CriteriaRevokerInterfaceMock_RevokeTokenFamily_Call {
+func (_e *CriteriaRevokerInterfaceMock_Expecter) RevokeTokenFamily(ctx any, tokenFamilyID any, reason any) *CriteriaRevokerInterfaceMock_RevokeTokenFamily_Call {
 	return &CriteriaRevokerInterfaceMock_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, tokenFamilyID, reason)}
 }
 

@@ -18,10 +18,19 @@ func NewEntityProviderInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *EntityProviderInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &EntityProviderInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type EntityProviderInterfaceMock_DeleteEntity_Call struct {
 
 // DeleteEntity is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) DeleteEntity(entityID interface{}) *EntityProviderInterfaceMock_DeleteEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) DeleteEntity(entityID any) *EntityProviderInterfaceMock_DeleteEntity_Call {
 	return &EntityProviderInterfaceMock_DeleteEntity_Call{Call: _e.mock.On("DeleteEntity", entityID)}
 }
 
@@ -129,7 +138,7 @@ type EntityProviderInterfaceMock_GetEntitiesByIDs_Call struct {
 
 // GetEntitiesByIDs is a helper method to define mock.On call
 //   - entityIDs []string
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntitiesByIDs(entityIDs interface{}) *EntityProviderInterfaceMock_GetEntitiesByIDs_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntitiesByIDs(entityIDs any) *EntityProviderInterfaceMock_GetEntitiesByIDs_Call {
 	return &EntityProviderInterfaceMock_GetEntitiesByIDs_Call{Call: _e.mock.On("GetEntitiesByIDs", entityIDs)}
 }
 
@@ -193,7 +202,7 @@ type EntityProviderInterfaceMock_GetEntity_Call struct {
 
 // GetEntity is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(entityID interface{}) *EntityProviderInterfaceMock_GetEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntity(entityID any) *EntityProviderInterfaceMock_GetEntity_Call {
 	return &EntityProviderInterfaceMock_GetEntity_Call{Call: _e.mock.On("GetEntity", entityID)}
 }
 
@@ -260,7 +269,7 @@ type EntityProviderInterfaceMock_GetEntityList_Call struct {
 //   - limit int
 //   - offset int
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntityList(category interface{}, limit interface{}, offset interface{}, filters interface{}) *EntityProviderInterfaceMock_GetEntityList_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityList(category any, limit any, offset any, filters any) *EntityProviderInterfaceMock_GetEntityList_Call {
 	return &EntityProviderInterfaceMock_GetEntityList_Call{Call: _e.mock.On("GetEntityList", category, limit, offset, filters)}
 }
 
@@ -338,7 +347,7 @@ type EntityProviderInterfaceMock_GetEntityListCount_Call struct {
 // GetEntityListCount is a helper method to define mock.On call
 //   - category providers.EntityCategory
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) GetEntityListCount(category interface{}, filters interface{}) *EntityProviderInterfaceMock_GetEntityListCount_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityListCount(category any, filters any) *EntityProviderInterfaceMock_GetEntityListCount_Call {
 	return &EntityProviderInterfaceMock_GetEntityListCount_Call{Call: _e.mock.On("GetEntityListCount", category, filters)}
 }
 
@@ -407,7 +416,7 @@ type EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call struct {
 
 // GetTransitiveEntityGroups is a helper method to define mock.On call
 //   - entityID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID interface{}) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID any) *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call {
 	return &EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call{Call: _e.mock.On("GetTransitiveEntityGroups", entityID)}
 }
 
@@ -471,7 +480,7 @@ type EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call struct {
 
 // GetTransitiveGroupAncestors is a helper method to define mock.On call
 //   - groupID string
-func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(groupID interface{}) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(groupID any) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
 	return &EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
 }
 
@@ -535,7 +544,7 @@ type EntityProviderInterfaceMock_IdentifyEntity_Call struct {
 
 // IdentifyEntity is a helper method to define mock.On call
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) IdentifyEntity(filters interface{}) *EntityProviderInterfaceMock_IdentifyEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) IdentifyEntity(filters any) *EntityProviderInterfaceMock_IdentifyEntity_Call {
 	return &EntityProviderInterfaceMock_IdentifyEntity_Call{Call: _e.mock.On("IdentifyEntity", filters)}
 }
 
@@ -599,7 +608,7 @@ type EntityProviderInterfaceMock_SearchEntities_Call struct {
 
 // SearchEntities is a helper method to define mock.On call
 //   - filters map[string]interface{}
-func (_e *EntityProviderInterfaceMock_Expecter) SearchEntities(filters interface{}) *EntityProviderInterfaceMock_SearchEntities_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) SearchEntities(filters any) *EntityProviderInterfaceMock_SearchEntities_Call {
 	return &EntityProviderInterfaceMock_SearchEntities_Call{Call: _e.mock.On("SearchEntities", filters)}
 }
 
@@ -653,7 +662,7 @@ type EntityProviderInterfaceMock_UpdateAttributes_Call struct {
 // UpdateAttributes is a helper method to define mock.On call
 //   - entityID string
 //   - attributes json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateAttributes(entityID interface{}, attributes interface{}) *EntityProviderInterfaceMock_UpdateAttributes_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateAttributes(entityID any, attributes any) *EntityProviderInterfaceMock_UpdateAttributes_Call {
 	return &EntityProviderInterfaceMock_UpdateAttributes_Call{Call: _e.mock.On("UpdateAttributes", entityID, attributes)}
 }
 
@@ -712,7 +721,7 @@ type EntityProviderInterfaceMock_UpdateCredentials_Call struct {
 // UpdateCredentials is a helper method to define mock.On call
 //   - entityID string
 //   - credentials json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateCredentials(entityID interface{}, credentials interface{}) *EntityProviderInterfaceMock_UpdateCredentials_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateCredentials(entityID any, credentials any) *EntityProviderInterfaceMock_UpdateCredentials_Call {
 	return &EntityProviderInterfaceMock_UpdateCredentials_Call{Call: _e.mock.On("UpdateCredentials", entityID, credentials)}
 }
 
@@ -782,7 +791,7 @@ type EntityProviderInterfaceMock_UpdateEntity_Call struct {
 // UpdateEntity is a helper method to define mock.On call
 //   - entityID string
 //   - entity *providers.Entity
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateEntity(entityID interface{}, entity interface{}) *EntityProviderInterfaceMock_UpdateEntity_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateEntity(entityID any, entity any) *EntityProviderInterfaceMock_UpdateEntity_Call {
 	return &EntityProviderInterfaceMock_UpdateEntity_Call{Call: _e.mock.On("UpdateEntity", entityID, entity)}
 }
 
@@ -841,7 +850,7 @@ type EntityProviderInterfaceMock_UpdateSystemAttributes_Call struct {
 // UpdateSystemAttributes is a helper method to define mock.On call
 //   - entityID string
 //   - attributes json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemAttributes(entityID interface{}, attributes interface{}) *EntityProviderInterfaceMock_UpdateSystemAttributes_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemAttributes(entityID any, attributes any) *EntityProviderInterfaceMock_UpdateSystemAttributes_Call {
 	return &EntityProviderInterfaceMock_UpdateSystemAttributes_Call{Call: _e.mock.On("UpdateSystemAttributes", entityID, attributes)}
 }
 
@@ -900,7 +909,7 @@ type EntityProviderInterfaceMock_UpdateSystemCredentials_Call struct {
 // UpdateSystemCredentials is a helper method to define mock.On call
 //   - entityID string
 //   - credentials json.RawMessage
-func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemCredentials(entityID interface{}, credentials interface{}) *EntityProviderInterfaceMock_UpdateSystemCredentials_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) UpdateSystemCredentials(entityID any, credentials any) *EntityProviderInterfaceMock_UpdateSystemCredentials_Call {
 	return &EntityProviderInterfaceMock_UpdateSystemCredentials_Call{Call: _e.mock.On("UpdateSystemCredentials", entityID, credentials)}
 }
 
@@ -969,7 +978,7 @@ type EntityProviderInterfaceMock_ValidateEntityIDs_Call struct {
 
 // ValidateEntityIDs is a helper method to define mock.On call
 //   - entityIDs []string
-func (_e *EntityProviderInterfaceMock_Expecter) ValidateEntityIDs(entityIDs interface{}) *EntityProviderInterfaceMock_ValidateEntityIDs_Call {
+func (_e *EntityProviderInterfaceMock_Expecter) ValidateEntityIDs(entityIDs any) *EntityProviderInterfaceMock_ValidateEntityIDs_Call {
 	return &EntityProviderInterfaceMock_ValidateEntityIDs_Call{Call: _e.mock.On("ValidateEntityIDs", entityIDs)}
 }
 

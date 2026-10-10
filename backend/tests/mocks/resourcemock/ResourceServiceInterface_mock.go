@@ -20,10 +20,19 @@ func NewResourceServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ResourceServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ResourceServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -81,7 +90,7 @@ type ResourceServiceInterfaceMock_CreateAction_Call struct {
 //   - resourceServerID string
 //   - resourceID *string
 //   - action providers.Action
-func (_e *ResourceServiceInterfaceMock_Expecter) CreateAction(ctx interface{}, resourceServerID interface{}, resourceID interface{}, action interface{}) *ResourceServiceInterfaceMock_CreateAction_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) CreateAction(ctx any, resourceServerID any, resourceID any, action any) *ResourceServiceInterfaceMock_CreateAction_Call {
 	return &ResourceServiceInterfaceMock_CreateAction_Call{Call: _e.mock.On("CreateAction", ctx, resourceServerID, resourceID, action)}
 }
 
@@ -162,7 +171,7 @@ type ResourceServiceInterfaceMock_CreateResource_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - res providers.Resource
-func (_e *ResourceServiceInterfaceMock_Expecter) CreateResource(ctx interface{}, resourceServerID interface{}, res interface{}) *ResourceServiceInterfaceMock_CreateResource_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) CreateResource(ctx any, resourceServerID any, res any) *ResourceServiceInterfaceMock_CreateResource_Call {
 	return &ResourceServiceInterfaceMock_CreateResource_Call{Call: _e.mock.On("CreateResource", ctx, resourceServerID, res)}
 }
 
@@ -237,7 +246,7 @@ type ResourceServiceInterfaceMock_CreateResourceServer_Call struct {
 // CreateResourceServer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - rs providers.ResourceServer
-func (_e *ResourceServiceInterfaceMock_Expecter) CreateResourceServer(ctx interface{}, rs interface{}) *ResourceServiceInterfaceMock_CreateResourceServer_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) CreateResourceServer(ctx any, rs any) *ResourceServiceInterfaceMock_CreateResourceServer_Call {
 	return &ResourceServiceInterfaceMock_CreateResourceServer_Call{Call: _e.mock.On("CreateResourceServer", ctx, rs)}
 }
 
@@ -298,7 +307,7 @@ type ResourceServiceInterfaceMock_DeleteAction_Call struct {
 //   - resourceServerID string
 //   - resourceID *string
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) DeleteAction(ctx interface{}, resourceServerID interface{}, resourceID interface{}, id interface{}) *ResourceServiceInterfaceMock_DeleteAction_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) DeleteAction(ctx any, resourceServerID any, resourceID any, id any) *ResourceServiceInterfaceMock_DeleteAction_Call {
 	return &ResourceServiceInterfaceMock_DeleteAction_Call{Call: _e.mock.On("DeleteAction", ctx, resourceServerID, resourceID, id)}
 }
 
@@ -368,7 +377,7 @@ type ResourceServiceInterfaceMock_DeleteResource_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) DeleteResource(ctx interface{}, resourceServerID interface{}, id interface{}) *ResourceServiceInterfaceMock_DeleteResource_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) DeleteResource(ctx any, resourceServerID any, id any) *ResourceServiceInterfaceMock_DeleteResource_Call {
 	return &ResourceServiceInterfaceMock_DeleteResource_Call{Call: _e.mock.On("DeleteResource", ctx, resourceServerID, id)}
 }
 
@@ -432,7 +441,7 @@ type ResourceServiceInterfaceMock_DeleteResourceServer_Call struct {
 // DeleteResourceServer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) DeleteResourceServer(ctx interface{}, id interface{}) *ResourceServiceInterfaceMock_DeleteResourceServer_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) DeleteResourceServer(ctx any, id any) *ResourceServiceInterfaceMock_DeleteResourceServer_Call {
 	return &ResourceServiceInterfaceMock_DeleteResourceServer_Call{Call: _e.mock.On("DeleteResourceServer", ctx, id)}
 }
 
@@ -504,7 +513,7 @@ type ResourceServiceInterfaceMock_GetAction_Call struct {
 //   - resourceServerID string
 //   - resourceID *string
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetAction(ctx interface{}, resourceServerID interface{}, resourceID interface{}, id interface{}) *ResourceServiceInterfaceMock_GetAction_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetAction(ctx any, resourceServerID any, resourceID any, id any) *ResourceServiceInterfaceMock_GetAction_Call {
 	return &ResourceServiceInterfaceMock_GetAction_Call{Call: _e.mock.On("GetAction", ctx, resourceServerID, resourceID, id)}
 }
 
@@ -588,7 +597,7 @@ type ResourceServiceInterfaceMock_GetActionList_Call struct {
 //   - kind providers.ActionKind
 //   - limit int
 //   - offset int
-func (_e *ResourceServiceInterfaceMock_Expecter) GetActionList(ctx interface{}, resourceServerID interface{}, resourceID interface{}, kind interface{}, limit interface{}, offset interface{}) *ResourceServiceInterfaceMock_GetActionList_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetActionList(ctx any, resourceServerID any, resourceID any, kind any, limit any, offset any) *ResourceServiceInterfaceMock_GetActionList_Call {
 	return &ResourceServiceInterfaceMock_GetActionList_Call{Call: _e.mock.On("GetActionList", ctx, resourceServerID, resourceID, kind, limit, offset)}
 }
 
@@ -678,7 +687,7 @@ type ResourceServiceInterfaceMock_GetAllResourceList_Call struct {
 // GetAllResourceList is a helper method to define mock.On call
 //   - ctx context.Context
 //   - resourceServerID string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetAllResourceList(ctx interface{}, resourceServerID interface{}) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetAllResourceList(ctx any, resourceServerID any) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
 	return &ResourceServiceInterfaceMock_GetAllResourceList_Call{Call: _e.mock.On("GetAllResourceList", ctx, resourceServerID)}
 }
 
@@ -749,7 +758,7 @@ type ResourceServiceInterfaceMock_GetResource_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResource(ctx interface{}, resourceServerID interface{}, id interface{}) *ResourceServiceInterfaceMock_GetResource_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResource(ctx any, resourceServerID any, id any) *ResourceServiceInterfaceMock_GetResource_Call {
 	return &ResourceServiceInterfaceMock_GetResource_Call{Call: _e.mock.On("GetResource", ctx, resourceServerID, id)}
 }
 
@@ -823,7 +832,7 @@ type ResourceServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *ResourceServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *ResourceServiceInterfaceMock_GetResourceDependencies_Call {
 	return &ResourceServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -901,7 +910,7 @@ type ResourceServiceInterfaceMock_GetResourceList_Call struct {
 //   - parentID *string
 //   - limit int
 //   - offset int
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceList(ctx interface{}, resourceServerID interface{}, parentID interface{}, limit interface{}, offset interface{}) *ResourceServiceInterfaceMock_GetResourceList_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceList(ctx any, resourceServerID any, parentID any, limit any, offset any) *ResourceServiceInterfaceMock_GetResourceList_Call {
 	return &ResourceServiceInterfaceMock_GetResourceList_Call{Call: _e.mock.On("GetResourceList", ctx, resourceServerID, parentID, limit, offset)}
 }
 
@@ -986,7 +995,7 @@ type ResourceServiceInterfaceMock_GetResourceServer_Call struct {
 // GetResourceServer is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServer(ctx interface{}, id interface{}) *ResourceServiceInterfaceMock_GetResourceServer_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServer(ctx any, id any) *ResourceServiceInterfaceMock_GetResourceServer_Call {
 	return &ResourceServiceInterfaceMock_GetResourceServer_Call{Call: _e.mock.On("GetResourceServer", ctx, id)}
 }
 
@@ -1056,7 +1065,7 @@ type ResourceServiceInterfaceMock_GetResourceServerByIdentifier_Call struct {
 // GetResourceServerByIdentifier is a helper method to define mock.On call
 //   - ctx context.Context
 //   - identifier string
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServerByIdentifier(ctx interface{}, identifier interface{}) *ResourceServiceInterfaceMock_GetResourceServerByIdentifier_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServerByIdentifier(ctx any, identifier any) *ResourceServiceInterfaceMock_GetResourceServerByIdentifier_Call {
 	return &ResourceServiceInterfaceMock_GetResourceServerByIdentifier_Call{Call: _e.mock.On("GetResourceServerByIdentifier", ctx, identifier)}
 }
 
@@ -1127,7 +1136,7 @@ type ResourceServiceInterfaceMock_GetResourceServerList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServerList(ctx interface{}, limit interface{}, offset interface{}) *ResourceServiceInterfaceMock_GetResourceServerList_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) GetResourceServerList(ctx any, limit any, offset any) *ResourceServiceInterfaceMock_GetResourceServerList_Call {
 	return &ResourceServiceInterfaceMock_GetResourceServerList_Call{Call: _e.mock.On("GetResourceServerList", ctx, limit, offset)}
 }
 
@@ -1188,7 +1197,7 @@ type ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call struct {
 
 // IsResourceServerDeclarative is a helper method to define mock.On call
 //   - id string
-func (_e *ResourceServiceInterfaceMock_Expecter) IsResourceServerDeclarative(id interface{}) *ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) IsResourceServerDeclarative(id any) *ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call {
 	return &ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call{Call: _e.mock.On("IsResourceServerDeclarative", id)}
 }
 
@@ -1242,7 +1251,7 @@ type ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call struct {
 // ResolveResourceServerOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - rs *providers.ResourceServer
-func (_e *ResourceServiceInterfaceMock_Expecter) ResolveResourceServerOUHandle(ctx interface{}, rs interface{}) *ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) ResolveResourceServerOUHandle(ctx any, rs any) *ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call {
 	return &ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call{Call: _e.mock.On("ResolveResourceServerOUHandle", ctx, rs)}
 }
 
@@ -1287,7 +1296,7 @@ type ResourceServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *ResourceServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *ResourceServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *ResourceServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &ResourceServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -1355,7 +1364,7 @@ type ResourceServiceInterfaceMock_UpdateAction_Call struct {
 //   - resourceID *string
 //   - id string
 //   - action providers.Action
-func (_e *ResourceServiceInterfaceMock_Expecter) UpdateAction(ctx interface{}, resourceServerID interface{}, resourceID interface{}, id interface{}, action interface{}) *ResourceServiceInterfaceMock_UpdateAction_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) UpdateAction(ctx any, resourceServerID any, resourceID any, id any, action any) *ResourceServiceInterfaceMock_UpdateAction_Call {
 	return &ResourceServiceInterfaceMock_UpdateAction_Call{Call: _e.mock.On("UpdateAction", ctx, resourceServerID, resourceID, id, action)}
 }
 
@@ -1442,7 +1451,7 @@ type ResourceServiceInterfaceMock_UpdateResource_Call struct {
 //   - resourceServerID string
 //   - id string
 //   - res providers.Resource
-func (_e *ResourceServiceInterfaceMock_Expecter) UpdateResource(ctx interface{}, resourceServerID interface{}, id interface{}, res interface{}) *ResourceServiceInterfaceMock_UpdateResource_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) UpdateResource(ctx any, resourceServerID any, id any, res any) *ResourceServiceInterfaceMock_UpdateResource_Call {
 	return &ResourceServiceInterfaceMock_UpdateResource_Call{Call: _e.mock.On("UpdateResource", ctx, resourceServerID, id, res)}
 }
 
@@ -1523,7 +1532,7 @@ type ResourceServiceInterfaceMock_UpdateResourceServer_Call struct {
 //   - ctx context.Context
 //   - id string
 //   - rs providers.ResourceServer
-func (_e *ResourceServiceInterfaceMock_Expecter) UpdateResourceServer(ctx interface{}, id interface{}, rs interface{}) *ResourceServiceInterfaceMock_UpdateResourceServer_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) UpdateResourceServer(ctx any, id any, rs any) *ResourceServiceInterfaceMock_UpdateResourceServer_Call {
 	return &ResourceServiceInterfaceMock_UpdateResourceServer_Call{Call: _e.mock.On("UpdateResourceServer", ctx, id, rs)}
 }
 
@@ -1599,7 +1608,7 @@ type ResourceServiceInterfaceMock_ValidatePermissions_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - permissions []string
-func (_e *ResourceServiceInterfaceMock_Expecter) ValidatePermissions(ctx interface{}, resourceServerID interface{}, permissions interface{}) *ResourceServiceInterfaceMock_ValidatePermissions_Call {
+func (_e *ResourceServiceInterfaceMock_Expecter) ValidatePermissions(ctx any, resourceServerID any, permissions any) *ResourceServiceInterfaceMock_ValidatePermissions_Call {
 	return &ResourceServiceInterfaceMock_ValidatePermissions_Call{Call: _e.mock.On("ValidatePermissions", ctx, resourceServerID, permissions)}
 }
 

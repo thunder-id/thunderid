@@ -19,10 +19,19 @@ func NewGithubOAuthAuthnServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GithubOAuthAuthnServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GithubOAuthAuthnServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type GithubOAuthAuthnServiceInterfaceMock_Authenticate_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - authzData common.AuthorizationData
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, idpID interface{}, authzData interface{}) *GithubOAuthAuthnServiceInterfaceMock_Authenticate_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) Authenticate(ctx any, idpID any, authzData any) *GithubOAuthAuthnServiceInterfaceMock_Authenticate_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, idpID, authzData)}
 }
 
@@ -160,7 +169,7 @@ type GithubOAuthAuthnServiceInterfaceMock_BuildAuthorizeURL_Call struct {
 // BuildAuthorizeURL is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx interface{}, idpID interface{}) *GithubOAuthAuthnServiceInterfaceMock_BuildAuthorizeURL_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) BuildAuthorizeURL(ctx any, idpID any) *GithubOAuthAuthnServiceInterfaceMock_BuildAuthorizeURL_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_BuildAuthorizeURL_Call{Call: _e.mock.On("BuildAuthorizeURL", ctx, idpID)}
 }
 
@@ -232,7 +241,7 @@ type GithubOAuthAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call struct {
 //   - idpID string
 //   - sub string
 //   - claims map[string]interface{}
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx interface{}, idpID interface{}, sub interface{}, claims interface{}) *GithubOAuthAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) BuildFederatedAuthResult(ctx any, idpID any, sub any, claims any) *GithubOAuthAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_BuildFederatedAuthResult_Call{Call: _e.mock.On("BuildFederatedAuthResult", ctx, idpID, sub, claims)}
 }
 
@@ -314,7 +323,7 @@ type GithubOAuthAuthnServiceInterfaceMock_ExchangeCodeForToken_Call struct {
 //   - idpID string
 //   - code string
 //   - validateResponse bool
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx interface{}, idpID interface{}, code interface{}, validateResponse interface{}) *GithubOAuthAuthnServiceInterfaceMock_ExchangeCodeForToken_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) ExchangeCodeForToken(ctx any, idpID any, code any, validateResponse any) *GithubOAuthAuthnServiceInterfaceMock_ExchangeCodeForToken_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_ExchangeCodeForToken_Call{Call: _e.mock.On("ExchangeCodeForToken", ctx, idpID, code, validateResponse)}
 }
 
@@ -395,7 +404,7 @@ type GithubOAuthAuthnServiceInterfaceMock_FetchUserInfo_Call struct {
 //   - ctx context.Context
 //   - idpID string
 //   - accessToken string
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) FetchUserInfo(ctx interface{}, idpID interface{}, accessToken interface{}) *GithubOAuthAuthnServiceInterfaceMock_FetchUserInfo_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) FetchUserInfo(ctx any, idpID any, accessToken any) *GithubOAuthAuthnServiceInterfaceMock_FetchUserInfo_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_FetchUserInfo_Call{Call: _e.mock.On("FetchUserInfo", ctx, idpID, accessToken)}
 }
 
@@ -470,7 +479,7 @@ type GithubOAuthAuthnServiceInterfaceMock_GetOAuthClientConfig_Call struct {
 // GetOAuthClientConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx interface{}, idpID interface{}) *GithubOAuthAuthnServiceInterfaceMock_GetOAuthClientConfig_Call {
+func (_e *GithubOAuthAuthnServiceInterfaceMock_Expecter) GetOAuthClientConfig(ctx any, idpID any) *GithubOAuthAuthnServiceInterfaceMock_GetOAuthClientConfig_Call {
 	return &GithubOAuthAuthnServiceInterfaceMock_GetOAuthClientConfig_Call{Call: _e.mock.On("GetOAuthClientConfig", ctx, idpID)}
 }
 

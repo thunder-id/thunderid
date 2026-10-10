@@ -17,10 +17,19 @@ func NewOUGroupResolverMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OUGroupResolverMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OUGroupResolverMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type OUGroupResolverMock_GetGroupCountByOUID_Call struct {
 // GetGroupCountByOUID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouID string
-func (_e *OUGroupResolverMock_Expecter) GetGroupCountByOUID(ctx interface{}, ouID interface{}) *OUGroupResolverMock_GetGroupCountByOUID_Call {
+func (_e *OUGroupResolverMock_Expecter) GetGroupCountByOUID(ctx any, ouID any) *OUGroupResolverMock_GetGroupCountByOUID_Call {
 	return &OUGroupResolverMock_GetGroupCountByOUID_Call{Call: _e.mock.On("GetGroupCountByOUID", ctx, ouID)}
 }
 
@@ -142,7 +151,7 @@ type OUGroupResolverMock_GetGroupListByOUID_Call struct {
 //   - ouID string
 //   - limit int
 //   - offset int
-func (_e *OUGroupResolverMock_Expecter) GetGroupListByOUID(ctx interface{}, ouID interface{}, limit interface{}, offset interface{}) *OUGroupResolverMock_GetGroupListByOUID_Call {
+func (_e *OUGroupResolverMock_Expecter) GetGroupListByOUID(ctx any, ouID any, limit any, offset any) *OUGroupResolverMock_GetGroupListByOUID_Call {
 	return &OUGroupResolverMock_GetGroupListByOUID_Call{Call: _e.mock.On("GetGroupListByOUID", ctx, ouID, limit, offset)}
 }
 
@@ -221,7 +230,7 @@ type OUGroupResolverMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *OUGroupResolverMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *OUGroupResolverMock_GetResourceDependencies_Call {
+func (_e *OUGroupResolverMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *OUGroupResolverMock_GetResourceDependencies_Call {
 	return &OUGroupResolverMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 

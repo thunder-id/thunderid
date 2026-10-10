@@ -17,10 +17,19 @@ func NewEmailClientInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *EmailClientInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &EmailClientInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -107,7 +116,7 @@ type EmailClientInterfaceMock_Send_Call struct {
 // Send is a helper method to define mock.On call
 //   - ctx context.Context
 //   - data common.EmailData
-func (_e *EmailClientInterfaceMock_Expecter) Send(ctx interface{}, data interface{}) *EmailClientInterfaceMock_Send_Call {
+func (_e *EmailClientInterfaceMock_Expecter) Send(ctx any, data any) *EmailClientInterfaceMock_Send_Call {
 	return &EmailClientInterfaceMock_Send_Call{Call: _e.mock.On("Send", ctx, data)}
 }
 

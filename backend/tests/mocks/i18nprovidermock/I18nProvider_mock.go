@@ -18,10 +18,19 @@ func NewI18nProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *I18nProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &I18nProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type I18nProviderMock_ListLanguages_Call struct {
 
 // ListLanguages is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *I18nProviderMock_Expecter) ListLanguages(ctx interface{}) *I18nProviderMock_ListLanguages_Call {
+func (_e *I18nProviderMock_Expecter) ListLanguages(ctx any) *I18nProviderMock_ListLanguages_Call {
 	return &I18nProviderMock_ListLanguages_Call{Call: _e.mock.On("ListLanguages", ctx)}
 }
 
@@ -142,7 +151,7 @@ type I18nProviderMock_ResolveTranslations_Call struct {
 //   - ctx context.Context
 //   - language string
 //   - namespace string
-func (_e *I18nProviderMock_Expecter) ResolveTranslations(ctx interface{}, language interface{}, namespace interface{}) *I18nProviderMock_ResolveTranslations_Call {
+func (_e *I18nProviderMock_Expecter) ResolveTranslations(ctx any, language any, namespace any) *I18nProviderMock_ResolveTranslations_Call {
 	return &I18nProviderMock_ResolveTranslations_Call{Call: _e.mock.On("ResolveTranslations", ctx, language, namespace)}
 }
 

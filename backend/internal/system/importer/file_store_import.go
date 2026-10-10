@@ -174,13 +174,13 @@ func documentMatchesKey(doc parsedDocument, resourceKey string) bool {
 func getThunderHome() (serverHome string, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			err = fmt.Errorf("Server runtime is not initialized")
+			err = fmt.Errorf("server runtime is not initialized")
 		}
 	}()
 
 	runtime := config.GetServerRuntime()
 	if runtime == nil || strings.TrimSpace(runtime.ServerHome) == "" {
-		return "", fmt.Errorf("Server runtime is not initialized")
+		return "", fmt.Errorf("server runtime is not initialized")
 	}
 
 	return runtime.ServerHome, nil

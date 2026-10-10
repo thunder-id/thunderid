@@ -255,11 +255,12 @@ func (suite *HealthCheckServiceTestSuite) TestCheckReadiness_DBRetrievalError() 
 	assert.Len(suite.T(), serverStatus.ServiceStatus, 3, "There should be three service statuses reported")
 
 	for _, status := range serverStatus.ServiceStatus {
-		if status.ServiceName == "ConfigDB" {
+		switch status.ServiceName {
+		case "ConfigDB":
 			assert.Equal(suite.T(), model.StatusDown, status.Status, "ConfigDB should be DOWN")
-		} else if status.ServiceName == "RuntimeTransientDB" {
+		case "RuntimeTransientDB":
 			assert.Equal(suite.T(), model.StatusDown, status.Status, "RuntimeTransientDB should be DOWN")
-		} else if status.ServiceName == "EntityDB" {
+		case "EntityDB":
 			assert.Equal(suite.T(), model.StatusDown, status.Status, "EntityDB should be DOWN")
 		}
 	}

@@ -15,10 +15,19 @@ func NewInterceptorRegistryInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *InterceptorRegistryInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &InterceptorRegistryInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -71,7 +80,7 @@ type InterceptorRegistryInterfaceMock_GetInterceptor_Call struct {
 
 // GetInterceptor is a helper method to define mock.On call
 //   - name string
-func (_e *InterceptorRegistryInterfaceMock_Expecter) GetInterceptor(name interface{}) *InterceptorRegistryInterfaceMock_GetInterceptor_Call {
+func (_e *InterceptorRegistryInterfaceMock_Expecter) GetInterceptor(name any) *InterceptorRegistryInterfaceMock_GetInterceptor_Call {
 	return &InterceptorRegistryInterfaceMock_GetInterceptor_Call{Call: _e.mock.On("GetInterceptor", name)}
 }
 
@@ -122,7 +131,7 @@ type InterceptorRegistryInterfaceMock_IsRegistered_Call struct {
 
 // IsRegistered is a helper method to define mock.On call
 //   - name string
-func (_e *InterceptorRegistryInterfaceMock_Expecter) IsRegistered(name interface{}) *InterceptorRegistryInterfaceMock_IsRegistered_Call {
+func (_e *InterceptorRegistryInterfaceMock_Expecter) IsRegistered(name any) *InterceptorRegistryInterfaceMock_IsRegistered_Call {
 	return &InterceptorRegistryInterfaceMock_IsRegistered_Call{Call: _e.mock.On("IsRegistered", name)}
 }
 
@@ -163,7 +172,7 @@ type InterceptorRegistryInterfaceMock_RegisterInterceptor_Call struct {
 // RegisterInterceptor is a helper method to define mock.On call
 //   - name string
 //   - interceptor core.InterceptorInterface
-func (_e *InterceptorRegistryInterfaceMock_Expecter) RegisterInterceptor(name interface{}, interceptor interface{}) *InterceptorRegistryInterfaceMock_RegisterInterceptor_Call {
+func (_e *InterceptorRegistryInterfaceMock_Expecter) RegisterInterceptor(name any, interceptor any) *InterceptorRegistryInterfaceMock_RegisterInterceptor_Call {
 	return &InterceptorRegistryInterfaceMock_RegisterInterceptor_Call{Call: _e.mock.On("RegisterInterceptor", name, interceptor)}
 }
 

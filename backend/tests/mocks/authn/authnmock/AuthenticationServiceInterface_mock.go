@@ -21,10 +21,19 @@ func NewAuthenticationServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AuthenticationServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AuthenticationServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -83,7 +92,7 @@ type AuthenticationServiceInterfaceMock_AuthenticateWithCredentials_Call struct 
 //   - credentials map[string]interface{}
 //   - skipAssertion bool
 //   - existingAssertion string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) AuthenticateWithCredentials(ctx interface{}, identifiers interface{}, credentials interface{}, skipAssertion interface{}, existingAssertion interface{}) *AuthenticationServiceInterfaceMock_AuthenticateWithCredentials_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) AuthenticateWithCredentials(ctx any, identifiers any, credentials any, skipAssertion any, existingAssertion any) *AuthenticationServiceInterfaceMock_AuthenticateWithCredentials_Call {
 	return &AuthenticationServiceInterfaceMock_AuthenticateWithCredentials_Call{Call: _e.mock.On("AuthenticateWithCredentials", ctx, identifiers, credentials, skipAssertion, existingAssertion)}
 }
 
@@ -172,7 +181,7 @@ type AuthenticationServiceInterfaceMock_FinishIDPAuthentication_Call struct {
 //   - skipAssertion bool
 //   - existingAssertion string
 //   - code string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishIDPAuthentication(ctx interface{}, requestedType interface{}, sessionToken interface{}, skipAssertion interface{}, existingAssertion interface{}, code interface{}) *AuthenticationServiceInterfaceMock_FinishIDPAuthentication_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishIDPAuthentication(ctx any, requestedType any, sessionToken any, skipAssertion any, existingAssertion any, code any) *AuthenticationServiceInterfaceMock_FinishIDPAuthentication_Call {
 	return &AuthenticationServiceInterfaceMock_FinishIDPAuthentication_Call{Call: _e.mock.On("FinishIDPAuthentication", ctx, requestedType, sessionToken, skipAssertion, existingAssertion, code)}
 }
 
@@ -267,7 +276,7 @@ type AuthenticationServiceInterfaceMock_FinishPasskeyAuthentication_Call struct 
 //   - sessionToken string
 //   - skipAssertion bool
 //   - existingAssertion string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyAuthentication(ctx interface{}, credentialID interface{}, credentialType interface{}, response interface{}, sessionToken interface{}, skipAssertion interface{}, existingAssertion interface{}) *AuthenticationServiceInterfaceMock_FinishPasskeyAuthentication_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyAuthentication(ctx any, credentialID any, credentialType any, response any, sessionToken any, skipAssertion any, existingAssertion any) *AuthenticationServiceInterfaceMock_FinishPasskeyAuthentication_Call {
 	return &AuthenticationServiceInterfaceMock_FinishPasskeyAuthentication_Call{Call: _e.mock.On("FinishPasskeyAuthentication", ctx, credentialID, credentialType, response, sessionToken, skipAssertion, existingAssertion)}
 }
 
@@ -365,7 +374,7 @@ type AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call struct {
 //   - sessionToken string
 //   - skipAssertion bool
 //   - existingAssertion string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyRegistration(ctx interface{}, credential interface{}, sessionToken interface{}, skipAssertion interface{}, existingAssertion interface{}) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyRegistration(ctx any, credential any, sessionToken any, skipAssertion any, existingAssertion any) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
 	return &AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call{Call: _e.mock.On("FinishPasskeyRegistration", ctx, credential, sessionToken, skipAssertion, existingAssertion)}
 }
 
@@ -450,7 +459,7 @@ type AuthenticationServiceInterfaceMock_SendOTP_Call struct {
 //   - senderID string
 //   - channel common1.ChannelType
 //   - recipient string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) SendOTP(ctx interface{}, senderID interface{}, channel interface{}, recipient interface{}) *AuthenticationServiceInterfaceMock_SendOTP_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) SendOTP(ctx any, senderID any, channel any, recipient any) *AuthenticationServiceInterfaceMock_SendOTP_Call {
 	return &AuthenticationServiceInterfaceMock_SendOTP_Call{Call: _e.mock.On("SendOTP", ctx, senderID, channel, recipient)}
 }
 
@@ -531,7 +540,7 @@ type AuthenticationServiceInterfaceMock_StartIDPAuthentication_Call struct {
 //   - ctx context.Context
 //   - requestedType providers.IDPType
 //   - idpID string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) StartIDPAuthentication(ctx interface{}, requestedType interface{}, idpID interface{}) *AuthenticationServiceInterfaceMock_StartIDPAuthentication_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) StartIDPAuthentication(ctx any, requestedType any, idpID any) *AuthenticationServiceInterfaceMock_StartIDPAuthentication_Call {
 	return &AuthenticationServiceInterfaceMock_StartIDPAuthentication_Call{Call: _e.mock.On("StartIDPAuthentication", ctx, requestedType, idpID)}
 }
 
@@ -607,7 +616,7 @@ type AuthenticationServiceInterfaceMock_StartPasskeyAuthentication_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - relyingPartyID string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyAuthentication(ctx interface{}, userID interface{}, relyingPartyID interface{}) *AuthenticationServiceInterfaceMock_StartPasskeyAuthentication_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyAuthentication(ctx any, userID any, relyingPartyID any) *AuthenticationServiceInterfaceMock_StartPasskeyAuthentication_Call {
 	return &AuthenticationServiceInterfaceMock_StartPasskeyAuthentication_Call{Call: _e.mock.On("StartPasskeyAuthentication", ctx, userID, relyingPartyID)}
 }
 
@@ -687,7 +696,7 @@ type AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call struct {
 //   - authSelection *authn.PasskeyAuthenticatorSelectionDTO
 //   - attestation string
 //   - assertion string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyRegistration(ctx interface{}, userID interface{}, relyingPartyID interface{}, relyingPartyName interface{}, authSelection interface{}, attestation interface{}, assertion interface{}) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyRegistration(ctx any, userID any, relyingPartyID any, relyingPartyName any, authSelection any, attestation any, assertion any) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
 	return &AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call{Call: _e.mock.On("StartPasskeyRegistration", ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)}
 }
 
@@ -785,7 +794,7 @@ type AuthenticationServiceInterfaceMock_VerifyOTP_Call struct {
 //   - skipAssertion bool
 //   - existingAssertion string
 //   - otp string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) VerifyOTP(ctx interface{}, sessionToken interface{}, skipAssertion interface{}, existingAssertion interface{}, otp interface{}) *AuthenticationServiceInterfaceMock_VerifyOTP_Call {
+func (_e *AuthenticationServiceInterfaceMock_Expecter) VerifyOTP(ctx any, sessionToken any, skipAssertion any, existingAssertion any, otp any) *AuthenticationServiceInterfaceMock_VerifyOTP_Call {
 	return &AuthenticationServiceInterfaceMock_VerifyOTP_Call{Call: _e.mock.On("VerifyOTP", ctx, sessionToken, skipAssertion, existingAssertion, otp)}
 }
 

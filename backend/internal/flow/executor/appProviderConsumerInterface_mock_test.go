@@ -14,10 +14,19 @@ func newAppProviderConsumerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *appProviderConsumerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &appProviderConsumerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -48,7 +57,7 @@ type appProviderConsumerInterfaceMock_setApplicationProvider_Call struct {
 
 // setApplicationProvider is a helper method to define mock.On call
 //   - provider applicationAdminProvider
-func (_e *appProviderConsumerInterfaceMock_Expecter) setApplicationProvider(provider interface{}) *appProviderConsumerInterfaceMock_setApplicationProvider_Call {
+func (_e *appProviderConsumerInterfaceMock_Expecter) setApplicationProvider(provider any) *appProviderConsumerInterfaceMock_setApplicationProvider_Call {
 	return &appProviderConsumerInterfaceMock_setApplicationProvider_Call{Call: _e.mock.On("setApplicationProvider", provider)}
 }
 

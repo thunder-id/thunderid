@@ -17,10 +17,19 @@ func NewJWKSServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *JWKSServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &JWKSServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -75,7 +84,7 @@ type JWKSServiceInterfaceMock_GetJWKS_Call struct {
 
 // GetJWKS is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *JWKSServiceInterfaceMock_Expecter) GetJWKS(ctx interface{}) *JWKSServiceInterfaceMock_GetJWKS_Call {
+func (_e *JWKSServiceInterfaceMock_Expecter) GetJWKS(ctx any) *JWKSServiceInterfaceMock_GetJWKS_Call {
 	return &JWKSServiceInterfaceMock_GetJWKS_Call{Call: _e.mock.On("GetJWKS", ctx)}
 }
 

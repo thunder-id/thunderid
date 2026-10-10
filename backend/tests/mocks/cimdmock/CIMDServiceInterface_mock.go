@@ -19,10 +19,19 @@ func NewCIMDServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *CIMDServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &CIMDServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type CIMDServiceInterfaceMock_Preview_Call struct {
 // Preview is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *CIMDServiceInterfaceMock_Expecter) Preview(ctx interface{}, clientID interface{}) *CIMDServiceInterfaceMock_Preview_Call {
+func (_e *CIMDServiceInterfaceMock_Expecter) Preview(ctx any, clientID any) *CIMDServiceInterfaceMock_Preview_Call {
 	return &CIMDServiceInterfaceMock_Preview_Call{Call: _e.mock.On("Preview", ctx, clientID)}
 }
 
@@ -140,7 +149,7 @@ type CIMDServiceInterfaceMock_ValidateOAuthProfile_Call struct {
 //   - hasClientSecret bool
 //   - existingClientID string
 //   - existing *providers.OAuthProfile
-func (_e *CIMDServiceInterfaceMock_Expecter) ValidateOAuthProfile(clientID interface{}, profile interface{}, hasClientSecret interface{}, existingClientID interface{}, existing interface{}) *CIMDServiceInterfaceMock_ValidateOAuthProfile_Call {
+func (_e *CIMDServiceInterfaceMock_Expecter) ValidateOAuthProfile(clientID any, profile any, hasClientSecret any, existingClientID any, existing any) *CIMDServiceInterfaceMock_ValidateOAuthProfile_Call {
 	return &CIMDServiceInterfaceMock_ValidateOAuthProfile_Call{Call: _e.mock.On("ValidateOAuthProfile", clientID, profile, hasClientSecret, existingClientID, existing)}
 }
 

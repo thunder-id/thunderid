@@ -467,7 +467,7 @@ func (s *IDPUtilsTestSuite) TestPropertyMapToSlice() {
 	s.NotNil(result)
 	s.Len(result, 2)
 
-	names := make([]string, 0)
+	names := make([]string, 0, len(result))
 	for _, prop := range result {
 		names = append(names, prop.GetName())
 	}

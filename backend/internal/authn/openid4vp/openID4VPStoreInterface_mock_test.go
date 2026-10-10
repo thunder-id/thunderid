@@ -16,10 +16,19 @@ func newOpenID4VPStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *openID4VPStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &openID4VPStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -62,7 +71,7 @@ type openID4VPStoreInterfaceMock_DeleteRequestState_Call struct {
 // DeleteRequestState is a helper method to define mock.On call
 //   - ctx context.Context
 //   - state string
-func (_e *openID4VPStoreInterfaceMock_Expecter) DeleteRequestState(ctx interface{}, state interface{}) *openID4VPStoreInterfaceMock_DeleteRequestState_Call {
+func (_e *openID4VPStoreInterfaceMock_Expecter) DeleteRequestState(ctx any, state any) *openID4VPStoreInterfaceMock_DeleteRequestState_Call {
 	return &openID4VPStoreInterfaceMock_DeleteRequestState_Call{Call: _e.mock.On("DeleteRequestState", ctx, state)}
 }
 
@@ -130,7 +139,7 @@ type openID4VPStoreInterfaceMock_GetRequestState_Call struct {
 // GetRequestState is a helper method to define mock.On call
 //   - ctx context.Context
 //   - state string
-func (_e *openID4VPStoreInterfaceMock_Expecter) GetRequestState(ctx interface{}, state interface{}) *openID4VPStoreInterfaceMock_GetRequestState_Call {
+func (_e *openID4VPStoreInterfaceMock_Expecter) GetRequestState(ctx any, state any) *openID4VPStoreInterfaceMock_GetRequestState_Call {
 	return &openID4VPStoreInterfaceMock_GetRequestState_Call{Call: _e.mock.On("GetRequestState", ctx, state)}
 }
 
@@ -187,7 +196,7 @@ type openID4VPStoreInterfaceMock_SaveRequestState_Call struct {
 // SaveRequestState is a helper method to define mock.On call
 //   - ctx context.Context
 //   - st *RequestState
-func (_e *openID4VPStoreInterfaceMock_Expecter) SaveRequestState(ctx interface{}, st interface{}) *openID4VPStoreInterfaceMock_SaveRequestState_Call {
+func (_e *openID4VPStoreInterfaceMock_Expecter) SaveRequestState(ctx any, st any) *openID4VPStoreInterfaceMock_SaveRequestState_Call {
 	return &openID4VPStoreInterfaceMock_SaveRequestState_Call{Call: _e.mock.On("SaveRequestState", ctx, st)}
 }
 

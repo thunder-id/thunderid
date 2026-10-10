@@ -19,10 +19,19 @@ func NewOTPAuthnServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *OTPAuthnServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &OTPAuthnServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -79,7 +88,7 @@ type OTPAuthnServiceInterfaceMock_Authenticate_Call struct {
 //   - ctx context.Context
 //   - sessionToken string
 //   - otp string
-func (_e *OTPAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, sessionToken interface{}, otp interface{}) *OTPAuthnServiceInterfaceMock_Authenticate_Call {
+func (_e *OTPAuthnServiceInterfaceMock_Expecter) Authenticate(ctx any, sessionToken any, otp any) *OTPAuthnServiceInterfaceMock_Authenticate_Call {
 	return &OTPAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, sessionToken, otp)}
 }
 
@@ -166,7 +175,7 @@ type OTPAuthnServiceInterfaceMock_GenerateOTP_Call struct {
 //   - recipient string
 //   - recipientAttr string
 //   - otpCfg *common1.OTPConfig
-func (_e *OTPAuthnServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, recipient interface{}, recipientAttr interface{}, otpCfg interface{}) *OTPAuthnServiceInterfaceMock_GenerateOTP_Call {
+func (_e *OTPAuthnServiceInterfaceMock_Expecter) GenerateOTP(ctx any, recipient any, recipientAttr any, otpCfg any) *OTPAuthnServiceInterfaceMock_GenerateOTP_Call {
 	return &OTPAuthnServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, recipient, recipientAttr, otpCfg)}
 }
 

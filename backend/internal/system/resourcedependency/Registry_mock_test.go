@@ -17,10 +17,19 @@ func NewRegistryMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RegistryMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RegistryMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -73,7 +82,7 @@ type RegistryMock_CascadeDelete_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RegistryMock_Expecter) CascadeDelete(ctx interface{}, resourceType interface{}, id interface{}) *RegistryMock_CascadeDelete_Call {
+func (_e *RegistryMock_Expecter) CascadeDelete(ctx any, resourceType any, id any) *RegistryMock_CascadeDelete_Call {
 	return &RegistryMock_CascadeDelete_Call{Call: _e.mock.On("CascadeDelete", ctx, resourceType, id)}
 }
 
@@ -147,7 +156,7 @@ type RegistryMock_GetDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RegistryMock_Expecter) GetDependencies(ctx interface{}, resourceType interface{}, id interface{}) *RegistryMock_GetDependencies_Call {
+func (_e *RegistryMock_Expecter) GetDependencies(ctx any, resourceType any, id any) *RegistryMock_GetDependencies_Call {
 	return &RegistryMock_GetDependencies_Call{Call: _e.mock.On("GetDependencies", ctx, resourceType, id)}
 }
 
@@ -197,7 +206,7 @@ type RegistryMock_RegisterProvider_Call struct {
 
 // RegisterProvider is a helper method to define mock.On call
 //   - p Provider
-func (_e *RegistryMock_Expecter) RegisterProvider(p interface{}) *RegistryMock_RegisterProvider_Call {
+func (_e *RegistryMock_Expecter) RegisterProvider(p any) *RegistryMock_RegisterProvider_Call {
 	return &RegistryMock_RegisterProvider_Call{Call: _e.mock.On("RegisterProvider", p)}
 }
 
@@ -252,7 +261,7 @@ type RegistryMock_ValidateReferenceUpdate_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *RegistryMock_Expecter) ValidateReferenceUpdate(ctx interface{}, resourceType interface{}, id interface{}) *RegistryMock_ValidateReferenceUpdate_Call {
+func (_e *RegistryMock_Expecter) ValidateReferenceUpdate(ctx any, resourceType any, id any) *RegistryMock_ValidateReferenceUpdate_Call {
 	return &RegistryMock_ValidateReferenceUpdate_Call{Call: _e.mock.On("ValidateReferenceUpdate", ctx, resourceType, id)}
 }
 

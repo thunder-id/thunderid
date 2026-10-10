@@ -21,10 +21,19 @@ func NewAgentServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *AgentServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &AgentServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -80,7 +89,7 @@ type AgentServiceInterfaceMock_CreateAgent_Call struct {
 // CreateAgent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - agent *providers.Agent
-func (_e *AgentServiceInterfaceMock_Expecter) CreateAgent(ctx interface{}, agent interface{}) *AgentServiceInterfaceMock_CreateAgent_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) CreateAgent(ctx any, agent any) *AgentServiceInterfaceMock_CreateAgent_Call {
 	return &AgentServiceInterfaceMock_CreateAgent_Call{Call: _e.mock.On("CreateAgent", ctx, agent)}
 }
 
@@ -139,7 +148,7 @@ type AgentServiceInterfaceMock_DeleteAgent_Call struct {
 // DeleteAgent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - agentID string
-func (_e *AgentServiceInterfaceMock_Expecter) DeleteAgent(ctx interface{}, agentID interface{}) *AgentServiceInterfaceMock_DeleteAgent_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) DeleteAgent(ctx any, agentID any) *AgentServiceInterfaceMock_DeleteAgent_Call {
 	return &AgentServiceInterfaceMock_DeleteAgent_Call{Call: _e.mock.On("DeleteAgent", ctx, agentID)}
 }
 
@@ -210,7 +219,7 @@ type AgentServiceInterfaceMock_GetAgent_Call struct {
 //   - ctx context.Context
 //   - agentID string
 //   - includeDisplay bool
-func (_e *AgentServiceInterfaceMock_Expecter) GetAgent(ctx interface{}, agentID interface{}, includeDisplay interface{}) *AgentServiceInterfaceMock_GetAgent_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgent(ctx any, agentID any, includeDisplay any) *AgentServiceInterfaceMock_GetAgent_Call {
 	return &AgentServiceInterfaceMock_GetAgent_Call{Call: _e.mock.On("GetAgent", ctx, agentID, includeDisplay)}
 }
 
@@ -287,7 +296,7 @@ type AgentServiceInterfaceMock_GetAgentGroups_Call struct {
 //   - agentID string
 //   - limit int
 //   - offset int
-func (_e *AgentServiceInterfaceMock_Expecter) GetAgentGroups(ctx interface{}, agentID interface{}, limit interface{}, offset interface{}) *AgentServiceInterfaceMock_GetAgentGroups_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgentGroups(ctx any, agentID any, limit any, offset any) *AgentServiceInterfaceMock_GetAgentGroups_Call {
 	return &AgentServiceInterfaceMock_GetAgentGroups_Call{Call: _e.mock.On("GetAgentGroups", ctx, agentID, limit, offset)}
 }
 
@@ -370,7 +379,7 @@ type AgentServiceInterfaceMock_GetAgentList_Call struct {
 //   - offset int
 //   - filters map[string]interface{}
 //   - includeDisplay bool
-func (_e *AgentServiceInterfaceMock_Expecter) GetAgentList(ctx interface{}, limit interface{}, offset interface{}, filters interface{}, includeDisplay interface{}) *AgentServiceInterfaceMock_GetAgentList_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgentList(ctx any, limit any, offset any, filters any, includeDisplay any) *AgentServiceInterfaceMock_GetAgentList_Call {
 	return &AgentServiceInterfaceMock_GetAgentList_Call{Call: _e.mock.On("GetAgentList", ctx, limit, offset, filters, includeDisplay)}
 }
 
@@ -457,7 +466,7 @@ type AgentServiceInterfaceMock_GetAgentRoles_Call struct {
 //   - agentID string
 //   - limit int
 //   - offset int
-func (_e *AgentServiceInterfaceMock_Expecter) GetAgentRoles(ctx interface{}, agentID interface{}, limit interface{}, offset interface{}) *AgentServiceInterfaceMock_GetAgentRoles_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgentRoles(ctx any, agentID any, limit any, offset any) *AgentServiceInterfaceMock_GetAgentRoles_Call {
 	return &AgentServiceInterfaceMock_GetAgentRoles_Call{Call: _e.mock.On("GetAgentRoles", ctx, agentID, limit, offset)}
 }
 
@@ -536,7 +545,7 @@ type AgentServiceInterfaceMock_GetResourceDependencies_Call struct {
 //   - ctx context.Context
 //   - resourceType string
 //   - id string
-func (_e *AgentServiceInterfaceMock_Expecter) GetResourceDependencies(ctx interface{}, resourceType interface{}, id interface{}) *AgentServiceInterfaceMock_GetResourceDependencies_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *AgentServiceInterfaceMock_GetResourceDependencies_Call {
 	return &AgentServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
 }
 
@@ -586,7 +595,7 @@ type AgentServiceInterfaceMock_SetDependencyRegistry_Call struct {
 
 // SetDependencyRegistry is a helper method to define mock.On call
 //   - r resourcedependency.Registry
-func (_e *AgentServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *AgentServiceInterfaceMock_SetDependencyRegistry_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *AgentServiceInterfaceMock_SetDependencyRegistry_Call {
 	return &AgentServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
 }
 
@@ -652,7 +661,7 @@ type AgentServiceInterfaceMock_UpdateAgent_Call struct {
 //   - ctx context.Context
 //   - agentID string
 //   - req *model.UpdateAgentRequest
-func (_e *AgentServiceInterfaceMock_Expecter) UpdateAgent(ctx interface{}, agentID interface{}, req interface{}) *AgentServiceInterfaceMock_UpdateAgent_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) UpdateAgent(ctx any, agentID any, req any) *AgentServiceInterfaceMock_UpdateAgent_Call {
 	return &AgentServiceInterfaceMock_UpdateAgent_Call{Call: _e.mock.On("UpdateAgent", ctx, agentID, req)}
 }
 
@@ -738,7 +747,7 @@ type AgentServiceInterfaceMock_ValidateAgent_Call struct {
 //   - ctx context.Context
 //   - agent *providers.Agent
 //   - excludeID string
-func (_e *AgentServiceInterfaceMock_Expecter) ValidateAgent(ctx interface{}, agent interface{}, excludeID interface{}) *AgentServiceInterfaceMock_ValidateAgent_Call {
+func (_e *AgentServiceInterfaceMock_Expecter) ValidateAgent(ctx any, agent any, excludeID any) *AgentServiceInterfaceMock_ValidateAgent_Call {
 	return &AgentServiceInterfaceMock_ValidateAgent_Call{Call: _e.mock.On("ValidateAgent", ctx, agent, excludeID)}
 }
 

@@ -18,10 +18,19 @@ func NewSCIMDiscoveryServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SCIMDiscoveryServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SCIMDiscoveryServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type SCIMDiscoveryServiceInterfaceMock_GetResourceType_Call struct {
 //   - ctx context.Context
 //   - resourceTypeID string
 //   - baseURL string
-func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetResourceType(ctx interface{}, resourceTypeID interface{}, baseURL interface{}) *SCIMDiscoveryServiceInterfaceMock_GetResourceType_Call {
+func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetResourceType(ctx any, resourceTypeID any, baseURL any) *SCIMDiscoveryServiceInterfaceMock_GetResourceType_Call {
 	return &SCIMDiscoveryServiceInterfaceMock_GetResourceType_Call{Call: _e.mock.On("GetResourceType", ctx, resourceTypeID, baseURL)}
 }
 
@@ -154,7 +163,7 @@ type SCIMDiscoveryServiceInterfaceMock_GetSchema_Call struct {
 //   - ctx context.Context
 //   - schemaURN string
 //   - baseURL string
-func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetSchema(ctx interface{}, schemaURN interface{}, baseURL interface{}) *SCIMDiscoveryServiceInterfaceMock_GetSchema_Call {
+func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetSchema(ctx any, schemaURN any, baseURL any) *SCIMDiscoveryServiceInterfaceMock_GetSchema_Call {
 	return &SCIMDiscoveryServiceInterfaceMock_GetSchema_Call{Call: _e.mock.On("GetSchema", ctx, schemaURN, baseURL)}
 }
 
@@ -216,7 +225,7 @@ type SCIMDiscoveryServiceInterfaceMock_GetServiceProviderConfig_Call struct {
 // GetServiceProviderConfig is a helper method to define mock.On call
 //   - ctx context.Context
 //   - baseURL string
-func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetServiceProviderConfig(ctx interface{}, baseURL interface{}) *SCIMDiscoveryServiceInterfaceMock_GetServiceProviderConfig_Call {
+func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) GetServiceProviderConfig(ctx any, baseURL any) *SCIMDiscoveryServiceInterfaceMock_GetServiceProviderConfig_Call {
 	return &SCIMDiscoveryServiceInterfaceMock_GetServiceProviderConfig_Call{Call: _e.mock.On("GetServiceProviderConfig", ctx, baseURL)}
 }
 
@@ -284,7 +293,7 @@ type SCIMDiscoveryServiceInterfaceMock_ListResourceTypes_Call struct {
 // ListResourceTypes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - baseURL string
-func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) ListResourceTypes(ctx interface{}, baseURL interface{}) *SCIMDiscoveryServiceInterfaceMock_ListResourceTypes_Call {
+func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) ListResourceTypes(ctx any, baseURL any) *SCIMDiscoveryServiceInterfaceMock_ListResourceTypes_Call {
 	return &SCIMDiscoveryServiceInterfaceMock_ListResourceTypes_Call{Call: _e.mock.On("ListResourceTypes", ctx, baseURL)}
 }
 
@@ -354,7 +363,7 @@ type SCIMDiscoveryServiceInterfaceMock_ListSchemas_Call struct {
 //   - baseURL string
 //   - startIndex int
 //   - count int
-func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) ListSchemas(ctx interface{}, baseURL interface{}, startIndex interface{}, count interface{}) *SCIMDiscoveryServiceInterfaceMock_ListSchemas_Call {
+func (_e *SCIMDiscoveryServiceInterfaceMock_Expecter) ListSchemas(ctx any, baseURL any, startIndex any, count any) *SCIMDiscoveryServiceInterfaceMock_ListSchemas_Call {
 	return &SCIMDiscoveryServiceInterfaceMock_ListSchemas_Call{Call: _e.mock.On("ListSchemas", ctx, baseURL, startIndex, count)}
 }
 

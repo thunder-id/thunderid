@@ -100,6 +100,7 @@ type ExportSummary struct {
 }
 
 // ExportError represents errors that occurred during export.
+//
 // Deprecated: Use declarativeresource.ExportError instead.
 type ExportError = declarativeresource.ExportError
 

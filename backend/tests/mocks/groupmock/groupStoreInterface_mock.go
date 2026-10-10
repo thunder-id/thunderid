@@ -18,10 +18,19 @@ func newGroupStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *groupStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &groupStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type groupStoreInterfaceMock_AddGroupMembers_Call struct {
 //   - ctx context.Context
 //   - groupID string
 //   - members []group.Member
-func (_e *groupStoreInterfaceMock_Expecter) AddGroupMembers(ctx interface{}, groupID interface{}, members interface{}) *groupStoreInterfaceMock_AddGroupMembers_Call {
+func (_e *groupStoreInterfaceMock_Expecter) AddGroupMembers(ctx any, groupID any, members any) *groupStoreInterfaceMock_AddGroupMembers_Call {
 	return &groupStoreInterfaceMock_AddGroupMembers_Call{Call: _e.mock.On("AddGroupMembers", ctx, groupID, members)}
 }
 
@@ -128,7 +137,7 @@ type groupStoreInterfaceMock_CheckGroupNameConflictForCreate_Call struct {
 //   - ctx context.Context
 //   - name string
 //   - oUID string
-func (_e *groupStoreInterfaceMock_Expecter) CheckGroupNameConflictForCreate(ctx interface{}, name interface{}, oUID interface{}) *groupStoreInterfaceMock_CheckGroupNameConflictForCreate_Call {
+func (_e *groupStoreInterfaceMock_Expecter) CheckGroupNameConflictForCreate(ctx any, name any, oUID any) *groupStoreInterfaceMock_CheckGroupNameConflictForCreate_Call {
 	return &groupStoreInterfaceMock_CheckGroupNameConflictForCreate_Call{Call: _e.mock.On("CheckGroupNameConflictForCreate", ctx, name, oUID)}
 }
 
@@ -192,7 +201,7 @@ type groupStoreInterfaceMock_CheckGroupNameConflictForUpdate_Call struct {
 //   - name string
 //   - oUID string
 //   - groupID string
-func (_e *groupStoreInterfaceMock_Expecter) CheckGroupNameConflictForUpdate(ctx interface{}, name interface{}, oUID interface{}, groupID interface{}) *groupStoreInterfaceMock_CheckGroupNameConflictForUpdate_Call {
+func (_e *groupStoreInterfaceMock_Expecter) CheckGroupNameConflictForUpdate(ctx any, name any, oUID any, groupID any) *groupStoreInterfaceMock_CheckGroupNameConflictForUpdate_Call {
 	return &groupStoreInterfaceMock_CheckGroupNameConflictForUpdate_Call{Call: _e.mock.On("CheckGroupNameConflictForUpdate", ctx, name, oUID, groupID)}
 }
 
@@ -259,7 +268,7 @@ type groupStoreInterfaceMock_CreateGroup_Call struct {
 // CreateGroup is a helper method to define mock.On call
 //   - ctx context.Context
 //   - group1 group.GroupDAO
-func (_e *groupStoreInterfaceMock_Expecter) CreateGroup(ctx interface{}, group1 interface{}) *groupStoreInterfaceMock_CreateGroup_Call {
+func (_e *groupStoreInterfaceMock_Expecter) CreateGroup(ctx any, group1 any) *groupStoreInterfaceMock_CreateGroup_Call {
 	return &groupStoreInterfaceMock_CreateGroup_Call{Call: _e.mock.On("CreateGroup", ctx, group1)}
 }
 
@@ -316,7 +325,7 @@ type groupStoreInterfaceMock_DeleteGroup_Call struct {
 // DeleteGroup is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *groupStoreInterfaceMock_Expecter) DeleteGroup(ctx interface{}, id interface{}) *groupStoreInterfaceMock_DeleteGroup_Call {
+func (_e *groupStoreInterfaceMock_Expecter) DeleteGroup(ctx any, id any) *groupStoreInterfaceMock_DeleteGroup_Call {
 	return &groupStoreInterfaceMock_DeleteGroup_Call{Call: _e.mock.On("DeleteGroup", ctx, id)}
 }
 
@@ -383,7 +392,7 @@ type groupStoreInterfaceMock_DeleteMembershipsByMember_Call struct {
 //   - ctx context.Context
 //   - memberType string
 //   - memberID string
-func (_e *groupStoreInterfaceMock_Expecter) DeleteMembershipsByMember(ctx interface{}, memberType interface{}, memberID interface{}) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
+func (_e *groupStoreInterfaceMock_Expecter) DeleteMembershipsByMember(ctx any, memberType any, memberID any) *groupStoreInterfaceMock_DeleteMembershipsByMember_Call {
 	return &groupStoreInterfaceMock_DeleteMembershipsByMember_Call{Call: _e.mock.On("DeleteMembershipsByMember", ctx, memberType, memberID)}
 }
 
@@ -456,7 +465,7 @@ type groupStoreInterfaceMock_GetDirectGroupParents_Call struct {
 // GetDirectGroupParents is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupIDs []string
-func (_e *groupStoreInterfaceMock_Expecter) GetDirectGroupParents(ctx interface{}, groupIDs interface{}) *groupStoreInterfaceMock_GetDirectGroupParents_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetDirectGroupParents(ctx any, groupIDs any) *groupStoreInterfaceMock_GetDirectGroupParents_Call {
 	return &groupStoreInterfaceMock_GetDirectGroupParents_Call{Call: _e.mock.On("GetDirectGroupParents", ctx, groupIDs)}
 }
 
@@ -522,7 +531,7 @@ type groupStoreInterfaceMock_GetGroup_Call struct {
 // GetGroup is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroup(ctx interface{}, id interface{}) *groupStoreInterfaceMock_GetGroup_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroup(ctx any, id any) *groupStoreInterfaceMock_GetGroup_Call {
 	return &groupStoreInterfaceMock_GetGroup_Call{Call: _e.mock.On("GetGroup", ctx, id)}
 }
 
@@ -591,7 +600,7 @@ type groupStoreInterfaceMock_GetGroupList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupList(ctx interface{}, limit interface{}, offset interface{}) *groupStoreInterfaceMock_GetGroupList_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupList(ctx any, limit any, offset any) *groupStoreInterfaceMock_GetGroupList_Call {
 	return &groupStoreInterfaceMock_GetGroupList_Call{Call: _e.mock.On("GetGroupList", ctx, limit, offset)}
 }
 
@@ -666,7 +675,7 @@ type groupStoreInterfaceMock_GetGroupListByOUIDs_Call struct {
 //   - ouIDs []string
 //   - limit int
 //   - offset int
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupListByOUIDs(ctx interface{}, ouIDs interface{}, limit interface{}, offset interface{}) *groupStoreInterfaceMock_GetGroupListByOUIDs_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListByOUIDs(ctx any, ouIDs any, limit any, offset any) *groupStoreInterfaceMock_GetGroupListByOUIDs_Call {
 	return &groupStoreInterfaceMock_GetGroupListByOUIDs_Call{Call: _e.mock.On("GetGroupListByOUIDs", ctx, ouIDs, limit, offset)}
 }
 
@@ -741,7 +750,7 @@ type groupStoreInterfaceMock_GetGroupListCount_Call struct {
 
 // GetGroupListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCount(ctx interface{}) *groupStoreInterfaceMock_GetGroupListCount_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCount(ctx any) *groupStoreInterfaceMock_GetGroupListCount_Call {
 	return &groupStoreInterfaceMock_GetGroupListCount_Call{Call: _e.mock.On("GetGroupListCount", ctx)}
 }
 
@@ -802,7 +811,7 @@ type groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call struct {
 // GetGroupListCountByOUIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - ouIDs []string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCountByOUIDs(ctx interface{}, ouIDs interface{}) *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCountByOUIDs(ctx any, ouIDs any) *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call {
 	return &groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call{Call: _e.mock.On("GetGroupListCountByOUIDs", ctx, ouIDs)}
 }
 
@@ -868,7 +877,7 @@ type groupStoreInterfaceMock_GetGroupMemberCount_Call struct {
 // GetGroupMemberCount is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupID string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupMemberCount(ctx interface{}, groupID interface{}) *groupStoreInterfaceMock_GetGroupMemberCount_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupMemberCount(ctx any, groupID any) *groupStoreInterfaceMock_GetGroupMemberCount_Call {
 	return &groupStoreInterfaceMock_GetGroupMemberCount_Call{Call: _e.mock.On("GetGroupMemberCount", ctx, groupID)}
 }
 
@@ -938,7 +947,7 @@ type groupStoreInterfaceMock_GetGroupMembers_Call struct {
 //   - groupID string
 //   - limit int
 //   - offset int
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupMembers(ctx interface{}, groupID interface{}, limit interface{}, offset interface{}) *groupStoreInterfaceMock_GetGroupMembers_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupMembers(ctx any, groupID any, limit any, offset any) *groupStoreInterfaceMock_GetGroupMembers_Call {
 	return &groupStoreInterfaceMock_GetGroupMembers_Call{Call: _e.mock.On("GetGroupMembers", ctx, groupID, limit, offset)}
 }
 
@@ -1016,7 +1025,7 @@ type groupStoreInterfaceMock_GetGroupsByIDs_Call struct {
 // GetGroupsByIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupIDs []string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByIDs(ctx interface{}, groupIDs interface{}) *groupStoreInterfaceMock_GetGroupsByIDs_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByIDs(ctx any, groupIDs any) *groupStoreInterfaceMock_GetGroupsByIDs_Call {
 	return &groupStoreInterfaceMock_GetGroupsByIDs_Call{Call: _e.mock.On("GetGroupsByIDs", ctx, groupIDs)}
 }
 
@@ -1084,7 +1093,7 @@ type groupStoreInterfaceMock_GetGroupsByNames_Call struct {
 // GetGroupsByNames is a helper method to define mock.On call
 //   - ctx context.Context
 //   - names []string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByNames(ctx interface{}, names interface{}) *groupStoreInterfaceMock_GetGroupsByNames_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByNames(ctx any, names any) *groupStoreInterfaceMock_GetGroupsByNames_Call {
 	return &groupStoreInterfaceMock_GetGroupsByNames_Call{Call: _e.mock.On("GetGroupsByNames", ctx, names)}
 }
 
@@ -1154,7 +1163,7 @@ type groupStoreInterfaceMock_GetGroupsByOrganizationUnit_Call struct {
 //   - oUID string
 //   - limit int
 //   - offset int
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByOrganizationUnit(ctx interface{}, oUID interface{}, limit interface{}, offset interface{}) *groupStoreInterfaceMock_GetGroupsByOrganizationUnit_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByOrganizationUnit(ctx any, oUID any, limit any, offset any) *groupStoreInterfaceMock_GetGroupsByOrganizationUnit_Call {
 	return &groupStoreInterfaceMock_GetGroupsByOrganizationUnit_Call{Call: _e.mock.On("GetGroupsByOrganizationUnit", ctx, oUID, limit, offset)}
 }
 
@@ -1230,7 +1239,7 @@ type groupStoreInterfaceMock_GetGroupsByOrganizationUnitCount_Call struct {
 // GetGroupsByOrganizationUnitCount is a helper method to define mock.On call
 //   - ctx context.Context
 //   - oUID string
-func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByOrganizationUnitCount(ctx interface{}, oUID interface{}) *groupStoreInterfaceMock_GetGroupsByOrganizationUnitCount_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupsByOrganizationUnitCount(ctx any, oUID any) *groupStoreInterfaceMock_GetGroupsByOrganizationUnitCount_Call {
 	return &groupStoreInterfaceMock_GetGroupsByOrganizationUnitCount_Call{Call: _e.mock.On("GetGroupsByOrganizationUnitCount", ctx, oUID)}
 }
 
@@ -1298,7 +1307,7 @@ type groupStoreInterfaceMock_GetTransitiveAncestorGroups_Call struct {
 // GetTransitiveAncestorGroups is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupID string
-func (_e *groupStoreInterfaceMock_Expecter) GetTransitiveAncestorGroups(ctx interface{}, groupID interface{}) *groupStoreInterfaceMock_GetTransitiveAncestorGroups_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetTransitiveAncestorGroups(ctx any, groupID any) *groupStoreInterfaceMock_GetTransitiveAncestorGroups_Call {
 	return &groupStoreInterfaceMock_GetTransitiveAncestorGroups_Call{Call: _e.mock.On("GetTransitiveAncestorGroups", ctx, groupID)}
 }
 
@@ -1366,7 +1375,7 @@ type groupStoreInterfaceMock_GetTransitiveGroupsForEntity_Call struct {
 // GetTransitiveGroupsForEntity is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *groupStoreInterfaceMock_Expecter) GetTransitiveGroupsForEntity(ctx interface{}, entityID interface{}) *groupStoreInterfaceMock_GetTransitiveGroupsForEntity_Call {
+func (_e *groupStoreInterfaceMock_Expecter) GetTransitiveGroupsForEntity(ctx any, entityID any) *groupStoreInterfaceMock_GetTransitiveGroupsForEntity_Call {
 	return &groupStoreInterfaceMock_GetTransitiveGroupsForEntity_Call{Call: _e.mock.On("GetTransitiveGroupsForEntity", ctx, entityID)}
 }
 
@@ -1432,7 +1441,7 @@ type groupStoreInterfaceMock_IsGroupDeclarative_Call struct {
 // IsGroupDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *groupStoreInterfaceMock_Expecter) IsGroupDeclarative(ctx interface{}, id interface{}) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+func (_e *groupStoreInterfaceMock_Expecter) IsGroupDeclarative(ctx any, id any) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
 	return &groupStoreInterfaceMock_IsGroupDeclarative_Call{Call: _e.mock.On("IsGroupDeclarative", ctx, id)}
 }
 
@@ -1490,7 +1499,7 @@ type groupStoreInterfaceMock_RemoveGroupMembers_Call struct {
 //   - ctx context.Context
 //   - groupID string
 //   - members []group.Member
-func (_e *groupStoreInterfaceMock_Expecter) RemoveGroupMembers(ctx interface{}, groupID interface{}, members interface{}) *groupStoreInterfaceMock_RemoveGroupMembers_Call {
+func (_e *groupStoreInterfaceMock_Expecter) RemoveGroupMembers(ctx any, groupID any, members any) *groupStoreInterfaceMock_RemoveGroupMembers_Call {
 	return &groupStoreInterfaceMock_RemoveGroupMembers_Call{Call: _e.mock.On("RemoveGroupMembers", ctx, groupID, members)}
 }
 
@@ -1552,7 +1561,7 @@ type groupStoreInterfaceMock_UpdateGroup_Call struct {
 // UpdateGroup is a helper method to define mock.On call
 //   - ctx context.Context
 //   - group1 group.GroupDAO
-func (_e *groupStoreInterfaceMock_Expecter) UpdateGroup(ctx interface{}, group1 interface{}) *groupStoreInterfaceMock_UpdateGroup_Call {
+func (_e *groupStoreInterfaceMock_Expecter) UpdateGroup(ctx any, group1 any) *groupStoreInterfaceMock_UpdateGroup_Call {
 	return &groupStoreInterfaceMock_UpdateGroup_Call{Call: _e.mock.On("UpdateGroup", ctx, group1)}
 }
 
@@ -1620,7 +1629,7 @@ type groupStoreInterfaceMock_ValidateGroupIDs_Call struct {
 // ValidateGroupIDs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - groupIDs []string
-func (_e *groupStoreInterfaceMock_Expecter) ValidateGroupIDs(ctx interface{}, groupIDs interface{}) *groupStoreInterfaceMock_ValidateGroupIDs_Call {
+func (_e *groupStoreInterfaceMock_Expecter) ValidateGroupIDs(ctx any, groupIDs any) *groupStoreInterfaceMock_ValidateGroupIDs_Call {
 	return &groupStoreInterfaceMock_ValidateGroupIDs_Call{Call: _e.mock.On("ValidateGroupIDs", ctx, groupIDs)}
 }
 

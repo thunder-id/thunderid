@@ -21,10 +21,19 @@ func NewInboundClientServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *InboundClientServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &InboundClientServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -69,7 +78,7 @@ type InboundClientServiceInterfaceMock_CreateInboundClient_Call struct {
 //   - client *model.InboundClient
 //   - oauthProfile *providers.OAuthProfile
 //   - hasClientSecret bool
-func (_e *InboundClientServiceInterfaceMock_Expecter) CreateInboundClient(ctx interface{}, client interface{}, oauthProfile interface{}, hasClientSecret interface{}) *InboundClientServiceInterfaceMock_CreateInboundClient_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) CreateInboundClient(ctx any, client any, oauthProfile any, hasClientSecret any) *InboundClientServiceInterfaceMock_CreateInboundClient_Call {
 	return &InboundClientServiceInterfaceMock_CreateInboundClient_Call{Call: _e.mock.On("CreateInboundClient", ctx, client, oauthProfile, hasClientSecret)}
 }
 
@@ -136,7 +145,7 @@ type InboundClientServiceInterfaceMock_DeleteInboundClient_Call struct {
 // DeleteInboundClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) DeleteInboundClient(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_DeleteInboundClient_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) DeleteInboundClient(ctx any, entityID any) *InboundClientServiceInterfaceMock_DeleteInboundClient_Call {
 	return &InboundClientServiceInterfaceMock_DeleteInboundClient_Call{Call: _e.mock.On("DeleteInboundClient", ctx, entityID)}
 }
 
@@ -207,7 +216,7 @@ type InboundClientServiceInterfaceMock_GetCertificate_Call struct {
 //   - ctx context.Context
 //   - refType cert.CertificateReferenceType
 //   - refID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetCertificate(ctx interface{}, refType interface{}, refID interface{}) *InboundClientServiceInterfaceMock_GetCertificate_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetCertificate(ctx any, refType any, refID any) *InboundClientServiceInterfaceMock_GetCertificate_Call {
 	return &InboundClientServiceInterfaceMock_GetCertificate_Call{Call: _e.mock.On("GetCertificate", ctx, refType, refID)}
 }
 
@@ -234,8 +243,8 @@ func (_c *InboundClientServiceInterfaceMock_GetCertificate_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *InboundClientServiceInterfaceMock_GetCertificate_Call) Return(v *model.Certificate, certOperationError *inboundclient.CertOperationError) *InboundClientServiceInterfaceMock_GetCertificate_Call {
-	_c.Call.Return(v, certOperationError)
+func (_c *InboundClientServiceInterfaceMock_GetCertificate_Call) Return(certificate *model.Certificate, certOperationError *inboundclient.CertOperationError) *InboundClientServiceInterfaceMock_GetCertificate_Call {
+	_c.Call.Return(certificate, certOperationError)
 	return _c
 }
 
@@ -289,7 +298,7 @@ type InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call struct {
 //   - refID string
 //   - limit int
 //   - offset int
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetEntityIDsByReference(ctx interface{}, refType interface{}, refID interface{}, limit interface{}, offset interface{}) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetEntityIDsByReference(ctx any, refType any, refID any, limit any, offset any) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
 	return &InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call{Call: _e.mock.On("GetEntityIDsByReference", ctx, refType, refID, limit, offset)}
 }
 
@@ -372,7 +381,7 @@ type InboundClientServiceInterfaceMock_GetInboundClientAttributes_Call struct {
 // GetInboundClientAttributes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - inboundClientID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientAttributes(ctx interface{}, inboundClientID interface{}) *InboundClientServiceInterfaceMock_GetInboundClientAttributes_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientAttributes(ctx any, inboundClientID any) *InboundClientServiceInterfaceMock_GetInboundClientAttributes_Call {
 	return &InboundClientServiceInterfaceMock_GetInboundClientAttributes_Call{Call: _e.mock.On("GetInboundClientAttributes", ctx, inboundClientID)}
 }
 
@@ -440,7 +449,7 @@ type InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call struct {
 // GetInboundClientByEntityID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientByEntityID(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientByEntityID(ctx any, entityID any) *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call {
 	return &InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call{Call: _e.mock.On("GetInboundClientByEntityID", ctx, entityID)}
 }
 
@@ -462,8 +471,8 @@ func (_c *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call) Run
 	return _c
 }
 
-func (_c *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call) Return(v *model.InboundClient, err error) *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call {
-	_c.Call.Return(v, err)
+func (_c *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call) Return(inboundClient *model.InboundClient, err error) *InboundClientServiceInterfaceMock_GetInboundClientByEntityID_Call {
+	_c.Call.Return(inboundClient, err)
 	return _c
 }
 
@@ -507,7 +516,7 @@ type InboundClientServiceInterfaceMock_GetInboundClientList_Call struct {
 
 // GetInboundClientList is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientList(ctx interface{}) *InboundClientServiceInterfaceMock_GetInboundClientList_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetInboundClientList(ctx any) *InboundClientServiceInterfaceMock_GetInboundClientList_Call {
 	return &InboundClientServiceInterfaceMock_GetInboundClientList_Call{Call: _e.mock.On("GetInboundClientList", ctx)}
 }
 
@@ -524,8 +533,8 @@ func (_c *InboundClientServiceInterfaceMock_GetInboundClientList_Call) Run(run f
 	return _c
 }
 
-func (_c *InboundClientServiceInterfaceMock_GetInboundClientList_Call) Return(vs []model.InboundClient, err error) *InboundClientServiceInterfaceMock_GetInboundClientList_Call {
-	_c.Call.Return(vs, err)
+func (_c *InboundClientServiceInterfaceMock_GetInboundClientList_Call) Return(inboundClients []model.InboundClient, err error) *InboundClientServiceInterfaceMock_GetInboundClientList_Call {
+	_c.Call.Return(inboundClients, err)
 	return _c
 }
 
@@ -570,7 +579,7 @@ type InboundClientServiceInterfaceMock_GetOAuthClientByClientID_Call struct {
 // GetOAuthClientByClientID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthClientByClientID(ctx interface{}, clientID interface{}) *InboundClientServiceInterfaceMock_GetOAuthClientByClientID_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthClientByClientID(ctx any, clientID any) *InboundClientServiceInterfaceMock_GetOAuthClientByClientID_Call {
 	return &InboundClientServiceInterfaceMock_GetOAuthClientByClientID_Call{Call: _e.mock.On("GetOAuthClientByClientID", ctx, clientID)}
 }
 
@@ -638,7 +647,7 @@ type InboundClientServiceInterfaceMock_GetOAuthClientByEntityID_Call struct {
 // GetOAuthClientByEntityID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthClientByEntityID(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_GetOAuthClientByEntityID_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthClientByEntityID(ctx any, entityID any) *InboundClientServiceInterfaceMock_GetOAuthClientByEntityID_Call {
 	return &InboundClientServiceInterfaceMock_GetOAuthClientByEntityID_Call{Call: _e.mock.On("GetOAuthClientByEntityID", ctx, entityID)}
 }
 
@@ -706,7 +715,7 @@ type InboundClientServiceInterfaceMock_GetOAuthProfileByEntityID_Call struct {
 // GetOAuthProfileByEntityID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthProfileByEntityID(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_GetOAuthProfileByEntityID_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetOAuthProfileByEntityID(ctx any, entityID any) *InboundClientServiceInterfaceMock_GetOAuthProfileByEntityID_Call {
 	return &InboundClientServiceInterfaceMock_GetOAuthProfileByEntityID_Call{Call: _e.mock.On("GetOAuthProfileByEntityID", ctx, entityID)}
 }
 
@@ -775,7 +784,7 @@ type InboundClientServiceInterfaceMock_IsClientAccessibleFromOU_Call struct {
 //   - ctx context.Context
 //   - client *providers.OAuthClient
 //   - ouID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) IsClientAccessibleFromOU(ctx interface{}, client interface{}, ouID interface{}) *InboundClientServiceInterfaceMock_IsClientAccessibleFromOU_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) IsClientAccessibleFromOU(ctx any, client any, ouID any) *InboundClientServiceInterfaceMock_IsClientAccessibleFromOU_Call {
 	return &InboundClientServiceInterfaceMock_IsClientAccessibleFromOU_Call{Call: _e.mock.On("IsClientAccessibleFromOU", ctx, client, ouID)}
 }
 
@@ -837,7 +846,7 @@ type InboundClientServiceInterfaceMock_IsDeclarative_Call struct {
 // IsDeclarative is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) IsDeclarative(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_IsDeclarative_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) IsDeclarative(ctx any, entityID any) *InboundClientServiceInterfaceMock_IsDeclarative_Call {
 	return &InboundClientServiceInterfaceMock_IsDeclarative_Call{Call: _e.mock.On("IsDeclarative", ctx, entityID)}
 }
 
@@ -904,7 +913,7 @@ type InboundClientServiceInterfaceMock_ListInboundClientAttributes_Call struct {
 
 // ListInboundClientAttributes is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *InboundClientServiceInterfaceMock_Expecter) ListInboundClientAttributes(ctx interface{}) *InboundClientServiceInterfaceMock_ListInboundClientAttributes_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) ListInboundClientAttributes(ctx any) *InboundClientServiceInterfaceMock_ListInboundClientAttributes_Call {
 	return &InboundClientServiceInterfaceMock_ListInboundClientAttributes_Call{Call: _e.mock.On("ListInboundClientAttributes", ctx)}
 }
 
@@ -956,7 +965,7 @@ type InboundClientServiceInterfaceMock_LoadDeclarativeResources_Call struct {
 // LoadDeclarativeResources is a helper method to define mock.On call
 //   - ctx context.Context
 //   - cfg model.DeclarativeLoaderConfig
-func (_e *InboundClientServiceInterfaceMock_Expecter) LoadDeclarativeResources(ctx interface{}, cfg interface{}) *InboundClientServiceInterfaceMock_LoadDeclarativeResources_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) LoadDeclarativeResources(ctx any, cfg any) *InboundClientServiceInterfaceMock_LoadDeclarativeResources_Call {
 	return &InboundClientServiceInterfaceMock_LoadDeclarativeResources_Call{Call: _e.mock.On("LoadDeclarativeResources", ctx, cfg)}
 }
 
@@ -1013,7 +1022,7 @@ type InboundClientServiceInterfaceMock_ResolveInboundAuthProfileHandles_Call str
 // ResolveInboundAuthProfileHandles is a helper method to define mock.On call
 //   - ctx context.Context
 //   - profile *providers.InboundAuthProfile
-func (_e *InboundClientServiceInterfaceMock_Expecter) ResolveInboundAuthProfileHandles(ctx interface{}, profile interface{}) *InboundClientServiceInterfaceMock_ResolveInboundAuthProfileHandles_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) ResolveInboundAuthProfileHandles(ctx any, profile any) *InboundClientServiceInterfaceMock_ResolveInboundAuthProfileHandles_Call {
 	return &InboundClientServiceInterfaceMock_ResolveInboundAuthProfileHandles_Call{Call: _e.mock.On("ResolveInboundAuthProfileHandles", ctx, profile)}
 }
 
@@ -1070,7 +1079,7 @@ type InboundClientServiceInterfaceMock_RevalidateFKs_Call struct {
 // RevalidateFKs is a helper method to define mock.On call
 //   - ctx context.Context
 //   - entityID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) RevalidateFKs(ctx interface{}, entityID interface{}) *InboundClientServiceInterfaceMock_RevalidateFKs_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) RevalidateFKs(ctx any, entityID any) *InboundClientServiceInterfaceMock_RevalidateFKs_Call {
 	return &InboundClientServiceInterfaceMock_RevalidateFKs_Call{Call: _e.mock.On("RevalidateFKs", ctx, entityID)}
 }
 
@@ -1130,7 +1139,7 @@ type InboundClientServiceInterfaceMock_UpdateInboundClient_Call struct {
 //   - oauthProfile *providers.OAuthProfile
 //   - hasClientSecret bool
 //   - oauthClientID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) UpdateInboundClient(ctx interface{}, client interface{}, oauthProfile interface{}, hasClientSecret interface{}, oauthClientID interface{}) *InboundClientServiceInterfaceMock_UpdateInboundClient_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) UpdateInboundClient(ctx any, client any, oauthProfile any, hasClientSecret any, oauthClientID any) *InboundClientServiceInterfaceMock_UpdateInboundClient_Call {
 	return &InboundClientServiceInterfaceMock_UpdateInboundClient_Call{Call: _e.mock.On("UpdateInboundClient", ctx, client, oauthProfile, hasClientSecret, oauthClientID)}
 }
 
@@ -1205,7 +1214,7 @@ type InboundClientServiceInterfaceMock_Validate_Call struct {
 //   - oauthProfile *providers.OAuthProfile
 //   - hasClientSecret bool
 //   - oauthClientID string
-func (_e *InboundClientServiceInterfaceMock_Expecter) Validate(ctx interface{}, client interface{}, oauthProfile interface{}, hasClientSecret interface{}, oauthClientID interface{}) *InboundClientServiceInterfaceMock_Validate_Call {
+func (_e *InboundClientServiceInterfaceMock_Expecter) Validate(ctx any, client any, oauthProfile any, hasClientSecret any, oauthClientID any) *InboundClientServiceInterfaceMock_Validate_Call {
 	return &InboundClientServiceInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", ctx, client, oauthProfile, hasClientSecret, oauthClientID)}
 }
 

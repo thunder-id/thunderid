@@ -17,10 +17,19 @@ func newCredentialConfigurationDeclarativeServiceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *credentialConfigurationDeclarativeServiceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &credentialConfigurationDeclarativeServiceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type credentialConfigurationDeclarativeServiceMock_ResolveCredentialConfiguratio
 // ResolveCredentialConfigurationOUHandle is a helper method to define mock.On call
 //   - ctx context.Context
 //   - dto *CredentialConfigurationDTO
-func (_e *credentialConfigurationDeclarativeServiceMock_Expecter) ResolveCredentialConfigurationOUHandle(ctx interface{}, dto interface{}) *credentialConfigurationDeclarativeServiceMock_ResolveCredentialConfigurationOUHandle_Call {
+func (_e *credentialConfigurationDeclarativeServiceMock_Expecter) ResolveCredentialConfigurationOUHandle(ctx any, dto any) *credentialConfigurationDeclarativeServiceMock_ResolveCredentialConfigurationOUHandle_Call {
 	return &credentialConfigurationDeclarativeServiceMock_ResolveCredentialConfigurationOUHandle_Call{Call: _e.mock.On("ResolveCredentialConfigurationOUHandle", ctx, dto)}
 }
 

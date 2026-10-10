@@ -17,10 +17,19 @@ func newRevocationStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *revocationStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &revocationStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -63,7 +72,7 @@ type revocationStoreInterfaceMock_InsertRevokedToken_Call struct {
 // InsertRevokedToken is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token RevokedToken
-func (_e *revocationStoreInterfaceMock_Expecter) InsertRevokedToken(ctx interface{}, token interface{}) *revocationStoreInterfaceMock_InsertRevokedToken_Call {
+func (_e *revocationStoreInterfaceMock_Expecter) InsertRevokedToken(ctx any, token any) *revocationStoreInterfaceMock_InsertRevokedToken_Call {
 	return &revocationStoreInterfaceMock_InsertRevokedToken_Call{Call: _e.mock.On("InsertRevokedToken", ctx, token)}
 }
 
@@ -129,7 +138,7 @@ type revocationStoreInterfaceMock_IsTokenRevoked_Call struct {
 // IsTokenRevoked is a helper method to define mock.On call
 //   - ctx context.Context
 //   - jti string
-func (_e *revocationStoreInterfaceMock_Expecter) IsTokenRevoked(ctx interface{}, jti interface{}) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
+func (_e *revocationStoreInterfaceMock_Expecter) IsTokenRevoked(ctx any, jti any) *revocationStoreInterfaceMock_IsTokenRevoked_Call {
 	return &revocationStoreInterfaceMock_IsTokenRevoked_Call{Call: _e.mock.On("IsTokenRevoked", ctx, jti)}
 }
 
@@ -196,7 +205,7 @@ type revocationStoreInterfaceMock_areCriteriaRevoked_Call struct {
 //   - ctx context.Context
 //   - criteria []Criterion
 //   - establishedAt time.Time
-func (_e *revocationStoreInterfaceMock_Expecter) areCriteriaRevoked(ctx interface{}, criteria interface{}, establishedAt interface{}) *revocationStoreInterfaceMock_areCriteriaRevoked_Call {
+func (_e *revocationStoreInterfaceMock_Expecter) areCriteriaRevoked(ctx any, criteria any, establishedAt any) *revocationStoreInterfaceMock_areCriteriaRevoked_Call {
 	return &revocationStoreInterfaceMock_areCriteriaRevoked_Call{Call: _e.mock.On("areCriteriaRevoked", ctx, criteria, establishedAt)}
 }
 
@@ -258,7 +267,7 @@ type revocationStoreInterfaceMock_insertCriterion_Call struct {
 // insertCriterion is a helper method to define mock.On call
 //   - ctx context.Context
 //   - criterion revocationCriterion
-func (_e *revocationStoreInterfaceMock_Expecter) insertCriterion(ctx interface{}, criterion interface{}) *revocationStoreInterfaceMock_insertCriterion_Call {
+func (_e *revocationStoreInterfaceMock_Expecter) insertCriterion(ctx any, criterion any) *revocationStoreInterfaceMock_insertCriterion_Call {
 	return &revocationStoreInterfaceMock_insertCriterion_Call{Call: _e.mock.On("insertCriterion", ctx, criterion)}
 }
 

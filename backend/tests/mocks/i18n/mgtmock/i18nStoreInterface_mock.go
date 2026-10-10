@@ -17,10 +17,19 @@ func newI18nStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *i18nStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &i18nStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type i18nStoreInterfaceMock_DeleteTranslation_Call struct {
 //   - language string
 //   - key string
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslation(ctx interface{}, language interface{}, key interface{}, namespace interface{}) *i18nStoreInterfaceMock_DeleteTranslation_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslation(ctx any, language any, key any, namespace any) *i18nStoreInterfaceMock_DeleteTranslation_Call {
 	return &i18nStoreInterfaceMock_DeleteTranslation_Call{Call: _e.mock.On("DeleteTranslation", ctx, language, key, namespace)}
 }
 
@@ -133,7 +142,7 @@ type i18nStoreInterfaceMock_DeleteTranslationsByKey_Call struct {
 //   - ctx context.Context
 //   - namespace string
 //   - key string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByKey(ctx interface{}, namespace interface{}, key interface{}) *i18nStoreInterfaceMock_DeleteTranslationsByKey_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByKey(ctx any, namespace any, key any) *i18nStoreInterfaceMock_DeleteTranslationsByKey_Call {
 	return &i18nStoreInterfaceMock_DeleteTranslationsByKey_Call{Call: _e.mock.On("DeleteTranslationsByKey", ctx, namespace, key)}
 }
 
@@ -195,7 +204,7 @@ type i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call struct {
 // DeleteTranslationsByLanguage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - language string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByLanguage(ctx interface{}, language interface{}) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByLanguage(ctx any, language any) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
 	return &i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call{Call: _e.mock.On("DeleteTranslationsByLanguage", ctx, language)}
 }
 
@@ -252,7 +261,7 @@ type i18nStoreInterfaceMock_DeleteTranslationsByNamespace_Call struct {
 // DeleteTranslationsByNamespace is a helper method to define mock.On call
 //   - ctx context.Context
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByNamespace(ctx interface{}, namespace interface{}) *i18nStoreInterfaceMock_DeleteTranslationsByNamespace_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByNamespace(ctx any, namespace any) *i18nStoreInterfaceMock_DeleteTranslationsByNamespace_Call {
 	return &i18nStoreInterfaceMock_DeleteTranslationsByNamespace_Call{Call: _e.mock.On("DeleteTranslationsByNamespace", ctx, namespace)}
 }
 
@@ -319,7 +328,7 @@ type i18nStoreInterfaceMock_GetDistinctLanguages_Call struct {
 
 // GetDistinctLanguages is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *i18nStoreInterfaceMock_Expecter) GetDistinctLanguages(ctx interface{}) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) GetDistinctLanguages(ctx any) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
 	return &i18nStoreInterfaceMock_GetDistinctLanguages_Call{Call: _e.mock.On("GetDistinctLanguages", ctx)}
 }
 
@@ -381,7 +390,7 @@ type i18nStoreInterfaceMock_GetTranslations_Call struct {
 
 // GetTranslations is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslations(ctx interface{}) *i18nStoreInterfaceMock_GetTranslations_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslations(ctx any) *i18nStoreInterfaceMock_GetTranslations_Call {
 	return &i18nStoreInterfaceMock_GetTranslations_Call{Call: _e.mock.On("GetTranslations", ctx)}
 }
 
@@ -445,7 +454,7 @@ type i18nStoreInterfaceMock_GetTranslationsByKey_Call struct {
 //   - ctx context.Context
 //   - key string
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByKey(ctx interface{}, key interface{}, namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByKey(ctx any, key any, namespace any) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
 	return &i18nStoreInterfaceMock_GetTranslationsByKey_Call{Call: _e.mock.On("GetTranslationsByKey", ctx, key, namespace)}
 }
 
@@ -518,7 +527,7 @@ type i18nStoreInterfaceMock_GetTranslationsByNamespace_Call struct {
 // GetTranslationsByNamespace is a helper method to define mock.On call
 //   - ctx context.Context
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByNamespace(ctx interface{}, namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByNamespace(ctx any, namespace any) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
 	return &i18nStoreInterfaceMock_GetTranslationsByNamespace_Call{Call: _e.mock.On("GetTranslationsByNamespace", ctx, namespace)}
 }
 
@@ -575,7 +584,7 @@ type i18nStoreInterfaceMock_UpsertTranslation_Call struct {
 // UpsertTranslation is a helper method to define mock.On call
 //   - ctx context.Context
 //   - trans mgt.Translation
-func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslation(ctx interface{}, trans interface{}) *i18nStoreInterfaceMock_UpsertTranslation_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslation(ctx any, trans any) *i18nStoreInterfaceMock_UpsertTranslation_Call {
 	return &i18nStoreInterfaceMock_UpsertTranslation_Call{Call: _e.mock.On("UpsertTranslation", ctx, trans)}
 }
 
@@ -632,7 +641,7 @@ type i18nStoreInterfaceMock_UpsertTranslations_Call struct {
 // UpsertTranslations is a helper method to define mock.On call
 //   - ctx context.Context
 //   - translations []mgt.Translation
-func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslations(ctx interface{}, translations interface{}) *i18nStoreInterfaceMock_UpsertTranslations_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslations(ctx any, translations any) *i18nStoreInterfaceMock_UpsertTranslations_Call {
 	return &i18nStoreInterfaceMock_UpsertTranslations_Call{Call: _e.mock.On("UpsertTranslations", ctx, translations)}
 }
 
@@ -690,7 +699,7 @@ type i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call struct {
 //   - ctx context.Context
 //   - language string
 //   - translations []mgt.Translation
-func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslationsByLanguage(ctx interface{}, language interface{}, translations interface{}) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
+func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslationsByLanguage(ctx any, language any, translations any) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
 	return &i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call{Call: _e.mock.On("UpsertTranslationsByLanguage", ctx, language, translations)}
 }
 

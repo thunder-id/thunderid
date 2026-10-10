@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Package discovery implements the OAuth 2.0 and OpenID Connect discovery endpoints.
 package discovery
 
 import (

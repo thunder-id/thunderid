@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/export"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 // Version is a captured state of this deployment's configuration.
@@ -29,7 +29,7 @@ type Version struct {
 	Resources string `json:"resources,omitempty"`
 	// Skipped names the resources the export could not write, each with why, as an export reports
 	// them. Only the capture's own answer carries it; it is not kept with the version.
-	Skipped []export.ExportError `json:"skipped,omitempty"`
+	Skipped []declarativeresource.ExportError `json:"skipped,omitempty"`
 	// Unchanged is set on a capture's answer when the configuration matched a version already captured,
 	// which is answered instead of capturing the same configuration again.
 	Unchanged bool `json:"unchanged,omitempty"`

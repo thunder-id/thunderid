@@ -15,10 +15,19 @@ func newOidcAuthExecutorInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *oidcAuthExecutorInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &oidcAuthExecutorInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call struct {
 // BuildAuthorizeFlow is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) BuildAuthorizeFlow(ctx interface{}, execResp interface{}) *oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) BuildAuthorizeFlow(ctx any, execResp any) *oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
 	return &oidcAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call{Call: _e.mock.On("BuildAuthorizeFlow", ctx, execResp)}
 }
 
@@ -139,7 +148,7 @@ type oidcAuthExecutorInterfaceMock_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) Execute(ctx interface{}) *oidcAuthExecutorInterfaceMock_Execute_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) Execute(ctx any) *oidcAuthExecutorInterfaceMock_Execute_Call {
 	return &oidcAuthExecutorInterfaceMock_Execute_Call{Call: _e.mock.On("Execute", ctx)}
 }
 
@@ -238,7 +247,7 @@ type oidcAuthExecutorInterfaceMock_GetExecutionPolicy_Call struct {
 
 // GetExecutionPolicy is a helper method to define mock.On call
 //   - mode string
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode interface{}) *oidcAuthExecutorInterfaceMock_GetExecutionPolicy_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetExecutionPolicy(mode any) *oidcAuthExecutorInterfaceMock_GetExecutionPolicy_Call {
 	return &oidcAuthExecutorInterfaceMock_GetExecutionPolicy_Call{Call: _e.mock.On("GetExecutionPolicy", mode)}
 }
 
@@ -298,7 +307,7 @@ type oidcAuthExecutorInterfaceMock_GetIdpID_Call struct {
 
 // GetIdpID is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetIdpID(ctx interface{}) *oidcAuthExecutorInterfaceMock_GetIdpID_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetIdpID(ctx any) *oidcAuthExecutorInterfaceMock_GetIdpID_Call {
 	return &oidcAuthExecutorInterfaceMock_GetIdpID_Call{Call: _e.mock.On("GetIdpID", ctx)}
 }
 
@@ -487,7 +496,7 @@ type oidcAuthExecutorInterfaceMock_GetRequiredInputs_Call struct {
 
 // GetRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx interface{}) *oidcAuthExecutorInterfaceMock_GetRequiredInputs_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetRequiredInputs(ctx any) *oidcAuthExecutorInterfaceMock_GetRequiredInputs_Call {
 	return &oidcAuthExecutorInterfaceMock_GetRequiredInputs_Call{Call: _e.mock.On("GetRequiredInputs", ctx)}
 }
 
@@ -584,7 +593,7 @@ type oidcAuthExecutorInterfaceMock_GetUserIDFromContext_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx interface{}, execResp interface{}, authnProvider interface{}) *oidcAuthExecutorInterfaceMock_GetUserIDFromContext_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx any, execResp any, authnProvider any) *oidcAuthExecutorInterfaceMock_GetUserIDFromContext_Call {
 	return &oidcAuthExecutorInterfaceMock_GetUserIDFromContext_Call{Call: _e.mock.On("GetUserIDFromContext", ctx, execResp, authnProvider)}
 }
 
@@ -646,7 +655,7 @@ type oidcAuthExecutorInterfaceMock_HasRequiredInputs_Call struct {
 // HasRequiredInputs is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx interface{}, execResp interface{}) *oidcAuthExecutorInterfaceMock_HasRequiredInputs_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) HasRequiredInputs(ctx any, execResp any) *oidcAuthExecutorInterfaceMock_HasRequiredInputs_Call {
 	return &oidcAuthExecutorInterfaceMock_HasRequiredInputs_Call{Call: _e.mock.On("HasRequiredInputs", ctx, execResp)}
 }
 
@@ -703,7 +712,7 @@ type oidcAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call struct {
 // ProcessAuthFlowResponse is a helper method to define mock.On call
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) ProcessAuthFlowResponse(ctx interface{}, execResp interface{}) *oidcAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) ProcessAuthFlowResponse(ctx any, execResp any) *oidcAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call {
 	return &oidcAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call{Call: _e.mock.On("ProcessAuthFlowResponse", ctx, execResp)}
 }
 
@@ -761,7 +770,7 @@ type oidcAuthExecutorInterfaceMock_ValidatePrerequisites_Call struct {
 //   - ctx *providers.NodeContext
 //   - execResp *providers.ExecutorResponse
 //   - authnProvider providers.AuthnProviderManager
-func (_e *oidcAuthExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx interface{}, execResp interface{}, authnProvider interface{}) *oidcAuthExecutorInterfaceMock_ValidatePrerequisites_Call {
+func (_e *oidcAuthExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx any, execResp any, authnProvider any) *oidcAuthExecutorInterfaceMock_ValidatePrerequisites_Call {
 	return &oidcAuthExecutorInterfaceMock_ValidatePrerequisites_Call{Call: _e.mock.On("ValidatePrerequisites", ctx, execResp, authnProvider)}
 }
 

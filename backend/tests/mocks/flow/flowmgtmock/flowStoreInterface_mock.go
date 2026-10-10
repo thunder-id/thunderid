@@ -18,10 +18,19 @@ func newFlowStoreInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *flowStoreInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &flowStoreInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -76,7 +85,7 @@ type flowStoreInterfaceMock_CreateFlow_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - flow *flowmgt.FlowDefinition
-func (_e *flowStoreInterfaceMock_Expecter) CreateFlow(ctx interface{}, flowID interface{}, flow interface{}) *flowStoreInterfaceMock_CreateFlow_Call {
+func (_e *flowStoreInterfaceMock_Expecter) CreateFlow(ctx any, flowID any, flow any) *flowStoreInterfaceMock_CreateFlow_Call {
 	return &flowStoreInterfaceMock_CreateFlow_Call{Call: _e.mock.On("CreateFlow", ctx, flowID, flow)}
 }
 
@@ -138,7 +147,7 @@ type flowStoreInterfaceMock_DeleteFlow_Call struct {
 // DeleteFlow is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *flowStoreInterfaceMock_Expecter) DeleteFlow(ctx interface{}, flowID interface{}) *flowStoreInterfaceMock_DeleteFlow_Call {
+func (_e *flowStoreInterfaceMock_Expecter) DeleteFlow(ctx any, flowID any) *flowStoreInterfaceMock_DeleteFlow_Call {
 	return &flowStoreInterfaceMock_DeleteFlow_Call{Call: _e.mock.On("DeleteFlow", ctx, flowID)}
 }
 
@@ -207,7 +216,7 @@ type flowStoreInterfaceMock_GetFlowByHandle_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *flowStoreInterfaceMock_Expecter) GetFlowByHandle(ctx interface{}, handle interface{}, flowType interface{}) *flowStoreInterfaceMock_GetFlowByHandle_Call {
+func (_e *flowStoreInterfaceMock_Expecter) GetFlowByHandle(ctx any, handle any, flowType any) *flowStoreInterfaceMock_GetFlowByHandle_Call {
 	return &flowStoreInterfaceMock_GetFlowByHandle_Call{Call: _e.mock.On("GetFlowByHandle", ctx, handle, flowType)}
 }
 
@@ -280,7 +289,7 @@ type flowStoreInterfaceMock_GetFlowByID_Call struct {
 // GetFlowByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *flowStoreInterfaceMock_Expecter) GetFlowByID(ctx interface{}, flowID interface{}) *flowStoreInterfaceMock_GetFlowByID_Call {
+func (_e *flowStoreInterfaceMock_Expecter) GetFlowByID(ctx any, flowID any) *flowStoreInterfaceMock_GetFlowByID_Call {
 	return &flowStoreInterfaceMock_GetFlowByID_Call{Call: _e.mock.On("GetFlowByID", ctx, flowID)}
 }
 
@@ -349,7 +358,7 @@ type flowStoreInterfaceMock_GetFlowVersion_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - version int
-func (_e *flowStoreInterfaceMock_Expecter) GetFlowVersion(ctx interface{}, flowID interface{}, version interface{}) *flowStoreInterfaceMock_GetFlowVersion_Call {
+func (_e *flowStoreInterfaceMock_Expecter) GetFlowVersion(ctx any, flowID any, version any) *flowStoreInterfaceMock_GetFlowVersion_Call {
 	return &flowStoreInterfaceMock_GetFlowVersion_Call{Call: _e.mock.On("GetFlowVersion", ctx, flowID, version)}
 }
 
@@ -402,7 +411,7 @@ type flowStoreInterfaceMock_InvalidateCache_Call struct {
 //   - flowID string
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *flowStoreInterfaceMock_Expecter) InvalidateCache(ctx interface{}, flowID interface{}, handle interface{}, flowType interface{}) *flowStoreInterfaceMock_InvalidateCache_Call {
+func (_e *flowStoreInterfaceMock_Expecter) InvalidateCache(ctx any, flowID any, handle any, flowType any) *flowStoreInterfaceMock_InvalidateCache_Call {
 	return &flowStoreInterfaceMock_InvalidateCache_Call{Call: _e.mock.On("InvalidateCache", ctx, flowID, handle, flowType)}
 }
 
@@ -479,7 +488,7 @@ type flowStoreInterfaceMock_IsFlowExistsByHandle_Call struct {
 //   - ctx context.Context
 //   - handle string
 //   - flowType providers.FlowType
-func (_e *flowStoreInterfaceMock_Expecter) IsFlowExistsByHandle(ctx interface{}, handle interface{}, flowType interface{}) *flowStoreInterfaceMock_IsFlowExistsByHandle_Call {
+func (_e *flowStoreInterfaceMock_Expecter) IsFlowExistsByHandle(ctx any, handle any, flowType any) *flowStoreInterfaceMock_IsFlowExistsByHandle_Call {
 	return &flowStoreInterfaceMock_IsFlowExistsByHandle_Call{Call: _e.mock.On("IsFlowExistsByHandle", ctx, handle, flowType)}
 }
 
@@ -551,7 +560,7 @@ type flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call struct {
 
 // ListActiveFlowsWithNodes is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *flowStoreInterfaceMock_Expecter) ListActiveFlowsWithNodes(ctx interface{}) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
+func (_e *flowStoreInterfaceMock_Expecter) ListActiveFlowsWithNodes(ctx any) *flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call {
 	return &flowStoreInterfaceMock_ListActiveFlowsWithNodes_Call{Call: _e.mock.On("ListActiveFlowsWithNodes", ctx)}
 }
 
@@ -614,7 +623,7 @@ type flowStoreInterfaceMock_ListFlowVersions_Call struct {
 // ListFlowVersions is a helper method to define mock.On call
 //   - ctx context.Context
 //   - flowID string
-func (_e *flowStoreInterfaceMock_Expecter) ListFlowVersions(ctx interface{}, flowID interface{}) *flowStoreInterfaceMock_ListFlowVersions_Call {
+func (_e *flowStoreInterfaceMock_Expecter) ListFlowVersions(ctx any, flowID any) *flowStoreInterfaceMock_ListFlowVersions_Call {
 	return &flowStoreInterfaceMock_ListFlowVersions_Call{Call: _e.mock.On("ListFlowVersions", ctx, flowID)}
 }
 
@@ -690,7 +699,7 @@ type flowStoreInterfaceMock_ListFlows_Call struct {
 //   - limit int
 //   - offset int
 //   - flowType string
-func (_e *flowStoreInterfaceMock_Expecter) ListFlows(ctx interface{}, limit interface{}, offset interface{}, flowType interface{}) *flowStoreInterfaceMock_ListFlows_Call {
+func (_e *flowStoreInterfaceMock_Expecter) ListFlows(ctx any, limit any, offset any, flowType any) *flowStoreInterfaceMock_ListFlows_Call {
 	return &flowStoreInterfaceMock_ListFlows_Call{Call: _e.mock.On("ListFlows", ctx, limit, offset, flowType)}
 }
 
@@ -769,7 +778,7 @@ type flowStoreInterfaceMock_RestoreFlowVersion_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - version int
-func (_e *flowStoreInterfaceMock_Expecter) RestoreFlowVersion(ctx interface{}, flowID interface{}, version interface{}) *flowStoreInterfaceMock_RestoreFlowVersion_Call {
+func (_e *flowStoreInterfaceMock_Expecter) RestoreFlowVersion(ctx any, flowID any, version any) *flowStoreInterfaceMock_RestoreFlowVersion_Call {
 	return &flowStoreInterfaceMock_RestoreFlowVersion_Call{Call: _e.mock.On("RestoreFlowVersion", ctx, flowID, version)}
 }
 
@@ -843,7 +852,7 @@ type flowStoreInterfaceMock_UpdateFlow_Call struct {
 //   - ctx context.Context
 //   - flowID string
 //   - flow *flowmgt.FlowDefinition
-func (_e *flowStoreInterfaceMock_Expecter) UpdateFlow(ctx interface{}, flowID interface{}, flow interface{}) *flowStoreInterfaceMock_UpdateFlow_Call {
+func (_e *flowStoreInterfaceMock_Expecter) UpdateFlow(ctx any, flowID any, flow any) *flowStoreInterfaceMock_UpdateFlow_Call {
 	return &flowStoreInterfaceMock_UpdateFlow_Call{Call: _e.mock.On("UpdateFlow", ctx, flowID, flow)}
 }
 

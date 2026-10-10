@@ -17,10 +17,19 @@ func NewDCRServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DCRServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DCRServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -65,7 +74,7 @@ type DCRServiceInterfaceMock_DeleteClient_Call struct {
 // DeleteClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *DCRServiceInterfaceMock_Expecter) DeleteClient(ctx interface{}, clientID interface{}) *DCRServiceInterfaceMock_DeleteClient_Call {
+func (_e *DCRServiceInterfaceMock_Expecter) DeleteClient(ctx any, clientID any) *DCRServiceInterfaceMock_DeleteClient_Call {
 	return &DCRServiceInterfaceMock_DeleteClient_Call{Call: _e.mock.On("DeleteClient", ctx, clientID)}
 }
 
@@ -135,7 +144,7 @@ type DCRServiceInterfaceMock_GetClient_Call struct {
 // GetClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *DCRServiceInterfaceMock_Expecter) GetClient(ctx interface{}, clientID interface{}) *DCRServiceInterfaceMock_GetClient_Call {
+func (_e *DCRServiceInterfaceMock_Expecter) GetClient(ctx any, clientID any) *DCRServiceInterfaceMock_GetClient_Call {
 	return &DCRServiceInterfaceMock_GetClient_Call{Call: _e.mock.On("GetClient", ctx, clientID)}
 }
 
@@ -205,7 +214,7 @@ type DCRServiceInterfaceMock_RegisterClient_Call struct {
 // RegisterClient is a helper method to define mock.On call
 //   - ctx context.Context
 //   - request *DCRRegistrationRequest
-func (_e *DCRServiceInterfaceMock_Expecter) RegisterClient(ctx interface{}, request interface{}) *DCRServiceInterfaceMock_RegisterClient_Call {
+func (_e *DCRServiceInterfaceMock_Expecter) RegisterClient(ctx any, request any) *DCRServiceInterfaceMock_RegisterClient_Call {
 	return &DCRServiceInterfaceMock_RegisterClient_Call{Call: _e.mock.On("RegisterClient", ctx, request)}
 }
 
@@ -276,7 +285,7 @@ type DCRServiceInterfaceMock_UpdateClient_Call struct {
 //   - ctx context.Context
 //   - clientID string
 //   - request *DCRUpdateRequest
-func (_e *DCRServiceInterfaceMock_Expecter) UpdateClient(ctx interface{}, clientID interface{}, request interface{}) *DCRServiceInterfaceMock_UpdateClient_Call {
+func (_e *DCRServiceInterfaceMock_Expecter) UpdateClient(ctx any, clientID any, request any) *DCRServiceInterfaceMock_UpdateClient_Call {
 	return &DCRServiceInterfaceMock_UpdateClient_Call{Call: _e.mock.On("UpdateClient", ctx, clientID, request)}
 }
 

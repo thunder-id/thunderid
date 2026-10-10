@@ -18,10 +18,19 @@ func NewNotificationSenderServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *NotificationSenderServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &NotificationSenderServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -67,7 +76,7 @@ type NotificationSenderServiceInterfaceMock_SendEmail_Call struct {
 //   - ctx context.Context
 //   - senderID string
 //   - data common.EmailData
-func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendEmail(ctx interface{}, senderID interface{}, data interface{}) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
+func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendEmail(ctx any, senderID any, data any) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
 	return &NotificationSenderServiceInterfaceMock_SendEmail_Call{Call: _e.mock.On("SendEmail", ctx, senderID, data)}
 }
 
@@ -133,7 +142,7 @@ type NotificationSenderServiceInterfaceMock_SendMessage_Call struct {
 //   - channel common.ChannelType
 //   - senderID string
 //   - data common.MessageData
-func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendMessage(ctx interface{}, channel interface{}, senderID interface{}, data interface{}) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
+func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendMessage(ctx any, channel any, senderID any, data any) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
 	return &NotificationSenderServiceInterfaceMock_SendMessage_Call{Call: _e.mock.On("SendMessage", ctx, channel, senderID, data)}
 }
 

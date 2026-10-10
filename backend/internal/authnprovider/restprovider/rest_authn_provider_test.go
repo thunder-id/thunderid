@@ -34,7 +34,7 @@ func TestRestAuthnProviderTestSuite(t *testing.T) {
 func (suite *RestAuthnProviderTestSuite) setupMockClient() *httpmock.HTTPClientInterfaceMock {
 	client := httpmock.NewHTTPClientInterfaceMock(suite.T())
 	client.EXPECT().Do(mock.Anything).RunAndReturn(func(req *http.Request) (*http.Response, error) {
-		return http.DefaultClient.Do(req)
+		return http.DefaultClient.Do(req) //nolint:gosec // G704: requests go to the test's local httptest server
 	})
 	return client
 }

@@ -17,10 +17,19 @@ func NewRefreshTokenRevokerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *RefreshTokenRevokerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &RefreshTokenRevokerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call struct {
 //   - ctx context.Context
 //   - jti string
 //   - expiryTime time.Time
-func (_e *RefreshTokenRevokerInterfaceMock_Expecter) RevokeRefreshToken(ctx interface{}, jti interface{}, expiryTime interface{}) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
+func (_e *RefreshTokenRevokerInterfaceMock_Expecter) RevokeRefreshToken(ctx any, jti any, expiryTime any) *RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call {
 	return &RefreshTokenRevokerInterfaceMock_RevokeRefreshToken_Call{Call: _e.mock.On("RevokeRefreshToken", ctx, jti, expiryTime)}
 }
 

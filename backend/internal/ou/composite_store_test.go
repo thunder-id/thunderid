@@ -344,9 +344,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 		for _, ou := range list {
 			ids[ou.ID] = true
 			// Verify IsReadOnly flags are correct
-			if ou.ID == "db-ou-1" || ou.ID == "db-ou-2" {
+			switch ou.ID {
+			case "db-ou-1", "db-ou-2":
 				suite.False(ou.IsReadOnly, "DB OU %s should have IsReadOnly=false", ou.ID)
-			} else if ou.ID == "file-ou-1" {
+			case "file-ou-1":
 				suite.True(ou.IsReadOnly, "File OU %s should have IsReadOnly=true", ou.ID)
 			}
 		}
@@ -846,9 +847,10 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateOUs() {
 
 		// Verify IsReadOnly flags
 		for _, ou := range result {
-			if ou.ID == db1 || ou.ID == db2 {
+			switch ou.ID {
+			case db1, db2:
 				suite.False(ou.IsReadOnly, "DB OU %s should have IsReadOnly=false", ou.ID)
-			} else if ou.ID == file1 || ou.ID == "file-2" {
+			case file1, "file-2":
 				suite.True(ou.IsReadOnly, "File OU %s should have IsReadOnly=true", ou.ID)
 			}
 		}
@@ -900,9 +902,10 @@ func (suite *CompositeStoreCoverageTestSuite) TestMergeAndDeduplicateChildren() 
 
 		// Verify IsReadOnly flags
 		for _, child := range result {
-			if child.ID == "db-1" || child.ID == "db-2" {
+			switch child.ID {
+			case "db-1", "db-2":
 				suite.False(child.IsReadOnly, "DB child %s should have IsReadOnly=false", child.ID)
-			} else if child.ID == "file-1" {
+			case "file-1":
 				suite.True(child.IsReadOnly, "File child %s should have IsReadOnly=true", child.ID)
 			}
 		}

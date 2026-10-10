@@ -16,10 +16,19 @@ func NewTerminationListenerMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *TerminationListenerMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &TerminationListenerMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -51,7 +60,7 @@ type TerminationListenerMock_OnEvent_Call struct {
 // OnEvent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - event TerminatedSession
-func (_e *TerminationListenerMock_Expecter) OnEvent(ctx interface{}, event interface{}) *TerminationListenerMock_OnEvent_Call {
+func (_e *TerminationListenerMock_Expecter) OnEvent(ctx any, event any) *TerminationListenerMock_OnEvent_Call {
 	return &TerminationListenerMock_OnEvent_Call{Call: _e.mock.On("OnEvent", ctx, event)}
 }
 

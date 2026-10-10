@@ -18,10 +18,19 @@ func NewGrantHandlerInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *GrantHandlerInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &GrantHandlerInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -78,7 +87,7 @@ type GrantHandlerInterfaceMock_HandleGrant_Call struct {
 //   - ctx context.Context
 //   - tokenRequest *model.TokenRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *GrantHandlerInterfaceMock_Expecter) HandleGrant(ctx interface{}, tokenRequest interface{}, oauthApp interface{}) *GrantHandlerInterfaceMock_HandleGrant_Call {
+func (_e *GrantHandlerInterfaceMock_Expecter) HandleGrant(ctx any, tokenRequest any, oauthApp any) *GrantHandlerInterfaceMock_HandleGrant_Call {
 	return &GrantHandlerInterfaceMock_HandleGrant_Call{Call: _e.mock.On("HandleGrant", ctx, tokenRequest, oauthApp)}
 }
 
@@ -143,7 +152,7 @@ type GrantHandlerInterfaceMock_ValidateGrant_Call struct {
 //   - ctx context.Context
 //   - tokenRequest *model.TokenRequest
 //   - oauthApp *providers.OAuthClient
-func (_e *GrantHandlerInterfaceMock_Expecter) ValidateGrant(ctx interface{}, tokenRequest interface{}, oauthApp interface{}) *GrantHandlerInterfaceMock_ValidateGrant_Call {
+func (_e *GrantHandlerInterfaceMock_Expecter) ValidateGrant(ctx any, tokenRequest any, oauthApp any) *GrantHandlerInterfaceMock_ValidateGrant_Call {
 	return &GrantHandlerInterfaceMock_ValidateGrant_Call{Call: _e.mock.On("ValidateGrant", ctx, tokenRequest, oauthApp)}
 }
 

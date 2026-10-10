@@ -15,10 +15,19 @@ func NewHashServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *HashServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &HashServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -69,7 +78,7 @@ type HashServiceInterfaceMock_Generate_Call struct {
 
 // Generate is a helper method to define mock.On call
 //   - credentialValue []byte
-func (_e *HashServiceInterfaceMock_Expecter) Generate(credentialValue interface{}) *HashServiceInterfaceMock_Generate_Call {
+func (_e *HashServiceInterfaceMock_Expecter) Generate(credentialValue any) *HashServiceInterfaceMock_Generate_Call {
 	return &HashServiceInterfaceMock_Generate_Call{Call: _e.mock.On("Generate", credentialValue)}
 }
 
@@ -130,7 +139,7 @@ type HashServiceInterfaceMock_Verify_Call struct {
 // Verify is a helper method to define mock.On call
 //   - credentialValueToVerify []byte
 //   - referenceCredential cryptolib.Credential
-func (_e *HashServiceInterfaceMock_Expecter) Verify(credentialValueToVerify interface{}, referenceCredential interface{}) *HashServiceInterfaceMock_Verify_Call {
+func (_e *HashServiceInterfaceMock_Expecter) Verify(credentialValueToVerify any, referenceCredential any) *HashServiceInterfaceMock_Verify_Call {
 	return &HashServiceInterfaceMock_Verify_Call{Call: _e.mock.On("Verify", credentialValueToVerify, referenceCredential)}
 }
 

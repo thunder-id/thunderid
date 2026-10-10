@@ -18,10 +18,19 @@ func NewActorProviderMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *ActorProviderMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &ActorProviderMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -67,7 +76,7 @@ type ActorProviderMock_AuthenticateActor_Call struct {
 //   - ctx context.Context
 //   - identifiers map[string]interface{}
 //   - credentials map[string]interface{}
-func (_e *ActorProviderMock_Expecter) AuthenticateActor(ctx interface{}, identifiers interface{}, credentials interface{}) *ActorProviderMock_AuthenticateActor_Call {
+func (_e *ActorProviderMock_Expecter) AuthenticateActor(ctx any, identifiers any, credentials any) *ActorProviderMock_AuthenticateActor_Call {
 	return &ActorProviderMock_AuthenticateActor_Call{Call: _e.mock.On("AuthenticateActor", ctx, identifiers, credentials)}
 }
 
@@ -141,7 +150,7 @@ type ActorProviderMock_GetActor_Call struct {
 
 // GetActor is a helper method to define mock.On call
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActor(actorID interface{}) *ActorProviderMock_GetActor_Call {
+func (_e *ActorProviderMock_Expecter) GetActor(actorID any) *ActorProviderMock_GetActor_Call {
 	return &ActorProviderMock_GetActor_Call{Call: _e.mock.On("GetActor", actorID)}
 }
 
@@ -205,7 +214,7 @@ type ActorProviderMock_GetActorGroups_Call struct {
 
 // GetActorGroups is a helper method to define mock.On call
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActorGroups(actorID interface{}) *ActorProviderMock_GetActorGroups_Call {
+func (_e *ActorProviderMock_Expecter) GetActorGroups(actorID any) *ActorProviderMock_GetActorGroups_Call {
 	return &ActorProviderMock_GetActorGroups_Call{Call: _e.mock.On("GetActorGroups", actorID)}
 }
 
@@ -270,7 +279,7 @@ type ActorProviderMock_GetActorRoles_Call struct {
 // GetActorRoles is a helper method to define mock.On call
 //   - actorID string
 //   - groupIDs []string
-func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID interface{}, groupIDs interface{}) *ActorProviderMock_GetActorRoles_Call {
+func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID any, groupIDs any) *ActorProviderMock_GetActorRoles_Call {
 	return &ActorProviderMock_GetActorRoles_Call{Call: _e.mock.On("GetActorRoles", actorID, groupIDs)}
 }
 
@@ -340,7 +349,7 @@ type ActorProviderMock_GetInboundClientByID_Call struct {
 // GetInboundClientByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ActorProviderMock_Expecter) GetInboundClientByID(ctx interface{}, id interface{}) *ActorProviderMock_GetInboundClientByID_Call {
+func (_e *ActorProviderMock_Expecter) GetInboundClientByID(ctx any, id any) *ActorProviderMock_GetInboundClientByID_Call {
 	return &ActorProviderMock_GetInboundClientByID_Call{Call: _e.mock.On("GetInboundClientByID", ctx, id)}
 }
 
@@ -410,7 +419,7 @@ type ActorProviderMock_GetOAuthClientByClientID_Call struct {
 // GetOAuthClientByClientID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - clientID string
-func (_e *ActorProviderMock_Expecter) GetOAuthClientByClientID(ctx interface{}, clientID interface{}) *ActorProviderMock_GetOAuthClientByClientID_Call {
+func (_e *ActorProviderMock_Expecter) GetOAuthClientByClientID(ctx any, clientID any) *ActorProviderMock_GetOAuthClientByClientID_Call {
 	return &ActorProviderMock_GetOAuthClientByClientID_Call{Call: _e.mock.On("GetOAuthClientByClientID", ctx, clientID)}
 }
 
@@ -480,7 +489,7 @@ type ActorProviderMock_GetOAuthClientByID_Call struct {
 // GetOAuthClientByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ActorProviderMock_Expecter) GetOAuthClientByID(ctx interface{}, id interface{}) *ActorProviderMock_GetOAuthClientByID_Call {
+func (_e *ActorProviderMock_Expecter) GetOAuthClientByID(ctx any, id any) *ActorProviderMock_GetOAuthClientByID_Call {
 	return &ActorProviderMock_GetOAuthClientByID_Call{Call: _e.mock.On("GetOAuthClientByID", ctx, id)}
 }
 
@@ -550,7 +559,7 @@ type ActorProviderMock_GetOAuthProfileByID_Call struct {
 // GetOAuthProfileByID is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *ActorProviderMock_Expecter) GetOAuthProfileByID(ctx interface{}, id interface{}) *ActorProviderMock_GetOAuthProfileByID_Call {
+func (_e *ActorProviderMock_Expecter) GetOAuthProfileByID(ctx any, id any) *ActorProviderMock_GetOAuthProfileByID_Call {
 	return &ActorProviderMock_GetOAuthProfileByID_Call{Call: _e.mock.On("GetOAuthProfileByID", ctx, id)}
 }
 
@@ -619,7 +628,7 @@ type ActorProviderMock_GetTransitiveGroupAncestors_Call struct {
 
 // GetTransitiveGroupAncestors is a helper method to define mock.On call
 //   - groupID string
-func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(groupID interface{}) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(groupID any) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
 	return &ActorProviderMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
 }
 
@@ -683,7 +692,7 @@ type ActorProviderMock_IsOAuthClientAccessibleFromOU_Call struct {
 //   - ctx context.Context
 //   - client *providers.OAuthClient
 //   - ouID string
-func (_e *ActorProviderMock_Expecter) IsOAuthClientAccessibleFromOU(ctx interface{}, client interface{}, ouID interface{}) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
+func (_e *ActorProviderMock_Expecter) IsOAuthClientAccessibleFromOU(ctx any, client any, ouID any) *ActorProviderMock_IsOAuthClientAccessibleFromOU_Call {
 	return &ActorProviderMock_IsOAuthClientAccessibleFromOU_Call{Call: _e.mock.On("IsOAuthClientAccessibleFromOU", ctx, client, ouID)}
 }
 

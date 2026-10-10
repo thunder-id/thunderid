@@ -17,10 +17,19 @@ func NewSCIMUsersServiceInterfaceMock(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *SCIMUsersServiceInterfaceMock {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &SCIMUsersServiceInterfaceMock{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -77,7 +86,7 @@ type SCIMUsersServiceInterfaceMock_CreateUser_Call struct {
 //   - ctx context.Context
 //   - payload *SCIMUserPayload
 //   - baseURL string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) CreateUser(ctx interface{}, payload interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_CreateUser_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) CreateUser(ctx any, payload any, baseURL any) *SCIMUsersServiceInterfaceMock_CreateUser_Call {
 	return &SCIMUsersServiceInterfaceMock_CreateUser_Call{Call: _e.mock.On("CreateUser", ctx, payload, baseURL)}
 }
 
@@ -141,7 +150,7 @@ type SCIMUsersServiceInterfaceMock_DeleteUser_Call struct {
 // DeleteUser is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) DeleteUser(ctx interface{}, userID interface{}) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) DeleteUser(ctx any, userID any) *SCIMUsersServiceInterfaceMock_DeleteUser_Call {
 	return &SCIMUsersServiceInterfaceMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
 }
 
@@ -212,7 +221,7 @@ type SCIMUsersServiceInterfaceMock_GetUser_Call struct {
 //   - ctx context.Context
 //   - userID string
 //   - baseURL string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) GetUser(ctx interface{}, userID interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_GetUser_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) GetUser(ctx any, userID any, baseURL any) *SCIMUsersServiceInterfaceMock_GetUser_Call {
 	return &SCIMUsersServiceInterfaceMock_GetUser_Call{Call: _e.mock.On("GetUser", ctx, userID, baseURL)}
 }
 
@@ -288,7 +297,7 @@ type SCIMUsersServiceInterfaceMock_ListUsers_Call struct {
 //   - count int
 //   - filters map[string]interface{}
 //   - baseURL string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ListUsers(ctx interface{}, startIndex interface{}, count interface{}, filters interface{}, baseURL interface{}) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ListUsers(ctx any, startIndex any, count any, filters any, baseURL any) *SCIMUsersServiceInterfaceMock_ListUsers_Call {
 	return &SCIMUsersServiceInterfaceMock_ListUsers_Call{Call: _e.mock.On("ListUsers", ctx, startIndex, count, filters, baseURL)}
 }
 
@@ -376,7 +385,7 @@ type SCIMUsersServiceInterfaceMock_ReplaceUser_Call struct {
 //   - payload *SCIMUserPayload
 //   - baseURL string
 //   - isSelf bool
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ReplaceUser(ctx interface{}, userID interface{}, payload interface{}, baseURL interface{}, isSelf interface{}) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ReplaceUser(ctx any, userID any, payload any, baseURL any, isSelf any) *SCIMUsersServiceInterfaceMock_ReplaceUser_Call {
 	return &SCIMUsersServiceInterfaceMock_ReplaceUser_Call{Call: _e.mock.On("ReplaceUser", ctx, userID, payload, baseURL, isSelf)}
 }
 
@@ -451,7 +460,7 @@ type SCIMUsersServiceInterfaceMock_ValidateAttributePaths_Call struct {
 //   - ctx context.Context
 //   - attributes []string
 //   - excludedAttributes []string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ValidateAttributePaths(ctx interface{}, attributes interface{}, excludedAttributes interface{}) *SCIMUsersServiceInterfaceMock_ValidateAttributePaths_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ValidateAttributePaths(ctx any, attributes any, excludedAttributes any) *SCIMUsersServiceInterfaceMock_ValidateAttributePaths_Call {
 	return &SCIMUsersServiceInterfaceMock_ValidateAttributePaths_Call{Call: _e.mock.On("ValidateAttributePaths", ctx, attributes, excludedAttributes)}
 }
 
@@ -516,7 +525,7 @@ type SCIMUsersServiceInterfaceMock_ValidateFilterSchemaAttribute_Call struct {
 //   - ctx context.Context
 //   - prefix string
 //   - attr string
-func (_e *SCIMUsersServiceInterfaceMock_Expecter) ValidateFilterSchemaAttribute(ctx interface{}, prefix interface{}, attr interface{}) *SCIMUsersServiceInterfaceMock_ValidateFilterSchemaAttribute_Call {
+func (_e *SCIMUsersServiceInterfaceMock_Expecter) ValidateFilterSchemaAttribute(ctx any, prefix any, attr any) *SCIMUsersServiceInterfaceMock_ValidateFilterSchemaAttribute_Call {
 	return &SCIMUsersServiceInterfaceMock_ValidateFilterSchemaAttribute_Call{Call: _e.mock.On("ValidateFilterSchemaAttribute", ctx, prefix, attr)}
 }
 
