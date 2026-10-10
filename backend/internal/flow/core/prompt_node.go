@@ -773,7 +773,9 @@ func (n *promptNode) buildSyntheticComponentList(
 		if inMeta {
 			needsRequired := input.Required && comp["required"] != true
 			needsPassword := input.Type == providers.InputTypePassword && comp["type"] != providers.InputTypePassword
-			if needsRequired || needsPassword {
+			needsOptions := input.Type == providers.InputTypeSelect && len(input.Options) > 0 &&
+				comp["type"] == providers.InputTypeSelect && !componentHasOptions(comp)
+			if needsRequired || needsPassword || needsOptions {
 				cloned := make(map[string]interface{}, len(comp))
 				for k, v := range comp {
 					cloned[k] = v
@@ -783,6 +785,9 @@ func (n *promptNode) buildSyntheticComponentList(
 				}
 				if needsPassword {
 					cloned["type"] = providers.InputTypePassword
+				}
+				if needsOptions {
+					cloned["options"] = input.Options
 				}
 				promotions[ref] = cloned
 			}
@@ -799,15 +804,32 @@ func (n *promptNode) buildSyntheticComponentList(
 		if inputType == "" {
 			inputType = providers.InputTypeText
 		}
-		synthetic = append(synthetic, map[string]interface{}{
+		syntheticComp := map[string]interface{}{
 			"id":       input.Identifier,
 			"ref":      input.Identifier,
 			"type":     inputType,
 			"label":    label,
 			"required": input.Required,
-		})
+		}
+		// A SELECT without its permitted values is hidden by the UI, so carry them across.
+		if inputType == providers.InputTypeSelect && len(input.Options) > 0 {
+			syntheticComp["options"] = input.Options
+		}
+		synthetic = append(synthetic, syntheticComp)
 	}
 	return synthetic, promotions
+}
+
+// componentHasOptions reports whether a meta component already declares a non-empty options list.
+func componentHasOptions(comp map[string]interface{}) bool {
+	switch opts := comp["options"].(type) {
+	case []interface{}:
+		return len(opts) > 0
+	case []string:
+		return len(opts) > 0
+	default:
+		return false
+	}
 }
 
 // applyComponentPromotions recursively walks a components slice and replaces any component

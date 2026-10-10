@@ -3408,3 +3408,86 @@ func (s *PromptOnlyNodeTestSuite) TestFilteredMeta_FilteredOutActionsDropped() {
 	s.Equal("otp-node", resp.NextNodeID)
 	s.Nil(resp.Meta, "meta is not returned for a completed (auto-selected) chooser node")
 }
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_SelectCarriesOptions() {
+	node := &promptNode{}
+	inputs := []providers.Input{
+		{
+			Identifier:  "tier",
+			Type:        providers.InputTypeSelect,
+			Required:    true,
+			DisplayName: "Tier",
+			Options:     []string{"Gold", "Platinum", "Bronze"},
+		},
+		{Identifier: "nickname", Type: providers.InputTypeText},
+	}
+
+	synthetic, promotions := node.buildSyntheticComponentList(
+		inputs, map[string]map[string]interface{}{}, map[string]struct{}{})
+
+	s.Empty(promotions)
+	s.Len(synthetic, 2)
+
+	tier, ok := synthetic[0].(map[string]interface{})
+	s.True(ok)
+	s.Equal(providers.InputTypeSelect, tier["type"])
+	s.Equal(true, tier["required"])
+	s.Equal([]string{"Gold", "Platinum", "Bronze"}, tier["options"])
+
+	// Non-select inputs must not gain an options key.
+	nickname, ok := synthetic[1].(map[string]interface{})
+	s.True(ok)
+	_, hasOptions := nickname["options"]
+	s.False(hasOptions)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_SelectWithoutOptionsOmitsKey() {
+	node := &promptNode{}
+	inputs := []providers.Input{{Identifier: "tier", Type: providers.InputTypeSelect}}
+
+	synthetic, _ := node.buildSyntheticComponentList(
+		inputs, map[string]map[string]interface{}{}, map[string]struct{}{})
+
+	s.Len(synthetic, 1)
+	tier, _ := synthetic[0].(map[string]interface{})
+	_, hasOptions := tier["options"]
+	s.False(hasOptions)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_PromotesEmptySelectOptions() {
+	node := &promptNode{}
+	metaComps := map[string]map[string]interface{}{
+		"tier": {"id": "tier", "ref": "tier", "type": "SELECT", "options": []interface{}{}},
+	}
+	inputs := []providers.Input{{
+		Identifier: "tier",
+		Type:       providers.InputTypeSelect,
+		Options:    []string{"Gold", "Bronze"},
+	}}
+
+	synthetic, promotions := node.buildSyntheticComponentList(
+		inputs, metaComps, map[string]struct{}{})
+
+	s.Empty(synthetic)
+	s.Contains(promotions, "tier")
+	s.Equal([]string{"Gold", "Bronze"}, promotions["tier"]["options"])
+	// The original meta component must not be mutated.
+	s.Empty(metaComps["tier"]["options"])
+}
+
+func (s *PromptOnlyNodeTestSuite) TestBuildSyntheticComponentList_KeepsDeclaredSelectOptions() {
+	node := &promptNode{}
+	metaComps := map[string]map[string]interface{}{
+		"tier": {"id": "tier", "ref": "tier", "type": "SELECT", "options": []interface{}{"A"}},
+	}
+	inputs := []providers.Input{{
+		Identifier: "tier",
+		Type:       providers.InputTypeSelect,
+		Options:    []string{"Gold"},
+	}}
+
+	_, promotions := node.buildSyntheticComponentList(
+		inputs, metaComps, map[string]struct{}{})
+
+	s.Empty(promotions)
+}
