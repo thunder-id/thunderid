@@ -17,6 +17,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -116,6 +117,7 @@ type resourceService struct {
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+	valueCapturer      declarativeresource.ValueCapturer
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -218,6 +220,7 @@ func newResourceService(
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
+	valueCapturer declarativeresource.ValueCapturer,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -232,6 +235,7 @@ func newResourceService(
 		authZENPDPService: authZENPDPService,
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
+		valueCapturer:     valueCapturer,
 	}, nil
 }
 
@@ -341,6 +345,7 @@ func (rs *resourceService) CreateResourceServer(
 	}
 
 	rs.logger.Debug(ctx, "Successfully created resource server", log.String("id", id))
+	rs.captureValues(ctx, createdRS)
 	return createdRS, nil
 }
 
@@ -528,6 +533,7 @@ func (rs *resourceService) UpdateResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.captureValues(ctx, updatedRS)
 	return updatedRS, nil
 }
 

@@ -342,7 +342,11 @@ func (s *ResourceServerExporterTestSuite) TestValidateResource_EmptyName() {
 func (s *ResourceServerExporterTestSuite) TestGetResourceRules() {
 	rules := s.exporter.GetResourceRules()
 
-	assert.Nil(s.T(), rules)
+	s.Require().NotNil(rules)
+	assert.Equal(s.T(), []string{"Identifier"}, rules.Variables)
+	assert.Empty(s.T(), rules.SecretVariables)
+	assert.Empty(s.T(), rules.ArrayVariables)
+	assert.Empty(s.T(), rules.DynamicPropertyFields)
 }
 
 func TestParseToResourceServer(t *testing.T) {

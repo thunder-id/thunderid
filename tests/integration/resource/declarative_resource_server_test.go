@@ -362,11 +362,67 @@ func (suite *ResourceServerExportTestSuite) TestExportResourceServerByID() {
 
 	suite.Contains(yamlContent, "resource_type: resource_server")
 	suite.Contains(yamlContent, "name: Export Resource Server")
-	suite.Contains(yamlContent, "identifier: https://api.example.com/export-rs")
+	suite.Contains(yamlContent, "identifier: {{."+exportIdentifierVariable+"}}",
+		"The identifier is the deployment's own, so it is exported as a template variable")
+	suite.NotContains(yamlContent, "identifier: https://api.example.com/export-rs")
+	suite.Contains(yamlContent, `delimiter: ":"`)
 	suite.Contains(yamlContent, "handle: catalog")
 	suite.Contains(yamlContent, "handle: items")
 	suite.Contains(yamlContent, "parent: catalog", "Child resources should reference their parent handle")
 	suite.Contains(yamlContent, "handle: list", "Nested actions should be exported")
+}
+
+// The environment file beside the export carries the identifier the template variable stands for.
+func (suite *ResourceServerExportTestSuite) TestExportCarriesTheIdentifierInTheEnvironmentFile() {
+	export, err := exportResourceServersResponse([]string{suite.resourceServerID})
+	suite.Require().NoError(err)
+
+	suite.Contains(export.EnvironmentVariables, exportIdentifierVariable+"=https://api.example.com/export-rs")
+}
+
+// An export imported with another value for the identifier variable serves under that identifier,
+// its delimiter and resources as they were.
+func (suite *ResourceServerExportTestSuite) TestImportFillsTheIdentifierFromTheVariables() {
+	export, err := exportResourceServersResponse([]string{suite.resourceServerID})
+	suite.Require().NoError(err)
+	defer func() {
+		_, err := doJSONRequest(http.MethodPut, resourceServerURL("/%s", suite.resourceServerID),
+			UpdateResourceServerRequest{
+				Name:       "Export Resource Server",
+				Identifier: "https://api.example.com/export-rs",
+				OUID:       suite.ouID,
+			})
+		suite.NoError(err)
+	}()
+
+	resp, err := doJSONRequest(http.MethodPost, testServerURL+"/import", map[string]interface{}{
+		"content":   export.Resources,
+		"variables": map[string]string{exportIdentifierVariable: "https://api.example.com/export-rs-moved"},
+		"options":   map[string]interface{}{"target": "runtime", "upsert": true},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, resp.Body)
+	var outcome struct {
+		Summary struct {
+			Imported int `json:"imported"`
+			Failed   int `json:"failed"`
+		} `json:"summary"`
+	}
+	suite.Require().NoError(json.Unmarshal([]byte(resp.Body), &outcome))
+	suite.Require().Equal(0, outcome.Summary.Failed, resp.Body)
+	suite.Require().Equal(1, outcome.Summary.Imported, resp.Body)
+
+	server, err := getResourceServer(suite.resourceServerID)
+	suite.Require().NoError(err)
+	suite.Equal("https://api.example.com/export-rs-moved", server.Identifier)
+	suite.Equal(":", server.Delimiter)
+	resources, err := listResources(suite.resourceServerID, "", 0, 100)
+	suite.Require().NoError(err)
+	handles := make([]string, 0, len(resources.Resources))
+	for _, res := range resources.Resources {
+		handles = append(handles, res.Handle)
+	}
+	suite.Contains(handles, "catalog")
 }
 
 func (suite *ResourceServerExportTestSuite) TestExportResourceServersWithWildcard() {
@@ -394,19 +450,32 @@ func (suite *ResourceServerExportTestSuite) TestExportNonExistentResourceServer(
 	suite.Error(err, "Exporting an unknown resource server should fail")
 }
 
+// exportIdentifierVariable is the variable the export of the suite's resource server names its
+// identifier by.
+const exportIdentifierVariable = "RESOURCE_SERVER_EXPORT_RESOURCE_SERVER_IDENTIFIER"
+
 // exportResourceServers exports the given resource servers and returns the generated YAML.
 func exportResourceServers(ids []string) (string, error) {
-	resp, err := doJSONRequest(http.MethodPost, testServerURL+"/export", exportRequest{ResourceServers: ids})
+	export, err := exportResourceServersResponse(ids)
 	if err != nil {
 		return "", err
 	}
+	return export.Resources, nil
+}
+
+// exportResourceServersResponse exports the given resource servers and returns the export's answer.
+func exportResourceServersResponse(ids []string) (*exportResponse, error) {
+	resp, err := doJSONRequest(http.MethodPost, testServerURL+"/export", exportRequest{ResourceServers: ids})
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, resp.Body)
 	}
 
 	var export exportResponse
 	if err := json.Unmarshal([]byte(resp.Body), &export); err != nil {
-		return "", err
+		return nil, err
 	}
-	return export.Resources, nil
+	return &export, nil
 }

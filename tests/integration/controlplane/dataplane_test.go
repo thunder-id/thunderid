@@ -131,3 +131,68 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	ts.Require().NoError(err)
 	ts.Equal(http.StatusOK, resp.StatusCode, fmt.Sprintf("the client the data plane holds was refused: %s", tokenBody))
 }
+
+// A resource server the Control Plane exports is held by the Data Plane under the identifier the
+// Data Plane holds a value for, not the Control Plane's.
+//
+// The management key a deployment pipeline holds reaches only the import and the variable store, so
+// what the Data Plane holds is read back through the import: a resource server is refused an
+// identifier another already has.
+func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnIdentifier() {
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("dp-rs-ou"),
+		Name:   "Data Plane resource server suite",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+
+	name := unique("DP Import Orders")
+	cpIdentifier := "https://" + unique("cp-only-orders") + ".example.com"
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/resource-servers", map[string]any{
+		"name":        name,
+		"description": "Orders: read and write",
+		"identifier":  cpIdentifier,
+		"ouId":        ouID,
+		"delimiter":   ":",
+	}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	defer func() { _ = testutils.DeleteResourceServerWithChildren(created.ID) }()
+	status, raw = ts.call(http.MethodPost, "/resource-servers/"+created.ID+"/resources", map[string]any{
+		"name": "Orders", "handle": "orders",
+	}, nil)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw = ts.call(http.MethodPost, "/export", map[string]any{
+		"organizationUnits": []string{ouID},
+		"resourceServers":   []string{created.ID},
+	}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	outcome := ts.importToDataPlane(exported.Resources)
+	ts.Equal(1, outcome.Summary.Failed, "a resource server was imported with no value for its identifier")
+
+	identifier := "https://" + unique("dp-orders") + ".example.com"
+	variable := variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+variable, map[string]any{"value": identifier})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+
+	outcome = ts.importToDataPlane(exported.Resources)
+	ts.Require().Equal(0, outcome.Summary.Failed, "%+v", outcome.Results)
+
+	probe := func(identifier string) importOutcome {
+		return ts.importToDataPlane(fmt.Sprintf("resource_type: resource_server\nname: %s\nidentifier: %s\nouId: %s\n",
+			unique("DP Probe Orders"), identifier, ouID))
+	}
+	outcome = probe(identifier)
+	ts.Require().Len(outcome.Results, 1)
+	ts.Equal("RES-1013", outcome.Results[0].Code, "the data plane does not hold the identifier it was given: %+v",
+		outcome.Results)
+	outcome = probe(cpIdentifier)
+	ts.Equal(0, outcome.Summary.Failed, "the data plane holds the control plane's identifier: %+v", outcome.Results)
+}

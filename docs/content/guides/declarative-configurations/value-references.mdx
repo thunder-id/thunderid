@@ -71,8 +71,8 @@ references as they are. They are resolved by the deployment the configuration is
 
 A control plane writes the values its references name to its default gateway as you create and
 change resources, so the gateway holds them when a configuration version is applied to it. Each
-value is stored under the name the export refers to it by: a client ID among the gateway's variables,
-a client secret or a password among its secrets.
+value is stored under the name the export refers to it by: a client ID or a resource server's
+identifier among the gateway's variables, a client secret or a password among its secrets.
 
 The control plane captures values when you write these resources:
 
@@ -82,6 +82,7 @@ The control plane captures values when you write these resources:
 | Agent | create, update |
 | User | create, credential update |
 | Connection (identity provider or SMS sender) | create, update |
+| Resource server | create, update |
 
 A captured value comes from the write itself, while the control plane still holds it in plain text.
 This is the only point at which a generated client secret can be captured, because the control plane

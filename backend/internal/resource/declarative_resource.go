@@ -176,11 +176,14 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 }
 
 // GetResourceRules returns the parameterization rules for resource servers.
-// Resource servers have no fields that need to be parameterized as template variables,
-// so nil is returned to use the standard YAML encoder path which preserves literal values
-// and correctly quotes fields tagged with yamlfmt:"quoted" (e.g. Delimiter).
+// The identifier is the audience each deployment serves under, so it is parameterized and every
+// deployment supplies its own.
 func (e *resourceServerExporter) GetResourceRules() *declarativeresource.ResourceRules {
-	return nil
+	return &declarativeresource.ResourceRules{
+		Variables: []string{
+			"Identifier",
+		},
+	}
 }
 
 // loadDeclarativeResources loads resource server resources from declarative files.

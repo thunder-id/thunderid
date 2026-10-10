@@ -224,3 +224,54 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	ts.True(ok, "the agent's client secret was not captured")
 	ts.Equal(clientSecret, held)
 }
+
+// createResourceServer creates a resource server on the control plane and returns its id.
+func (ts *ControlPlaneTestSuite) createResourceServer(name, identifier string) string {
+	ts.T().Helper()
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/resource-servers", map[string]any{
+		"name":       name,
+		"identifier": identifier,
+		"ouId":       ts.ouID,
+		"delimiter":  ".",
+	}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.T().Cleanup(func() { _ = testutils.DeleteResourceServer(created.ID) })
+	return created.ID
+}
+
+// A resource server written on the control plane leaves its identifier in the default gateway's
+// variables, under the name its export refers to, and a changed identifier replaces it there.
+func (ts *ControlPlaneTestSuite) TestAWrittenResourceServersIdentifierReachesTheDefaultGateway() {
+	g := ts.withDefaultGateway()
+	name := unique("CP Capture Orders")
+	identifier := "https://" + unique("cp-capture-orders") + ".example.com"
+	variable := variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+
+	rsID := ts.createResourceServer(name, identifier)
+
+	held, ok := g.held("variables", variable)
+	ts.True(ok, "the identifier was not captured")
+	ts.Equal(identifier, held)
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Contains(exported.Resources, "identifier: var:"+variable)
+	ts.NotContains(exported.Resources, identifier, "the export carried the identifier")
+	ts.Contains(exported.Resources, `delimiter: "."`)
+
+	changed := "https://" + unique("cp-capture-orders-moved") + ".example.com"
+	status, raw = ts.call(http.MethodPut, "/resource-servers/"+rsID, map[string]any{
+		"name":       name,
+		"identifier": changed,
+		"ouId":       ts.ouID,
+	}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	held, _ = g.held("variables", variable)
+	ts.Equal(changed, held, "the changed identifier did not replace the captured one")
+}

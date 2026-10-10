@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -1733,7 +1734,7 @@ func (p *parameterizer) renderMappingValue(buf *bytes.Buffer, valueNode *yaml.No
 	} else {
 		// Regular scalar value
 		buf.WriteString(" ")
-		buf.WriteString(valueNode.Value)
+		buf.WriteString(scalarText(valueNode))
 		buf.WriteString("\n")
 	}
 	return nil
@@ -1767,7 +1768,7 @@ func (p *parameterizer) renderSequenceItemMapping(buf *bytes.Buffer, item *yaml.
 				buf.WriteString(strings.ReplaceAll(val, `'`, `''`))
 				buf.WriteString(`'`)
 			} else {
-				buf.WriteString(val)
+				buf.WriteString(scalarText(valueNode))
 			}
 			buf.WriteString("\n")
 		} else if p.isTemplateSequence(valueNode) {
@@ -1817,7 +1818,7 @@ func (p *parameterizer) renderSequenceNode(buf *bytes.Buffer, node *yaml.Node, i
 			}
 		} else {
 			// Scalar value
-			buf.WriteString(item.Value)
+			buf.WriteString(scalarText(item))
 			buf.WriteString("\n")
 		}
 	}
@@ -1843,6 +1844,24 @@ func (p *parameterizer) renderNode(buf *bytes.Buffer, node *yaml.Node, indent in
 		buf.WriteString(node.Value)
 	}
 	return nil
+}
+
+// scalarText returns a scalar as it is written after its key or dash: as it is, unless its field is
+// tagged yamlfmt:"quoted" or plain YAML could not read it back as one value, a lone ":" or a value
+// holding ": " for instance, in which case it is double-quoted. A value that reads back is left as
+// it is, since some are written as YAML on purpose, such as a user's JSON-encoded attributes.
+func scalarText(node *yaml.Node) string {
+	if node.Style == yaml.DoubleQuotedStyle {
+		return strconv.Quote(node.Value)
+	}
+	if node.Tag != "!!str" || node.Value == "" || templateVariablePattern.MatchString(node.Value) {
+		return node.Value
+	}
+	var read map[string]interface{}
+	if err := yaml.Unmarshal([]byte("value: "+node.Value), &read); err == nil && len(read) == 1 {
+		return node.Value
+	}
+	return strconv.Quote(node.Value)
 }
 
 // storedPropertyValue reads a dynamic property's stored value, empty when it cannot be read.

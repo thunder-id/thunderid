@@ -105,6 +105,18 @@ both import with the same password.
 resources. The bundle is not returned at all, because one that dropped a resource silently would look
 complete. Rename one of the users, or export them separately.
 
+## Resource Server Identifiers
+
+A resource server's `identifier` is the audience it is served under, such as an API's base URL or
+an MCP server's URL, and each deployment usually serves it under its own. The identifier is exported
+as a template variable named like any other field, so a resource server named `Orders API` exports:
+
+```yaml
+identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}
+```
+
+Its resources, actions, and delimiter are exported as they are.
+
 ## Exports From a Control Plane
 
 What an export contains depends on the plane you export from. A data plane holds its own values, so

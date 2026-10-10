@@ -215,3 +215,24 @@ func TestPlaceholderValuesWithoutRulesAreEmpty(t *testing.T) {
 	assert.Empty(t, variables)
 	assert.Empty(t, secrets)
 }
+
+// A resource server's identifier is captured under the name its export writes, and one that is
+// already a reference is not captured again.
+func TestPlaceholderValuesOfAResourceServer(t *testing.T) {
+	p := newParameterizer(templatingRules{}, ValueReferences)
+	rs := &providers.ResourceServer{Name: "Orders API", Identifier: "https://orders.example.com", Delimiter: ":"}
+
+	variables, secrets, err := p.PlaceholderValues(context.Background(), rs, "ResourceServer", rs.Name,
+		resourceServerRules)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"RESOURCE_SERVER_ORDERS_API_IDENTIFIER": "https://orders.example.com"},
+		variables)
+	assert.Empty(t, secrets)
+
+	rs.Identifier = "var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER"
+	variables, secrets, err = p.PlaceholderValues(context.Background(), rs, "ResourceServer", rs.Name,
+		resourceServerRules)
+	require.NoError(t, err)
+	assert.Empty(t, variables)
+	assert.Empty(t, secrets)
+}
