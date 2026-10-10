@@ -67,6 +67,7 @@
     "@thunderid/configure-connections": "workspace:^",
     "@thunderid/configure-design": "workspace:^",
     "@thunderid/configure-flows": "workspace:^",
+    "@thunderid/configure-gateways": "workspace:^",
     "@thunderid/configure-groups": "workspace:^",
     "@thunderid/configure-import-export": "workspace:^",
     "@thunderid/configure-roles": "workspace:^",

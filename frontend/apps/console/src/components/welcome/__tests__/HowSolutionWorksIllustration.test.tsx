@@ -68,6 +68,7 @@ describe('HowSolutionWorksIllustration', () => {
       getTrustedIssuerClientId: () => '',
       getTrustedIssuerScopes: () => [],
       isTrustedIssuerGenericOidc: () => false,
+      isControlPlane: () => false,
       getDocumentationLink: () => undefined,
     });
   });
@@ -194,6 +195,7 @@ describe('HowSolutionWorksIllustration', () => {
         getTrustedIssuerClientId: () => '',
         getTrustedIssuerScopes: () => [],
         isTrustedIssuerGenericOidc: () => false,
+        isControlPlane: () => false,
         getDocumentationLink: () => undefined,
       });
 
@@ -223,6 +225,7 @@ describe('HowSolutionWorksIllustration', () => {
         getTrustedIssuerClientId: () => '',
         getTrustedIssuerScopes: () => [],
         isTrustedIssuerGenericOidc: () => false,
+        isControlPlane: () => false,
         getDocumentationLink: () => undefined,
       });
 

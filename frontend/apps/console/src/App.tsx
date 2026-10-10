@@ -9,7 +9,7 @@ import {OrganizationUnitProvider} from '@thunderid/configure-organization-units'
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
 import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
-import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
+import {RoutesProvider, ToastProvider, useConfig} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
@@ -128,6 +128,12 @@ const ConnectionConfigureWizardPage = lazy(() =>
 const ConnectionCreateWizardPage = lazy(() =>
   import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionCreateWizardPage})),
 );
+const GatewaysListPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewaysListPage})),
+);
+const GatewayDetailPage = lazy(() =>
+  import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayDetailPage})),
+);
 const FlowBuilderPage = lazy(() => import('@thunderid/configure-flows').then((m) => ({default: m.FlowBuilderPage})));
 const CreateRolePage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.CreateRolePage})));
 const RoleEditPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RoleEditPage})));
@@ -167,6 +173,8 @@ const CreateProjectPage = lazy(() => import('./pages/CreateProjectPage'));
 const WelcomePage = lazy(() => import('./pages/WelcomePage'));
 
 export default function App(): JSX.Element {
+  const {isControlPlane} = useConfig();
+
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <RoutesProvider paths={RouteConfig}>
@@ -222,6 +230,13 @@ export default function App(): JSX.Element {
                   element={<ResourceServerEditPage />}
                 />
                 <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
+                {/* Gateways are administered, and deployed to, from the control plane only. */}
+                {isControlPlane() && (
+                  <>
+                    <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
+                  </>
+                )}
               </Route>
               {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
               <Route

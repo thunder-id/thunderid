@@ -45,6 +45,7 @@ describe('HowProductRunInHostedIllustration', () => {
       getTrustedIssuerClientId: () => '',
       getTrustedIssuerScopes: () => [],
       isTrustedIssuerGenericOidc: () => false,
+      isControlPlane: () => false,
       getDocumentationLink: () => undefined,
     });
   });
@@ -105,6 +106,7 @@ describe('HowProductRunInHostedIllustration', () => {
       getTrustedIssuerClientId: () => '',
       getTrustedIssuerScopes: () => [],
       isTrustedIssuerGenericOidc: () => false,
+      isControlPlane: () => false,
       getDocumentationLink: () => undefined,
     });
 

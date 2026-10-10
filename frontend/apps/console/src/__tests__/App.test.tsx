@@ -18,6 +18,17 @@ vi.mock('@thunderid/configure-translations', () => ({
 
 vi.mock('../lib/monaco-setup', () => ({}));
 
+let mockIsControlPlane = false;
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({isControlPlane: () => mockIsControlPlane}),
+}));
+
+vi.mock('@thunderid/configure-gateways', () => ({
+  GatewaysListPage: () => <div data-testid="gateways-list-page">Gateways List Page</div>,
+  GatewayDetailPage: () => <div data-testid="gateway-detail-page">Gateway Detail Page</div>,
+}));
+
 vi.mock('../pages/HomePage', () => ({
   default: () => <div data-testid="home-page" />,
 }));
@@ -134,6 +145,7 @@ vi.mock('../components/welcome/WelcomeRedirect', () => ({
 describe('App', () => {
   afterEach(() => {
     window.history.pushState({}, '', '/');
+    mockIsControlPlane = false;
   });
 
   it('renders without crashing', () => {
@@ -420,5 +432,40 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('agent-onboard-page')).toBeInTheDocument();
     });
+  });
+
+  it('loads GatewaysListPage lazily at /gateways on the control plane', async () => {
+    mockIsControlPlane = true;
+    window.history.pushState({}, '', '/gateways');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('gateways-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads GatewayDetailPage lazily at /gateways/:gatewayId on the control plane', async () => {
+    mockIsControlPlane = true;
+    window.history.pushState({}, '', '/gateways/gw-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('gateway-detail-page')).toBeInTheDocument();
+    });
+  });
+
+  it('does not mount the gateway routes outside the control plane', async () => {
+    window.history.pushState({}, '', '/gateways');
+    const {unmount} = render(<App />);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(screen.queryByTestId('gateways-list-page')).not.toBeInTheDocument();
+    unmount();
+
+    window.history.pushState({}, '', '/gateways/gw-1');
+    render(<App />);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(screen.queryByTestId('gateway-detail-page')).not.toBeInTheDocument();
   });
 });

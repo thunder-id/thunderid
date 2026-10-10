@@ -22,6 +22,7 @@ const config: ProductConfig = {
   },
   client: {base: '/console', client_id: 'CONSOLE'},
   server: {public_url: 'https://cp.example.com:8090'},
+  mode: 'control_plane',
 };
 
 function TokenEndpoint() {
@@ -119,6 +120,18 @@ describe('withRuntimeUrl', () => {
     await waitFor(() => {
       expect(screen.getByTestId('token-endpoint').textContent).toBe('https://cp.example.com:8090/oauth2/token');
     });
+  });
+
+  // A standalone deployment serves its own runtime, so it has no gateway to look for.
+  it('does not ask for gateways outside control-plane mode', async () => {
+    window.__THUNDERID_RUNTIME_CONFIG__ = {...config, mode: 'standalone'};
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-endpoint').textContent).toBe('https://cp.example.com:8090/oauth2/token');
+    });
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('does not ask for gateways before the user is signed in', async () => {

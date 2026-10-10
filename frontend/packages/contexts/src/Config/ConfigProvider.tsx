@@ -192,6 +192,7 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
         return config.client.scopes ?? [];
       },
       isTrustedIssuerGenericOidc: () => config.trusted_issuer?.type === 'generic',
+      isControlPlane: () => config.mode === 'control_plane',
       getDocumentationLink: (key: string) => {
         const baseUrl = config.documentation?.baseUrl;
         const path = config.documentation?.links?.[key];

@@ -273,6 +273,7 @@ type: google
         getTrustedIssuerClientId: () => 'CONSOLE',
         getTrustedIssuerScopes: () => ['openid', 'profile'],
         isTrustedIssuerGenericOidc: () => false,
+        isControlPlane: () => false,
         getDocumentationLink: () => undefined,
       });
 

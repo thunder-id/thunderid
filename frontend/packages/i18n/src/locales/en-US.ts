@@ -681,6 +681,7 @@ const translations = {
     'pages.design': 'Design',
     'pages.translations': 'Translations',
     'pages.settings': 'Settings',
+    'pages.gateways': 'Gateway Management',
     'breadcrumb.console': 'Console',
   },
 
@@ -5435,6 +5436,108 @@ const translations = {
     'errors.VCI-2006':
       'The number of credential templates exceeds the supported limit. Use search to narrow the results.',
     'errors.VCI-2007': 'The specified organization unit is not valid.',
+  },
+
+  // ============================================================================
+  // Gateways namespace - Gateway management translations
+  // ============================================================================
+  gateways: {
+    default: 'Default',
+    'delete.confirm': 'Remove the registration of',
+    'delete.disclaimer': 'The gateway itself is not changed. It keeps running with the configuration it already holds.',
+    'delete.error': 'The gateway could not be removed. Please try again.',
+    'delete.submit': 'Remove',
+    'delete.submitting': 'Removing...',
+    'delete.success': 'Gateway removed.',
+    'delete.title': 'Remove gateway',
+    'detail.back': 'Back to gateways',
+    'detail.connection.description': 'Where this gateway answers and how it is trusted.',
+    'detail.connection.title': 'Connection',
+    'detail.dangerZone.description': 'Removing the registration stops this deployment administering the gateway.',
+    'detail.dangerZone.title': 'Danger Zone',
+    'detail.error': 'Failed to load the gateway',
+    'detail.key.description':
+      'The key presented to this gateway is never shown after it is set. Rotate it to replace it.',
+    'detail.key.hint':
+      'After rotating, configure the gateway with the new key so it keeps accepting configuration from here.',
+    'detail.key.title': 'Key',
+    'edit.error': 'The gateway could not be updated.',
+    'edit.success': 'Gateway updated.',
+    'edit.unsavedChanges': 'You have unsaved changes.',
+    'form.baseUrl.hint': 'Where the gateway answers. Each gateway registers once.',
+    'form.baseUrl.label': 'Base URL',
+    'form.baseUrl.placeholder': 'https://gateway.example.com:8090',
+    'form.caCertificate.hint':
+      'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
+    'form.caCertificate.label': 'CA certificate (optional)',
+    'form.isDefault.label': 'Make this the default gateway, whose base URL the console shows for runtime endpoints',
+    'form.key.hint': 'Leave empty to generate one. Supply a key only when the gateway already holds one.',
+    'form.key.label': 'Key (optional)',
+    'form.name.label': 'Name',
+    'form.name.placeholder': 'e.g. production',
+    'list.columns.actions': 'Actions',
+    'list.columns.baseUrl': 'Base URL',
+    'list.columns.createdAt': 'Created',
+    'list.columns.name': 'Name',
+    'list.empty': 'No gateways are registered yet.',
+    'list.error': 'Failed to load gateways',
+    'list.register': 'Register gateway',
+    'list.subtitle': 'Register the gateways this deployment administers and how it reaches them.',
+    'list.title': 'Gateway Management',
+    'register.copyKey': 'Copy key',
+    'register.description':
+      'Record where a gateway answers. The gateway is not contacted until a configuration is applied to it.',
+    'register.done': 'I have saved the key',
+    'register.error': 'The gateway could not be registered. Please try again.',
+    'register.keyDescription': 'Configure {{name}} with this key so it accepts configuration from here.',
+    'register.keyLabel': 'Gateway key',
+    'register.keyTitle': 'Save the gateway key',
+    'register.keyWarning':
+      'This key will not be shown again. Copy it now. If it is lost, rotate the key from the gateway page.',
+    'register.submit': 'Register',
+    'register.submitting': 'Registering...',
+    'register.title': 'Register a gateway',
+    'rotateKey.action': 'Rotate key',
+    'rotateKey.copyLabel': 'Key to give the gateway',
+    'rotateKey.description':
+      'Replace the key presented to {{name}}. Give the gateway the same key, or it will refuse configuration from here.',
+    'rotateKey.error': 'The key could not be rotated. Please try again.',
+    'rotateKey.generate': 'Generate',
+    'rotateKey.label': 'New key',
+    'rotateKey.submit': 'Rotate key',
+    'rotateKey.submitting': 'Rotating...',
+    'rotateKey.success': 'The key was rotated.',
+    'rotateKey.title': 'Rotate key',
+    'rotateKey.warning': 'This key will not be shown again once the dialog is closed. Copy it now.',
+
+    // Backend error code translations (per gateway service error envelope).
+    'errors.GTW-1001': 'The gateway ID is not valid.',
+    'errors.GTW-1002': 'The gateway was not found. It may have been removed.',
+    'errors.GTW-1003': 'A gateway name is required.',
+    'errors.GTW-1004': 'Another gateway is already registered under that name.',
+    'errors.GTW-1005': 'A base URL is required to reach the gateway.',
+    'errors.GTW-1006': 'This deployment already administers as many gateways as it is configured to allow.',
+    'errors.GTW-1007': 'The request could not be read. Please try again.',
+    'errors.GTW-1008': 'A gateway is already registered at that base URL.',
+    'errors.GTW-1009':
+      'The base URL is not valid. Enter an absolute URL, for example https://gateway.example.com:8090.',
+    'errors.GTW-1010': 'A key cannot be empty.',
+    'errors.GTW-1011': 'Nothing to change. Edit the name, base URL, CA certificate or key.',
+    'errors.GTW-1012':
+      'This gateway is declared in a file, so it cannot be changed or removed here. Change the file and restart instead.',
+    'errors.GTW-1013': 'That configuration version was not found.',
+    'errors.GTW-1014': 'A version is a number or latest.',
+    'errors.GTW-1015': 'No configuration version has been captured yet. Capture one first.',
+    'errors.GTW-1016': 'This gateway holds no earlier version to revert to.',
+    'errors.GTW-1017':
+      'This gateway is missing variables or secrets the version needs. Set them on the gateway, then try again.',
+    'errors.GTW-5001': 'The gateway could not apply the configuration.',
+    'errors.VAR-1002':
+      'A name can use only letters, digits and underscores, must start with a letter or an underscore, and can be at most 255 characters.',
+    'errors.VAR-1003': 'A value is required and can be at most 8192 characters.',
+    'errors.VAR-1004': 'The gateway holds nothing by that name. It may have been deleted.',
+    'errors.VAR-1008': 'A description can be at most 1000 characters.',
+    'errors.VAR-1009': 'The gateway already holds something by that name.',
   },
 
   // ============================================================================

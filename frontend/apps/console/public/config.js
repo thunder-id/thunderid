@@ -94,4 +94,9 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // gate_client: {
   //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
   // },
+
+  // Optional: the role of the server this console is served by. Omit (or set 'standalone') for
+  // the all-in-one server. Set 'control_plane' when served by the control plane, which enables
+  // control-plane features such as gateway management.
+  // mode: 'control_plane',
 };

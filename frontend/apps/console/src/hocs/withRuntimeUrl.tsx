@@ -31,6 +31,9 @@ interface RegisteredGateway {
  * receive configuration when it is applied to them, so they are not where a developer's
  * application is expected to point.
  *
+ * Only a console in control-plane mode asks. A standalone deployment serves its own runtime, so
+ * it has no gateway to look for and keeps the server URL without a request.
+ *
  * No default gateway, no permission to list them, or a deployment with no gateway API at all
  * leaves the URL unset, and every consumer falls back to the server URL. That is the ordinary
  * answer for a deployment that serves its own runtime, so the failure is silent by design. A
@@ -40,7 +43,8 @@ interface RegisteredGateway {
 export default function withRuntimeUrl<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithRuntimeUrl(props: P): JSX.Element {
     const {http, isSignedIn} = useThunderID();
-    const {getServerUrl} = useConfig();
+    const {getServerUrl, isControlPlane} = useConfig();
+    const asksGateways: boolean = isSignedIn && isControlPlane();
     const queryClient = useQueryClient();
 
     // The query client outlives a session, so a sign-out has to drop the previous session's
@@ -53,7 +57,7 @@ export default function withRuntimeUrl<P extends object>(WrappedComponent: Compo
 
     const {data: gateways} = useQuery<RegisteredGateway[]>({
       queryKey: ['gateways'],
-      enabled: isSignedIn,
+      enabled: asksGateways,
       // A deployment that serves its own runtime answers this with a 404 or a 403. Retrying it on
       // every console load costs requests and changes nothing.
       retry: false,
@@ -68,7 +72,7 @@ export default function withRuntimeUrl<P extends object>(WrappedComponent: Compo
       },
     });
 
-    const runtimeUrl: string | undefined = isSignedIn
+    const runtimeUrl: string | undefined = asksGateways
       ? gateways?.find((gateway) => gateway.isDefault && Boolean(gateway.baseUrl))?.baseUrl
       : undefined;
 

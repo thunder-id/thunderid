@@ -27,6 +27,7 @@ import {
   Languages,
   Layers,
   LayoutGrid,
+  Network,
   Palette,
   Server,
   Settings,
@@ -141,7 +142,8 @@ function SidebarPreference({collapsed}: {collapsed: boolean}): null {
 
 export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
-  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const {isTrustedIssuerGenericOidc, isControlPlane, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const controlPlane = isControlPlane();
   const {t} = useTranslation();
   const logger = useLogger();
   const navigate = useNavigate();
@@ -312,10 +314,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             icon: <Settings />,
             path: RouteConfig.settings.list(),
           },
+          // Gateways are administered, and deployed to, from the control plane only.
+          ...(controlPlane
+            ? [
+                {
+                  id: 'gateways',
+                  text: t('navigation:pages.gateways', 'Gateway Management'),
+                  icon: <Network />,
+                  path: RouteConfig.gateways.list(),
+                },
+              ]
+            : []),
         ],
       },
     ],
-    [t],
+    [t, controlPlane],
   );
 
   const {pathname} = useLocation();
