@@ -237,3 +237,85 @@ func commonLines(a, b []string) int {
 	}
 	return table[0][0]
 }
+
+// Each reference says which resource holds it and the field it stands in: a list item's field is the
+// list's key, and a user is known by its username.
+func TestReferencesOfSaysWhatEachValueIsFor(t *testing.T) {
+	content := joinBundle([]string{
+		"resource_type: application\nid: app-1\nname: Orders\ninboundAuthConfig:\n  - type: oauth2\n" +
+			"    config:\n      clientId: var:ORDERS_CLIENT_ID\n      clientSecret: \"sec:ORDERS_SECRET\"\n" +
+			"      redirectUris:\n        - var:ORDERS_REDIRECT",
+		"resource_type: user\nid: user-1\nattributes:\n  username: alice@example.com\n" +
+			"credentials:\n  password: sec:ALICE_PASSWORD",
+		"resource_type: translation\nvalue: see var:NOT_A_REFERENCE here",
+	})
+
+	assert.Equal(t, []ValueReference{
+		{Name: "ORDERS_CLIENT_ID", Kind: ReferenceVariable, ResourceType: "application", ResourceID: "app-1",
+			ResourceName: "Orders", Field: "clientId"},
+		{Name: "ORDERS_SECRET", Kind: ReferenceSecret, ResourceType: "application", ResourceID: "app-1",
+			ResourceName: "Orders", Field: "clientSecret"},
+		{Name: "ORDERS_REDIRECT", Kind: ReferenceVariable, ResourceType: "application", ResourceID: "app-1",
+			ResourceName: "Orders", Field: "redirectUris", List: true},
+		{Name: "ALICE_PASSWORD", Kind: ReferenceSecret, ResourceType: "user", ResourceID: "user-1",
+			ResourceName: "alice@example.com", Field: "password"},
+	}, referencesOf(content))
+}
+
+// Only a user is known by its username: another resource with no name keeps none, even when it
+// holds a nested username of its own.
+func TestReferencesOfNamesOnlyAUserByItsUsername(t *testing.T) {
+	content := "resource_type: connection\nid: conn-1\nproperties:\n  username: var:CONN_USERNAME\n" +
+		"  password: sec:CONN_PASSWORD"
+
+	references := referencesOf(content)
+
+	assert.Len(t, references, 2)
+	for _, reference := range references {
+		assert.Empty(t, reference.ResourceName)
+	}
+}
+
+// A document naming no resource type is skipped, as an import skips it, so a reference in it is
+// neither listed nor counted as needed.
+func TestReferencesInADocumentWithoutAResourceTypeAreNotCounted(t *testing.T) {
+	content := joinBundle([]string{
+		"resource_type: application\nclientId: var:CLIENT_ID",
+		"clientId: var:STRAY\nclientSecret: sec:STRAY_SECRET",
+	})
+
+	variables, secrets := referencesIn(content)
+
+	assert.Equal(t, []string{"CLIENT_ID"}, variables)
+	assert.Empty(t, secrets)
+	assert.Len(t, referencesOf(content), 1)
+}
+
+// A reference is read under a quoted or dotted key, in block style only: a reference inside flow
+// style is not read, since an export never writes one there.
+func TestReferencesOfReadsBlockStyleKeysOnly(t *testing.T) {
+	content := "resource_type: application\nid: app-1\nname: Orders\n" +
+		"\"a.b\": var:QUOTED\n'c d': sec:SINGLE_QUOTED\nsome.key: var:DOTTED\n" +
+		"\"list.key\":\n  - var:QUOTED_LIST\n" +
+		"flowMap: {a: var:FLOW_MAP}\nflowList: [var:FLOW_LIST]"
+
+	fields := map[string]string{}
+	for _, reference := range referencesOf(content) {
+		fields[reference.Name] = reference.Field
+	}
+
+	assert.Equal(t, map[string]string{
+		"QUOTED": "a.b", "SINGLE_QUOTED": "c d", "DOTTED": "some.key", "QUOTED_LIST": "list.key",
+	}, fields)
+}
+
+// A list item with no key above it has no field.
+func TestEnclosingKeyIsEmptyWhenNoKeyEnclosesTheItem(t *testing.T) {
+	content := "resource_type: application\n- var:TOP_LEVEL_ITEM"
+
+	references := referencesOf(content)
+
+	assert.Equal(t, []ValueReference{{Name: "TOP_LEVEL_ITEM", Kind: ReferenceVariable,
+		ResourceType: "application", List: true}}, references)
+	assert.Empty(t, enclosingKey([]string{"- var:X"}, 0, 0))
+}

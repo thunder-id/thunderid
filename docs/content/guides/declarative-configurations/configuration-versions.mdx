@@ -50,6 +50,30 @@ shares also names it, and so does `latest`.
 `GET /configuration-versions` lists the versions, newest first, without their content.
 `GET /configuration-versions/{version}` returns one with its content.
 
+### Read What Each Value Is For
+
+`GET /configuration-versions/{version}` returns the version's `references`, one entry for each place it
+refers to a variable or a secret:
+
+| Field | Description |
+|---|---|
+| `name` | The name the gateway holds the value under. |
+| `kind` | `variable` or `secret`. |
+| `resourceType`, `resourceId`, `resourceName` | The resource that holds the reference. `resourceName` is its name, or a user's username. |
+| `field` | The field the reference stands in, or the list's field for a list item. |
+| `list` | Set when the reference is a list's item. The value then holds the list's items as a JSON list of strings. |
+
+To read the configuration as it stands without capturing it, use `current` as the version:
+
+```bash
+curl https://localhost:8090/configuration-versions/current \
+  -H "Authorization: Bearer <access_token>"
+```
+
+The answer has the `references`, `resources` and `skipped` a capture would keep, and the `version` hash
+a capture would give it, which equals the latest version's when nothing has changed since. It has no
+`name` or `note`. Each read runs a full export, so read it when you need it rather than polling it.
+
 ## Compare a Version With a Gateway
 
 `GET /gateways/{id}/diff?version=<version>` reports what applying the version would add, update and
@@ -92,6 +116,9 @@ The gateway must hold a value for every variable and secret the version refers t
 sent, the control plane asks the gateway's store for each name.
 
 - A dry run lists the names the gateway lacks under `missing`, as `variables` and `secrets`.
+  `missing.references` says what each one is for: the resource that refers to it and the field it
+  stands in, as described in [Read What Each Value Is For](#read-what-each-value-is-for). A resource
+  you chose to leave alone is not applied, so the values it refers to are not checked.
 - An apply is refused with `409` (`GTW-1017`) until the gateway holds them all. Nothing is sent and
   nothing is recorded.
 

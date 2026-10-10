@@ -39,14 +39,31 @@ var (
 		return regexp.MustCompile(`(?m)^` + key + `:\s*(.+?)\s*$`)
 	}
 	resourceTypeField = topLevelScalar("resource_type")
-	idField           = topLevelScalar("id")
-	nameField         = topLevelScalar("name")
+	// usernameField reads a user's username, which is nested under its attributes.
+	usernameField = regexp.MustCompile(`(?m)^\s+username:\s*(.+?)\s*$`)
+	idField       = topLevelScalar("id")
+	nameField     = topLevelScalar("name")
 	// valueReference reads a reference a document holds in place of a value. A reference is a whole
 	// scalar, a mapping's value or a list's item, quoted or not, so the same text inside a longer
 	// value is not one.
-	valueReference = regexp.MustCompile(`(?m)(?:^\s*-|:)\s*['"]?(` + regexp.QuoteMeta(valueref.PrefixVariable) +
-		`|` + regexp.QuoteMeta(valueref.PrefixSecret) + `)([A-Za-z_][A-Za-z0-9_]*)['"]?\s*$`)
+	//
+	// Only block style is read, which is how an export writes a mapping or a list: a reference inside
+	// flow style, such as `{a: var:X}` or `[var:X]`, is not found.
+	//
+	// The groups are the line's indent, a list item's key, a mapping's key, the prefix and the name.
+	valueReference = regexp.MustCompile(`^(\s*)(?:-\s+` + mappingKey + `\s*:\s*|-\s*|` + mappingKey + `\s*:\s*)` +
+		`['"]?(` + regexp.QuoteMeta(valueref.PrefixVariable) + `|` + regexp.QuoteMeta(valueref.PrefixSecret) +
+		`)([A-Za-z_][A-Za-z0-9_]*)['"]?\s*$`)
+	// keyOnly reads a line that opens a mapping or a list under a key.
+	keyOnly = regexp.MustCompile(`^(\s*)(?:-\s+)?` + mappingKey + `\s*:\s*$`)
 )
+
+// resourceTypeUser is the resource type an export writes a user under.
+const resourceTypeUser = "user"
+
+// mappingKey reads a block mapping's key, quoted or plain, so a key such as `"a.b"` or `a.b` is read
+// as one. A plain key starts with no character that would open a list, flow style or a comment.
+const mappingKey = `("[^"]*"|'[^']*'|[^\s'"#:,\-\[\]{}][^:#]*?)`
 
 // parseBundle splits a version into its resources. A document naming no resource type is skipped:
 // it carries nothing an import would act on.
@@ -349,19 +366,102 @@ func summarize(changes []Change) DiffSummary {
 // The gateway holds their values, so the version is only complete on a gateway that holds them all.
 func referencesIn(content string) (variables, secrets []string) {
 	seen := map[string]bool{}
-	for _, match := range valueReference.FindAllStringSubmatch(content, -1) {
-		reference := match[1] + match[2]
-		if seen[reference] {
+	for _, reference := range referencesOf(content) {
+		if seen[reference.Kind+reference.Name] {
 			continue
 		}
-		seen[reference] = true
-		if match[1] == valueref.PrefixSecret {
-			secrets = append(secrets, match[2])
+		seen[reference.Kind+reference.Name] = true
+		if reference.Kind == ReferenceSecret {
+			secrets = append(secrets, reference.Name)
 		} else {
-			variables = append(variables, match[2])
+			variables = append(variables, reference.Name)
 		}
 	}
 	sort.Strings(variables)
 	sort.Strings(secrets)
 	return variables, secrets
+}
+
+// referencesOf returns each place a version refers to a variable or a secret, in document order.
+//
+// A reference is a whole scalar, a mapping's value or a list's item, quoted or not, so the same text
+// inside a longer value is not one. A list item's field is the key of the list it is in.
+func referencesOf(content string) []ValueReference {
+	var references []ValueReference
+	for _, resource := range parseBundle(content) {
+		lines := strings.Split(resource.Content, "\n")
+		for i, line := range lines {
+			match := valueReference.FindStringSubmatch(line)
+			if match == nil {
+				continue
+			}
+			field := unquoteKey(match[2] + match[3])
+			list := field == ""
+			if list {
+				field = enclosingKey(lines, i, len(match[1]))
+			}
+			kind := ReferenceVariable
+			if match[4] == valueref.PrefixSecret {
+				kind = ReferenceSecret
+			}
+			references = append(references, ValueReference{
+				Name:         match[5],
+				Kind:         kind,
+				ResourceType: resource.Type,
+				ResourceID:   resource.ID,
+				ResourceName: labelOf(resource),
+				Field:        field,
+				List:         list,
+			})
+		}
+	}
+	return references
+}
+
+// referencesTo returns where a version refers to the values missing names, so each can be told
+// apart by what it is for.
+func referencesTo(content string, missing *MissingValues) []ValueReference {
+	wanted := map[string]bool{}
+	for _, name := range missing.Variables {
+		wanted[ReferenceVariable+name] = true
+	}
+	for _, name := range missing.Secrets {
+		wanted[ReferenceSecret+name] = true
+	}
+	var references []ValueReference
+	for _, reference := range referencesOf(content) {
+		if wanted[reference.Kind+reference.Name] {
+			references = append(references, reference)
+		}
+	}
+	return references
+}
+
+// enclosingKey finds the key of the list an item at the given indent belongs to: the nearest key
+// above that opens a block at the same indent or less.
+func enclosingKey(lines []string, item, indent int) string {
+	for i := item - 1; i >= 0; i-- {
+		match := keyOnly.FindStringSubmatch(lines[i])
+		if len(match) == 3 && len(match[1]) <= indent {
+			return unquoteKey(match[2])
+		}
+	}
+	return ""
+}
+
+// unquoteKey returns a mapping key without the quotes around it.
+func unquoteKey(key string) string {
+	if len(key) >= 2 && (key[0] == '"' || key[0] == '\'') && key[len(key)-1] == key[0] {
+		return key[1 : len(key)-1]
+	}
+	return key
+}
+
+// labelOf is how a resource is known to a person: its name, or a user's username. Only a user is
+// known by a username, since another resource may hold a nested username of its own.
+func labelOf(resource bundleResource) string {
+	if resource.Name != "" || resource.Type != resourceTypeUser {
+		return resource.Name
+	}
+	return firstMatch(usernameField, resource.Content)
 }

@@ -111,7 +111,15 @@ paths:
         required: true
         schema:
           type: string
-        description: The version's hash, a prefix of at least seven of its characters, or `latest`.
+        description: |
+          The version's hash, a prefix of at least seven of its characters, or `latest`. `current`
+          reads the configuration as it stands, the way a capture would, without keeping it: its
+          `references` say what each value is for before any capture, and its `version` is the hash a
+          capture would give it, so it matches the latest version when nothing has changed since. Only
+          this read takes it. Each read runs a full export, as a capture does, so read it when a view
+          opens rather than polling it. Only `version`, `references`, `resources` and `skipped` describe
+          the configuration: `current` has no `name` or `note`, and its `createdAt` is the time of the
+          read.
     get:
       tags: [Configuration Versions]
       summary: Get a configuration version
@@ -123,7 +131,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Version'
         "400":
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/InvalidVersion'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -134,21 +142,25 @@ paths:
 components:
   responses:
     BadRequest:
-      description: The request was malformed, or the version was not named by a hash, a prefix of it, or `latest`
+      description: The request is malformed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "GTW-1007"
+            message:
+              key: "error.gatewayservice.invalid_request_body"
+              defaultValue: "The request body is not valid JSON"
+    InvalidVersion:
+      description: The version is not named by its hash, a prefix of it, `latest` or `current`
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           examples:
-            invalidBody:
-              summary: The body is not one JSON object
-              value:
-                code: "GTW-1007"
-                message:
-                  key: "error.gatewayservice.invalid_request_body"
-                  defaultValue: "The request body is not valid JSON"
             invalidVersion:
-              summary: The version is not named by a hash, a prefix of it, or latest
+              summary: The version is not named by a hash, a prefix of it, latest or current
               value:
                 code: "GTW-1014"
                 message:
@@ -209,6 +221,11 @@ components:
         resources:
           type: string
           description: The exported configuration, one document per resource. Left out of a listing.
+        references:
+          type: array
+          description: Each place the version refers to a variable or a secret. Only a read of one version carries it.
+          items:
+            $ref: '#/components/schemas/ValueReference'
         skipped:
           type: array
           description: |
@@ -234,6 +251,33 @@ components:
         note:
           type: string
           description: A note to remember the version by.
+    ValueReference:
+      type: object
+      description: |
+        One place a version refers to a variable or a secret: the resource that holds the reference and
+        the field it stands in, so the value can be told apart by what it is for.
+      properties:
+        name:
+          type: string
+          description: The name the gateway holds the value under.
+        kind:
+          type: string
+          enum: [variable, secret]
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        resourceName:
+          type: string
+          description: How the resource is known, its name or a user's username.
+        field:
+          type: string
+          description: The key the reference is the value of, or the list's key for a list item.
+        list:
+          type: boolean
+          description: |
+            Set when the reference is a list's item. The value it names holds the list's items, as a JSON
+            list of strings such as `["https://a.example/cb"]`, or a single string for one item.
     Error:
       type: object
       properties:

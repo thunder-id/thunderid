@@ -33,9 +33,35 @@ type Version struct {
 	// Unchanged is set on a capture's answer when the configuration matched a version already captured,
 	// which is answered instead of capturing the same configuration again.
 	Unchanged bool `json:"unchanged,omitempty"`
+	// References lists each place the version refers to a variable or a secret. Only a read of one
+	// version carries it.
+	References []ValueReference `json:"references,omitempty"`
 	// variables are the values the export carried beside the documents, sealed as one secret. A
 	// reference-style export carries none. They are never returned by a read.
 	variables string
+}
+
+// Kinds of value a reference names.
+const (
+	ReferenceVariable = "variable"
+	ReferenceSecret   = "secret"
+)
+
+// ValueReference is one place a version refers to a variable or a secret by name: the resource that
+// holds the reference and the field it stands in, so the value can be told apart by what it is for
+// rather than by its name alone.
+type ValueReference struct {
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId,omitempty"`
+	// ResourceName is how the resource is known: its name, or a user's username.
+	ResourceName string `json:"resourceName,omitempty"`
+	// Field is the key the reference is the value of, or the list's key for a list item.
+	Field string `json:"field,omitempty"`
+	// List is set when the reference is a list's item: the value it names holds the list's items, as a
+	// JSON list of strings or a single string.
+	List bool `json:"list,omitempty"`
 }
 
 // CaptureRequest is the body of a capture.
@@ -145,6 +171,8 @@ type ApplyResult struct {
 type MissingValues struct {
 	Variables []string `json:"variables,omitempty"`
 	Secrets   []string `json:"secrets,omitempty"`
+	// References says where the version refers to each missing value.
+	References []ValueReference `json:"references,omitempty"`
 }
 
 // empty reports whether nothing is missing.

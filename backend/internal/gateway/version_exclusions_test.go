@@ -365,3 +365,25 @@ func TestAGatewaysLockIsDroppedOnceNoApplyNeedsIt(t *testing.T) {
 	defer locks.mu.Unlock()
 	assert.Empty(t, locks.locks)
 }
+
+// A dry run says what each missing value is for only among the resources it applies: one left alone
+// is not applied, so the values it refers to are not reported.
+func TestADryRunReportsReferencesOnlyForWhatItApplies(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{
+		{Content: "resource_type: application\nid: app-1\nname: one\nclient_id: var:APP_ONE_CLIENT_ID\n"},
+		{Content: "resource_type: application\nid: app-2\nname: two\nclient_id: var:APP_TWO_CLIENT_ID\n"},
+	}}
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{DryRun: true, Selection: selecting("application/app-1")})
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, result.Missing)
+	assert.Equal(t, []string{"APP_ONE_CLIENT_ID"}, result.Missing.Variables)
+	require.Len(t, result.Missing.References, 1)
+	assert.Equal(t, "APP_ONE_CLIENT_ID", result.Missing.References[0].Name)
+	assert.Equal(t, "app-1", result.Missing.References[0].ResourceID)
+}

@@ -573,6 +573,25 @@ func TestAnApplyWhoseRemovalsAreUnconfirmedIsNotRecorded(t *testing.T) {
 	assert.Equal(t, 1, held.AppliedVersion)
 }
 
+// A version read on its own says where it refers to each value; a listing does not.
+func TestAVersionReadSaysWhereItRefersToValues(t *testing.T) {
+	f := newVersionFixture(t)
+	f.captureReferring(t)
+
+	v, svcErr := f.svc.GetVersion(context.Background(), "latest")
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []ValueReference{
+		{Name: "APP_CLIENT_ID", Kind: ReferenceVariable, ResourceType: "application", ResourceID: "app-1",
+			ResourceName: "app", Field: "client_id"},
+		{Name: "APP_SECRET", Kind: ReferenceSecret, ResourceType: "application", ResourceID: "app-1",
+			ResourceName: "app", Field: "client_secret"},
+	}, v.References)
+	listed, svcErr := f.svc.ListVersions(context.Background())
+	require.Nil(t, svcErr)
+	assert.Empty(t, listed[0].References)
+}
+
 // A dry run reaches the gateway as one and records nothing.
 func TestADryRunRecordsNothing(t *testing.T) {
 	f := newVersionFixture(t)
@@ -712,7 +731,11 @@ func TestApplyIsRefusedWhileTheGatewayLacksAValue(t *testing.T) {
 
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})
 	require.Nil(t, svcErr)
-	assert.Equal(t, &MissingValues{Secrets: []string{"APP_SECRET"}}, result.Missing)
+	assert.Equal(t, &MissingValues{
+		Secrets: []string{"APP_SECRET"},
+		References: []ValueReference{{Name: "APP_SECRET", Kind: ReferenceSecret, ResourceType: "application",
+			ResourceID: "app-1", ResourceName: "app", Field: "client_secret"}},
+	}, result.Missing, "a missing value does not say what it is for")
 	assert.True(t, f.client.last().DryRun)
 }
 
@@ -779,4 +802,39 @@ func TestApplyReportsAnotherApplyFinishingFirst(t *testing.T) {
 
 	require.NotNil(t, svcErr)
 	assert.Equal(t, ErrorAppliedChanged.Code, svcErr.Code)
+}
+
+// The configuration as it stands says where it refers to each value before anything is captured, and
+// reading it keeps no version.
+func TestTheCurrentConfigurationSaysWhereItRefersToValuesWithoutCapturing(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{{Content: "resource_type: application\n" +
+		"id: app-1\nname: Orders\nclientId: var:APPLICATION_ORDERS_CLIENT_ID\nredirectUris:\n" +
+		"  - var:APPLICATION_ORDERS_REDIRECT_URIS"}}}
+
+	v, svcErr := f.svc.GetVersion(context.Background(), " current ")
+
+	require.Nil(t, svcErr)
+	assert.Zero(t, v.Seq)
+	assert.Equal(t, versionHash(v.Resources), v.Hash, "the hash is not the one a capture would give it")
+	assert.Equal(t, []ValueReference{
+		{Name: "APPLICATION_ORDERS_CLIENT_ID", Kind: ReferenceVariable, ResourceType: "application",
+			ResourceID: "app-1", ResourceName: "Orders", Field: "clientId"},
+		{Name: "APPLICATION_ORDERS_REDIRECT_URIS", Kind: ReferenceVariable, ResourceType: "application",
+			ResourceID: "app-1", ResourceName: "Orders", Field: "redirectUris", List: true},
+	}, v.References)
+	listed, svcErr := f.svc.ListVersions(context.Background())
+	require.Nil(t, svcErr)
+	assert.Empty(t, listed, "reading the current configuration captured a version")
+}
+
+// A failed export fails the read as it fails a capture.
+func TestTheCurrentConfigurationReportsAFailedExport(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.err = &tidcommon.InternalServerError
+
+	_, svcErr := f.svc.GetVersion(context.Background(), "current")
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }

@@ -875,6 +875,38 @@ components:
               type: array
               items:
                 type: string
+            references:
+              type: array
+              description: Where the version refers to each missing value.
+              items:
+                $ref: '#/components/schemas/ValueReference'
+    ValueReference:
+      type: object
+      description: |
+        One place a version refers to a variable or a secret: the resource that holds the reference and
+        the field it stands in, so the value can be told apart by what it is for.
+      properties:
+        name:
+          type: string
+          description: The name the gateway holds the value under.
+        kind:
+          type: string
+          enum: [variable, secret]
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        resourceName:
+          type: string
+          description: How the resource is known, its name or a user's username.
+        field:
+          type: string
+          description: The key the reference is the value of, or the list's key for a list item.
+        list:
+          type: boolean
+          description: |
+            Set when the reference is a list's item. The value it names holds the list's items, as a JSON
+            list of strings such as `["https://a.example/cb"]`, or a single string for one item.
     Error:
       type: object
       properties:
