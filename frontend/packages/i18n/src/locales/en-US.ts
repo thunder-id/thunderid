@@ -3178,6 +3178,7 @@ const translations = {
     'edit.token.click_to_remove': 'Click to remove',
     'edit.token.configure_attributes': 'Add or Remove Attributes',
     'edit.token.configure_attributes.hint': 'Click on user attributes to add them to the token.',
+    'edit.token.legacy_user_type_warning': 'userType is a legacy claim. Use userTypeHandle and userTypeName instead',
     'edit.token.token_preview.title': 'Decoded Payload',
     'edit.token.validity.hint': 'Token validity period in seconds (e.g., 3600 for 1 hour)',
     'edit.token.validity.error': 'Validity period must be at least 1 second',

@@ -238,7 +238,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
 				deps.OUService, deps.AuthAssertGen, deps.AuthnProvider, deps.EntityProvider,
-				deps.AttributeCacheSvc, deps.RoleService))
+				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService))
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(

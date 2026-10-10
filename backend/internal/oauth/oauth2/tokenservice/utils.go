@@ -414,6 +414,9 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimOUID] = true
 	reserved[constants.ClaimOUName] = true
 	reserved[constants.ClaimOUHandle] = true
+	reserved[constants.ClaimUserType] = true //nolint:staticcheck
+	reserved[constants.ClaimUserTypeHandle] = true
+	reserved[constants.ClaimUserTypeName] = true
 	reserved[constants.ClaimClaimsRequest] = true
 	reserved[constants.ClaimClaimsLocales] = true
 	reserved[constants.ClaimSubType] = true
@@ -435,13 +438,16 @@ func builderOwnedIDTokenClaimNames() map[string]bool {
 }
 
 // builderOwnedClaimNames returns the access-token claims the builder writes itself, so a configured
-// attribute can never supply one. The reserved set minus the OU claims, which a user-subject token
-// legitimately receives through the attribute channel.
+// attribute can never supply one. The reserved set minus the OU and user-type claims, which a
+// user-subject token legitimately receives through the attribute channel.
 func builderOwnedClaimNames() map[string]bool {
 	owned := ReservedAccessTokenClaimNames()
 	delete(owned, constants.ClaimOUID)
 	delete(owned, constants.ClaimOUName)
 	delete(owned, constants.ClaimOUHandle)
+	delete(owned, constants.ClaimUserType) //nolint:staticcheck
+	delete(owned, constants.ClaimUserTypeHandle)
+	delete(owned, constants.ClaimUserTypeName)
 	return owned
 }
 

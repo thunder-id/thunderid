@@ -23,6 +23,7 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Tooltip,
 } from '@wso2/oxygen-ui';
 import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import type React from 'react';
@@ -377,14 +378,14 @@ export default function TokenUserAttributesSection({
                 const isPendingRemoval = pendingRemovals.has(attr) && isPendingTab;
                 const isHighlighted = highlightedAttributes.has(attr);
                 const isActive = (isAdded && !isPendingRemoval) || isPendingAddition;
+                const isLegacyUserType = attr === 'userType';
 
-                return (
+                const chip = (
                   <Chip
-                    key={attr}
                     label={attr}
                     size="small"
                     variant={isActive ? 'filled' : 'outlined'}
-                    color={isActive ? 'primary' : 'default'}
+                    color={isLegacyUserType ? 'warning' : isActive ? 'primary' : 'default'}
                     onClick={disabled ? undefined : () => onAttributeClick(attr, tokenType)}
                     sx={{
                       cursor: 'pointer',
@@ -395,6 +396,22 @@ export default function TokenUserAttributesSection({
                     }}
                   />
                 );
+
+                if (isLegacyUserType) {
+                  return (
+                    <Tooltip
+                      key={attr}
+                      title={t(
+                        'applications:edit.token.legacy_user_type_warning',
+                        'userType is a legacy claim. Use userTypeHandle and userTypeName instead.',
+                      )}
+                    >
+                      <span>{chip}</span>
+                    </Tooltip>
+                  );
+                }
+
+                return <span key={attr}>{chip}</span>;
               })}
             </Stack>
           )}

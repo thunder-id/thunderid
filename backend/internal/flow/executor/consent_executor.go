@@ -371,7 +371,9 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(
 	// Value is set to empty since the consent enforcer only checks for presence of the key, and the actual values
 	// can be obtained from the authenticated user context if needed
 	if entityRef.EntityType != "" {
-		augmented[oauth2const.ClaimUserType] = &providers.AttributeResponse{}
+		augmented[oauth2const.ClaimUserType] = &providers.AttributeResponse{} // nolint:staticcheck
+		augmented[oauth2const.ClaimUserTypeHandle] = &providers.AttributeResponse{}
+		augmented[oauth2const.ClaimUserTypeName] = &providers.AttributeResponse{}
 	}
 	if entityRef.OUID != "" {
 		augmented[oauth2const.ClaimOUID] = &providers.AttributeResponse{}

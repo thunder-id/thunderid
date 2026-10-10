@@ -79,7 +79,9 @@ describe('TokenConstants', () => {
       expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('ouId');
       expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('ouName');
       expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('roles');
-      expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('userType');
+      expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('userTypeHandle');
+      expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).toContain('userTypeName');
+      expect(TokenConstants.ADDITIONAL_USER_ATTRIBUTES).not.toContain('userType');
     });
   });
 });

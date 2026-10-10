@@ -19,6 +19,7 @@ import (
 	authnassert "github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -27,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -50,6 +52,7 @@ type AuthAssertExecutorTestSuite struct {
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockAttributeCacheSvc *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockRoleService       *rolemock.RoleServiceInterfaceMock
+	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	executor              *authAssertExecutor
 }
 
@@ -69,6 +72,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAttributeCacheSvc = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockRoleService = rolemock.NewRoleServiceInterfaceMock(suite.T())
+	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 
 	mockExec := createMockExecutorSimple(suite.T(), ExecutorNameAuthAssert, providers.ExecutorTypeUtility)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameAuthAssert, providers.ExecutorTypeUtility,
@@ -76,7 +80,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 
 	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider, suite.mockEntityProvider,
-		suite.mockAttributeCacheSvc, suite.mockRoleService)
+		suite.mockAttributeCacheSvc, suite.mockRoleService, suite.mockEntityTypeService)
 }
 
 func createMockExecutorSimple(t *testing.T, name string,
@@ -617,7 +621,9 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithUserTypeAndOU() {
 
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
-			return claims[oauth2const.ClaimUserType] == "EXTERNAL" && claims[oauth2const.ClaimOUID] == "ou-456"
+			//nolint:staticcheck // compat shim for the deprecated userType claim.
+			userType := claims[oauth2const.ClaimUserType]
+			return userType == "EXTERNAL" && claims[oauth2const.ClaimOUID] == "ou-456"
 		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
 
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou-456").
@@ -1449,7 +1455,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups()
 		Return(userGroups, nil)
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "user-123", "", "")
+		nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1470,7 +1476,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_F
 		Return(nil, &entityprovider.EntityProviderError{Message: "groups_fetch_failed", Description: "database error"})
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "user-123", "", "")
+		nil, "user-123", "", "", "")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), attrs)
@@ -1486,7 +1492,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_E
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
-		nil, "", "", "")
+		nil, "", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	// Groups attribute should not be present when UserID is empty
@@ -1524,12 +1530,84 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithUserType
 		RuntimeData: map[string]string{},
 	}
 
-	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType},
-		nil, "user-123", "INTERNAL", "")
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType}, //nolint:staticcheck
+		nil, "user-123", "", "INTERNAL", "")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
-	assert.Equal(suite.T(), "INTERNAL", attrs[oauth2const.ClaimUserType])
+	assert.Equal(suite.T(), "INTERNAL", attrs[oauth2const.ClaimUserType]) //nolint:staticcheck
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserType_EmitsDisplayName() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+	}
+
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle",
+		mock.Anything, entitytype.TypeCategoryUser, "retail-customer").
+		Return(&entitytype.EntityType{Handle: "retail-customer", DisplayName: "Retail Customer"}, nil)
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType}, //nolint:staticcheck
+		nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), attrs)
+	assert.Equal(suite.T(), "Retail Customer", attrs[oauth2const.ClaimUserType]) //nolint:staticcheck
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserTypeHandleAndName_Separately() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+	}
+
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle",
+		mock.Anything, entitytype.TypeCategoryUser, "retail-customer").
+		Return(&entitytype.EntityType{Handle: "retail-customer", DisplayName: "Retail Customer"}, nil)
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx,
+		[]string{oauth2const.ClaimUserTypeHandle, oauth2const.ClaimUserTypeName},
+		nil, "user-123", string(providers.EntityCategoryUser), "retail-customer", "")
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), attrs)
+	assert.Equal(suite.T(), "retail-customer", attrs[oauth2const.ClaimUserTypeHandle])
+	assert.Equal(suite.T(), "Retail Customer", attrs[oauth2const.ClaimUserTypeName])
+	_, hasLegacy := attrs[oauth2const.ClaimUserType] //nolint:staticcheck
+	assert.False(suite.T(), hasLegacy, "legacy userType claim is not emitted when not configured")
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_UserType_LookupFailure_FallsBackToHandle() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+	}
+
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "person").
+		Return((*entitytype.EntityType)(nil), &tidcommon.ServiceError{
+			Error: tidcommon.I18nMessage{DefaultValue: "not found"},
+		})
+
+	//nolint:staticcheck // compat shim for the deprecated userType claim.
+	configured := []string{
+		oauth2const.ClaimUserType,
+		oauth2const.ClaimUserTypeHandle,
+		oauth2const.ClaimUserTypeName,
+	}
+	attrs, err := suite.executor.resolveUserAttributes(ctx, configured,
+		nil, "user-123", string(providers.EntityCategoryUser), "person", "")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "person", attrs[oauth2const.ClaimUserType]) //nolint:staticcheck
+	assert.Equal(suite.T(), "person", attrs[oauth2const.ClaimUserTypeHandle])
+	assert.Equal(suite.T(), "person", attrs[oauth2const.ClaimUserTypeName])
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithEmptyUserType_NotAdded() {
@@ -1539,11 +1617,11 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithEmptyUse
 		RuntimeData: map[string]string{},
 	}
 
-	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType},
-		nil, "user-123", "", "")
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimUserType}, //nolint:staticcheck
+		nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
-	_, hasUserType := attrs[oauth2const.ClaimUserType]
+	_, hasUserType := attrs[oauth2const.ClaimUserType] //nolint:staticcheck
 	assert.False(suite.T(), hasUserType)
 }
 
@@ -1559,7 +1637,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx,
 		[]string{oauth2const.ClaimOUID, oauth2const.ClaimOUName, oauth2const.ClaimOUHandle},
-		nil, "user-123", "", testAuthOUID)
+		nil, "user-123", "", "", testAuthOUID)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), attrs)
@@ -1585,7 +1663,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 		})
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimOUID},
-		nil, "user-123", "", "ou-invalid")
+		nil, "user-123", "", "", "ou-invalid")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), attrs)
@@ -1601,7 +1679,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithOUDetail
 	}
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.ClaimOUID},
-		nil, "user-123", "", "")
+		nil, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	_, hasOUID := attrs[oauth2const.ClaimOUID]
@@ -1623,7 +1701,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_RawJWT_Bypas
 		providers.RawJWTAttributeKey: "header.payload.signature",
 	}
 
-	attrs, err := suite.executor.resolveUserAttributes(ctx, nil, fetchedAttributes, "user-123", "", "")
+	attrs, err := suite.executor.resolveUserAttributes(ctx, nil, fetchedAttributes, "user-123", "", "", "")
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), map[string]interface{}{
@@ -1696,7 +1774,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_UserTyp
 		Application: providers.Application{
 			InboundAuthProfile: providers.InboundAuthProfile{
 				Assertion: &inboundmodel.AssertionConfig{
-					UserAttributes: []string{oauth2const.ClaimUserType},
+					UserAttributes: []string{oauth2const.ClaimUserType}, //nolint:staticcheck
 				},
 			},
 		},
@@ -1707,11 +1785,11 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_UserTyp
 
 	suite.mockAttributeCacheSvc.On("CreateAttributeCache", mock.Anything,
 		mock.MatchedBy(func(cache *attributecache.AttributeCache) bool {
-			return cache.Attributes[oauth2const.ClaimUserType] == "EXTERNAL"
+			return cache.Attributes[oauth2const.ClaimUserType] == "EXTERNAL" //nolint:staticcheck
 		})).Return(&attributecache.AttributeCache{ID: "cache-usertype"}, nil)
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
-			_, hasUserType := claims[oauth2const.ClaimUserType]
+			_, hasUserType := claims[oauth2const.ClaimUserType] //nolint:staticcheck
 			return claims["aci"] == "cache-usertype" && !hasUserType
 		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
 

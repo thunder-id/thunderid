@@ -18,7 +18,7 @@ const TokenConstants = {
   /**
    * Additional system attributes that can be configured as user attributes
    */
-  ADDITIONAL_USER_ATTRIBUTES: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles', 'userType'],
+  ADDITIONAL_USER_ATTRIBUTES: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles', 'userTypeHandle', 'userTypeName'],
 
   /**
    * Agent system, OU, group, and role attributes that can be added to the agent's own access token
