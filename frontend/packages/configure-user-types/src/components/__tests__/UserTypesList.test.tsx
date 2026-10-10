@@ -244,6 +244,34 @@ describe('UserTypesList', () => {
     expect(screen.getByTestId('row-schema2')).toHaveTextContent('contractor');
   });
 
+  it('shows the SCIM Core chip only on the SCIM core user type', () => {
+    mockUseGetUserTypes.mockReturnValueOnce({
+      data: {
+        ...mockUserTypesData,
+        types: [{...mockUserTypesData.types[0], systemAttributes: {isScimCoreType: true}}, mockUserTypesData.types[1]],
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useGetUserTypesHook>);
+
+    render(<UserTypesList />);
+
+    expect(screen.getByTestId('row-schema1')).toHaveTextContent('SCIM Core');
+    expect(screen.getByTestId('row-schema2')).not.toHaveTextContent('SCIM Core');
+  });
+
+  it('shows the SCIM Core chip on the only user type even when the flag is not stored', () => {
+    mockUseGetUserTypes.mockReturnValueOnce({
+      data: {...mockUserTypesData, totalResults: 1, count: 1, types: [mockUserTypesData.types[0]]},
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useGetUserTypesHook>);
+
+    render(<UserTypesList />);
+
+    expect(screen.getByTestId('row-schema1')).toHaveTextContent('SCIM Core');
+  });
+
   it('shows organization unit names when available', () => {
     render(<UserTypesList />);
 

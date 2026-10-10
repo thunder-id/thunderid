@@ -15,6 +15,7 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateUserType from '../api/useCreateUserType';
+import useGetUserTypes from '../api/useGetUserTypes';
 import ConfigureName from '../components/create-user-type/ConfigureName';
 import ConfigureProperties from '../components/create-user-type/ConfigureProperties';
 import UserTypeConstraints from '../constants/user-type-constraints';
@@ -28,6 +29,7 @@ export default function CreateUserTypePage(): JSX.Element {
   const navigate = useNavigate();
   const logger = useLogger('CreateUserTypePage');
   const createUserTypeMutation = useCreateUserType();
+  const {data: userTypesList} = useGetUserTypes({limit: 100});
   const routes = useUserTypeRoutes();
 
   const {
@@ -307,8 +309,13 @@ export default function CreateUserTypePage(): JSX.Element {
       requestBody.allowSelfRegistration = true;
     }
 
-    if (displayAttribute) {
-      requestBody.systemAttributes = {display: displayAttribute};
+    // The first user type is the SCIM core type, so it is flagged as such from the start.
+    const isFirstUserType = userTypesList?.totalResults === 0;
+    if (displayAttribute || isFirstUserType) {
+      requestBody.systemAttributes = {
+        ...(displayAttribute ? {display: displayAttribute} : {}),
+        ...(isFirstUserType ? {isScimCoreType: true} : {}),
+      };
     }
 
     try {

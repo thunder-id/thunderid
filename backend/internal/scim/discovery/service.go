@@ -230,6 +230,9 @@ func (s *scimDiscoveryService) GetSchema(
 	if strings.EqualFold(trimmedURN, scim.SCIMEnterpriseUserSchemaURN) {
 		coreType, svcErr := s.resolveCoreUserEntityType(ctx)
 		if svcErr != nil {
+			if svcErr.Type == tidcommon.ServerErrorType {
+				return nil, &tidcommon.InternalServerError
+			}
 			s.logger.Debug(ctx, "Core user type unavailable for SCIM Enterprise User schema URN",
 				log.Any("error", svcErr))
 			return nil, &scim.ErrorSchemaNotFound
@@ -353,7 +356,7 @@ func (s *scimDiscoveryService) resolveCoreUserEntityType(
 	ctx context.Context,
 ) (*entitytype.EntityType, *tidcommon.ServiceError) {
 	runtimeCtx := security.WithRuntimeContext(ctx)
-	name, svcErr := scim.ResolveCoreUserType(runtimeCtx, s.userTypeService, s.cfg.CoreUserTypeID)
+	name, svcErr := scim.ResolveCoreUserType(runtimeCtx, s.userTypeService)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -377,28 +380,13 @@ func (s *scimDiscoveryService) resolveCoreUserTypeAndTotal(
 		return nil, 0, scim.BuildUserTypeErrorToSCIM(svcErr)
 	}
 
-	if s.cfg.CoreUserTypeID != "" {
-		et, svcErr := s.userTypeService.GetEntityType(
-			runtimeCtx, entitytype.TypeCategoryUser, s.cfg.CoreUserTypeID, false)
-		if svcErr != nil {
-			s.logger.Debug(ctx, "Core user type unavailable, omitting SCIM core User schema",
-				log.Any("error", scim.BuildUserTypeErrorToSCIM(svcErr)))
-			return nil, page.TotalResults, nil
-		}
-		return et, page.TotalResults, nil
-	}
-
-	if page.TotalResults != 1 || len(page.Types) != 1 {
-		s.logger.Debug(ctx, "Core user type unavailable, omitting SCIM core User schema",
-			log.Any("error", &scim.ErrorMissingCustomSchema))
-		return nil, page.TotalResults, nil
-	}
-	et, svcErr := s.userTypeService.GetEntityTypeByHandle(
-		runtimeCtx, entitytype.TypeCategoryUser, page.Types[0].Handle,
-	)
+	et, svcErr := s.resolveCoreUserEntityType(ctx)
 	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, 0, svcErr
+		}
 		s.logger.Debug(ctx, "Core user type unavailable, omitting SCIM core User schema",
-			log.Any("error", scim.BuildUserTypeErrorToSCIM(svcErr)))
+			log.Any("error", svcErr))
 		return nil, page.TotalResults, nil
 	}
 	return et, page.TotalResults, nil

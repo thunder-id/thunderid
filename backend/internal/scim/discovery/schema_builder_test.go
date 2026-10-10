@@ -56,6 +56,12 @@ func (suite *SchemaBuilderTestSuite) TestBuildEnterpriseUserSchema_Success() {
 			"department": {"type": "string"},
 			"manager": {"type": "string"}
 		}`),
+		SystemAttributes: &entitytype.SystemAttributes{ScimMapping: &entitytype.ScimMapping{
+			AttributeMap: map[string]string{
+				"employee_number": "employeeNumber", "cost_center": "costCenter",
+				"department": "department", "manager": "manager",
+			},
+		}},
 	}
 
 	schema, err := buildEnterpriseUserSchema("https://example.com", et)
@@ -130,6 +136,9 @@ func (suite *SchemaBuilderTestSuite) TestBuildCoreUserSchema_CredentialMappedCan
 			"username": {"type": "string", "required": true, "credential": true},
 			"email": {"type": "string"}
 		}`),
+		SystemAttributes: &entitytype.SystemAttributes{ScimMapping: &entitytype.ScimMapping{
+			AttributeMap: map[string]string{"username": "userName", "email": "emails"},
+		}},
 	}
 
 	schema, err := buildCoreUserSchema("https://example.com", et)

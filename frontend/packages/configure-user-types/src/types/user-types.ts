@@ -87,10 +87,28 @@ export type PropertyDefinition =
 export type UserTypeDefinition = Record<string, PropertyDefinition>;
 
 /**
+ * SCIM type/primary metadata for a property mapped to a multi-valued SCIM target.
+ */
+export interface ScimMultiValuedMeta {
+  type: string;
+  primary: boolean;
+}
+
+/**
+ * SCIM attribute mapping of a user type (schema property name to SCIM target).
+ */
+export interface ScimMapping {
+  attributeMap?: Record<string, string>;
+  multiValuedMeta?: Record<string, ScimMultiValuedMeta>;
+}
+
+/**
  * System-level metadata for a user type.
  */
 export interface SystemAttributes {
   display?: string;
+  isScimCoreType?: boolean;
+  scimMapping?: ScimMapping;
 }
 
 /**

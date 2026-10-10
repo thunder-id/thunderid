@@ -174,6 +174,12 @@ var testCoreUserType = entitytype.EntityType{
 	Handle:      "employee",
 	DisplayName: "Employee",
 	Schema:      json.RawMessage(`{"username":{"type":"string"},"email":{"type":"string","required":true}}`),
+	SystemAttributes: &entitytype.SystemAttributes{
+		IsScimCoreType: true,
+		ScimMapping: &entitytype.ScimMapping{
+			AttributeMap: map[string]string{"username": "userName", "email": "emails"},
+		},
+	},
 }
 
 // TestBuildCoreUserSchema_IDIsCoreURN tests Build Core User Schema for ID Is Core URN.
@@ -213,6 +219,33 @@ func (suite *ServiceTestSuite) TestBuildCoreUserSchema_ContainsIDAlwaysAndMatche
 	require.True(t, byName["emails"].Required)
 }
 
+// TestBuildCoreUserSchema_PasswordStaysWriteOnlyWhenSourceNotCredential tests that password is declared
+// write-only and never returned even when the property mapped to it is not credential-flagged.
+func (suite *ServiceTestSuite) TestBuildCoreUserSchema_PasswordStaysWriteOnlyWhenSourceNotCredential() {
+	t := suite.T()
+	coreType := entitytype.EntityType{
+		Handle: "employee",
+		Schema: json.RawMessage(`{"pwd":{"type":"string"}}`),
+		SystemAttributes: &entitytype.SystemAttributes{
+			IsScimCoreType: true,
+			ScimMapping:    &entitytype.ScimMapping{AttributeMap: map[string]string{"pwd": "password"}},
+		},
+	}
+
+	schema, err := buildCoreUserSchema(testGenericBaseURL, coreType)
+	require.NoError(t, err)
+
+	var password *scimSchemaAttribute
+	for i := range schema.Attributes {
+		if schema.Attributes[i].Name == "password" {
+			password = &schema.Attributes[i]
+		}
+	}
+	require.NotNil(t, password)
+	require.Equal(t, scimMutabilityWriteOnly, password.Mutability)
+	require.Equal(t, scimReturnedNever, password.Returned)
+}
+
 // TestBuildCoreUserSchema_OmitsUnmatchedAttributes tests that fields with no matching attribute
 // in the designated type's schema are omitted rather than falling back to the RFC default shape.
 func (suite *ServiceTestSuite) TestBuildCoreUserSchema_OmitsUnmatchedAttributes() {
@@ -239,6 +272,11 @@ func (suite *ServiceTestSuite) TestBuildCoreUserSchema_FiltersSubAttributesToMat
 		Schema: json.RawMessage(
 			`{"given_name":{"type":"string"},"street_address":{"type":"string"}}`,
 		),
+		SystemAttributes: &entitytype.SystemAttributes{ScimMapping: &entitytype.ScimMapping{
+			AttributeMap: map[string]string{
+				"given_name": "name.givenName", "street_address": "addresses.streetAddress",
+			},
+		}},
 	}
 	schema, err := buildCoreUserSchema(testGenericBaseURL, coreType)
 	require.NoError(t, err)
@@ -260,10 +298,10 @@ func (suite *ServiceTestSuite) TestBuildCoreUserSchema_FiltersSubAttributesToMat
 	for _, s := range byName["addresses"].SubAttributes {
 		addrSubs[s.Name] = struct{}{}
 	}
-	// streetAddress is individually matched; formatted/type/primary are protocol-only
-	// (no dedicated candidate) and always ride along with the parent match.
+	// streetAddress is individually matched; type/primary are protocol-only and ride along with
+	// the parent match, while formatted is only declared when it is mapped.
 	require.Contains(t, addrSubs, "streetAddress")
-	require.Contains(t, addrSubs, "formatted")
+	require.NotContains(t, addrSubs, "formatted")
 	require.Contains(t, addrSubs, "type")
 	require.Contains(t, addrSubs, "primary")
 	require.NotContains(t, addrSubs, "locality")
@@ -521,7 +559,7 @@ func (suite *ServiceTestSuite) TestGetSchema_CoreUserURN_SingleUserType_DerivesS
 }
 
 // TestGetSchema_CoreUserURN_NoUserTypes_Returns404 tests that with no configured user types,
-// and no CoreUserTypeID configured, the core schema is unavailable rather than falling back
+// and none flagged as the SCIM core type, the core schema is unavailable rather than falling back
 // to a static, potentially inaccurate declaration.
 func (suite *ServiceTestSuite) TestGetSchema_CoreUserURN_NoUserTypes_Returns404() {
 	t := suite.T()
@@ -537,6 +575,21 @@ func (suite *ServiceTestSuite) TestGetSchema_CoreUserURN_NoUserTypes_Returns404(
 	require.Nil(t, schema)
 	require.NotNil(t, svcErr)
 	require.Equal(t, scim.ErrorSchemaNotFound.Code, svcErr.Code)
+}
+
+// TestGetSchema_EnterpriseUserURN_ServerError_Returns500 tests that a server error while resolving the
+// core user type is not reported as a missing Enterprise User schema.
+func (suite *ServiceTestSuite) TestGetSchema_EnterpriseUserURN_ServerError_Returns500() {
+	t := suite.T()
+	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, mock.Anything, mock.Anything, false).
+		Return((*entitytype.EntityTypeListResponse)(nil), &tidcommon.InternalServerError)
+
+	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
+	schema, svcErr := svc.GetSchema(context.Background(), scim.SCIMEnterpriseUserSchemaURN, testGenericBaseURL)
+	require.Nil(t, schema)
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 // TestGetSchema_EnterpriseUserURN_Success tests GetSchema for SCIMEnterpriseUserSchemaURN.
@@ -560,6 +613,9 @@ func (suite *ServiceTestSuite) TestGetSchema_EnterpriseUserURN_Success() {
 			"department": {"type": "string"},
 			"employee_number": {"type": "string"}
 		}`),
+		SystemAttributes: &entitytype.SystemAttributes{ScimMapping: &entitytype.ScimMapping{
+			AttributeMap: map[string]string{"department": "department", "employee_number": "employeeNumber"},
+		}},
 	}
 	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "employee").
 		Return(&etWithEnterprise, (*tidcommon.ServiceError)(nil))
@@ -636,7 +692,7 @@ func (suite *ServiceTestSuite) TestGetSchema_UserTypeNotFound_Returns404() {
 // --- ListSchemas ---
 
 // TestListSchemas_NoUserTypes_OmitsCoreUserSchema tests that with no configured user types
-// (and no CoreUserTypeID configured), ListSchemas omits the core User schema rather than
+// (and none flagged as the SCIM core type), ListSchemas omits the core User schema rather than
 // falling back to a static, potentially inaccurate declaration — only the Group schema remains.
 func (suite *ServiceTestSuite) TestListSchemas_NoUserTypes_OmitsCoreUserSchema() {
 	t := suite.T()
@@ -655,6 +711,31 @@ func (suite *ServiceTestSuite) TestListSchemas_NoUserTypes_OmitsCoreUserSchema()
 	schemas := resp.Resources
 	require.Len(t, schemas, 1)
 	require.Equal(t, scim.SCIMCoreGroupSchemaURN, schemas[0].ID)
+}
+
+// TestListSchemas_CoreTypeResolutionServerError_ReturnsError tests that a server error while resolving the
+// core user type, after the count query succeeded, is returned instead of silently omitting the core schemas.
+func (suite *ServiceTestSuite) TestListSchemas_CoreTypeResolutionServerError_ReturnsError() {
+	t := suite.T()
+	mockET := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 1, 0, false).
+		Return(
+			&entitytype.EntityTypeListResponse{
+				TotalResults: 1,
+				Types:        []entitytype.EntityTypeListItem{{Handle: "customer"}},
+			},
+			(*tidcommon.ServiceError)(nil),
+		)
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, constants.MaxPageSize, 0, false).
+		Return((*entitytype.EntityTypeListResponse)(nil), &tidcommon.InternalServerError)
+
+	svc := newSCIMDiscoveryService(mockET, testSCIMConfig, testServerStartTime)
+
+	resp, svcErr := svc.ListSchemas(context.Background(), testGenericBaseURL, 1, 100)
+
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	require.Empty(t, resp.Resources)
 }
 
 // TestListSchemas_IncludesExtensionSchemasForEachUserType tests List Schemas for Includes Extension Schemas
@@ -720,6 +801,9 @@ func (suite *ServiceTestSuite) TestListSchemas_IncludesEnterpriseUserSchema() {
 					"department": {"type": "string"},
 					"employee_number": {"type": "string"}
 				}`),
+				SystemAttributes: &entitytype.SystemAttributes{ScimMapping: &entitytype.ScimMapping{
+					AttributeMap: map[string]string{"department": "department", "employee_number": "employeeNumber"},
+				}},
 			},
 			(*tidcommon.ServiceError)(nil),
 		)
@@ -974,6 +1058,14 @@ func (suite *ServiceTestSuite) TestListSchemas_WindowSpansStaticAndDynamicSchema
 			},
 			(*tidcommon.ServiceError)(nil),
 		).Twice()
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, constants.MaxPageSize, 0, false).
+		Return(
+			&entitytype.EntityTypeListResponse{
+				TotalResults: 2,
+				Types:        []entitytype.EntityTypeListItem{{Handle: "typea"}, {Handle: "typeb"}},
+			},
+			(*tidcommon.ServiceError)(nil),
+		).Once()
 	mockET.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, "typea").
 		Return(
 			&entitytype.EntityType{
@@ -1009,6 +1101,15 @@ func (suite *ServiceTestSuite) TestListSchemas_LargeRegistry_ConstantQueryCount(
 			},
 			(*tidcommon.ServiceError)(nil),
 		).Once()
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, constants.MaxPageSize, 0, false).
+		Return(
+			&entitytype.EntityTypeListResponse{
+				TotalResults: 500, Types: []entitytype.EntityTypeListItem{{Handle: "type0"}},
+			},
+			(*tidcommon.ServiceError)(nil),
+		).Once()
+	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, constants.MaxPageSize, 1, false).
+		Return(&entitytype.EntityTypeListResponse{TotalResults: 500}, (*tidcommon.ServiceError)(nil)).Once()
 	mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser, 10, 0, false).
 		Return(
 			&entitytype.EntityTypeListResponse{

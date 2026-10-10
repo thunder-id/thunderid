@@ -23,7 +23,7 @@ func TestResourceTestSuite(t *testing.T) {
 	suite.Run(t, new(ResourceTestSuite))
 }
 
-// TestThunderIDMemberTypeToSCIM tests Thunder ID Member Type To SCIM.
+// TestThunderIDMemberTypeToSCIM tests ThunderID Member Type To SCIM.
 func (suite *ResourceTestSuite) TestThunderIDMemberTypeToSCIM() {
 	t := suite.T()
 	require.Equal(t, "Group", thunderIDMemberTypeToSCIM(group.MemberTypeGroup))

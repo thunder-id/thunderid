@@ -6,6 +6,12 @@ ouId: decl-ou-1
 allowSelfRegistration: false
 systemAttributes:
   display: "username"
+  isScimCoreType: true
+  scimMapping:
+    attributeMap:
+      username: userName
+      email: emails
+      given_name: name.givenName
 schema: |
   {
     "email": {
@@ -13,6 +19,9 @@ schema: |
       "unique": true
     },
     "username": {
+      "type": "string"
+    },
+    "given_name": {
       "type": "string"
     }
   }

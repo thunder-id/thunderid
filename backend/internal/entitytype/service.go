@@ -281,6 +281,9 @@ func (us *entityTypeService) CreateEntityType(
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := us.unsetOtherScimCoreType(txCtx, category, entityType); err != nil {
+			return err
+		}
 		return us.entityTypeStore.CreateEntityType(txCtx, entityType)
 	}); err != nil {
 		return nil, logAndReturnServerError(ctx, logger, "Failed to create entity type", err)
@@ -467,6 +470,9 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := us.unsetOtherScimCoreType(txCtx, category, entityType); err != nil {
+			return err
+		}
 		return us.entityTypeStore.UpdateEntityTypeByID(txCtx, category, schemaID, entityType)
 	}); err != nil {
 		return nil, logAndReturnServerError(ctx, logger, "Failed to update entity type", err)
@@ -1011,7 +1017,11 @@ func validateSystemAttributes(
 		return nil
 	}
 
-	return validateDisplayAttribute(compiledSchema, systemAttrs.Display)
+	if svcErr := validateDisplayAttribute(compiledSchema, systemAttrs.Display); svcErr != nil {
+		return svcErr
+	}
+
+	return validateScimMapping(compiledSchema, systemAttrs)
 }
 
 // validateDisplayAttribute validates that the display attribute, if provided,
@@ -1033,5 +1043,91 @@ func validateDisplayAttribute(
 		return &ErrorCredentialDisplayAttribute
 	default:
 		return nil
+	}
+}
+
+// scimMultiValuedTargets are the SCIM targets that can be mapped by more than one attribute.
+var scimMultiValuedTargets = map[string]struct{}{"emails": {}, "phoneNumbers": {}, "photos": {}}
+
+// validateScimMapping validates the SCIM attribute mapping of a user type.
+func validateScimMapping(compiledSchema *model.Schema, sa *SystemAttributes) *tidcommon.ServiceError {
+	if sa.ScimMapping == nil {
+		return nil
+	}
+
+	attrsByTarget := make(map[string]int, len(sa.ScimMapping.AttributeMap))
+	for attr, target := range sa.ScimMapping.AttributeMap {
+		if !compiledSchema.HasProperty(attr) {
+			return invalidEntityTypeRequestErr(
+				TypeCategoryUser, "SCIM mapping references an attribute that is not defined in the schema")
+		}
+		if !compiledSchema.IsScalarProperty(attr) {
+			return invalidEntityTypeRequestErr(
+				TypeCategoryUser, "SCIM mapping can only reference string, number or boolean attributes")
+		}
+		if _, ok := scimTargetSet[target]; !ok {
+			return invalidEntityTypeRequestErr(TypeCategoryUser, "SCIM mapping references an unknown SCIM target")
+		}
+		attrsByTarget[target]++
+	}
+
+	primaryByTarget := make(map[string]int)
+	for attr, meta := range sa.ScimMapping.MultiValuedMeta {
+		target, ok := sa.ScimMapping.AttributeMap[attr]
+		if !ok {
+			return invalidEntityTypeRequestErr(TypeCategoryUser, "SCIM metadata references an unmapped attribute")
+		}
+		if meta.Primary {
+			primaryByTarget[target]++
+			if primaryByTarget[target] > 1 {
+				return invalidEntityTypeRequestErr(
+					TypeCategoryUser, "only one attribute can be primary for a multi-valued SCIM target")
+			}
+		}
+	}
+
+	for target, count := range attrsByTarget {
+		if _, multiValued := scimMultiValuedTargets[target]; !multiValued && count > 1 {
+			return invalidEntityTypeRequestErr(
+				TypeCategoryUser, "only multi-valued SCIM targets can be mapped by more than one attribute")
+		}
+	}
+	return nil
+}
+
+// unsetOtherScimCoreType clears IsScimCoreType on any other type when entityType is the SCIM core type.
+func (us *entityTypeService) unsetOtherScimCoreType(
+	ctx context.Context, category TypeCategory, entityType EntityType,
+) error {
+	if entityType.SystemAttributes == nil || !entityType.SystemAttributes.IsScimCoreType {
+		return nil
+	}
+
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		page, err := us.entityTypeStore.GetEntityTypeList(ctx, category, serverconst.MaxPageSize, offset)
+		if err != nil {
+			return err
+		}
+		for _, item := range page {
+			if item.ID == entityType.ID || item.SystemAttributes == nil || !item.SystemAttributes.IsScimCoreType {
+				continue
+			}
+			other, err := us.entityTypeStore.GetEntityTypeByID(ctx, category, item.ID)
+			if err != nil {
+				return err
+			}
+			if other.SystemAttributes == nil || !other.SystemAttributes.IsScimCoreType {
+				continue
+			}
+			attrs := *other.SystemAttributes
+			attrs.IsScimCoreType = false
+			other.SystemAttributes = &attrs
+			if err := us.entityTypeStore.UpdateEntityTypeByID(ctx, category, other.ID, other); err != nil {
+				return err
+			}
+		}
+		if len(page) < serverconst.MaxPageSize {
+			return nil
+		}
 	}
 }

@@ -59,6 +59,10 @@ func parseAndValidateSCIMUserRequest(body []byte, urnPrefix string) (*SCIMUserPa
 		return nil, svcErr
 	}
 
+	if svcErr := validateActive(raw); svcErr != nil {
+		return nil, svcErr
+	}
+
 	coreAttrs := extractCoreAttrs(raw, extensionURN)
 	if extensionURN == "" && len(coreAttrs) == 0 && len(enterpriseAttrs) == 0 {
 		return nil, &scim.ErrorMissingCustomSchema
@@ -187,9 +191,28 @@ func extractEnterpriseAttrs(
 	return entAttrs, nil
 }
 
-// ignoredCommonAttrs are server-managed (id, meta) or unsupported (externalId) common attributes
-// that a client echoing back a GET response will send; they are dropped, never treated as core attributes.
-var ignoredCommonAttrs = []string{"id", "meta", "externalId"}
+// ignoredCommonAttrs are server-managed (id, meta), read-only (groups) or unsupported (externalId) common
+// attributes that a client echoing back a GET response will send; they are dropped, never treated as core
+// attributes. "active" is also dropped, once validateActive has accepted its value.
+var ignoredCommonAttrs = []string{"id", "meta", "externalId", "groups", "active"}
+
+// validateActive accepts "active" only as boolean true, the state every user is created in. A false value
+// is rejected because deactivating a user is not supported, so it must not be silently stored and ignored.
+func validateActive(raw map[string]json.RawMessage) *tidcommon.ServiceError {
+	for k, v := range raw {
+		if !strings.EqualFold(k, "active") {
+			continue
+		}
+		var active bool
+		if err := json.Unmarshal(v, &active); err != nil {
+			return &scim.ErrorInvalidRequestBody
+		}
+		if !active {
+			return scim.NewInactiveUserNotSupportedError()
+		}
+	}
+	return nil
+}
 
 // extractCoreAttrs collects top-level request fields that are not schemas, the extension URN, the enterprise URN,
 // or an ignored common attribute.

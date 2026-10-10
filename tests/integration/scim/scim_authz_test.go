@@ -389,7 +389,14 @@ func (ts *SCIMAuthzTestSuite) TestCreateUserInOwnOUAllowed() {
 // TestCreateUserInOtherOUForbidden verifies the caller is denied creating a user in another OU.
 func (ts *SCIMAuthzTestSuite) TestCreateUserInOtherOUForbidden() {
 	body := ts.buildUserPayload(ts.extensionURNOU2, "scim-authz-created-ou2@example.com")
-	status, _ := ts.doSCIM(http.MethodPost, "/Users", body)
+	status, respBody := ts.doSCIM(http.MethodPost, "/Users", body)
+
+	var created map[string]interface{}
+	if err := json.Unmarshal(respBody, &created); err == nil {
+		if id, _ := created["id"].(string); id != "" {
+			_ = testutils.DeleteUser(id)
+		}
+	}
 	ts.Equal(http.StatusForbidden, status, "scim-manager must not create a user in a different OU")
 }
 

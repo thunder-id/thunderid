@@ -81,6 +81,9 @@ export default function UserTypesList() {
     }
   };
 
+  // The only user type is the SCIM core type by default, matching how the backend resolves it.
+  const isOnlyUserType = userTypesData?.totalResults === 1;
+
   const columns: GridColDef<UserTypeListItem>[] = useMemo(
     () => [
       {
@@ -90,9 +93,26 @@ export default function UserTypesList() {
         minWidth: 220,
         renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
           <Stack justifyContent="center" sx={{height: '100%'}}>
-            <Typography variant="body2" sx={{fontWeight: 500, lineHeight: 1.3}}>
-              {params.row.displayName}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="body2" sx={{fontWeight: 500, lineHeight: 1.3}}>
+                {params.row.displayName}
+              </Typography>
+              {(params.row.systemAttributes?.isScimCoreType === true || isOnlyUserType) && (
+                <Tooltip
+                  title={t(
+                    'userTypes:listing.scimCoreBadgeTooltip',
+                    'Attributes of this user type are mapped to SCIM core fields',
+                  )}
+                >
+                  <Chip
+                    label={t('userTypes:listing.scimCoreBadge', 'SCIM Core')}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  />
+                </Tooltip>
+              )}
+            </Stack>
             <Typography variant="caption" color="text.secondary" sx={{lineHeight: 1.2}}>
               {params.row.handle}
             </Typography>
@@ -180,7 +200,7 @@ export default function UserTypesList() {
         ),
       },
     ],
-    [t, handleDeleteClick, handleViewClick],
+    [t, handleDeleteClick, handleViewClick, isOnlyUserType],
   );
 
   if (userTypesRequestError) {

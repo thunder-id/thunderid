@@ -655,7 +655,7 @@ func (suite *ServiceTestSuite) TestDeleteGroup_NotFound() {
 	require.Equal(t, scim.ErrorResourceNotFound.Code, err.Code)
 }
 
-// TestScimMembersToThunderID_GroupTypeCaseInsensitive tests Scim Members To Thunder ID for Group Type Case Insensitive.
+// TestScimMembersToThunderID_GroupTypeCaseInsensitive tests Scim Members To ThunderID for Group Type Case Insensitive.
 func (suite *ServiceTestSuite) TestScimMembersToThunderID_GroupTypeCaseInsensitive() {
 	t := suite.T()
 	members, err := scimMembersToThunderID([]SCIMGroupMember{
@@ -668,7 +668,7 @@ func (suite *ServiceTestSuite) TestScimMembersToThunderID_GroupTypeCaseInsensiti
 	require.Equal(t, group.MemberTypeUser, members[1].Type)
 }
 
-// TestScimMembersToThunderID_AppAndAgentTypes tests Scim Members To Thunder ID for App and Agent Types.
+// TestScimMembersToThunderID_AppAndAgentTypes tests Scim Members To ThunderID for App and Agent Types.
 func (suite *ServiceTestSuite) TestScimMembersToThunderID_AppAndAgentTypes() {
 	t := suite.T()
 	members, err := scimMembersToThunderID([]SCIMGroupMember{
@@ -681,7 +681,7 @@ func (suite *ServiceTestSuite) TestScimMembersToThunderID_AppAndAgentTypes() {
 	require.Equal(t, group.MemberTypeAgent, members[1].Type)
 }
 
-// TestScimMembersToThunderID_OmittedTypeDefaultsToUser tests Scim Members To Thunder ID for Omitted Type
+// TestScimMembersToThunderID_OmittedTypeDefaultsToUser tests Scim Members To ThunderID for Omitted Type
 // Defaults To User.
 func (suite *ServiceTestSuite) TestScimMembersToThunderID_OmittedTypeDefaultsToUser() {
 	t := suite.T()

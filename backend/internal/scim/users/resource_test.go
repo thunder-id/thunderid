@@ -115,7 +115,9 @@ func (suite *ResourceTestSuite) TestBuildSCIMUserResource() {
 	extensionURN := testPersonExtensionURN
 	rawProps := map[string]scim.RawPropertyDef{"password": {Credential: true}}
 
-	scimUser := buildSCIMUserResource(context.Background(), *log.GetLogger(), u, extensionURN, baseURL, rawProps, true)
+	scimUser := buildSCIMUserResource(
+		context.Background(), *log.GetLogger(), u, extensionURN, baseURL, rawProps, true,
+		testCoreRules, testEnterpriseRules)
 
 	require.Equal(t, "user123", scimUser.ID)
 	require.Contains(t, scimUser.Schemas, scim.SCIMCoreUserSchemaURN)
@@ -136,7 +138,9 @@ func (suite *ResourceTestSuite) TestBuildSCIMUserResource_IncludeCoreAttrsFalse_
 	baseURL := testAPIBaseURL
 	extensionURN := testPersonExtensionURN
 
-	scimUser := buildSCIMUserResource(context.Background(), *log.GetLogger(), u, extensionURN, baseURL, nil, false)
+	scimUser := buildSCIMUserResource(
+		context.Background(), *log.GetLogger(), u, extensionURN, baseURL, nil, false,
+		testCoreRules, testEnterpriseRules)
 
 	require.Nil(t, scimUser.CoreAttrs)
 }
@@ -224,7 +228,9 @@ func (suite *ResourceTestSuite) TestBuildSCIMUserResource_EnterpriseAttrs() {
 	baseURL := testAPIBaseURL
 	extensionURN := testPersonExtensionURN
 
-	scimUser := buildSCIMUserResource(context.Background(), *log.GetLogger(), u, extensionURN, baseURL, nil, true)
+	scimUser := buildSCIMUserResource(
+		context.Background(), *log.GetLogger(), u, extensionURN, baseURL, nil, true,
+		testCoreRules, testEnterpriseRules)
 
 	require.Contains(t, scimUser.Schemas, scim.SCIMEnterpriseUserSchemaURN)
 	require.NotNil(t, scimUser.EnterpriseAttrs)

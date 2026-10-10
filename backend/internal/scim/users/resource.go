@@ -56,6 +56,7 @@ func filterAttrsBySchema(
 func buildSCIMUserResource(
 	ctx context.Context, logger log.Logger, u providers.User, extensionURN, baseURL string,
 	rawProps map[string]scim.RawPropertyDef, includeCoreAttrs bool,
+	rules []scim.CoreAttrRule, enterpriseRules []scim.EnterpriseAttrRule,
 ) SCIMUser {
 	location := fmt.Sprintf("%s%s/Users/%s", baseURL, scim.SCIMBasePath, u.ID)
 
@@ -72,13 +73,13 @@ func buildSCIMUserResource(
 	if len(u.Attributes) > 0 {
 		filtered := filterAttrsBySchema(ctx, logger, u.Attributes, rawProps)
 		if includeCoreAttrs {
-			scimUser.CoreAttrs = mapToCoreAttrs(filtered)
-			entAttrs := mapToEnterpriseAttrs(filtered, baseURL)
+			scimUser.CoreAttrs = mapToCoreAttrs(filtered, rules)
+			entAttrs := mapToEnterpriseAttrs(filtered, baseURL, enterpriseRules)
 			if len(entAttrs) > 0 {
 				scimUser.EnterpriseAttrs = entAttrs
 				scimUser.Schemas = append(scimUser.Schemas, scim.SCIMEnterpriseUserSchemaURN)
 			}
-			filtered = stripMappedCandidates(filtered)
+			filtered = stripMappedCandidates(filtered, rules, enterpriseRules)
 		}
 		scimUser.Attributes = filtered
 	}

@@ -91,7 +91,7 @@ func scimRequestUnauthenticated(method, path string, headers map[string]string) 
 // response's extension object (the object keyed by the extension URN). This
 // is the raw, always-present attribute representation, distinct from the
 // mapped core fields (e.g. top-level "emails") which are only populated for
-// users of the configured scim.core_user_type_id.
+// users of the SCIM core user type.
 // extensionStringValue handles extension string value.
 func extensionStringValue(resp map[string]interface{}, extensionURN, attr string) (string, bool) {
 	ext, ok := resp[extensionURN].(map[string]interface{})

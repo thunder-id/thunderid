@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	dbMock "github.com/thunder-id/thunderid/tests/mocks/database/providermock"
@@ -298,4 +299,33 @@ func loadRuntimeForScope() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: "test-node"},
 	})
+}
+
+func TestMarshalParseSystemAttributes_ScimFields(t *testing.T) {
+	original := &SystemAttributes{
+		Display:        "email",
+		IsScimCoreType: true,
+		ScimMapping: &ScimMapping{
+			AttributeMap:    map[string]string{"email": "userName", "given_name": "name.givenName"},
+			MultiValuedMeta: map[string]ScimAttrMeta{"email": {Type: "work", Primary: true}},
+		},
+	}
+
+	marshaled, err := marshalSystemAttributes(original)
+	require.NoError(t, err)
+
+	parsed, err := parseSystemAttributes(marshaled)
+	require.NoError(t, err)
+	assert.Equal(t, original, parsed)
+}
+
+func TestMarshalParseSystemAttributes_NilScimMapping(t *testing.T) {
+	marshaled, err := marshalSystemAttributes(&SystemAttributes{Display: "email"})
+	require.NoError(t, err)
+
+	parsed, err := parseSystemAttributes(marshaled)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	assert.False(t, parsed.IsScimCoreType)
+	assert.Nil(t, parsed.ScimMapping)
 }

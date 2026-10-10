@@ -308,3 +308,55 @@ func (suite *ValidatorTestSuite) TestParseAndValidateSCIMUserRequest_IgnoresRead
 	require.Empty(t, payload.CoreAttrs)
 	require.Contains(t, payload.ExtensionAttrs, "department")
 }
+
+// TestParseAndValidateSCIMUserRequest_IgnoresGroupsAndActiveTrue tests that the groups and active=true
+// an IdP sends on create are dropped instead of being treated as core attributes.
+func (suite *ValidatorTestSuite) TestParseAndValidateSCIMUserRequest_IgnoresGroupsAndActiveTrue() {
+	t := suite.T()
+	body := []byte(`{
+		"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+		"userName": "alice",
+		"active": true,
+		"groups": []
+	}`)
+
+	payload, svcErr := parseAndValidateSCIMUserRequest(body, testURNPrefix)
+
+	require.Nil(t, svcErr)
+	require.Contains(t, payload.CoreAttrs, "userName")
+	require.NotContains(t, payload.CoreAttrs, "active")
+	require.NotContains(t, payload.CoreAttrs, "groups")
+}
+
+// TestParseAndValidateSCIMUserRequest_RejectsActiveFalse tests that active=false is rejected.
+func (suite *ValidatorTestSuite) TestParseAndValidateSCIMUserRequest_RejectsActiveFalse() {
+	t := suite.T()
+	body := []byte(`{
+		"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+		"userName": "alice",
+		"active": false
+	}`)
+
+	payload, svcErr := parseAndValidateSCIMUserRequest(body, testURNPrefix)
+
+	require.Nil(t, payload)
+	require.NotNil(t, svcErr)
+	require.Equal(t, scim.ErrorSchemaValidationFailed.Code, svcErr.Code)
+	require.Contains(t, svcErr.ErrorDescription.DefaultValue, "active")
+}
+
+// TestParseAndValidateSCIMUserRequest_RejectsNonBooleanActive tests that a non-boolean active is rejected.
+func (suite *ValidatorTestSuite) TestParseAndValidateSCIMUserRequest_RejectsNonBooleanActive() {
+	t := suite.T()
+	body := []byte(`{
+		"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+		"userName": "alice",
+		"active": "yes"
+	}`)
+
+	payload, svcErr := parseAndValidateSCIMUserRequest(body, testURNPrefix)
+
+	require.Nil(t, payload)
+	require.NotNil(t, svcErr)
+	require.Equal(t, scim.ErrorInvalidRequestBody.Code, svcErr.Code)
+}

@@ -844,6 +844,8 @@ const translations = {
     'listing.columns.organizationUnit': 'Organization Unit',
     'listing.columns.allowSelfRegistration': 'Self Registration',
     'listing.columns.actions': 'Actions',
+    'listing.scimCoreBadge': 'SCIM Core',
+    'listing.scimCoreBadgeTooltip': 'Attributes of this user type are mapped to SCIM core fields',
     noOrganizationUnits: 'No organization units available',
     confirmDeleteUserType: 'Are you sure you want to delete this user type?',
     'errors.USRS-1002': 'This user type no longer exists. It may have already been deleted.',

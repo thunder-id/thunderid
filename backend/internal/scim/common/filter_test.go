@@ -189,6 +189,10 @@ func (suite *FilterTestSuite) TestParseSCIMCompValue() {
 	}{
 		{name: "quoted string", raw: `"alice"`, expected: "alice"},
 		{name: "unterminated quoted string", raw: `"alice`, expectErr: true},
+		{name: "json escaped slash", raw: `"a\/b"`, expected: "a/b"},
+		{name: "json unicode escape", raw: `"\u0041"`, expected: "A"},
+		{name: "go-only hex escape", raw: `"\x41"`, expectErr: true},
+		{name: "go-only bell escape", raw: `"\a"`, expectErr: true},
 		{name: "true", raw: "true", expected: true},
 		{name: "false", raw: "false", expected: false},
 		{name: "null", raw: "null", expectErr: true},

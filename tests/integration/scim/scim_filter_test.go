@@ -157,8 +157,8 @@ func (ts *SCIMFilterTestSuite) TestFilterByPlainCustomAttribute() {
 }
 
 // TestFilterByHierarchicalCoreAttribute filters on name.givenName, a
-// core-mapped sub-attribute reverse-mapped through this usertype's own
-// "given_name" schema property.
+// core-mapped sub-attribute. The core user type maps "given_name" to it, and the
+// translated filter matches users of any type holding a "given_name" property.
 func (ts *SCIMFilterTestSuite) TestFilterByHierarchicalCoreAttribute() {
 	status, list := ts.listWithFilter(`name.givenName eq "filter-Jane"`)
 	ts.Require().Equal(http.StatusOK, status)

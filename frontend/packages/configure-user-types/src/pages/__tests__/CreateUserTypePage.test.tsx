@@ -41,6 +41,13 @@ vi.mock('../../api/useCreateUserType', () => ({
   default: () => mockUseCreateUserType(),
 }));
 
+const mockUseGetUserTypes =
+  vi.fn<() => {data?: {totalResults: number; types: {id: string; displayName: string}[]}} | undefined>();
+
+vi.mock('../../api/useGetUserTypes', () => ({
+  default: () => mockUseGetUserTypes(),
+}));
+
 // Mock the static attribute library (powers the attribute library panel).
 // The library attributes have no displayName, so the left-panel button label and
 // the property row header both show the attribute name, and the serialized schema
@@ -229,6 +236,7 @@ const getPropertyNameInputs = () => screen.queryAllByPlaceholderText(/e\.g\., em
 describe('CreateUserTypePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseGetUserTypes.mockReturnValue({data: {totalResults: 1, types: [{id: 'existing', displayName: 'Existing'}]}});
     mockUseCreateUserType.mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,

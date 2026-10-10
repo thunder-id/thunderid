@@ -458,3 +458,20 @@ func TestHandleEntityTypeListRequest_Success(t *testing.T) {
 	handler.HandleEntityTypeListRequest(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+func TestSanitizeSystemAttributes_PreservesScimFields(t *testing.T) {
+	input := &SystemAttributes{
+		Display:        "email",
+		IsScimCoreType: true,
+		ScimMapping: &ScimMapping{
+			AttributeMap:    map[string]string{"email": "userName"},
+			MultiValuedMeta: map[string]ScimAttrMeta{"email": {Type: "work", Primary: true}},
+		},
+	}
+
+	assert.Equal(t, input, sanitizeSystemAttributes(input))
+}
+
+func TestSanitizeSystemAttributes_NilInput(t *testing.T) {
+	assert.Nil(t, sanitizeSystemAttributes(nil))
+}

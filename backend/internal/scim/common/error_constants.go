@@ -198,7 +198,7 @@ var (
 		},
 	}
 
-	// ErrorUniquenessConflict is returned when a user with the same unique attribute value already exists.
+	// ErrorUniquenessConflict is returned when a resource with the same unique attribute value already exists.
 	ErrorUniquenessConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "SCIM-1014",
@@ -208,7 +208,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.scim.uniqueness_conflict_description",
-			DefaultValue: "A user with the same unique attribute value already exists",
+			DefaultValue: "A resource with the same unique attribute value already exists",
 		},
 	}
 
@@ -669,6 +669,17 @@ func NewUndeclaredAttributesError(userTypeHandle string, undeclared []string) *t
 			"User type %q does not declare the following attribute(s): %s",
 			userTypeHandle, strings.Join(undeclared, ", "),
 		),
+	}
+	return &svcErr
+}
+
+// NewInactiveUserNotSupportedError builds a SCIM-1017 (schema validation failed) error stating that
+// "active" cannot be set to false because user deactivation is not supported.
+func NewInactiveUserNotSupportedError() *tidcommon.ServiceError {
+	svcErr := ErrorSchemaValidationFailed
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key:          ErrorSchemaValidationFailed.ErrorDescription.Key,
+		DefaultValue: `The "active" attribute cannot be false; deactivating users is not supported`,
 	}
 	return &svcErr
 }

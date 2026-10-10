@@ -101,6 +101,26 @@ func (cs *Schema) ValidateAsDisplayAttribute(name string) DisplayAttributeStatus
 	return DisplayAttributeValid
 }
 
+// HasProperty reports whether name exists in the schema.
+func (cs *Schema) HasProperty(name string) bool {
+	_, ok := cs.getPropertyByPath(name)
+	return ok
+}
+
+// IsScalarProperty reports whether name exists in the schema and is a string, number or boolean.
+func (cs *Schema) IsScalarProperty(name string) bool {
+	prop, ok := cs.getPropertyByPath(name)
+	if !ok {
+		return false
+	}
+	switch prop.getType() {
+	case TypeString, TypeNumber, TypeBoolean:
+		return true
+	default:
+		return false
+	}
+}
+
 // AttributeInfo holds an attribute name, its required and credential status, and its human-readable
 // display label. DisplayName may be empty when the schema definition omits the `displayName` field;
 // callers should fall back to Attribute when rendering a label.

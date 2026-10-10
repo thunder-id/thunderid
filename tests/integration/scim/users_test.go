@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -24,7 +25,7 @@ const scimEnterpriseUserSchemaURN = "urn:ietf:params:scim:schemas:extension:ente
 // but not the usertype's own required attributes, and a duplicate unique
 // value.
 //
-// Only the designated core user type (scim.core_user_type_id, the declarative
+// Only the designated core user type (the SCIM core user type, the declarative
 // "decl-schema-1" here) may carry the core User schema, so this suite's own
 // usertype is extension-only: its unique identifier is the required, unique
 // "email" extension attribute. The core-schema path itself is covered against the
@@ -44,7 +45,7 @@ type SCIMUsersTestSuite struct {
 	altEntityTypeName string
 	altExtensionURN   string
 
-	// Extension URN of the designated core user type (scim.core_user_type_id).
+	// Extension URN of the designated core user type (SCIM core user type).
 	coreExtensionURN string
 }
 
@@ -812,16 +813,20 @@ func (ts *SCIMUsersTestSuite) TestReplaceUserUnknownUserTypeRejected() {
 	ts.Require().Equal(http.StatusCreated, status)
 	id, _ := created["id"].(string)
 
-	bogusURN := "urn:ietf:params:scim:schemas:extension:thunderid-scim-it-does-not-exist:2.0:User"
+	// Derived from the discovered URN so it carries the configured custom-schema prefix and reaches the
+	// user type lookup instead of being parsed as a core attribute.
+	bogusURN := strings.Replace(ts.extensionURN, ts.entityTypeName, "scim-it-does-not-exist", 1)
+	ts.Require().NotEqual(ts.extensionURN, bogusURN)
 	body, err := json.Marshal(map[string]interface{}{
 		"schemas": []string{bogusURN},
 		bogusURN:  map[string]interface{}{"email": email},
 	})
 	ts.Require().NoError(err)
 
-	status, _, err = scimRequest(http.MethodPut, "/Users/"+id, body, nil)
+	status, respBody, err := scimRequest(http.MethodPut, "/Users/"+id, body, nil)
 	ts.Require().NoError(err)
 	ts.Equal(http.StatusBadRequest, status, "a schema URN naming no registered user type must be rejected")
+	ts.Contains(string(respBody), "does not exist", "the rejection must come from the unknown user type check")
 }
 
 // TestOptionsUsersPreflightAccepted verifies the CORS preflight handler is wired for the Users endpoint.
