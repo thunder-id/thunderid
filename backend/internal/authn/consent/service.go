@@ -518,9 +518,17 @@ func buildConsentedElementSet(consents []*consent.Consent) map[string]bool {
 }
 
 // buildUserAttributeSet builds a set of attribute names present in the user's profile.
-// When availableAttributes is nil, the returned set is empty — meaning no profile filtering is applied.
+// A nil result means the profile is unavailable or opaque, so no profile filtering is applied.
+// A non-nil result, including an empty one, means the profile is known and only the attributes
+// it contains may be prompted for.
 func buildUserAttributeSet(available *providers.AttributesResponse) map[string]bool {
-	if available == nil || len(available.Attributes) == 0 {
+	if available == nil {
+		return nil
+	}
+
+	// An opaque JWT/JWE response carries the token under a single pseudo-claim rather than
+	// individual attribute names, so the attributes the user holds are not known here.
+	if _, ok := available.Attributes[providers.RawJWTAttributeKey]; ok {
 		return nil
 	}
 
@@ -586,7 +594,7 @@ func buildAttributePurposePrompt(purpose consent.ConsentPurpose,
 		}
 
 		// Skip elements not present in the user profile
-		if len(userAttributeSet) > 0 && !userAttributeSet[elem.Name] {
+		if userAttributeSet != nil && !userAttributeSet[elem.Name] {
 			continue
 		}
 
