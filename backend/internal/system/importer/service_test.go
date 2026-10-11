@@ -3057,8 +3057,10 @@ func TestGetAgentOAuthConfigForImport_NilRequest(t *testing.T) {
 
 // fakeResourceServerService is a test double for the resource server adapter used by importer tests.
 type fakeResourceServerService struct {
-	created []providers.ResourceServer
-	updated []providers.ResourceServer
+	created          []providers.ResourceServer
+	updated          []providers.ResourceServer
+	createdResources []providers.Resource
+	createdActions   []providers.Action
 }
 
 func (f *fakeResourceServerService) CreateResourceServer(
@@ -3086,9 +3088,11 @@ func (f *fakeResourceServerService) UpdateResourceServer(
 }
 
 func (f *fakeResourceServerService) CreateResource(
-	_ context.Context, _ string, _ providers.Resource,
+	_ context.Context, _ string, res providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
-	return &providers.Resource{}, nil
+	res.ID = fmt.Sprintf("res-%d", len(f.createdResources)+1)
+	f.createdResources = append(f.createdResources, res)
+	return &res, nil
 }
 
 func (f *fakeResourceServerService) GetResourceList(
@@ -3098,9 +3102,136 @@ func (f *fakeResourceServerService) GetResourceList(
 }
 
 func (f *fakeResourceServerService) CreateAction(
-	_ context.Context, _ string, _ *string, _ providers.Action,
+	_ context.Context, _ string, resID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
-	return &providers.Action{}, nil
+	if resID != nil {
+		action.ID = *resID
+	}
+	f.createdActions = append(f.createdActions, action)
+	return &action, nil
+}
+
+// TestImportResourceServer_SameHandleUnderDifferentParents verifies that a sub-resource handle
+// reused under different parents is imported as two distinct resources, each attached to its own
+// parent. Handles are unique per parent, not per resource server, so `parent` accepts the full
+// delimiter-joined path to disambiguate.
+func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-repro",
+		"name: Repro",
+		"identifier: urn:example:repro",
+		"ouHandle: default",
+		`delimiter: ":"`,
+		"resources:",
+		"  - { name: App, handle: app }",
+		"  - { name: Project, handle: project, parent: app }",
+		"  - name: Member",
+		"    handle: member",
+		"    parent: app:project",
+		"    actions:",
+		"      - { name: Read, handle: read }",
+		"  - { name: Team, handle: team, parent: app }",
+		"  - name: Member",
+		"    handle: member",
+		"    parent: app:team",
+		"    actions:",
+		"      - { name: Read, handle: read }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+
+	require.Len(t, rsSvc.createdResources, 5)
+
+	// Both Members are created, each attached to its own parent rather than collapsing into one.
+	permissionByID := map[string]string{}
+	for _, res := range rsSvc.createdResources {
+		permissionByID[res.ID] = res.Permission
+	}
+	parents := map[string]string{}
+	for _, res := range rsSvc.createdResources {
+		if res.Parent == nil {
+			parents[res.Permission] = ""
+			continue
+		}
+		parents[res.Permission] = permissionByID[*res.Parent]
+	}
+	assert.Equal(t, map[string]string{
+		"app":                "",
+		"app:project":        "app",
+		"app:team":           "app",
+		"app:project:member": "app:project",
+		"app:team:member":    "app:team",
+	}, parents)
+
+	// Each Member carries its own Read action, attached to the resource it was declared under.
+	require.Len(t, rsSvc.createdActions, 2)
+	actionOwners := map[string]string{}
+	for _, action := range rsSvc.createdActions {
+		actionOwners[action.Permission] = permissionByID[action.ID]
+	}
+	assert.Equal(t, map[string]string{
+		"app:project:member:read": "app:project:member",
+		"app:team:member:read":    "app:team:member",
+	}, actionOwners)
+}
+
+// TestImportResourceServer_ParentDeclaredAfterChild verifies that a resource whose `parent` is
+// declared later in the file is still attached to it: resources are created top down by depth, not
+// in declaration order.
+func TestImportResourceServer_ParentDeclaredAfterChild(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-order",
+		"name: Order",
+		"identifier: urn:example:order",
+		"ouHandle: default",
+		`delimiter: "/"`,
+		"resources:",
+		"  - { name: Member, handle: member, parent: app/team }",
+		"  - { name: Team, handle: team, parent: app }",
+		"  - { name: App, handle: app }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+
+	require.Len(t, rsSvc.createdResources, 3)
+	assert.Equal(t, "app", rsSvc.createdResources[0].Permission)
+	assert.Nil(t, rsSvc.createdResources[0].Parent)
+	assert.Equal(t, "app/team", rsSvc.createdResources[1].Permission)
+	assert.Equal(t, rsSvc.createdResources[0].ID, *rsSvc.createdResources[1].Parent)
+	assert.Equal(t, "app/team/member", rsSvc.createdResources[2].Permission)
+	assert.Equal(t, rsSvc.createdResources[1].ID, *rsSvc.createdResources[2].Parent)
 }
 
 // TestImportRole_OUHandleResolved verifies that ou_handle on a role document is resolved

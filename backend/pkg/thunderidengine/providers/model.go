@@ -151,13 +151,16 @@ type Action struct {
 
 // Resource represents a resource in both declarative resources and service layer.
 type Resource struct {
-	ID           string   `yaml:"-"                     json:"-"` // Set when retrieved from database
-	Name         string   `yaml:"name"                  json:"name"`
-	Handle       string   `yaml:"handle"                json:"handle"`
-	Description  string   `yaml:"description,omitempty" json:"description,omitempty"`
-	Parent       *string  `yaml:"-"                     json:"-"`                // Resolved parent ID
-	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"` // Parent handle during YAML parsing only
-	Permission   string   `yaml:"-"                     json:"-"`                // Computed permission string
+	ID          string  `yaml:"-"                     json:"-"` // Set when retrieved from database
+	Name        string  `yaml:"name"                  json:"name"`
+	Handle      string  `yaml:"handle"                json:"handle"`
+	Description string  `yaml:"description,omitempty" json:"description,omitempty"`
+	Parent      *string `yaml:"-"                     json:"-"` // Resolved parent ID
+	// ParentHandle is the YAML `parent` reference: a bare handle, or the delimiter-joined path of
+	// the parent when the handle repeats under different parents. Processing resolves it to the
+	// parent's full path.
+	ParentHandle string   `yaml:"parent,omitempty"      json:"parent,omitempty"`
+	Permission   string   `yaml:"-"                     json:"-"` // Computed permission string
 	Actions      []Action `yaml:"actions,omitempty"     json:"actions,omitempty"`
 }
 
