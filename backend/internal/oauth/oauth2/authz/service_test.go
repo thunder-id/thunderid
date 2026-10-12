@@ -150,7 +150,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 	// never reach flow initiation (or that exercise resource-binding specifics) are unaffected.
 	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://rs-default.example.com"}, nil).Maybe()
-	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything).
+	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything, "").
 		Return([]string{}, nil).Maybe()
 
 	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
@@ -451,7 +451,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ex
 		Return(false, "", "")
 	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
 		Return(&providers.ResourceServer{ID: "rs-api", Identifier: "https://api.example.com"}, nil)
-	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-api", mock.Anything).
+	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-api", mock.Anything, "").
 		Return([]string{}, nil)
 
 	var captured *flowexec.FlowInitContext

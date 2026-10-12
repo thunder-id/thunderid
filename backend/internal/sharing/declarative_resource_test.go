@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -331,6 +332,113 @@ func (s *DeclarativeResourceTestSuite) TestADocumentThatParsesToNothingIsSkipped
 			return nil, nil
 		},
 	})
+
+	s.Require().NoError(err)
+}
+
+// shapeRefusingDeclaration refuses the rule shapes a resource server refuses: a menu, an editable
+// rule, or naming both what is shared and what is withheld.
+type shapeRefusingDeclaration struct {
+	testDeclaration
+}
+
+func (d *shapeRefusingDeclaration) ValidateOverlayRule(
+	_ context.Context, _, _ string, r OverlayRule,
+) *tidcommon.ServiceError {
+	refuse := func(reason string) *tidcommon.ServiceError {
+		return &tidcommon.ServiceError{
+			Type:             tidcommon.ClientErrorType,
+			Code:             "TST-0003",
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: reason},
+		}
+	}
+	switch {
+	case r.AllowedValues != nil:
+		return refuse("allowedValues is not supported")
+	case r.Editable:
+		return refuse("the field cannot be editable")
+	case r.Value != nil && r.ExcludedValues != nil:
+		return refuse("value and excludedValues cannot be combined")
+	default:
+		return nil
+	}
+}
+
+// loadDeclaredRules declares one document's policies through the real service and loader, the way a
+// resource type does at startup, and returns what the load reports.
+func (s *DeclarativeResourceTestSuite) loadDeclaredRules(document string) error {
+	s.writeDocument("orders.yaml", document)
+	hierarchy, enumerator := testResolver(s.T())
+	fileStore := newFileBasedStore()
+	svc := newSharingService(mustMockStore(s.T()), fileStore, hierarchy, enumerator,
+		inlineTx(s.T()), nil, nil, false)
+	svc.RegisterResourceType(&shapeRefusingDeclaration{testDeclaration{owner: rootOU}})
+
+	return loadDeclarativeResources(context.Background(), svc, fileStore, DeclarativeLoaderConfig{
+		ResourceType:  testType,
+		DirectoryName: testResourceDirectory,
+		Parser: func(data []byte) (*DeclaredResourcePolicies, error) {
+			var doc struct {
+				SharingPolicies []PolicyRequest `yaml:"sharingPolicies"`
+			}
+			if err := yaml.Unmarshal(data, &doc); err != nil {
+				return nil, err
+			}
+			return &DeclaredResourcePolicies{
+				ResourceID: testResource, ResourceName: "Orders API", OwningOUID: rootOU,
+				Policies: doc.SharingPolicies,
+			}, nil
+		},
+	})
+}
+
+// A rule the resource type refuses stops the load from a resource file just as it refuses an API
+// request, whichever target carries it, and the failure carries the type's own reason and names the
+// resource. Declaring a policy is never a way around the type's validation.
+func (s *DeclarativeResourceTestSuite) TestADeclaredRuleTheTypeRefusesStopsTheLoad() {
+	cases := []struct {
+		name   string
+		rule   string
+		reason string
+	}{
+		{"allowed values", "allowedValues: [orders]", "allowedValues is not supported"},
+		{"editable", "editable: true", "the field cannot be editable"},
+		{"value with excluded values", "value: [orders]\n          excludedValues: [orders:delete]",
+			"value and excludedValues cannot be combined"},
+	}
+	targets := map[string]string{
+		"child target":       "      - scope: child\n        ouId: " + childOU + "\n",
+		"allChildren target": "      - scope: allChildren\n",
+	}
+	for _, tc := range cases {
+		for targetName, target := range targets {
+			s.Run(targetName+" with "+tc.name, func() {
+				err := s.loadDeclaredRules("sharingPolicies:\n" +
+					"  - id: orders-policy\n" +
+					"    targets:\n" +
+					target +
+					"        overlayRules:\n" +
+					"          permissions:\n" +
+					"            " + strings.ReplaceAll(tc.rule, "\n          ", "\n            ") + "\n")
+
+				s.Require().Error(err)
+				s.Contains(err.Error(), tc.reason)
+				s.Contains(err.Error(), "Orders API")
+			})
+		}
+	}
+}
+
+// A rule the type accepts loads, so the refusals above are about the rules and not the document.
+func (s *DeclarativeResourceTestSuite) TestADeclaredRuleTheTypeAcceptsLoads() {
+	err := s.loadDeclaredRules("sharingPolicies:\n" +
+		"  - id: orders-policy\n" +
+		"    targets:\n" +
+		"      - scope: child\n" +
+		"        ouId: " + childOU + "\n" +
+		"        overlayRules:\n" +
+		"          permissions:\n" +
+		"            excludedValues: [orders:delete]\n")
 
 	s.Require().NoError(err)
 }

@@ -48,7 +48,6 @@ type GroupAuthzTestSuite struct {
 	// Test role and manager
 	groupMgrRoleID      string
 	groupMgrUserID      string
-	scopedRSID          string
 	targetGroupOU1ID    string
 	deletableGroupOU1ID string
 	targetGroupOU2ID    string
@@ -108,11 +107,16 @@ const (
 	declOUMgrUsername = "authz-decl-ou-manager"
 	declOUMgrPassword = "DeclOUMgr@123"
 
-	emptyOUHandle        = "authz-group-empty-ou"
-	emptyOUSchemaName    = "authz-empty-ou-schema"
-	emptyOUMgrUsername   = "authz-empty-ou-manager"
-	emptyOUMgrPassword   = "EmptyOUMgr@123"
-	groupAuthzScopedRSID = "https://authz-test.example.com/group"
+	emptyOUHandle      = "authz-group-empty-ou"
+	emptyOUSchemaName  = "authz-empty-ou-schema"
+	emptyOUMgrUsername = "authz-empty-ou-manager"
+	emptyOUMgrPassword = "EmptyOUMgr@123"
+	// The fine-grained system scopes come from a declarative resource server shared with every
+	// organization unit (resources/declarative_resources/resource_servers/
+	// resource-declarative-system-scopes.yaml), because this suite grants them to roles in several
+	// organization units and a resource server's permissions are usable only where it is shared.
+	groupAuthzSystemRSID = "decl-system-scopes-rs"
+	groupAuthzScopedRSID = "https://localhost:8090/decl-system-scopes-rs"
 )
 
 func TestGroupAuthzTestSuite(t *testing.T) {
@@ -230,14 +234,11 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create target group in OU2")
 	ts.targetGroupOU2ID = targetOU2ID
 
-	// ---- 5. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:ou:view",
+	// ---- 5. Use the resource server declaring the fine-grained system scopes ----
+	// The product ships only the root "system" scope; this declares "system:ou:view",
 	// "system:group" and "system:group:view" so the suite can verify resource-level enforcement
 	// when configured.
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
-		ts.groupOU1ID, "Authz Test RS (group)", groupAuthzScopedRSID, "ou", "group", "user")
-	ts.Require().NoError(err, "create scoped resource server")
-	ts.scopedRSID = systemRSID
+	systemRSID := groupAuthzSystemRSID
 
 	// ---- 6. Create a role with system:group permission and assign to the user-manager ----
 	roleID, err := testutils.CreateRole(testutils.Role{
@@ -437,11 +438,6 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *GroupAuthzTestSuite) TearDownSuite() {
-	if ts.scopedRSID != "" {
-		if err := testutils.DeleteResourceServerWithChildren(ts.scopedRSID); err != nil {
-			ts.T().Errorf("teardown: delete scoped resource server: %v", err)
-		}
-	}
 	if ts.groupMgrRoleID != "" {
 		if err := testutils.DeleteRole(ts.groupMgrRoleID); err != nil {
 			ts.T().Logf("teardown: delete group-manager role: %v", err)

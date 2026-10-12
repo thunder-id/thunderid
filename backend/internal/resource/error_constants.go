@@ -286,6 +286,65 @@ var (
 			DefaultValue: "A resource server with the specified ID already exists",
 		},
 	}
+	// ErrorSharingPermissionsNotAvailable is returned when a sharing rule names permissions the
+	// resource server does not define, or the initiating organization unit does not hold.
+	ErrorSharingPermissionsNotAvailable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_permissions_not_available",
+			DefaultValue: "Permissions not available",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.sharing_permissions_not_available_description",
+			DefaultValue: "A sharing rule may only name permissions the resource server defines and the " +
+				"initiating organization unit holds",
+		},
+	}
+	// ErrorSharingAllowedValuesNotSupported is returned when a resource server sharing rule carries
+	// allowedValues.
+	ErrorSharingAllowedValuesNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_allowed_values_not_supported",
+			DefaultValue: "Invalid sharing rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.sharing_allowed_values_not_supported_description",
+			DefaultValue: "A resource server sharing rule cannot carry allowedValues. Use value to name " +
+				"the shared permissions, or excludedValues to name the withheld ones",
+		},
+	}
+	// ErrorSharingEditableNotSupported is returned when a resource server sharing rule is editable.
+	ErrorSharingEditableNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_editable_not_supported",
+			DefaultValue: "Invalid sharing rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.sharing_editable_not_supported_description",
+			DefaultValue: "The permissions of a shared resource server are set by the sharing " +
+				"organization unit and cannot be editable",
+		},
+	}
+	// ErrorSharingValueWithExcludedValues is returned when a resource server sharing rule carries both
+	// value and excludedValues.
+	ErrorSharingValueWithExcludedValues = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_value_with_excluded_values",
+			DefaultValue: "Invalid sharing rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.sharing_value_with_excluded_values_description",
+			DefaultValue: "A resource server sharing rule names either the shared permissions in value " +
+				"or the withheld ones in excludedValues, not both",
+		},
+	}
 )
 
 // Internal error constants.

@@ -1,0 +1,34 @@
+resource_type: resource_server
+id: decl-system-scopes-rs
+name: Declarative System Scopes Resource Server
+description: Declares the fine-grained system scopes the authorization suites grant to roles in many organization units
+identifier: https://localhost:8090/decl-system-scopes-rs
+ouId: decl-ou-1
+delimiter: ":"
+resources:
+  - name: System
+    handle: system
+  - name: Organization Units
+    handle: ou
+    parent: system
+    actions:
+      - name: View
+        handle: view
+  - name: Groups
+    handle: group
+    parent: system
+    actions:
+      - name: View
+        handle: view
+  - name: Users
+    handle: user
+    parent: system
+    actions:
+      - name: View
+        handle: view
+# A resource server's permissions are usable only where it is shared. The suites using it create
+# roles in organization units of their own, so it is shared with every one, with no rule, so whole.
+sharingPolicies:
+  - id: decl-system-scopes-rs-policy-1
+    targets:
+      - scope: allOus

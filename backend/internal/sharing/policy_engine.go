@@ -228,6 +228,21 @@ func reach(r OverlayRule) *[]string {
 	return r.Value
 }
 
+// RuleGrants reports whether a resolved rule puts member in the target organization unit's hands:
+// within the rule's reach, or unbounded when it has none, and not carved out by its exclusions.
+//
+// It is exported for resource types that enforce a resolved rule themselves, so that they compare
+// members with the same containment the framework narrowed the rule with. A second implementation
+// of hierarchy matching would be free to disagree about which paths a rule covers.
+func RuleGrants(rule OverlayRule, kind FieldKind, delimiter, member string) bool {
+	c := newContainment(kind, delimiter)
+	if rule.ExcludedValues != nil && c.coveredBy(*rule.ExcludedValues, member) {
+		return false
+	}
+	r := reach(rule)
+	return r == nil || c.coveredBy(*r, member)
+}
+
 // widens reports whether proposed grants more than current for the same field.
 //
 // Both sides are already-materialized rules, which is what separates this from Narrow. Narrow

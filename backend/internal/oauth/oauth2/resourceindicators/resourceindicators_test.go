@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -209,7 +210,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NilRes
 // DownscopeToResourceServer tests
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_DropsInvalidScopes() {
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write", "delete"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write", "delete"}, "").
 		Return([]string{"write"}, nil)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
@@ -219,8 +220,21 @@ func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_DropsInv
 	assert.Equal(suite.T(), []string{"read", "delete"}, scopes)
 }
 
+// A token issued for an organization unit is bounded by what that unit may use. The unit is the one
+// the request names as its accessing organization unit, and it is handed to the resource server.
+func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_BoundsByTheAccessingOU() {
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "delete"}, "ou-1").
+		Return([]string{"delete"}, nil)
+
+	scopes, err := DownscopeToResourceServer(syscontext.WithAccessingOUID(context.Background(), "ou-1"),
+		suite.mockResourceService, "rs01", []string{"read", "delete"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"read"}, scopes)
+}
+
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_PreservesOrder() {
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"c", "a", "b"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"c", "a", "b"}, "").
 		Return([]string{}, nil)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
@@ -240,7 +254,7 @@ func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_EmptySco
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_ValidatePermissionsError_ReturnsServerError() {
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RSE-5000"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}, "").
 		Return(nil, svcErr)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
@@ -262,7 +276,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_Empty() {
 
 func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_DropsInvalidPerRS() {
 	rs := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}, "").
 		Return([]string{"write"}, nil)
 
 	result, err := ComputeRSValidScopes(context.Background(), suite.mockResourceService,
@@ -275,7 +289,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_DropsInvalidP
 func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_ValidatePermissionsError_ReturnsServerError() {
 	rs := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RSE-5000"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}, "").
 		Return(nil, svcErr)
 
 	result, err := ComputeRSValidScopes(context.Background(), suite.mockResourceService,
@@ -301,7 +315,7 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAndDownscope_Downscopes() {
 	rs := providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://rs01.example.com").
 		Return(&rs, nil)
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}, "").
 		Return([]string{"write"}, nil)
 
 	resolved, scopes, err := ResolveAndDownscope(context.Background(), suite.mockResourceService,

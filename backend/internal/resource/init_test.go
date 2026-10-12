@@ -11,11 +11,13 @@ import (
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	_ "modernc.org/sqlite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // fakeTransactioner is a test double for providers.Transactioner
@@ -71,12 +73,19 @@ func TestInitTestSuite(t *testing.T) {
 	suite.Run(t, new(InitTestSuite))
 }
 
+// newSharingService returns a sharing service that expects resource servers to register with it.
+func (suite *InitTestSuite) newSharingService() *sharingmock.SharingServiceInterfaceMock {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingSvc.EXPECT().RegisterResourceType(mock.Anything).Once()
+	return sharingSvc
+}
+
 // TestInitialize tests the Initialize function
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService, nil)
+	service, exporter, err := Initialize(mux, suite.mockOUService, nil, suite.newSharingService())
 
 	// Assert
 	suite.NoError(err)
@@ -305,7 +314,7 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	// Execute
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(
-		suite.mockOUService, mockStore, mockTransactioner, nil,
+		suite.mockOUService, mockStore, mockTransactioner, nil, nil,
 	)
 
 	// Assert
@@ -375,7 +384,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService, nil)
+	service, _, err := Initialize(mux, suite.mockOUService, nil, suite.newSharingService())
 
 	// Assert service is created
 	suite.NoError(err)

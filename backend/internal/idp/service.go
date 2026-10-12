@@ -816,7 +816,7 @@ func (is *idpService) GetDirectAuthorizationTargets(
 				}
 			}
 		case providers.AuthorizationTargetPermission:
-			invalid, svcErr := is.resourceService.ValidatePermissions(ctx, mapping.ResourceServerID, tokens)
+			invalid, svcErr := is.resourceService.ValidatePermissions(ctx, mapping.ResourceServerID, tokens, "")
 			if svcErr != nil {
 				return nil, svcErr
 			}
@@ -896,7 +896,7 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	}
 
 	for resourceServerID, permissions := range permissionsByResourceServer {
-		invalid, svcErr := is.resourceService.ValidatePermissions(ctx, resourceServerID, permissions)
+		invalid, svcErr := is.resourceService.ValidatePermissions(ctx, resourceServerID, permissions, "")
 		if svcErr != nil {
 			return svcErr
 		}

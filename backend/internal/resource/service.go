@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -92,7 +93,7 @@ type ResourceServiceInterface interface {
 	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
 		id string) *tidcommon.ServiceError
 	ValidatePermissions(
-		ctx context.Context, resourceServerID string, permissions []string,
+		ctx context.Context, resourceServerID string, permissions []string, ouID string,
 	) ([]string, *tidcommon.ServiceError)
 
 	// ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server
@@ -116,6 +117,7 @@ type resourceService struct {
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+	sharingService     sharing.SharingServiceInterface
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -218,6 +220,7 @@ func newResourceService(
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
+	sharingService sharing.SharingServiceInterface,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -232,6 +235,7 @@ func newResourceService(
 		authZENPDPService: authZENPDPService,
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
+		sharingService:    sharingService,
 	}, nil
 }
 
@@ -1272,12 +1276,15 @@ func (rs *resourceService) DeleteAction(
 	return nil
 }
 
-// ValidatePermissions checks if permissions exist for a given resource server.
+// ValidatePermissions checks if permissions exist for a given resource server and, when ouID is
+// non-empty, whether that organization unit may use them.
+//
 // Returns array of invalid permissions (empty if all valid).
 func (rs *resourceService) ValidatePermissions(
 	ctx context.Context,
 	resourceServerID string,
 	permissions []string,
+	ouID string,
 ) ([]string, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Validating permissions",
 		log.String("resourceServerId", resourceServerID),
@@ -1288,7 +1295,7 @@ func (rs *resourceService) ValidatePermissions(
 	}
 
 	// Validate resource server exists
-	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
+	server, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
 		if !errors.Is(err, errResourceServerNotFound) {
 			rs.logger.Error(ctx, "Failed to validate resource server existence",
@@ -1311,7 +1318,29 @@ func (rs *resourceService) ValidatePermissions(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return invalidPermissions, nil
+	// With no organization unit to answer for, definition is the whole check.
+	if ouID == "" {
+		return invalidPermissions, nil
+	}
+
+	// Determine which of the requested permissions are defined on the server and which are unavailable
+	// to the accessing organization unit.
+	invalidSet := make(map[string]struct{}, len(invalidPermissions))
+	for _, p := range invalidPermissions {
+		invalidSet[p] = struct{}{}
+	}
+	defined := make([]string, 0, len(permissions))
+	for _, p := range permissions {
+		if _, isInvalid := invalidSet[p]; !isInvalid {
+			defined = append(defined, p)
+		}
+	}
+	unavailable, svcErr := rs.unavailablePermissions(ctx, server, ouID, defined)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return append(invalidPermissions, unavailable...), nil
 }
 
 // ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server

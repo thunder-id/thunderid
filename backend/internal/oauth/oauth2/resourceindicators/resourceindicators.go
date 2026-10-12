@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
 // ValidateResourceURIs returns an error response when any resource URI is not absolute
@@ -192,7 +193,7 @@ func ComputeRSValidScopes(
 		return rsValidScopes, nil
 	}
 	for _, rs := range resolvedRSes {
-		invalid, valErr := resourceService.ValidatePermissions(ctx, rs.ID, requestedScopes)
+		invalid, valErr := resourceService.ValidatePermissions(ctx, rs.ID, requestedScopes, "")
 		if valErr != nil {
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
@@ -226,7 +227,8 @@ func DownscopeToResourceServer(
 	if len(scopes) == 0 {
 		return scopes, nil
 	}
-	invalid, svcErr := resourceService.ValidatePermissions(ctx, resourceServerID, scopes)
+	invalid, svcErr := resourceService.ValidatePermissions(
+		ctx, resourceServerID, scopes, syscontext.GetAccessingOUID(ctx))
 	if svcErr != nil {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,

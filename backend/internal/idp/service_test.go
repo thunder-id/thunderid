@@ -2014,7 +2014,7 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMappin
 // permission that does not exist on the given resource server (which also covers a nonexistent
 // resource server, since ValidatePermissions reports every requested permission as invalid then).
 func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMapping_PermissionNotFound() {
-	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}).
+	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}, "").
 		Return([]string{"read"}, nil)
 
 	idp := authorizationRuleMappingIDP(providers.AuthorizationTarget{
@@ -2039,7 +2039,7 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMappin
 		Return(&role.RoleWithPermissions{ID: "role-id"}, nil)
 	s.mockGroup.On("GetGroupsByIDs", mock.Anything, []string{"group-id"}).
 		Return(map[string]*group.Group{"group-id": {ID: "group-id"}}, nil)
-	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}).
+	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}, "").
 		Return([]string{}, nil)
 
 	idp := &providers.IDPDTO{
@@ -2655,7 +2655,7 @@ func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_GroupSingleMatch
 // TestGetDirectAuthorizationTargets_PermissionValidatedTokensGranted grants only the claim
 // values that ValidatePermissions confirms exist on the configured resource server.
 func (s *IDPServiceTestSuite) TestGetDirectAuthorizationTargets_PermissionValidatedTokensGranted() {
-	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"orders:read", "orders:write"}).
+	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"orders:read", "orders:write"}, "").
 		Return([]string{"orders:write"}, nil)
 
 	idp := &providers.IDPDTO{

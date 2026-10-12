@@ -2,5 +2,5 @@ resource_type: organization_unit
 id: decl-m2m-grandchild-a
 handle: decl-m2m-grandchild-a
 name: M2M Declarative Grandchild A
-description: Organization unit beneath child A, which a child target stops short of
+description: Organization unit beneath child A, which a child target stops short of and child A's reshare of the shared resource server reaches
 parent: decl-m2m-child-a

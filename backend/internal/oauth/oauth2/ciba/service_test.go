@@ -100,7 +100,7 @@ func (suite *CIBAServiceTestSuite) expectStoreAddSuccess() {
 func (suite *CIBAServiceTestSuite) expectDefaultResourceServer(rsID, identifier string) {
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
 		Return(&providers.ResourceServer{ID: rsID, Identifier: identifier}, nil)
-	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, rsID, mock.Anything).
+	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, rsID, mock.Anything, "").
 		Return([]string{}, nil)
 }
 
@@ -277,7 +277,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_StripsStandardScopesFromRuntime(
 func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscopes() {
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
-	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything, "").
 		Return([]string{}, nil)
 	suite.expectFlowInitiateSuccess()
 
@@ -300,7 +300,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscop
 func (suite *CIBAServiceTestSuite) TestInitiate_SetsResourceServerIDInRuntimeData() {
 	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
-	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything, "").
 		Return([]string{}, nil)
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {

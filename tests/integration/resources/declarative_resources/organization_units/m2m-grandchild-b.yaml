@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-m2m-grandchild-b
+handle: decl-m2m-grandchild-b
+name: M2M Declarative Grandchild B
+description: Grandchild organization unit reached by child B's rule-less reshare of the shared resource server
+parent: decl-m2m-child-b

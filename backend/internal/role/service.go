@@ -176,8 +176,9 @@ func (rs *roleService) CreateRole(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	// Validate permissions exist in resource management system and are available to the role's
+	// organization unit
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -336,8 +337,9 @@ func (rs *roleService) UpdateRoleWithPermissions(
 		return nil, err
 	}
 
-	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	// Validate permissions exist in resource management system and are available to the role's
+	// organization unit
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -676,9 +678,12 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// validatePermissions validates that all permissions exist in the resource management system.
+// validatePermissions validates that all permissions exist in the resource management system and
+// are available to the organization unit the role belongs to: the unit owns the resource server, or
+// a sharing policy reaching it shares those permissions. It is the role's unit that is checked, not
+// the one the caller's token was issued from.
 func (rs *roleService) validatePermissions(
-	ctx context.Context, permissions []ResourcePermissions,
+	ctx context.Context, ouID string, permissions []ResourcePermissions,
 ) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -702,6 +707,7 @@ func (rs *roleService) validatePermissions(
 			ctx,
 			resPerm.ResourceServerID,
 			resPerm.Permissions,
+			ouID,
 		)
 
 		if svcErr != nil {
@@ -780,7 +786,7 @@ func (rs *roleService) CascadeDeleteDependencies(
 	deleted := 0
 	for _, resPerm := range referenced {
 		invalid, svcErr := rs.resourceService.ValidatePermissions(
-			ctx, resPerm.ResourceServerID, resPerm.Permissions)
+			ctx, resPerm.ResourceServerID, resPerm.Permissions, "")
 		if svcErr != nil {
 			return deleted, fmt.Errorf("failed to validate permissions of resource server %s: %s",
 				resPerm.ResourceServerID, svcErr.Error.DefaultValue)
