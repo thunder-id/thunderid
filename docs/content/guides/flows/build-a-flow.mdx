@@ -216,6 +216,36 @@ A flow has no effect until it is assigned to an application.
 </details>
 
 <details>
+  <summary>Build and configure an agent onboarding flow</summary>
+
+  An agent onboarding flow controls how administrators create agents. Like the user onboarding flow, it is configured **system-wide** rather than per application, and it runs whenever an agent is created through the <ProductName /> Console or the API.
+
+  The default built-in flow walks the admin through the following steps:
+
+  1. **Permission check**: validates that the caller holds the required `system` scope.
+  2. **Agent type selection**: resolves the agent type the new agent is created as.
+  3. **Organization unit (OU) selection**: prompts the admin to choose the target OU from the OU tree.
+  4. **Owner resolution**: sets the user accountable for the agent, defaulting to the creator.
+  5. **Attribute collection**: prompts for the attributes the agent schema defines.
+  6. **Provisioning**: creates the agent along with its OAuth profile.
+  7. **Credential presentation**: shows the client ID and the client secret, which is displayed only once.
+
+  Add, remove, reorder, or branch these steps to match how your organization admits agents. The agent service still owns validation, credential generation, and the inbound client configuration, so a customized flow changes what onboarding asks for without changing what a valid agent has to satisfy. If a step after provisioning fails, the agent the flow created is removed, so a failed onboarding leaves no live credential behind.
+
+  To customize the flow, edit the default directly in the Console's Flow Builder, or create a new one via the `/flows` API. See [API Reference](../../../apis).
+
+  To set the flow as the active system-wide agent onboarding flow, call the Server Configuration API:
+
+  ```bash
+  curl -kL -X PUT https://localhost:8090/server-config/flow \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{ "agentOnboardingFlow": { "defaultHandle": "<your-flow-handle>" } }'
+  ```
+
+</details>
+
+<details>
   <summary>Build and configure a sign-out flow</summary>
 
   A sign-out flow terminates the [Single Sign-On session](../../../key-concepts/authentication/sessions) an authentication flow established, so a user is fully signed out rather than silently signed in again on their next visit. The default flow ends the session without prompting, and a custom flow can confirm the sign-out with the user first. Every application already resolves to a flow, the one it pins, its organization unit's default, or the server-level default, so you only build a sign-out flow when you want to change that behavior. To create one:

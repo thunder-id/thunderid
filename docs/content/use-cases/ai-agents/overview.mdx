@@ -2,7 +2,7 @@
 title: Understand It
 docType: use-case
 sidebar_position: 1
-description: Why AI agents need identities of their own, and how AgentID management lets you control, authorize, and trace every action an agent takes.
+description: Why AI agents need identities of their own, and how AgentID management lets you create, control, authorize, and trace every action an agent takes.
 ---
 
 # Understand It
@@ -36,6 +36,12 @@ That works until the agent becomes a real participant in your system.
 A shared or borrowed credential can tell you that *something* trusted made a request, but it does not give you
 a reliable identity model for the individual agent. As your agents become more capable, you start facing
 questions such as:
+
+- **How does an agent come into existence in the first place?**
+  Every agent starts as a decision someone made. What has to be true before it holds a live credential, such
+  as who owns it, which part of the company it belongs to, and whether anyone signs off, is answered
+  differently by every organization, and rarely the same way for a prototype as for an agent that touches
+  customer data.
 
 - **Which agent actually made this call?**
   If several agents share the same application or service credential, your APIs and audit trails cannot
@@ -78,6 +84,20 @@ authorize, and trace.
 Instead of treating an agent as an extension of another application or user, the identity layer registers the
 agent as its own principal. The agent gets credentials of its own, and its access can be controlled through the
 roles and permissions associated with that identity.
+
+Registration itself is part of what you control. Creating an agent is the last point before a working
+credential exists: after it the agent can already act, and whatever onboarding did not ask for was never
+recorded. What that step collects, and what it refuses to proceed without, is a policy question rather than a
+product one.
+
+So onboarding runs as a flow you define, an ordered set of steps <ProductName /> executes when an agent is
+created, rather than a fixed screen. Collect the attribute your inventory depends on, hold the credential
+behind an approval, branch on the kind of agent being registered, and change any of it as your rules change.
+Requirements that would otherwise live in a spreadsheet or a review ticket outside the system are applied where
+the agent is created, and the rules governing what a valid agent looks like stay enforced underneath, so a
+customized sequence can add requirements but never relax them. See
+[Customize the onboarding sequence](../../../guides/agents/manage-agents#customize-the-onboarding-sequence) for
+the default steps and how to change them.
 
 When the agent calls a protected API, it presents a token issued for that identity. Your services can then make
 authorization decisions based on what the token represents rather than trusting information supplied by the
