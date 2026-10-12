@@ -306,6 +306,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 		},
 	}
 
+	assert.NoError(s.T(), ProcessResourceServer(rs))
 	err := fileStore.Create("rs-data", rs)
 	assert.NoError(s.T(), err)
 
@@ -330,7 +331,7 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	resources, err = s.store.GetResourceListByParent(s.ctx, "rs-data", &parentID, 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), resources, 1)
-	assert.Equal(s.T(), "rs-data_child", resources[0].ID)
+	assert.Equal(s.T(), "rs-data_root:child", resources[0].ID)
 
 	count, err := s.store.GetResourceListCount(s.ctx, "rs-data")
 	assert.NoError(s.T(), err)
@@ -371,17 +372,18 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 		},
 	}
 
+	assert.NoError(s.T(), ProcessResourceServer(rs))
 	err := fileStore.Create("rs-data", rs)
 	assert.NoError(s.T(), err)
 
-	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Handle)
-	rootActionID := fmt.Sprintf("%s_%s_%s", rs.ID, rs.Resources[0].Handle, rs.Resources[0].Actions[0].Handle)
+	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Permission)
+	rootActionID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Actions[0].Permission)
 
 	action, err := s.store.GetAction(s.ctx, rootActionID, "rs-data", nil)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), rootActionID, action.ID)
 
-	childID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[1].Handle)
+	childID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[1].Permission)
 
 	// A nil resource ID selects resource server level actions, of which there are none because
 	// declarative resource servers declare actions only under resources.
@@ -433,10 +435,11 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 		},
 	}
 
+	assert.NoError(s.T(), ProcessResourceServer(rs))
 	err := fileStore.Create("rs-mcp", rs)
 	assert.NoError(s.T(), err)
 
-	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Handle)
+	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Permission)
 
 	// Empty kind returns all actions.
 	all, err := s.store.GetActionList(s.ctx, "rs-mcp", &rootID, "", 10, 0)

@@ -181,6 +181,18 @@ func (f *fileBasedResourceStore) IsResourceServerDeclarative(id string) bool {
 
 // Resource operations
 
+// declarativeResourceID builds the synthetic ID of a declarative resource. Declarative resources
+// have no stored UUID, so the ID is derived from the resource's path (its permission string) rather
+// than its bare handle, which is unique only under its own parent.
+func declarativeResourceID(resServerID string, res providers.Resource) string {
+	return fmt.Sprintf("%s_%s", resServerID, res.Permission)
+}
+
+// declarativeActionID builds the synthetic ID of a declarative action from the action's path.
+func declarativeActionID(resServerID string, action providers.Action) string {
+	return fmt.Sprintf("%s_%s", resServerID, action.Permission)
+}
+
 func (f *fileBasedResourceStore) CreateResource(
 	ctx context.Context, uuid string, resServerID string, parentID *string, res providers.Resource,
 ) error {
@@ -205,9 +217,9 @@ func (f *fileBasedResourceStore) GetResource(
 			}
 
 			for _, res := range rs.Resources {
-				if res.Handle == id || fmt.Sprintf("%s_%s", rs.ID, res.Handle) == id {
+				if res.Permission == id || declarativeResourceID(rs.ID, res) == id {
 					resource := providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -245,7 +257,7 @@ func (f *fileBasedResourceStore) GetResourceList(
 			for _, res := range rs.Resources {
 				if res.Parent == nil {
 					resources = append(resources, providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -312,15 +324,15 @@ func (f *fileBasedResourceStore) GetResourceListByParent(
 						// DB resource: match by UUID
 						matched = *res.Parent == parentResUUID
 					} else if res.ParentHandle != "" {
-						// Declarative resource: Parent UUID not set; match by handle
-						// extracted from the synthetic parent ID (format: rsID_handle).
-						parentHandle := strings.TrimPrefix(parentResUUID, rs.ID+"_")
-						matched = res.ParentHandle == parentHandle
+						// Declarative resource: Parent UUID not set; match by the parent's path
+						// extracted from the synthetic parent ID (format: rsID_path).
+						parentPath := strings.TrimPrefix(parentResUUID, rs.ID+"_")
+						matched = res.ParentHandle == parentPath
 					}
 				}
 				if matched {
 					resources = append(resources, providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -420,8 +432,8 @@ func (f *fileBasedResourceStore) GetAction(
 		if rs, ok := item.Data.(*providers.ResourceServer); ok {
 			for _, res := range rs.Resources {
 				for _, action := range res.Actions {
-					actionID := fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
-					if actionID == id || action.Handle == id {
+					actionID := declarativeActionID(rs.ID, action)
+					if actionID == id || action.Permission == id {
 						return providers.Action{
 							ID:          actionID,
 							Name:        action.Name,
@@ -465,7 +477,7 @@ func (f *fileBasedResourceStore) GetActionList(
 
 			// Iterate through resources in this server
 			for _, res := range rs.Resources {
-				resUUID := fmt.Sprintf("%s_%s", rs.ID, res.Handle)
+				resUUID := declarativeResourceID(rs.ID, res)
 
 				// Only get actions from the requested resource
 				if resUUID != *resID {
@@ -477,7 +489,7 @@ func (f *fileBasedResourceStore) GetActionList(
 					if kind != "" && action.Kind != kind {
 						continue
 					}
-					actionID := fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
+					actionID := declarativeActionID(rs.ID, action)
 					actions = append(actions, providers.Action{
 						ID:          actionID,
 						Name:        action.Name,
@@ -564,7 +576,7 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 
 			// Iterate through resources in this server
 			for _, res := range rs.Resources {
-				resUUID := fmt.Sprintf("%s_%s", rs.ID, res.Handle)
+				resUUID := declarativeResourceID(rs.ID, res)
 
 				// If resID is specified, only check actions from that resource
 				if resID != nil && resUUID != *resID {

@@ -594,51 +594,60 @@ ouId: "ou1"
 	assert.Contains(t, err.Error(), "invalid type")
 }
 
-func TestBuildPermissionString(t *testing.T) {
-	resourceHandleMap := map[string]*providers.Resource{
-		"users": {
-			Handle:       "users",
-			Parent:       nil,
-			ParentHandle: "",
-		},
-		"profile": {
-			Handle:       "profile",
-			Parent:       nil,
-			ParentHandle: "users",
-		},
-	}
-
+func TestResolveResourcePermissions(t *testing.T) {
 	tests := []struct {
 		name      string
-		resource  *providers.Resource
 		delimiter string
-		expected  string
+		resources []providers.Resource
+		expected  []string
 	}{
 		{
-			name: "root resource",
-			resource: &providers.Resource{
-				Handle:       "users",
-				ParentHandle: "",
-			},
+			name:      "root resource",
 			delimiter: ":",
-			expected:  "users",
+			resources: []providers.Resource{
+				{Name: "Users", Handle: "users"},
+			},
+			expected: []string{"users"},
 		},
 		{
-			name: "nested resource",
-			resource: &providers.Resource{
-				Handle:       "profile",
-				ParentHandle: "users",
-			},
+			name:      "nested resource",
 			delimiter: ":",
-			expected:  "users:profile",
+			resources: []providers.Resource{
+				{Name: "Users", Handle: "users"},
+				{Name: "Profile", Handle: "profile", ParentHandle: "users"},
+			},
+			expected: []string{"users", "users:profile"},
+		},
+		{
+			name:      "child declared before its parent",
+			delimiter: ":",
+			resources: []providers.Resource{
+				{Name: "Profile", Handle: "profile", ParentHandle: "users"},
+				{Name: "Users", Handle: "users"},
+			},
+			expected: []string{"users:profile", "users"},
+		},
+		{
+			name:      "non default delimiter",
+			delimiter: "/",
+			resources: []providers.Resource{
+				{Name: "Users", Handle: "users"},
+				{Name: "Profile", Handle: "profile", ParentHandle: "users"},
+			},
+			expected: []string{"users", "users/profile"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := buildPermissionString(tt.resource, resourceHandleMap, tt.delimiter)
+			rs := &providers.ResourceServer{ID: "rs1", Delimiter: tt.delimiter, Resources: tt.resources}
+
+			err := resolveResourcePermissions(rs)
+
 			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
+			for i, expected := range tt.expected {
+				assert.Equal(t, expected, rs.Resources[i].Permission)
+			}
 		})
 	}
 }
@@ -816,35 +825,180 @@ func TestProcessResourceServer_NonMCPSkipsPermissionCollisionCheck(t *testing.T)
 	assert.NoError(t, err)
 }
 
-func TestProcessResource_SetsPermissions(t *testing.T) {
-	root := &providers.Resource{Handle: "root"}
-	resource := &providers.Resource{
-		Handle:       "child",
-		ParentHandle: "root",
-		Actions: []providers.Action{
-			{Name: "Read", Handle: "read"},
+func TestProcessResourceServer_SetsActionPermissions(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "Root", Handle: "root"},
+			{
+				Name:         "Child",
+				Handle:       "child",
+				ParentHandle: "root",
+				Actions:      []providers.Action{{Name: "Read", Handle: "read"}},
+			},
 		},
 	}
-	resourceHandleMap := map[string]*providers.Resource{
-		"root":  root,
-		"child": resource,
-	}
 
-	err := processResource(resource, resourceHandleMap, ":")
+	err := ProcessResourceServer(rs)
 
 	assert.NoError(t, err)
-	assert.Equal(t, "root:child", resource.Permission)
-	assert.Equal(t, "root:child:read", resource.Actions[0].Permission)
+	assert.Equal(t, "root:child", rs.Resources[1].Permission)
+	assert.Equal(t, "root:child:read", rs.Resources[1].Actions[0].Permission)
 }
 
-func TestProcessResource_MissingParent(t *testing.T) {
-	resource := &providers.Resource{Handle: "child", ParentHandle: "missing"}
-	resourceHandleMap := map[string]*providers.Resource{}
+func TestProcessResourceServer_MissingParent(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:        "rs1",
+		Name:      "Test Server",
+		OUID:      "ou1",
+		Resources: []providers.Resource{{Name: "Child", Handle: "child", ParentHandle: "missing"}},
+	}
 
-	err := processResource(resource, resourceHandleMap, ":")
+	err := ProcessResourceServer(rs)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "parent resource handle")
+}
+
+func TestProcessResourceServer_CircularParentReference(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "A", Handle: "a", ParentHandle: "b"},
+			{Name: "B", Handle: "b", ParentHandle: "a"},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "circular parent reference")
+}
+
+// A handle reused under different parents is accepted, matching the uniqueness rule the schema and
+// the resource service enforce: unique per parent rather than per resource server.
+func TestProcessResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Repro",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "App", Handle: "app"},
+			{Name: "Project", Handle: "project", ParentHandle: "app"},
+			{
+				Name:         "Member",
+				Handle:       "member",
+				ParentHandle: "app:project",
+				Actions:      []providers.Action{{Name: "Read", Handle: "read"}},
+			},
+			{Name: "Team", Handle: "team", ParentHandle: "app"},
+			{
+				Name:         "Member",
+				Handle:       "member",
+				ParentHandle: "app:team",
+				Actions:      []providers.Action{{Name: "Read", Handle: "read"}},
+			},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "app:project:member", rs.Resources[2].Permission)
+	assert.Equal(t, "app:project:member:read", rs.Resources[2].Actions[0].Permission)
+	assert.Equal(t, "app:team:member", rs.Resources[4].Permission)
+	assert.Equal(t, "app:team:member:read", rs.Resources[4].Actions[0].Permission)
+}
+
+func TestProcessResourceServer_DuplicateHandleUnderSameParent(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "App", Handle: "app"},
+			{Name: "Member", Handle: "member", ParentHandle: "app"},
+			{Name: "Member Duplicate", Handle: "member", ParentHandle: "app"},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate resource handle 'member'")
+	assert.Contains(t, err.Error(), "under parent 'app'")
+}
+
+// A bare handle stays valid while it identifies exactly one resource, so existing declarative files
+// keep working without being rewritten as paths.
+func TestProcessResourceServer_BareParentHandleResolvesWhenUnique(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "App", Handle: "app"},
+			{Name: "Project", Handle: "project", ParentHandle: "app"},
+			{Name: "Member", Handle: "member", ParentHandle: "project"},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "app:project:member", rs.Resources[2].Permission)
+}
+
+func TestProcessResourceServer_AmbiguousBareParentHandle(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:   "rs1",
+		Name: "Test Server",
+		OUID: "ou1",
+		Resources: []providers.Resource{
+			{Name: "App", Handle: "app"},
+			{Name: "Project", Handle: "project", ParentHandle: "app"},
+			{Name: "Team", Handle: "team", ParentHandle: "app"},
+			{Name: "Member", Handle: "member", ParentHandle: "project"},
+			{Name: "Member", Handle: "member", ParentHandle: "team"},
+			{Name: "Role", Handle: "role", ParentHandle: "member"},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous parent reference 'member'")
+	assert.Contains(t, err.Error(), "use the full parent path")
+}
+
+// Processing rewrites `parent` to the parent's full path, so running it again is a no-op rather
+// than a fresh, possibly ambiguous, resolution.
+func TestProcessResourceServer_IsIdempotent(t *testing.T) {
+	newServer := func() *providers.ResourceServer {
+		return &providers.ResourceServer{
+			ID:   "rs1",
+			Name: "Test Server",
+			OUID: "ou1",
+			Resources: []providers.Resource{
+				{Name: "App", Handle: "app"},
+				{Name: "Project", Handle: "project", ParentHandle: "app"},
+				{Name: "Member", Handle: "member", ParentHandle: "project"},
+			},
+		}
+	}
+
+	once := newServer()
+	assert.NoError(t, ProcessResourceServer(once))
+
+	twice := newServer()
+	assert.NoError(t, ProcessResourceServer(twice))
+	assert.NoError(t, ProcessResourceServer(twice))
+
+	assert.Equal(t, once.Resources, twice.Resources)
 }
 
 func TestParseAndValidateResourceServerWrapper_Success(t *testing.T) {
