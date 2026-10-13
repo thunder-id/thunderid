@@ -162,6 +162,43 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 	})
 }
 
+// ----- ServerConfig.TrustedProxies -----
+
+func (suite *ValidateTestSuite) TestServerConfig_ValidateTrustedProxies() {
+	suite.T().Run("valid entries pass", func(t *testing.T) {
+		c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{
+			{CIDR: "10.0.1.0/24", Header: "X-Real-IP"},
+			{CIDR: "2001:db8::/32"},
+		}}
+		assert.NoError(t, c.ValidateTrustedProxies())
+	})
+
+	suite.T().Run("no trusted proxies passes", func(t *testing.T) {
+		assert.NoError(t, (&ServerConfig{}).ValidateTrustedProxies())
+	})
+
+	tests := []struct {
+		name  string
+		proxy TrustedProxyConfig
+		want  string
+	}{
+		{"missing cidr fails", TrustedProxyConfig{}, "trusted_proxies[0]: cidr"},
+		{"invalid cidr fails", TrustedProxyConfig{CIDR: "10.0.0.0/33"}, "not a valid CIDR range"},
+		{"an address without a prefix length fails", TrustedProxyConfig{CIDR: "172.28.0.10"},
+			"not a valid CIDR range"},
+		{"invalid header fails", TrustedProxyConfig{CIDR: "10.0.0.0/24", Header: "x real ip"},
+			"not a valid header name"},
+		{"forwarded is not supported", TrustedProxyConfig{CIDR: "10.0.0.0/24", Header: "Forwarded"},
+			`header "Forwarded" is not supported; use "x-forwarded-for"`},
+	}
+	for _, tc := range tests {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{tc.proxy}}
+			assert.ErrorContains(t, c.ValidateTrustedProxies(), tc.want)
+		})
+	}
+}
+
 // ----- MCPConfig -----
 
 func (suite *ValidateTestSuite) TestMCPConfig_Validate() {

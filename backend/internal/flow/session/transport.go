@@ -8,11 +8,18 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/thunder-id/thunderid/internal/system/clientip"
 )
 
 // cookieNamePrefix prefixes every per-flow SSO cookie name.
 const cookieNamePrefix = "tid_sso_"
+
+// maxUserAgentLength caps the User-Agent recorded in a session's properties.
+const maxUserAgentLength = 512
 
 // cookieName derives the per-flow SSO cookie name from the flow ID. Each flow gets its
 // own cookie so sessions from different flows do not clobber each other's handle. The
@@ -146,4 +153,28 @@ func (c *cookieTransport) Clear(x *Exchange, flowID string) {
 		Secure:   c.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// ClientInfoFromRequest extracts the client metadata recorded on a session from the request: the client
+// IP that the ClientIPMiddleware put on the request context, and the User-Agent header, truncated to its
+// maximum length. The IP is not read from RemoteAddr, so a route that misses the middleware records no
+// IP rather than a proxy's. Invalid UTF-8 is dropped from the User-Agent, since a client can send any
+// bytes and only valid text is recorded.
+func ClientInfoFromRequest(r *http.Request) ClientInfo {
+	return ClientInfo{
+		IP:        clientip.FromContext(r.Context()),
+		UserAgent: truncate(strings.ToValidUTF8(r.UserAgent(), ""), maxUserAgentLength),
+	}
+}
+
+// truncate shortens s to at most maxBytes bytes without splitting a multi-byte character.
+func truncate(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }

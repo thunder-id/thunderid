@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/flow/session"
+	"github.com/thunder-id/thunderid/internal/system/clientip"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -195,6 +196,34 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCo
 	s.Equal(http.StatusOK, w.Code)
 	s.Require().True(gotOK, "inbound SSO transport inputs must be propagated onto the service context")
 	s.Equal("inbound-handle", gotInbound.HandleFor("flow-1"))
+}
+
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesClientInfo() {
+	t := s.T()
+	mockSvc := NewFlowExecServiceInterfaceMock(t)
+
+	var got session.ClientInfo
+	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
+			_ map[string]string, _ string, _ string, _ string) {
+			got = session.ClientInfoFrom(ctx)
+		}).
+		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+			(*tidcommon.ServiceError)(nil))
+
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh) Chrome/140.0")
+	req = req.WithContext(clientip.WithIP(req.Context(), "203.0.113.10"))
+	w := httptest.NewRecorder()
+
+	h.HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Equal("203.0.113.10", got.IP)
+	s.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", got.UserAgent)
 }
 
 // TestHandleFlowExecutionRequest_WritesSSOHandleCookie verifies a minted handle is emitted as the

@@ -6,8 +6,11 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 const schemeHTTPS = "https"
@@ -29,6 +32,30 @@ func (c *SecurityConfig) Validate() error {
 		return err
 	}
 	return c.TrustedIssuer.Validate()
+}
+
+// ValidateTrustedProxies checks each server.trusted_proxies entry. An omitted header is valid: it means
+// x-forwarded-for.
+func (c *ServerConfig) ValidateTrustedProxies() error {
+	for i, proxy := range c.TrustedProxies {
+		if _, err := netip.ParsePrefix(proxy.CIDR); err != nil {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: cidr %q is not a valid CIDR range", i, proxy.CIDR)
+		}
+		if proxy.Header == "" {
+			continue
+		}
+		if !httpguts.ValidHeaderFieldName(proxy.Header) {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: header %q is not a valid header name",
+				i, proxy.Header)
+		}
+		// The RFC 7239 value (for=192.0.2.60;proto=https) is not a plain IP, so reading it as one would
+		// fail on every request.
+		if strings.EqualFold(proxy.Header, "forwarded") {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: header %q is not supported; "+
+				"use \"x-forwarded-for\"", i, proxy.Header)
+		}
+	}
+	return nil
 }
 
 // Validate checks the REST API gate configuration; an absent audience leaves it unchecked.

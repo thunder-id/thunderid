@@ -65,6 +65,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	if h.ssoTransport != nil {
 		ctx = session.WithInbound(ctx, h.ssoTransport.Read(ssoExchange))
 	}
+	// Carry the client's IP and User-Agent so a session established or reused by this request
+	// records where it was used from.
+	ctx = session.WithClientInfo(ctx, session.ClientInfoFromRequest(r))
 
 	var flowStep *FlowStep
 	var flowErr *tidcommon.ServiceError
