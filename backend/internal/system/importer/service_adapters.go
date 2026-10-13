@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -862,15 +863,17 @@ func (s *importService) importResourceServerChildren(
 		}
 	}
 
-	// handleToID maps resource handle → created/resolved ID for parent resolution.
-	handleToID := make(map[string]string)
+	// pathToID maps the resource path (its computed permission) → created/resolved ID for parent
+	// resolution, since resource handles are only unique under the same parent.
+	pathToID := make(map[string]string)
 
 	for i := range rs.Resources {
 		res := rs.Resources[i]
 
-		// Resolve ParentHandle to the parent ID using handles seen so far in this import.
+		// Resolve the parent ID from the parent path using resources seen so far in this import.
 		if res.ParentHandle != "" {
-			if parentID, ok := handleToID[res.ParentHandle]; ok {
+			parentPath := strings.TrimSuffix(res.Permission, rs.Delimiter+res.Handle)
+			if parentID, ok := pathToID[parentPath]; ok {
 				res.Parent = &parentID
 			}
 		}
@@ -881,13 +884,7 @@ func (s *importService) importResourceServerChildren(
 				return svcErr
 			}
 			// Resource already exists — look it up under the same parent scope to get its ID.
-			var parentID *string
-			if res.ParentHandle != "" {
-				if pid, ok := handleToID[res.ParentHandle]; ok {
-					parentID = &pid
-				}
-			}
-			list, listErr := s.resourceService.GetResourceList(ctx, serverID, parentID, serverconst.MaxPageSize, 0)
+			list, listErr := s.resourceService.GetResourceList(ctx, serverID, res.Parent, serverconst.MaxPageSize, 0)
 			if listErr != nil {
 				return listErr
 			}
@@ -904,7 +901,7 @@ func (s *importService) importResourceServerChildren(
 			created = &providers.Resource{ID: existingID}
 		}
 
-		handleToID[res.Handle] = created.ID
+		pathToID[res.Permission] = created.ID
 
 		for j := range res.Actions {
 			action := res.Actions[j]
