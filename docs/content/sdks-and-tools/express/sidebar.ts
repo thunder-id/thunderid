@@ -45,6 +45,11 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/express/apis/middleware/handle-flow',
               label: 'handleFlow()',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/express/apis/middleware/handle-backchannel-logout',
+              label: 'handleBackchannelLogout()',
+            },
           ],
         },
         {
