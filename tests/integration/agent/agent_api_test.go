@@ -50,6 +50,7 @@ var (
 		Schema: map[string]interface{}{
 			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
+			"password":    map[string]interface{}{"type": "string", "credential": true},
 		},
 	}
 
@@ -1381,6 +1382,35 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_RemoveInboundProfile() {
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
 	ts.Assert().Empty(updated.AuthFlowID,
 		"AuthFlowID must be cleared after removing inbound profile")
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_ReturnsStoredAttributes() {
+	agentID, err := createAgent(Agent{
+		OUID:       testOUID,
+		Type:       "default",
+		Attributes: agentAttrs("stored-attributes-agent", nil),
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	resp, err := putAgentRaw(agentID, map[string]interface{}{
+		"ouId": testOUID,
+		"type": "default",
+		"attributes": map[string]interface{}{
+			"name":        "stored-attributes-agent",
+			"description": "stored description",
+			"notInSchema": "dropped",
+			"password":    "plaintext-secret",
+		},
+	})
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+
+	var updated Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&updated))
+	ts.JSONEq(`{"name":"stored-attributes-agent","description":"stored description"}`,
+		string(updated.Attributes))
 }
 
 // --- flow handle resolution on update ---

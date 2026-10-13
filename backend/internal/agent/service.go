@@ -1303,7 +1303,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	}
 
 	resp := buildCompleteResponse(agentID, owner, clientID, clientSecret,
-		req.Type, req.Description, req.LogoURL, req.Attributes,
+		req.Type, req.Description, req.LogoURL, updated.Attributes,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
