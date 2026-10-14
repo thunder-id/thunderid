@@ -274,6 +274,37 @@ func (s *FileBasedResourceStoreTestSuite) TestValidatePermissions_EmptyResult() 
 	assert.Contains(s.T(), invalid, "permission2")
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestDuplicateHandlesHaveDistinctResourcesAndActions() {
+	store := s.store.(*fileBasedResourceStore)
+	rs := &providers.ResourceServer{ID: "shared", Name: "Shared", OUID: "ou1", Resources: []providers.Resource{
+		{Handle: "amp"}, {Handle: "ipaas"},
+		{Handle: "project", ParentHandle: "amp", Actions: []providers.Action{{Handle: "read"}}},
+		{Handle: "project", DeclarativeID: "ipaas_project", ParentHandle: "ipaas", Actions: []providers.Action{{Handle: "read"}}},
+	}}
+	s.Require().NoError(ProcessResourceServer(rs))
+	s.Require().NoError(store.Create("shared", rs))
+
+	for _, tc := range []struct{ parent, resource, permission string }{
+		{"shared_amp", "shared_project", "amp:project:read"},
+		{"shared_ipaas", "shared_ipaas_project", "ipaas:project:read"},
+	} {
+		children, err := s.store.GetResourceListByParent(s.ctx, "shared", &tc.parent, 10, 0)
+		s.Require().NoError(err)
+		s.Require().Len(children, 1)
+		s.Equal(tc.resource, children[0].ID)
+
+		resource, err := s.store.GetResource(s.ctx, tc.resource, "shared")
+		s.Require().NoError(err)
+		s.Equal(tc.permission, resource.Permission+":read")
+
+		actions, err := s.store.GetActionList(s.ctx, "shared", &tc.resource, "", 10, 0)
+		s.Require().NoError(err)
+		s.Require().Len(actions, 1)
+		s.Equal(tc.resource+"_read", actions[0].ID)
+		s.Equal(tc.permission, actions[0].Permission)
+	}
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetResourceAndLists_WithData() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)

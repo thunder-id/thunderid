@@ -678,6 +678,41 @@ func TestProcessResourceServer_SetsPermissionsAndDelimiter(t *testing.T) {
 	assert.Equal(t, "users:profile", rs.Resources[1].Permission)
 }
 
+func TestProcessResourceServer_SameHandleInSeparateBranches(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID: "shared", Delimiter: ":",
+		Resources: []providers.Resource{
+			{Name: "AMP", Handle: "amp"},
+			{Name: "IPAAS", Handle: "ipaas"},
+			{Name: "AMP Project", Handle: "project", ParentHandle: "amp", Actions: []providers.Action{{Handle: "read"}}},
+			{Name: "IPAAS Project", Handle: "project", DeclarativeID: "ipaas_project", ParentHandle: "ipaas", Actions: []providers.Action{{Handle: "read"}}},
+			{Name: "IPAAS Component", Handle: "component", ParentHandle: "ipaas:project"},
+		},
+	}
+	assert.NoError(t, ProcessResourceServer(rs))
+	assert.Equal(t, "shared_project", rs.Resources[2].ID)
+	assert.Equal(t, "amp:project:read", rs.Resources[2].Actions[0].Permission)
+	assert.Equal(t, "shared_ipaas_project", rs.Resources[3].ID)
+	assert.Equal(t, "ipaas:project:read", rs.Resources[3].Actions[0].Permission)
+	assert.Equal(t, "ipaas:project:component", rs.Resources[4].Permission)
+	assert.Equal(t, rs.Resources[3].ID, *rs.Resources[4].Parent)
+
+	resources, err := viewResources(rs)
+	assert.NoError(t, err)
+	assert.Equal(t, rs.Resources[3].ID, resources[3].ID)
+	assert.Equal(t, "shared_ipaas_project_read", resources[3].Actions[0].ID)
+}
+
+func TestProcessResourceServer_AmbiguousParent(t *testing.T) {
+	rs := &providers.ResourceServer{ID: "shared", Resources: []providers.Resource{
+		{Handle: "amp"}, {Handle: "ipaas"},
+		{Handle: "project", ParentHandle: "amp"},
+		{Handle: "project", DeclarativeID: "ipaas_project", ParentHandle: "ipaas"},
+		{Handle: "component", ParentHandle: "project"},
+	}}
+	assert.ErrorContains(t, ProcessResourceServer(rs), "ambiguous parent")
+}
+
 func TestProcessResourceServer_DuplicateHandle(t *testing.T) {
 	rs := &providers.ResourceServer{
 		ID:   "rs1",
