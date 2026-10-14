@@ -181,6 +181,16 @@ func (f *fileBasedResourceStore) IsResourceServerDeclarative(id string) bool {
 
 // Resource operations
 
+func declarativeResourceID(serverID string, res *providers.Resource) string {
+	if res.ID != "" {
+		return res.ID
+	}
+	if res.DeclarativeID != "" {
+		return serverID + "_" + res.DeclarativeID
+	}
+	return serverID + "_" + res.Handle
+}
+
 func (f *fileBasedResourceStore) CreateResource(
 	ctx context.Context, uuid string, resServerID string, parentID *string, res providers.Resource,
 ) error {
@@ -205,9 +215,9 @@ func (f *fileBasedResourceStore) GetResource(
 			}
 
 			for _, res := range rs.Resources {
-				if res.Handle == id || fmt.Sprintf("%s_%s", rs.ID, res.Handle) == id {
+				if declarativeResourceID(rs.ID, &res) == id || (res.ID == "" && res.Handle == id) {
 					resource := providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, &res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -245,7 +255,7 @@ func (f *fileBasedResourceStore) GetResourceList(
 			for _, res := range rs.Resources {
 				if res.Parent == nil {
 					resources = append(resources, providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, &res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -312,15 +322,13 @@ func (f *fileBasedResourceStore) GetResourceListByParent(
 						// DB resource: match by UUID
 						matched = *res.Parent == parentResUUID
 					} else if res.ParentHandle != "" {
-						// Declarative resource: Parent UUID not set; match by handle
-						// extracted from the synthetic parent ID (format: rsID_handle).
 						parentHandle := strings.TrimPrefix(parentResUUID, rs.ID+"_")
 						matched = res.ParentHandle == parentHandle
 					}
 				}
 				if matched {
 					resources = append(resources, providers.Resource{
-						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
+						ID:           declarativeResourceID(rs.ID, &res),
 						Name:         res.Name,
 						Handle:       res.Handle,
 						Description:  res.Description,
@@ -417,11 +425,14 @@ func (f *fileBasedResourceStore) GetAction(
 	}
 
 	for _, item := range list {
-		if rs, ok := item.Data.(*providers.ResourceServer); ok {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.ID == resServerID {
 			for _, res := range rs.Resources {
+				if resID != nil && declarativeResourceID(rs.ID, &res) != *resID {
+					continue
+				}
 				for _, action := range res.Actions {
-					actionID := fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
-					if actionID == id || action.Handle == id {
+					actionID := declarativeResourceID(rs.ID, &res) + "_" + action.Handle
+					if actionID == id || (resID != nil && action.Handle == id) {
 						return providers.Action{
 							ID:          actionID,
 							Name:        action.Name,
@@ -465,7 +476,7 @@ func (f *fileBasedResourceStore) GetActionList(
 
 			// Iterate through resources in this server
 			for _, res := range rs.Resources {
-				resUUID := fmt.Sprintf("%s_%s", rs.ID, res.Handle)
+				resUUID := declarativeResourceID(rs.ID, &res)
 
 				// Only get actions from the requested resource
 				if resUUID != *resID {
@@ -477,7 +488,7 @@ func (f *fileBasedResourceStore) GetActionList(
 					if kind != "" && action.Kind != kind {
 						continue
 					}
-					actionID := fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
+					actionID := resUUID + "_" + action.Handle
 					actions = append(actions, providers.Action{
 						ID:          actionID,
 						Name:        action.Name,
@@ -564,7 +575,7 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 
 			// Iterate through resources in this server
 			for _, res := range rs.Resources {
-				resUUID := fmt.Sprintf("%s_%s", rs.ID, res.Handle)
+				resUUID := declarativeResourceID(rs.ID, &res)
 
 				// If resID is specified, only check actions from that resource
 				if resID != nil && resUUID != *resID {

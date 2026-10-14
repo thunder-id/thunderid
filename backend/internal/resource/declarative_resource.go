@@ -115,7 +115,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 	// First pass: build ID-to-Handle map so parent handles can be resolved regardless of order
 	idToHandleMap := make(map[string]string)
 	for _, res := range allResources {
-		idToHandleMap[res.ID] = res.Handle
+		idToHandleMap[res.ID] = res.Permission
 	}
 
 	// Second pass: build declarative resources with resolved parent handles and actions
@@ -126,10 +126,13 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 			Description: res.Description,
 			Actions:     []providers.Action{},
 		}
+		if strings.HasPrefix(res.ID, server.ID+"_") && res.ID != server.ID+"_"+res.Handle {
+			resource.DeclarativeID = strings.TrimPrefix(res.ID, server.ID+"_")
+		}
 
 		if res.Parent != nil && *res.Parent != "" {
-			if parentHandle, ok := idToHandleMap[*res.Parent]; ok {
-				resource.ParentHandle = parentHandle
+			if parentPermission, ok := idToHandleMap[*res.Parent]; ok {
+				resource.ParentHandle = parentPermission
 			}
 		}
 
@@ -247,37 +250,18 @@ func (e *resourceServerExporter) ViewResourceParts(_ context.Context, document *
 // viewResources gives the resources of an exported resource server, and their actions, the ids,
 // parents and permissions a read of them returns.
 func viewResources(rs *providers.ResourceServer) ([]providers.Resource, error) {
-	delimiter := rs.Delimiter
-	if delimiter == "" {
-		delimiter = ":"
+	copy := *rs
+	copy.Resources = append([]providers.Resource(nil), rs.Resources...)
+	if err := ProcessResourceServer(&copy); err != nil {
+		return nil, err
 	}
-	handles := make(map[string]*providers.Resource, len(rs.Resources))
-	for i := range rs.Resources {
-		handles[rs.Resources[i].Handle] = &rs.Resources[i]
+	for i := range copy.Resources {
+		res := &copy.Resources[i]
+		for j := range res.Actions {
+			res.Actions[j].ID = res.ID + "_" + res.Actions[j].Handle
+		}
 	}
-
-	resources := make([]providers.Resource, 0, len(rs.Resources))
-	for i := range rs.Resources {
-		res := rs.Resources[i]
-		permission, err := buildPermissionString(&res, handles, delimiter)
-		if err != nil {
-			return nil, err
-		}
-		res.ID = fmt.Sprintf("%s_%s", rs.ID, res.Handle)
-		res.Permission = permission
-		if res.ParentHandle != "" {
-			parentID := fmt.Sprintf("%s_%s", rs.ID, res.ParentHandle)
-			res.Parent = &parentID
-		}
-		res.Actions = make([]providers.Action, len(rs.Resources[i].Actions))
-		for j, action := range rs.Resources[i].Actions {
-			action.ID = fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
-			action.Permission = permission + delimiter + action.Handle
-			res.Actions[j] = action
-		}
-		resources = append(resources, res)
-	}
-	return resources, nil
+	return copy.Resources, nil
 }
 
 // loadDeclarativeResources loads resource server resources from declarative files.
@@ -409,28 +393,8 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 	}
 	rs.Delimiter = delimiter
 
-	// Build a map of handle to resource for parent resolution and detect duplicates
-	resourceHandleMap := make(map[string]*providers.Resource)
-	for i := range rs.Resources {
-		handle := rs.Resources[i].Handle
-		if existing, ok := resourceHandleMap[handle]; ok {
-			// Duplicate handle detected
-			return fmt.Errorf(
-				"duplicate resource handle '%s' found: conflicting resources are '%s' and '%s' in resource server '%s'",
-				handle,
-				existing.Name,
-				rs.Resources[i].Name,
-				rs.ID,
-			)
-		}
-		resourceHandleMap[handle] = &rs.Resources[i]
-	}
-
-	// Process resources and compute permissions
-	for i := range rs.Resources {
-		if err := processResource(&rs.Resources[i], resourceHandleMap, delimiter); err != nil {
-			return err
-		}
+	if err := resolveDeclarativeResources(rs, delimiter); err != nil {
+		return err
 	}
 
 	// For MCP resource servers, a resource (group) and an action (tool/resource) in the same parent
@@ -443,6 +407,88 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 		}
 	}
 
+	return nil
+}
+
+// resolveDeclarativeResources keeps legacy IDs for existing handles. A second resource with the
+// same handle needs an explicit ID suffix, and a qualified parent when its parent is ambiguous.
+func resolveDeclarativeResources(rs *providers.ResourceServer, delimiter string) error {
+	byHandle := make(map[string][]*providers.Resource)
+	byID := make(map[string]bool)
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		suffix := res.Handle
+		if res.DeclarativeID != "" {
+			suffix = res.DeclarativeID
+		}
+		if suffix == "" || strings.Contains(suffix, delimiter) {
+			return fmt.Errorf("invalid declarative resource ID suffix %q", suffix)
+		}
+		res.ID = rs.ID + "_" + suffix
+		if byID[res.ID] {
+			return fmt.Errorf("duplicate resource handle or ID %q in resource server %q: assign a distinct id to the new resource", res.Handle, rs.ID)
+		}
+		byID[res.ID] = true
+		byHandle[res.Handle] = append(byHandle[res.Handle], res)
+	}
+
+	visiting := make(map[*providers.Resource]bool)
+	var resolve func(*providers.Resource) error
+	resolve = func(res *providers.Resource) error {
+		if visiting[res] {
+			return fmt.Errorf("circular parent reference at resource %q", res.Handle)
+		}
+		if res.Permission != "" {
+			return nil
+		}
+		visiting[res] = true
+		defer delete(visiting, res)
+		permission := res.Handle
+		if res.ParentHandle != "" {
+			parts := strings.Split(res.ParentHandle, delimiter)
+			candidates := byHandle[parts[len(parts)-1]]
+			var parent *providers.Resource
+			for _, candidate := range candidates {
+				if len(parts) > 1 {
+					if err := resolve(candidate); err != nil {
+						return err
+					}
+					if candidate.Permission != res.ParentHandle {
+						continue
+					}
+				}
+				if parent != nil {
+					return fmt.Errorf("ambiguous parent %q for resource %q", res.ParentHandle, res.Handle)
+				}
+				parent = candidate
+			}
+			if parent == nil {
+				return fmt.Errorf("parent resource %q not found for resource %q", res.ParentHandle, res.Handle)
+			}
+			if err := resolve(parent); err != nil {
+				return err
+			}
+			permission = parent.Permission + delimiter + res.Handle
+			res.Parent = &parent.ID
+		}
+		res.Permission = permission
+		for i := range res.Actions {
+			res.Actions[i].Permission = res.Permission + delimiter + res.Actions[i].Handle
+		}
+		return nil
+	}
+
+	permissions := make(map[string]bool)
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if err := resolve(res); err != nil {
+			return err
+		}
+		if permissions[res.Permission] {
+			return fmt.Errorf("duplicate resource permission %q in resource server %q", res.Permission, rs.ID)
+		}
+		permissions[res.Permission] = true
+	}
 	return nil
 }
 
