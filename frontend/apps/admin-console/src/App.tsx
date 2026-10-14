@@ -21,6 +21,7 @@ const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m)
 const CreateRolePage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.CreateRolePage})));
 const RoleEditPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RoleEditPage})));
 const RolesListPage = lazy(() => import('@thunderid/configure-roles').then((m) => ({default: m.RolesListPage})));
+const SessionsPanel = lazy(() => import('@thunderid/configure-sessions').then((m) => ({default: m.SessionsPanel})));
 const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
 const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
@@ -42,7 +43,10 @@ export default function App(): JSX.Element {
               >
                 <Route index element={<Navigate to={RouteConfig.users.list()} replace />} />
                 <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.users}/:userId`}
+                  element={<UserEditPage renderSessions={(userId) => <SessionsPanel filter={{userId}} />} />}
+                />
                 <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                 <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />

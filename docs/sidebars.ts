@@ -492,6 +492,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'guides/users/manage-sessions',
+              label: 'Manage Sessions',
+            },
+            {
+              type: 'doc',
               id: 'guides/users/user-types',
               label: 'User Types',
             },
