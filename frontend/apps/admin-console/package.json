@@ -48,6 +48,7 @@
     "@thunderid/configure-groups": "workspace:^",
     "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-roles": "workspace:^",
+    "@thunderid/configure-sessions": "workspace:^",
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/logger": "workspace:^",
