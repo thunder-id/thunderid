@@ -70,6 +70,14 @@ type UpdateSelfUserRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
+// UpdateSelfCredentialsRequest represents the request body for the authenticated user changing
+// their own credentials. CurrentPassword is a sibling of Attributes, not a member of it, since the
+// entity layer only accepts schema-declared credential keys inside Attributes.
+type UpdateSelfCredentialsRequest struct {
+	CurrentPassword string          `json:"currentPassword,omitempty"`
+	Attributes      json.RawMessage `json:"attributes,omitempty"`
+}
+
 // UpdateUserCredentialsRequest represents the request body for updating user credentials by an admin.
 type UpdateUserCredentialsRequest struct {
 	Credentials json.RawMessage `json:"credentials,omitempty"`

@@ -101,6 +101,7 @@ const ProfilePage = () => {
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [passwordState, setPasswordState] = useState({
+        currentPassword: '',
         newPassword: '',
         confirmPassword: '',
     });
@@ -157,7 +158,7 @@ const ProfilePage = () => {
         setSuccessMessage('');
     };
 
-    const handlePasswordChange = (key: 'newPassword' | 'confirmPassword', value: string) => {
+    const handlePasswordChange = (key: 'currentPassword' | 'newPassword' | 'confirmPassword', value: string) => {
         setPasswordState((prev) => ({
             ...prev,
             [key]: value,
@@ -238,6 +239,13 @@ const ProfilePage = () => {
         }
 
         const trimmedPassword = passwordState.newPassword.trim();
+        const trimmedCurrentPassword = passwordState.currentPassword.trim();
+
+        if (!trimmedCurrentPassword) {
+            setError('Enter your current password.');
+            setSuccessMessage('');
+            return;
+        }
 
         if (!trimmedPassword) {
             setError('Enter a new password.');
@@ -256,8 +264,9 @@ const ProfilePage = () => {
         setSuccessMessage('');
 
         try {
-            await updateCurrentUserPassword(trimmedPassword);
+            await updateCurrentUserPassword(trimmedPassword, trimmedCurrentPassword);
             setPasswordState({
+                currentPassword: '',
                 newPassword: '',
                 confirmPassword: '',
             });
@@ -520,6 +529,17 @@ const ProfilePage = () => {
                                             },
                                         }}
                                     >
+                                        <Box display="flex" flexDirection="column" gap={0.5}>
+                                            <InputLabel htmlFor="current-password">Current Password</InputLabel>
+                                            <OutlinedInput
+                                                id="current-password"
+                                                type="password"
+                                                autoComplete="current-password"
+                                                size="small"
+                                                value={passwordState.currentPassword}
+                                                onChange={(event) => handlePasswordChange('currentPassword', event.target.value)}
+                                            />
+                                        </Box>
                                         <Box display="flex" flexDirection="column" gap={0.5}>
                                             <InputLabel htmlFor="new-password">New Password</InputLabel>
                                             <OutlinedInput
