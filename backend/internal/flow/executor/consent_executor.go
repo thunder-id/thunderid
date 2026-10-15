@@ -176,7 +176,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 			Permissions:      authorizedPermissions,
 		}}
 	}
-	promptData, svcErr := e.consentEnforcer.ResolveConsent(
+	resolution, svcErr := e.consentEnforcer.ResolveConsent(
 		ctx.Context, ouID, appID, appName, entityRef.EntityID,
 		essentialAttributes, optionalAttributes, resourcePermissions, authorizationDetails,
 		availableAttributes, forceReprompt, core.BuildProviderMetadata(ctx).RuntimeMetadata)
@@ -196,7 +196,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	}
 
 	// All consents are active — nothing to prompt
-	if promptData == nil {
+	if resolution == nil {
 		if err := setConsentedAuthorizationDetails(execResp, authorizationDetails); err != nil {
 			return nil, err
 		}
@@ -205,7 +205,20 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		return execResp, nil
 	}
 
+	if resolution.Prompt == nil {
+		logger.Debug(ctx.Context, "All required consents are active; completing consent executor")
+		if err := setConsentedAuthorizationDetails(execResp, authorizationDetails); err != nil {
+			return nil, err
+		}
+		if resolution.Consent != nil {
+			e.setConsentRuntimeData(execResp, appID, resolution.Consent)
+		}
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
+
 	// Consent is needed — forward prompt data to the prompt node via ForwardedData
+	promptData := resolution.Prompt
 	promptJSON, err := json.Marshal(promptData.Purposes)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to marshal consent prompt data", log.Error(err))
@@ -362,11 +375,6 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return execResp, nil
 	}
 
-	// Store the consent ID in RuntimeData for downstream usage. Empty when nothing was recorded.
-	if consentRecord.ID != "" {
-		execResp.RuntimeData[common.RuntimeKeyConsentID] = consentRecord.ID
-	}
-
 	grantedDetails, err := e.decideAuthorizationDetails(ctx, consentRecord)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decide the authorization details: %w", err)
@@ -375,14 +383,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return nil, err
 	}
 
-	// Derive approved attribute and permission names from the full (merged) consent record so
-	// downstream executors can easily restrict to only consented values without needing to
-	// understand the full consent data structure. Both keys are always set (even if empty) so
-	// auth assert knows that the consent step ran and can apply the appropriate precedence chain.
-	consentedAttrs := collectApprovedElementsByPurposeName(consentRecord, buildAttributePurposeName(appID))
-	execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = strings.Join(consentedAttrs, " ")
-	consentedPerms := collectApprovedElementsByPurposeName(consentRecord, buildPermissionsPurposeName(appID))
-	execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = strings.Join(consentedPerms, " ")
+	e.setConsentRuntimeData(execResp, appID, consentRecord)
 
 	logger.Debug(ctx.Context, "Consent recorded successfully", log.String("consentID", consentRecord.ID))
 	execResp.Status = providers.ExecComplete
@@ -492,6 +493,17 @@ func (e *consentExecutor) offerVerificationClaims(ctx context.Context, requested
 	}
 
 	return nil
+}
+
+// setConsentRuntimeData stores the approved attribute names and the approved permissions of the consent
+// in RuntimeData.
+func (e *consentExecutor) setConsentRuntimeData(execResp *providers.ExecutorResponse, appID string,
+	consent *providers.Consent) {
+	consentedAttrs := collectApprovedElementsByPurposeName(consent, buildAttributePurposeName(appID))
+	execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = strings.Join(consentedAttrs, " ")
+
+	consentedPerms := collectApprovedElementsByPurposeName(consent, buildPermissionsPurposeName(appID))
+	execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = strings.Join(consentedPerms, " ")
 }
 
 // collectApprovedElementsByPurposeName returns a list of element names that are approved by the user for a
