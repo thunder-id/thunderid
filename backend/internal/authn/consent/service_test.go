@@ -218,10 +218,10 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_ForceRepromptIgnore
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Equal(consent.AttributePurposeNamePrefix+"app1", result.Purposes[0].PurposeName)
-	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Purposes[0].Essential)
-	s.NotEmpty(result.SessionToken)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Equal(consent.AttributePurposeNamePrefix+"app1", result.Prompt.Purposes[0].PurposeName)
+	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Prompt.Purposes[0].Essential)
+	s.NotEmpty(result.Prompt.SessionToken)
 	s.mockConsentSvc.AssertNotCalled(s.T(), "SearchConsents", mock.Anything, mock.Anything)
 }
 
@@ -237,11 +237,11 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PromptNeeded() {
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Equal(consent.AttributePurposeNamePrefix+"app1", result.Purposes[0].PurposeName)
-	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Purposes[0].Essential)
-	s.Equal([]providers.PromptElement{{Name: "phone"}}, result.Purposes[0].Optional)
-	s.NotEmpty(result.SessionToken)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Equal(consent.AttributePurposeNamePrefix+"app1", result.Prompt.Purposes[0].PurposeName)
+	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Prompt.Purposes[0].Essential)
+	s.Equal([]providers.PromptElement{{Name: "phone"}}, result.Prompt.Purposes[0].Optional)
+	s.NotEmpty(result.Prompt.SessionToken)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_RequiredAttributesFilter() {
@@ -257,9 +257,9 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_RequiredAttributesF
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Purposes[0].Essential)
-	s.Empty(result.Purposes[0].Optional)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Prompt.Purposes[0].Essential)
+	s.Empty(result.Prompt.Purposes[0].Optional)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_UserProfileFilter() {
@@ -282,9 +282,9 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_UserProfileFilter()
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Empty(result.Purposes[0].Essential)
-	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Purposes[0].Optional)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Empty(result.Prompt.Purposes[0].Essential)
+	s.Equal([]providers.PromptElement{{Name: "email"}}, result.Prompt.Purposes[0].Optional)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PartialConsentsExist() {
@@ -314,9 +314,9 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PartialConsentsExis
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Empty(result.Purposes[0].Essential)
-	s.Equal([]providers.PromptElement{{Name: "phone"}}, result.Purposes[0].Optional)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Empty(result.Prompt.Purposes[0].Essential)
+	s.Equal([]providers.PromptElement{{Name: "phone"}}, result.Prompt.Purposes[0].Optional)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PermissionsPurposePrompted() {
@@ -333,10 +333,10 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PermissionsPurposeP
 
 	s.Nil(svcErr)
 	s.NotNil(result)
-	s.Len(result.Purposes, 1)
-	s.Equal(consent.PermissionPurposeName("app1"), result.Purposes[0].PurposeName)
-	s.Equal(consentPromptTypePermissions, result.Purposes[0].Type)
-	s.Equal([]providers.PromptElement{{Name: "booking:read"}}, result.Purposes[0].Optional)
+	s.Len(result.Prompt.Purposes, 1)
+	s.Equal(consent.PermissionPurposeName("app1"), result.Prompt.Purposes[0].PurposeName)
+	s.Equal(consentPromptTypePermissions, result.Prompt.Purposes[0].Type)
+	s.Equal([]providers.PromptElement{{Name: "booking:read"}}, result.Prompt.Purposes[0].Optional)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_CreateConsentSessionTokenFails() {
@@ -389,7 +389,7 @@ func buildSessionTokenWithPayload(payload map[string]interface{}) string {
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestCreateConsentSessionToken_GenerateJWTFails() {
-	promptData := &providers.ConsentPromptData{
+	promptData := &providers.ConsentPrompt{
 		Purposes: []providers.ConsentPurposePrompt{{PurposeName: "purpose-1",
 			Essential: []providers.PromptElement{{Name: "email"}}}},
 	}
