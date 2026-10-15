@@ -31,7 +31,6 @@ const (
 var fedProvSchema = map[string]interface{}{
 	"username":   map[string]interface{}{"type": "string"},
 	"password":   map[string]interface{}{"type": "string", "credential": true},
-	"sub":        map[string]interface{}{"type": "string"},
 	"email":      map[string]interface{}{"type": "string"},
 	"givenName":  map[string]interface{}{"type": "string"},
 	"familyName": map[string]interface{}{"type": "string"},

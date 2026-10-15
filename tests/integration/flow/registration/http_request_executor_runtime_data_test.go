@@ -235,9 +235,6 @@ var (
 		Handle:      "http_request_runtime_user",
 		DisplayName: "Http Request Runtime User",
 		Schema: map[string]interface{}{
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},

@@ -118,9 +118,6 @@ var (
 				"type":       "string",
 				"credential": true,
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},
@@ -219,7 +216,6 @@ func (ts *ConditionalExecAuthFlowTestSuite) SetupSuite() {
 	existingUserAttributes := map[string]interface{}{
 		"username":   "existingconditionalexecuser",
 		"password":   "Test@1234",
-		"sub":        conditionalExecExistingUserSub,
 		"email":      conditionalExecExistingUserEmail,
 		"givenName":  "Existing",
 		"familyName": "User",
