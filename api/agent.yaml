@@ -325,6 +325,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
+                invalid-lifespan:
+                  summary: validUntil is not an RFC 3339 date and time
+                  value:
+                    code: "AGT-1045"
+                    message:
+                      key: "error.agentservice.invalid_lifespan"
+                      defaultValue: "Invalid lifespan"
+                    description:
+                      key: "error.agentservice.invalid_lifespan_description"
+                      defaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire"
+                lifespan-not-in-future:
+                  summary: validUntil is not later than the current time
+                  value:
+                    code: "AGT-1046"
+                    message:
+                      key: "error.agentservice.lifespan_not_in_future"
+                      defaultValue: "Lifespan must end in the future"
+                    description:
+                      key: "error.agentservice.lifespan_not_in_future_description"
+                      defaultValue: "validUntil must be later than the current time"
                 invalid-request-format:
                   summary: Malformed request body
                   value:
@@ -893,6 +913,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
+                invalid-lifespan:
+                  summary: validUntil is not an RFC 3339 date and time
+                  value:
+                    code: "AGT-1045"
+                    message:
+                      key: "error.agentservice.invalid_lifespan"
+                      defaultValue: "Invalid lifespan"
+                    description:
+                      key: "error.agentservice.invalid_lifespan_description"
+                      defaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire"
+                lifespan-not-in-future:
+                  summary: validUntil is not later than the current time
+                  value:
+                    code: "AGT-1046"
+                    message:
+                      key: "error.agentservice.lifespan_not_in_future"
+                      defaultValue: "Lifespan must end in the future"
+                    description:
+                      key: "error.agentservice.lifespan_not_in_future_description"
+                      defaultValue: "validUntil must be later than the current time"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -1893,6 +1933,14 @@ components:
             ID of the entity that owns this agent. Defaults to the authenticated principal at
             creation time. Can be transferred by an administrator.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -1999,6 +2047,15 @@ components:
           default: false
           description: Whether the agent acts on behalf of a user. It decides the OAuth grant types the agent is given and allowed, and is not stored. See `inboundAuthConfig`.
           example: false
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC 3339 instant at which the agent's lifespan ends. It must be later than the current
+            time. Omit it, or send `null`, to register an agent that does not expire. From this
+            instant the agent obtains no new tokens, and no token issued to or for it outlives it.
+          example: "2027-03-31T00:00:00Z"
         attributes:
           type: object
           additionalProperties: true
@@ -2102,6 +2159,15 @@ components:
           default: false
           description: Whether the agent acts on behalf of a user. It is not stored, so send it on every update that should be held to the delegated grant rules described on `inboundAuthConfig` in `CreateAgentRequest`.
           example: false
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC 3339 instant at which the agent's lifespan ends. Unlike the other fields, omitting
+            it leaves the stored lifespan unchanged; send `null` to remove the expiry. A value that
+            differs from the stored one must be later than the current time.
+          example: "2027-03-31T00:00:00Z"
         attributes:
           type: object
           additionalProperties: true
@@ -2179,6 +2245,14 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -2279,6 +2353,14 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -3078,10 +3160,10 @@ components:
         value:
           type: string
           readOnly: true
-          enum: [ACTIVE, LOCKED, SUSPENDED]
+          enum: [ACTIVE, LOCKED, SUSPENDED, EXPIRED]
           description: |
-            `ACTIVE`, `LOCKED` or `SUSPENDED`. When the agent is both suspended and locked,
-            `SUSPENDED` is reported.
+            `ACTIVE`, `LOCKED`, `SUSPENDED` or `EXPIRED`. When more than one applies, the first of
+            `SUSPENDED`, `EXPIRED` and `LOCKED` is reported.
 
             `SUSPENDED` is an administrative hold. The suspend flow places it and the unsuspend
             flow removes it. Any automatic lock still in force remains, so the agent returns to
@@ -3091,6 +3173,9 @@ components:
             `otp` authentication method. Automatic locking is enabled for agents by default. The
             agent's OAuth client secret is never locked. A lock does not expire when its duration
             is `0` or it forms at `maxConsecutiveFailures`; other locks expire on their own.
+
+            `EXPIRED` means the agent's `validUntil` has passed. Moving `validUntil` into the future
+            returns the agent to `ACTIVE`.
           example: "ACTIVE"
         details:
           type: object
@@ -3098,24 +3183,27 @@ components:
           description: |
             Why the status applies and how it is cleared. Absent for `ACTIVE`.
 
-            An authentication refusal states only that the account is locked or suspended. The
+            An authentication refusal states only that the account is locked, suspended, or expired. The
             locked methods, expiry times, and operator note are returned only here, to callers
             allowed to read the agent.
           properties:
             reason:
               type: string
               readOnly: true
-              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION]
+              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, LIFESPAN_ENDED]
               description: |
                 What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
-                sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator. One
-                reason covers every entry in `lockedMethods`.
+                sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator.
+                `LIFESPAN_ENDED` is an agent whose `validUntil` has passed. One reason covers every
+                entry in `lockedMethods`.
               example: "FAILED_ATTEMPTS"
             since:
               type: string
               format: date-time
               readOnly: true
-              description: When the operator placed the hold. Absent for an automatic lock.
+              description: |
+                When the operator placed the hold, or for `LIFESPAN_ENDED` the agent's `validUntil`.
+                Absent for an automatic lock.
             operatorNote:
               type: string
               readOnly: true
@@ -3152,6 +3240,19 @@ components:
                       When the lock expires. **Absent when it does not expire**: only the unlock flow
                       clears it.
                     example: "2026-09-08T10:15:00Z"
+
+    Lifespan:
+      type: object
+      readOnly: true
+      description: Where the agent stands in its lifespan, derived from `validUntil` on every read.
+      properties:
+        phase:
+          type: string
+          enum: [UNBOUNDED, ACTIVE, EXPIRED]
+          description: |
+            `UNBOUNDED` when the agent does not expire, `ACTIVE` while `validUntil` is ahead, and
+            `EXPIRED` from `validUntil` onward.
+          example: "ACTIVE"
 
     Link:
       type: object

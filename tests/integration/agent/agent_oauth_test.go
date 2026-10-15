@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -1335,4 +1336,175 @@ func agentTokenRequest(body string, clientID, clientSecret string, inBody bool) 
 	var result map[string]interface{}
 	_ = json.Unmarshal(bodyBytes, &result)
 	return result, resp.StatusCode, nil
+}
+
+// createLifespanAgent creates a client credentials agent whose lifespan ends at validUntil, or does
+// not end when validUntil is nil.
+func (ts *AgentOAuthFlowsTestSuite) createLifespanAgent(name, clientID string, validUntil *string) string {
+	agentID, err := createAgent(Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(name, nil),
+		AuthFlowID: ts.authFlowID,
+		ValidUntil: validUntil,
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				Config: &OAuthAgentConfig{
+					ClientID:                clientID,
+					ClientSecret:            clientID + "_secret",
+					GrantTypes:              []string{"client_credentials"},
+					TokenEndpointAuthMethod: "client_secret_basic",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	return agentID
+}
+
+func (ts *AgentOAuthFlowsTestSuite) getAgent(agentID string) Agent {
+	resp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+	var agent Agent
+	ts.Require().NoError(json.Unmarshal([]byte(readBody(resp)), &agent))
+	return agent
+}
+
+func lifespanEnd(in time.Duration) *string {
+	end := time.Now().UTC().Add(in).Truncate(time.Second).Format(time.RFC3339)
+	return &end
+}
+
+// TestAgentLifespan_SetChangeAndRemove covers registering an agent with a lifespan, an update that
+// leaves it out, removing the expiry with null, and the values the API refuses.
+func (ts *AgentOAuthFlowsTestSuite) TestAgentLifespan_SetChangeAndRemove() {
+	validUntil := lifespanEnd(48 * time.Hour)
+	agentID := ts.createLifespanAgent("lifespan-crud-agent", "lifespan_crud_client", validUntil)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	agent := ts.getAgent(agentID)
+	ts.Require().NotNil(agent.ValidUntil)
+	ts.Equal(*validUntil, *agent.ValidUntil)
+	ts.Require().NotNil(agent.Lifespan)
+	ts.Equal("ACTIVE", agent.Lifespan.Phase)
+
+	// An update that does not carry validUntil leaves the lifespan unchanged.
+	resp, err := putAgentRaw(agentID, map[string]interface{}{
+		"type": "default", "ouId": ts.ouID, "attributes": map[string]interface{}{"name": "lifespan-crud-agent"},
+	})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+	_ = resp.Body.Close()
+	ts.Equal(*validUntil, *ts.getAgent(agentID).ValidUntil)
+
+	// A past value is refused and changes nothing.
+	resp, err = putAgentRaw(agentID, map[string]interface{}{
+		"type": "default", "ouId": ts.ouID, "attributes": map[string]interface{}{"name": "renamed-agent"},
+		"validUntil": "2020-01-01T00:00:00Z",
+	})
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, resp.StatusCode)
+	ts.Equal("AGT-1046", errorCode(resp))
+	_ = resp.Body.Close()
+	ts.Equal("lifespan-crud-agent", ts.getAgent(agentID).AttrName(), "a refused lifespan applies no field")
+
+	// null removes the expiry.
+	resp, err = putAgentRaw(agentID, map[string]interface{}{
+		"type": "default", "ouId": ts.ouID, "attributes": map[string]interface{}{"name": "lifespan-crud-agent"},
+		"validUntil": nil,
+	})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+	_ = resp.Body.Close()
+	agent = ts.getAgent(agentID)
+	ts.Nil(agent.ValidUntil, "an unbounded lifespan omits validUntil")
+	ts.Equal("UNBOUNDED", agent.Lifespan.Phase)
+}
+
+func (ts *AgentOAuthFlowsTestSuite) TestAgentLifespan_RegistrationRefusesInvalidValues() {
+	for value, code := range map[string]string{
+		"2027-03-31":           "AGT-1045",
+		"2020-01-01T00:00:00Z": "AGT-1046",
+	} {
+		resp, err := doPost(testServerURL+agentBasePath, map[string]interface{}{
+			"ouId": ts.ouID, "type": "default", "validUntil": value,
+			"attributes": map[string]interface{}{"name": "lifespan-invalid-agent"},
+		})
+		ts.Require().NoError(err)
+		ts.Equal(http.StatusBadRequest, resp.StatusCode, value)
+		ts.Equal(code, errorCode(resp), value)
+		_ = resp.Body.Close()
+	}
+}
+
+// TestAgentLifespan_TokenCappedAtValidUntil verifies an access token never outlives the agent.
+func (ts *AgentOAuthFlowsTestSuite) TestAgentLifespan_TokenCappedAtValidUntil() {
+	agentID := ts.createLifespanAgent("lifespan-cap-agent", "lifespan_cap_client", lifespanEnd(2*time.Minute))
+	defer func() { _ = deleteAgent(agentID) }()
+
+	tokenResult, err := testutils.RequestTokenWithResource(
+		"lifespan_cap_client", "lifespan_cap_client_secret", "", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode, string(tokenResult.Body))
+	ts.Greater(tokenResult.Token.ExpiresIn, float64(0))
+	ts.LessOrEqual(tokenResult.Token.ExpiresIn, float64(120))
+}
+
+// TestAgentLifespan_ExpiredAgentObtainsNoToken verifies that the agent obtains tokens before validUntil,
+// is refused once it passes, and that the agent is kept, reported as expired. Governance refuses an
+// expired agent at client resolution, which answers invalid_client.
+func (ts *AgentOAuthFlowsTestSuite) TestAgentLifespan_ExpiredAgentObtainsNoToken() {
+	// Long enough that creating the agent and its first token request finish well before validUntil,
+	// even on a slow runner.
+	validUntil := lifespanEnd(20 * time.Second)
+	agentID := ts.createLifespanAgent("lifespan-expiry-agent", "lifespan_expiry_client", validUntil)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	requestToken := func() *testutils.TokenHTTPResult {
+		result, err := testutils.RequestTokenWithResource(
+			"lifespan_expiry_client", "lifespan_expiry_client_secret", "", "", "client_credentials",
+			agentOAuthDefaultRSIdentifier)
+		ts.Require().NoError(err)
+		return result
+	}
+
+	tokenResult := requestToken()
+	ts.Require().Equal(http.StatusOK, tokenResult.StatusCode, string(tokenResult.Body))
+
+	// Poll until the expired agent's client is refused, allowing generous slack past validUntil.
+	end, err := time.Parse(time.RFC3339, *validUntil)
+	ts.Require().NoError(err)
+	deadline := end.Add(15 * time.Second)
+	for tokenResult.StatusCode != http.StatusUnauthorized && time.Now().Before(deadline) {
+		time.Sleep(500 * time.Millisecond)
+		tokenResult = requestToken()
+	}
+	ts.Require().Equal(http.StatusUnauthorized, tokenResult.StatusCode, string(tokenResult.Body))
+	ts.Contains(string(tokenResult.Body), "invalid_client")
+
+	agent := ts.getAgent(agentID)
+	ts.Equal("EXPIRED", agent.Lifespan.Phase)
+	ts.Require().NotNil(agent.Status)
+	ts.Equal("EXPIRED", agent.Status.Value)
+
+	// Moving validUntil into the future reactivates the agent, and the update's own response reports
+	// the new status alongside the new phase.
+	resp, err := putAgentRaw(agentID, map[string]interface{}{
+		"type": "default", "ouId": ts.ouID, "attributes": map[string]interface{}{"name": "lifespan-expiry-agent"},
+		"validUntil": *lifespanEnd(time.Hour),
+	})
+	ts.Require().NoError(err)
+	body := readBody(resp)
+	_ = resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, body)
+	var reactivated Agent
+	ts.Require().NoError(json.Unmarshal([]byte(body), &reactivated))
+	ts.Require().NotNil(reactivated.Status)
+	ts.Equal("ACTIVE", reactivated.Status.Value)
+	ts.Require().NotNil(reactivated.Lifespan)
+	ts.Equal("ACTIVE", reactivated.Lifespan.Phase)
 }

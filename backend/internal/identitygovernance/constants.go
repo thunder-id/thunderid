@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -14,8 +15,9 @@ import (
 const formationRetries = 3
 
 // permanentUnlockAt is the stored unlock time for a permanent lock (duration zero). It compares
-// correctly both as a string and as a timestamp.
-const permanentUnlockAt = "9999-12-31T23:59:59Z"
+// correctly both as a string and as a timestamp. It is the instant an unbounded lifespan is stored as,
+// so a lock and a lifespan that never end read alike.
+const permanentUnlockAt = authnprovidercm.UnboundedValidUntil
 
 // LockReason says why an account-wide lock entry exists. Descriptive only; the unlock time decides
 // expiry.

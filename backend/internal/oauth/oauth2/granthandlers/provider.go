@@ -69,12 +69,12 @@ func newGrantHandlerProvider(
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, governance, authzDetails, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, authzDetails, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
 			tokenBuilder, tokenValidator, resourceService, rbacAuthzService, actorProvider, authzService, codeGrant,
-			cfg)
+			attrCacheService, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,

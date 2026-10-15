@@ -314,7 +314,7 @@ func (es EntityState) String() string {
 }
 
 // AccessStatus is the status a management read reports for an entity. LOCKED is derived at read
-// time from the stored unlock time and is never stored.
+// time from the stored unlock time, and EXPIRED from the entity's lifespan end; neither is stored.
 type AccessStatus string
 
 const (
@@ -327,6 +327,10 @@ const (
 	// AccessStatusSuspended means an administrator has suspended the entity. The record stays
 	// writable.
 	AccessStatusSuspended AccessStatus = "SUSPENDED"
+
+	// AccessStatusExpired means the entity's lifespan has ended. Moving its end into the future
+	// restores access.
+	AccessStatusExpired AccessStatus = "EXPIRED"
 )
 
 // String returns the string representation of the access status.
@@ -349,6 +353,9 @@ const (
 
 	// AccessHoldReasonAdministrativeSuspension is a suspension an administrator placed.
 	AccessHoldReasonAdministrativeSuspension AccessHoldReason = "ADMINISTRATIVE_SUSPENSION"
+
+	// AccessHoldReasonLifespanEnded is a lifespan that has reached its end.
+	AccessHoldReasonLifespanEnded AccessHoldReason = "LIFESPAN_ENDED"
 )
 
 // String returns the string representation of the hold reason.
@@ -424,6 +431,9 @@ const (
 
 	// AccessRefusalReasonSuspended says an administrator has suspended the account.
 	AccessRefusalReasonSuspended AccessRefusalReason = "suspended"
+
+	// AccessRefusalReasonExpired says the account's lifespan has ended. It never states when.
+	AccessRefusalReasonExpired AccessRefusalReason = "expired"
 )
 
 // ConsentStatus defines the possible statuses for a consent record.

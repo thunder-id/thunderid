@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -15,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -99,6 +101,11 @@ func (e *agentExporter) GetResourceByID(
 			a.AttributesYAML = attrs
 		}
 	}
+	// An unbounded lifespan is written as its sentinel rather than left out, since an import reads an
+	// absent validUntil as leaving the target agent's lifespan unchanged.
+	if a.Lifespan != nil && a.Lifespan.Phase == model.LifespanPhaseUnbounded {
+		a.ValidUntil = authnprovidercm.UnboundedValidUntil
+	}
 	return a, a.Display, nil
 }
 
@@ -120,9 +127,16 @@ func (e *agentExporter) ValidateResource(ctx context.Context,
 }
 
 // ViewResource shows an exported agent as a read of it returns it. The read carries the agent's
-// client ID at its top level and never its client secret, so the view does the same.
+// client ID at its top level and never its client secret, so the view does the same. It also reports
+// the lifespan as a read does: the unbounded sentinel export writes is shown as an unbounded phase with
+// no date.
 func (e *agentExporter) ViewResource(_ context.Context, document *yaml.Node) (interface{}, error) {
 	return declarativeresource.DecodeView(document, func(a *model.AgentGetResponse) (interface{}, error) {
+		if a.ValidUntil != "" {
+			if end, svcErr := parseLifespanEnd(a.ValidUntil); svcErr == nil {
+				a.ValidUntil, a.Lifespan = lifespanView(&end, time.Now())
+			}
+		}
 		var err error
 		if len(a.AttributesYAML) > 0 {
 			a.Attributes, err = json.Marshal(a.AttributesYAML)
@@ -263,10 +277,15 @@ func makeAgentEntityParser(
 			return nil, nil, nil, fmt.Errorf("failed to validate agent '%s': %v", req.ID, svcErr)
 		}
 
+		validUntil, err := resolveDeclarativeValidUntil(req.ValidUntil)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to validate agent '%s': %w", req.ID, err)
+		}
+
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret,
+			req.Description, req.Owner, clientID, clientSecret, validUntil,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
