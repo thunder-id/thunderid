@@ -254,6 +254,19 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_ValidateAgent
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'err-agent'")
 }
 
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_InvalidValidUntil() {
+	yamlData := []byte("id: bad-lifespan\nouId: ou-1\ntype: t\nvalidUntil: not-a-date\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "bad-lifespan").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+	parser := makeAgentEntityParser(mockSvc)
+	_, _, _, err := parser(yamlData)
+
+	assert.ErrorIs(s.T(), err, errInvalidDeclarativeLifespan)
+	assert.Contains(s.T(), err.Error(), "failed to validate agent 'bad-lifespan'")
+}
+
 // --- makeAgentInboundParser error paths ---
 
 type MakeAgentInboundParserTestSuite struct {

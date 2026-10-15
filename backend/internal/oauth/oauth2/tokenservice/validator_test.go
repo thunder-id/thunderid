@@ -174,6 +174,26 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_BasicToke
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+// A self-issued token's aci claim is carried on the claims, so token exchange can resolve a mapped
+// sub to its entity.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_CarriesAttributeCacheID() {
+	now := time.Now().Unix()
+	token := suite.createTestJWT(map[string]interface{}{
+		"sub": "user@example.com",
+		"iss": "https://example.com",
+		"aud": suite.getDefaultAudience(),
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+		"aci": "cache-1",
+	})
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "cache-1", result.AttributeCacheID)
+}
+
 func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_WithTokenConfig() {
 	// App with token config should still validate using server-level issuer from config
 	customOAuthApp := &providers.OAuthClient{

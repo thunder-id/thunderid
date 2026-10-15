@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -648,9 +649,11 @@ func resolveClientEntityAttributes(
 	return filtered, nil
 }
 
-// resolveClientSystemAttributes returns the agent system attribute (owner) selected by
+// resolveClientSystemAttributes returns the agent system attributes (owner, sub_lifespan) selected by
 // ClientConfig.Attributes, read from Entity.SystemAttributes. Restricted to agent entities so an
 // application client can never surface these claims regardless of its stored allow-list.
+// sub_lifespan is the stored validUntil, kept in RFC 3339 and surfaced in Unix seconds, as the other
+// time claims are, and is left out when the lifespan does not end.
 func resolveClientSystemAttributes(
 	oauthApp *providers.OAuthClient,
 	entity *providers.Entity,
@@ -667,6 +670,13 @@ func resolveClientSystemAttributes(
 	filtered := make(map[string]interface{})
 	for _, name := range clientConfigAttributeNames(oauthApp) {
 		if !constants.SurfaceableClientSystemClaims[name] {
+			continue
+		}
+		if name == constants.ClaimSubLifespan {
+			// An unreadable end is refused at issuance, so it never reaches a token.
+			if end, bounded, err := authnprovidercm.ValidUntilOf(entity.SystemAttributes); err == nil && bounded {
+				filtered[name] = end.Unix()
+			}
 			continue
 		}
 		if val, ok := sysAttrs[name]; ok {

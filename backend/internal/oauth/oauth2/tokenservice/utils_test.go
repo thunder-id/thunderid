@@ -1043,6 +1043,71 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	assert.NotContains(suite.T(), claims, "description")
 }
 
+// sub_lifespan surfaces the stored validUntil, kept in RFC 3339, in Unix seconds like exp and iat, and
+// only when the lifespan ends: an unbounded agent, or an end that does not parse, carries no claim.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubLifespan() {
+	tests := []struct {
+		name      string
+		sysAttrs  string
+		wantClaim interface{}
+	}{
+		{"bounded", `{"validUntil":"2027-01-27T14:00:00+05:30"}`, int64(1801038600)},
+		{"unbounded sentinel", `{"validUntil":"9999-12-31T23:59:59Z"}`, nil},
+		{"not stored", `{"owner":"user-123"}`, nil},
+		{"unreadable", `{"validUntil":"2027-01-27"}`, nil},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			actors := actorprovidermock.NewActorProviderMock(suite.T())
+			actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+				ID:               testBCCAppID,
+				Category:         providers.EntityCategoryAgent,
+				SystemAttributes: []byte(tc.sysAttrs),
+			}, (*tidcommon.ServiceError)(nil))
+
+			claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_lifespan"}), actors)
+
+			assert.NoError(suite.T(), err)
+			if tc.wantClaim == nil {
+				assert.NotContains(suite.T(), claims, "sub_lifespan")
+				return
+			}
+			assert.Equal(suite.T(), tc.wantClaim, claims["sub_lifespan"])
+		})
+	}
+}
+
+// The claim is opt-in: an agent with a lifespan that did not select it carries no sub_lifespan.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubLifespanOnlyWhenSelected() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:               testBCCAppID,
+		Category:         providers.EntityCategoryAgent,
+		SystemAttributes: []byte(`{"owner":"user-123","validUntil":"2027-01-27T08:30:00Z"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"owner"}), actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "user-123", claims["owner"])
+	assert.NotContains(suite.T(), claims, "sub_lifespan")
+}
+
+// Only an agent has a lifespan to surface; an application client never carries the claim.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_SubLifespanNotForApplications() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:               testBCCAppID,
+		Category:         providers.EntityCategoryApp,
+		SystemAttributes: []byte(`{"validUntil":"2027-01-27T08:30:00Z"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_lifespan"}), actors)
+
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), claims, "sub_lifespan")
+}
+
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{

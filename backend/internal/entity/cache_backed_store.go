@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -379,6 +380,15 @@ func (s *cacheBackedEntityStore) invalidateEntityByID(ctx context.Context, entit
 	if entityID == "" {
 		return
 	}
+	s.deleteEntityByID(ctx, entityID)
+	// A read between the write and its commit can cache the row as it was, and a read inside the
+	// transaction can cache a row that is rolled back, so the entry is dropped again once the
+	// transaction ends.
+	transaction.OnTransactionEnd(ctx, func() { s.deleteEntityByID(context.WithoutCancel(ctx), entityID) })
+}
+
+// deleteEntityByID drops the cached copies of the entity.
+func (s *cacheBackedEntityStore) deleteEntityByID(ctx context.Context, entityID string) {
 	if err := s.entityByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		s.logger.Error(ctx, "Failed to invalidate entity cache by ID",
 			log.String("entityID", entityID), log.Error(err))

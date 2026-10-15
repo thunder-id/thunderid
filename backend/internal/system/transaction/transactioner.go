@@ -53,6 +53,14 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
+	// The end hooks run once the transaction has committed or rolled back.
+	ctx, hooks := withEndHooks(ctx)
+	defer func() {
+		for _, hook := range *hooks {
+			hook()
+		}
+	}()
+
 	// 2. Setup recovery and commit/rollback handling
 	defer func() {
 		if p := recover(); p != nil {

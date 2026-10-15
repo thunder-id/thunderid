@@ -27,6 +27,7 @@ type AgentRequestWithID struct {
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
+	ValidUntil  string                 `json:"validUntil,omitempty"  yaml:"validUntil,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -42,6 +43,7 @@ type CreateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	ValidUntil  *string         `json:"validUntil,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -57,6 +59,9 @@ type UpdateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	// ValidUntil is kept raw so an absent value, which leaves the lifespan unchanged, is told apart
+	// from null, which removes the expiry.
+	ValidUntil json.RawMessage `json:"validUntil,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -76,7 +81,9 @@ type AgentCompleteResponse struct {
 	// Status is the effective access status and what produced it, set on update responses.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
 	// LastLoginAt is when this agent was last granted access, set on update responses.
-	LastLoginAt string `json:"lastLoginAt,omitempty"`
+	LastLoginAt string    `json:"lastLoginAt,omitempty"`
+	ValidUntil  string    `json:"validUntil,omitempty"`
+	Lifespan    *Lifespan `json:"lifespan,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -102,7 +109,9 @@ type AgentGetResponse struct {
 	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`
 	// LastLoginAt is when this agent was last granted access. Recorded by the runtime, never by a
 	// profile write, and absent until a sign-in has been recorded.
-	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
+	LastLoginAt string    `json:"lastLoginAt,omitempty" yaml:"-"`
+	ValidUntil  string    `json:"validUntil,omitempty" yaml:"validUntil,omitempty"`
+	Lifespan    *Lifespan `json:"lifespan,omitempty"   yaml:"-"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -120,6 +129,8 @@ type BasicAgentResponse struct {
 	ClientID    string          `json:"clientId,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	ValidUntil  string          `json:"validUntil,omitempty"`
+	Lifespan    *Lifespan       `json:"lifespan,omitempty"`
 	IsReadOnly  bool            `json:"isReadOnly"`
 	// Status is the effective access status and what produced it, derived at read time.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
@@ -129,6 +140,23 @@ type BasicAgentResponse struct {
 	// IsOwnedByOU says whether the listed organization unit owns the agent rather than being shared it.
 	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
 }
+
+// Lifespan reports where an agent stands in its lifespan, derived on every read.
+type Lifespan struct {
+	Phase LifespanPhase `json:"phase"`
+}
+
+// LifespanPhase is the phase of an agent's lifespan.
+type LifespanPhase string
+
+const (
+	// LifespanPhaseUnbounded is a lifespan that never ends.
+	LifespanPhaseUnbounded LifespanPhase = "UNBOUNDED"
+	// LifespanPhaseActive is a lifespan whose end is still ahead.
+	LifespanPhaseActive LifespanPhase = "ACTIVE"
+	// LifespanPhaseExpired is a lifespan whose end has passed.
+	LifespanPhaseExpired LifespanPhase = "EXPIRED"
+)
 
 // AgentListResponse is the paginated list response.
 type AgentListResponse struct {

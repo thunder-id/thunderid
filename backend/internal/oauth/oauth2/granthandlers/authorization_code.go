@@ -217,10 +217,7 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 	}
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 	}
 
 	// The refresh token preserves this single audience for continuity.
@@ -236,23 +233,20 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, err := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        authCode.AuthorizedUserID,
-			Audience:       tokenRequest.ClientID,
-			Scopes:         accessTokenScopes,
-			UserAttributes: attrs,
-			AuthTime:       resolveAuthTime(authCode),
-			OAuthApp:       oauthApp,
-			ClaimsRequest:  authCode.ClaimsRequest,
-			Nonce:          authCode.Nonce,
-			CompletedACR:   authCode.CompletedACR,
-			SessionID:      authCode.SessionID,
+			Subject:         authCode.AuthorizedUserID,
+			Audience:        tokenRequest.ClientID,
+			Scopes:          accessTokenScopes,
+			UserAttributes:  attrs,
+			AuthTime:        resolveAuthTime(authCode),
+			OAuthApp:        oauthApp,
+			ClaimsRequest:   authCode.ClaimsRequest,
+			Nonce:           authCode.Nonce,
+			CompletedACR:    authCode.CompletedACR,
+			SessionID:       authCode.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
 		})
 		if err != nil {
-			logger.Error(ctx, "Failed to generate ID token", log.Error(err))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}

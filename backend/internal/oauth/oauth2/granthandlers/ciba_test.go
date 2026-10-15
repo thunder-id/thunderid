@@ -236,14 +236,18 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 	record.AttributeCacheID = "cache-1"
 	record.CompletedACR = "urn:acr:pwd"
 	record.AuthTime = time.Now()
+	record.SubjectID = "entity-1"
+	record.SubjectCategory = string(providers.EntityCategoryUser)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
 	suite.mockAttrCacheService.EXPECT().GetAttributeCache(mock.Anything, "cache-1").Return(
 		&attributecache.AttributeCache{ID: "cache-1", Attributes: map[string]interface{}{"email": "a@b.c"}},
 		nil)
+	// The subject's resource ID and category recorded at the callback spare the builder a lookup.
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
 		func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.Subject == "user-1" && ctx.ClientID == "client-1" &&
-				ctx.GrantType == string(providers.GrantTypeCIBA)
+				ctx.GrantType == string(providers.GrantTypeCIBA) && ctx.SubjectEntityID == "entity-1" &&
+				ctx.SubjectCategory == string(providers.EntityCategoryUser)
 		})).Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
 	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.MatchedBy(
 		func(ctx *tokenservice.IDTokenBuildContext) bool {

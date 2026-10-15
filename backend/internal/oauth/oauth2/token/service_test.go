@@ -1256,6 +1256,45 @@ func (suite *TokenEventsTestSuite) TestIssued_SubjectTypeOmittedWhenTokenHasNoCa
 	assert.NotContains(suite.T(), evt.Data, event.DataKey.SubjectType)
 }
 
+func (suite *TokenEventsTestSuite) TestPublishGrantError() {
+	cases := []struct {
+		name        string
+		code        string
+		wantStatus  string
+		wantMessage string
+	}{
+		{"a server error publishes 500 and hides its description", constants.ErrorServerError, "500",
+			"Failed to process token request"},
+		{"a client error publishes 400 and keeps its description", constants.ErrorInvalidGrant, "400",
+			"grant rejected"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.published = nil
+			errResp := &model.ErrorResponse{Error: tc.code, ErrorDescription: "grant rejected"}
+
+			suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+				"authorization_code", "", errResp, 0)
+
+			errData, ok := suite.lastEvent().Data[event.DataKey.Error].(map[string]interface{})
+			suite.Require().True(ok)
+			suite.Equal(tc.wantStatus, errData["code"])
+			suite.Equal("grant rejected", errData["message"])
+			suite.Equal(tc.wantMessage, errResp.ErrorDescription)
+		})
+	}
+}
+
+func (suite *TokenEventsTestSuite) TestPublishGrantError_NoCodePublishesNothing() {
+	errResp := &model.ErrorResponse{ErrorDescription: "grant rejected"}
+
+	suite.newService().publishGrantError(suite.ctx(), appClient(), "app-client-id",
+		"authorization_code", "", errResp, 0)
+
+	suite.Empty(suite.published)
+	suite.Equal("grant rejected", errResp.ErrorDescription)
+}
+
 // AccessingOUResponsesTestSuite covers the two answers this endpoint hands the accessing-OU
 // middleware. Writing them is the middleware's job and is covered there; what is specific here is
 // which answer this endpoint chooses, and the token endpoint speaks OAuth2.

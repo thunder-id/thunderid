@@ -184,4 +184,18 @@ var (
 			DefaultValue: "This account is suspended. Contact an administrator",
 		},
 	}
+	// ErrorAccountExpired is the error returned when an operation is refused because the account's
+	// lifespan has ended.
+	ErrorAccountExpired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_expired",
+			DefaultValue: "Account expired",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnservice.account_expired_description",
+			DefaultValue: "This account's lifespan has ended. Contact an administrator",
+		},
+	}
 )

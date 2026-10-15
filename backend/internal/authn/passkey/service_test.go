@@ -133,7 +133,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_UnknownUserIsNotAsk
 
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorUserNotFound.Code, svcErr.Code)
-	governance.AssertNotCalled(suite.T(), "IsSuspended", mock.Anything, mock.Anything)
+	governance.AssertNotCalled(suite.T(), "AccessHold", mock.Anything, mock.Anything)
 }
 
 func (suite *WebAuthnServiceTestSuite) TestStartRegistration_UserServiceServerError() {
@@ -1683,32 +1683,35 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_WebAuthnInitErro
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-// admitAll returns a governance mock that reports no identity as suspended.
+// admitAll returns a governance mock that reports no identity as held.
 func (suite *WebAuthnServiceTestSuite) admitAll() *identitygovernancemock.IdentityGovernanceServiceInterfaceMock {
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
-	governance.EXPECT().IsSuspended(mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	governance.EXPECT().AccessHold(mock.Anything, mock.Anything).Return("", nil).Maybe()
 	return governance
 }
 
-// expectSuspension answers the enrolment check for testUserID.
-func (suite *WebAuthnServiceTestSuite) expectSuspension(suspended bool, fault *tidcommon.ServiceError) {
+// expectHold answers the enrolment check for testUserID.
+func (suite *WebAuthnServiceTestSuite) expectHold(hold providers.AccessRefusalReason, fault *tidcommon.ServiceError) {
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
-	governance.EXPECT().IsSuspended(mock.Anything, testUserID).Return(suspended, fault).Once()
+	governance.EXPECT().AccessHold(mock.Anything, testUserID).Return(hold, fault).Once()
 	suite.service.governance = governance
 }
 
 // heldEnrolmentCases returns the governance answers that refuse an enrolment and the code each gets.
 func heldEnrolmentCases() []struct {
 	name     string
+	hold     providers.AccessRefusalReason
 	fault    *tidcommon.ServiceError
 	wantCode string
 } {
 	return []struct {
 		name     string
+		hold     providers.AccessRefusalReason
 		fault    *tidcommon.ServiceError
 		wantCode string
 	}{
-		{name: "suspended", wantCode: common.ErrorAccountSuspended.Code},
+		{name: "suspended", hold: providers.AccessRefusalReasonSuspended, wantCode: common.ErrorAccountSuspended.Code},
+		{name: "expired", hold: providers.AccessRefusalReasonExpired, wantCode: common.ErrorAccountExpired.Code},
 		{name: "fault", fault: &tidcommon.InternalServerError, wantCode: tidcommon.InternalServerError.Code},
 	}
 }
@@ -1719,7 +1722,7 @@ func (suite *WebAuthnServiceTestSuite) TestStartRegistration_RefusesAHeldIdentit
 			suite.SetupTest()
 			suite.mockEntityService.On("GetEntityProfile", mock.Anything, testUserID).Return(&providers.Entity{
 				ID: testUserID, Category: providers.EntityCategoryUser, Type: "person"}, nil).Once()
-			suite.expectSuspension(tc.fault == nil, tc.fault)
+			suite.expectHold(tc.hold, tc.fault)
 
 			result, svcErr := suite.service.StartRegistration(context.Background(),
 				&PasskeyRegistrationStartRequest{UserID: testUserID, RelyingPartyID: testRelyingPartyID})
@@ -1747,7 +1750,7 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RefusesAHeldIdenti
 				}, nil).Once()
 			suite.mockEntityService.On("GetEntityProfile", mock.Anything, testUserID).Return(&providers.Entity{
 				ID: testUserID, Category: providers.EntityCategoryUser, Type: "person"}, nil).Once()
-			suite.expectSuspension(tc.fault == nil, tc.fault)
+			suite.expectHold(tc.hold, tc.fault)
 
 			result, svcErr := suite.service.FinishRegistration(context.Background(),
 				&PasskeyRegistrationFinishRequest{
