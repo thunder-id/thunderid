@@ -556,3 +556,40 @@ func (ts *ActorTokenTestSuite) TestActorToken_NestedDelegationChain() {
 	ts.Require().True(ok, "act claim should be nested, preserving T1's own act claim")
 	ts.Equal(ts.actorUserID, nestedAct["sub"], "nested act.act.sub should identify the original actor")
 }
+
+// TestActorToken_RefreshTokenNotAnActorTokenType verifies that a refresh token is refused as an
+// actor_token_type. A refresh token's sub names the OAuth client it was issued to rather than the
+// party acting on the subject's behalf, so it cannot identify an actor.
+func (ts *ActorTokenTestSuite) TestActorToken_RefreshTokenNotAnActorTokenType() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+
+	form := exchangeParams(subjectToken)
+	form.Set("actor_token", actorToken)
+	form.Set("actor_token_type", "urn:ietf:params:oauth:token-type:refresh_token")
+
+	status, body := ts.doExchange(form)
+	ts.Require().Equal(http.StatusBadRequest, status, "%v", body)
+	ts.Equal("invalid_request", body["error"])
+	ts.Contains(body["error_description"], "is not supported as an actor_token_type")
+}
+
+// TestActorToken_IDJAGNotAnActorTokenType verifies that an ID-JAG is refused as an actor_token_type.
+// It is an authorization grant addressed elsewhere, not a credential identifying an actor.
+func (ts *ActorTokenTestSuite) TestActorToken_IDJAGNotAnActorTokenType() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+
+	form := exchangeParams(subjectToken)
+	form.Set("actor_token", actorToken)
+	form.Set("actor_token_type", "urn:ietf:params:oauth:token-type:id-jag")
+
+	status, body := ts.doExchange(form)
+	ts.Require().Equal(http.StatusBadRequest, status, "%v", body)
+	ts.Equal("invalid_request", body["error"])
+	ts.Contains(body["error_description"], "is not supported as an actor_token_type")
+}
