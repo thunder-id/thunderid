@@ -2078,6 +2078,47 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_FlowReferencesNoti
 	s.Equal("flow1", usages[0].ID)
 }
 
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ExtensionStepReferencesHTTPConnection() {
+	connectionID := "http-conn-1"
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{
+			ID:   "flow1",
+			Name: "Default sign-in",
+			Nodes: []providers.NodeDefinition{
+				{ID: "risk", Type: "TASK_EXECUTION", Executor: &providers.ExecutorDefinition{Name: "ExtensionExecutor"},
+					Properties: map[string]interface{}{"connectionId": connectionID}},
+			},
+		},
+		{
+			ID:   "flow3",
+			Name: "Not an extension step",
+			Nodes: []providers.NodeDefinition{
+				{ID: "call", Type: "TASK_EXECUTION",
+					Executor:   &providers.ExecutorDefinition{Name: "HTTPRequestExecutor"},
+					Properties: map[string]interface{}{"connectionId": connectionID}},
+				{ID: "bare", Type: "TASK_EXECUTION", Properties: map[string]interface{}{"connectionId": connectionID}},
+			},
+		},
+		{
+			ID:   "flow2",
+			Name: "Other extension",
+			Nodes: []providers.NodeDefinition{
+				{ID: "risk", Type: "TASK_EXECUTION", Executor: &providers.ExecutorDefinition{Name: "ExtensionExecutor"},
+					Properties: map[string]interface{}{"connectionId": "other-conn"}},
+			},
+		},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeHTTPConnection, connectionID)
+
+	s.NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{{
+		ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow1", DisplayName: "Default sign-in",
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}}, usages)
+}
+
 func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_NoReferencingFlows() {
 	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
 		{ID: "flow1", Nodes: []providers.NodeDefinition{{ID: "start", Type: "START"}}},

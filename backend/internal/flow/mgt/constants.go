@@ -39,6 +39,9 @@ const (
 	// nodePropertyKeyNotificationSenderID is the node property key that references a notification
 	// sender by its ID.
 	nodePropertyKeyNotificationSenderID = "senderId"
+	// nodePropertyKeyConnectionID is the node property key that references an HTTP endpoint
+	// connection by its ID.
+	nodePropertyKeyConnectionID = "connectionId"
 )
 
 // authToRegLabelTerms maps authentication UI label terms to their registration equivalents.

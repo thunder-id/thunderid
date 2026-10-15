@@ -195,8 +195,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.AccountLinking).toBe('AccountLinkingExecutor');
     });
 
-    it('should have exactly 33 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(33);
+    it('should have ExtensionExecutor type', () => {
+      expect(ExecutionTypes.ExtensionExecutor).toBe('ExtensionExecutor');
+    });
+
+    it('should have exactly 34 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(34);
     });
   });
 

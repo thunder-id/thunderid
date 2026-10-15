@@ -47,6 +47,11 @@ func TestGetCategory(t *testing.T) {
 
 		// Flow events
 		{
+			name:         "extension call",
+			eventType:    EventTypeExtensionCall,
+			wantCategory: CategoryFlows,
+		},
+		{
 			name:         "flow started",
 			eventType:    EventTypeFlowStarted,
 			wantCategory: CategoryFlows,

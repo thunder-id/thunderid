@@ -87,8 +87,8 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		key := submatches[1]
 
 		// Special handling for userId - only resolve from runtime data or authenticated user
-		if key == "userId" {
-			if runtimeValue, ok := ctx.RuntimeData["userId"]; ok && runtimeValue != "" {
+		if key == common.RuntimeKeyUserIDCamelCase {
+			if runtimeValue, ok := ctx.RuntimeData[common.RuntimeKeyUserIDCamelCase]; ok && runtimeValue != "" {
 				return runtimeValue
 			}
 			if authnProvider != nil && execResp != nil && ctx.AuthUser.IsAuthenticated() && contextUserRef == nil {

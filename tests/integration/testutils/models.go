@@ -434,6 +434,28 @@ type SenderProperty struct {
 	IsSecret bool   `json:"isSecret"`
 }
 
+// HTTPConnection is the create and update body of an HTTP endpoint connection (/connections/http).
+type HTTPConnection struct {
+	Name           string                  `json:"name"`
+	Description    string                  `json:"description,omitempty"`
+	URL            string                  `json:"url"`
+	TimeoutMS      int                     `json:"timeoutMs,omitempty"`
+	Headers        []HTTPConnectionHeader  `json:"headers,omitempty"`
+	Authentication *OutboundAuthentication `json:"authentication,omitempty"`
+}
+
+// HTTPConnectionHeader is a plain header an HTTP endpoint connection sends on every call.
+type HTTPConnectionHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// OutboundAuthentication is the shared outbound authentication object of a connection.
+type OutboundAuthentication struct {
+	Type       string            `json:"type"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
 // Agent represents an agent resource in the system.
 type Agent struct {
 	ID          string      `json:"id,omitempty"`

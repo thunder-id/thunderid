@@ -37,8 +37,8 @@ paths:
       summary: List configured connection instances
       description: >-
         Returns a paginated list of the configured connection instances across the
-        identity-provider, notification-sender, and authorization PDP backed connection types, optionally
-        filtered by functional category. Omit the category parameter to return all instances.
+        identity-provider, notification-sender, authorization PDP and HTTP endpoint connection types,
+        optionally filtered by functional category. Omit the category parameter to return all instances.
       parameters:
         - name: category
           in: query
@@ -46,7 +46,7 @@ paths:
           description: Filter instances by functional category. Omit to return all instances.
           schema:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider, http]
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -164,6 +164,107 @@ paths:
       responses:
         "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/http:
+    get:
+      tags: [Connections]
+      summary: List configured HTTP endpoint connections
+      responses:
+        "200": { $ref: '#/components/responses/HTTPConnectionInstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an HTTP endpoint connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HTTPConnectionCreateRequest' }
+            example:
+              name: "Risk Engine"
+              url: "https://risk.example.com/evaluate"
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/HTTPConnectionBadRequest' }
+        "409": { $ref: '#/components/responses/HTTPConnectionConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an HTTP endpoint connection
+      description: Returns the connection with every secret masked as `******`.
+      responses:
+        "200":
+          description: Connection details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an HTTP endpoint connection
+      description: |
+        Replaces the connection. A credential omitted from `authentication.properties` keeps its
+        stored value only while the authentication `type`, its non-secret properties (such as the
+        username) and the URL origin (scheme, host and port, with default ports normalized) are
+        unchanged. Otherwise the credential is discarded and must be supplied again, so a
+        connection cannot be pointed at another server with its stored password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HTTPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/HTTPConnectionBadRequest' }
+        "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
+        "409": { $ref: '#/components/responses/HTTPConnectionConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an HTTP endpoint connection
+      description: |
+        Refused while a flow references the connection through an extension step's `connectionId`,
+        and while those references cannot be determined.
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
+        "409": { $ref: '#/components/responses/HTTPConnectionDependencyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get HTTP endpoint connection usages
+      description: Returns the flows whose extension steps reference this HTTP endpoint connection.
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -1003,7 +1104,7 @@ paths:
             path. An unregistered vendor is rejected.
           schema:
             type: string
-            enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, email-smtp, authzen-pdp]
+            enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, email-smtp, authzen-pdp, http]
           example: "email-smtp"
       responses:
         "200":
@@ -1157,6 +1258,143 @@ components:
             description:
               key: "error.connectionservice.authzen_pdp_already_exists_description"
               defaultValue: "Choose a different name for the AuthZEN PDP connection"
+    HTTPConnectionInstanceList:
+      description: Configured HTTP endpoint connections
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConnectionInstanceSummary'
+          example:
+            - id: "0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60"
+              name: "Risk Engine"
+              description: "Sign-in risk evaluation"
+    HTTPConnectionBadRequest:
+      description: Invalid HTTP endpoint connection request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-request-format:
+              summary: Invalid request format
+              value:
+                code: "CON-1007"
+                message:
+                  key: "error.connectionservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.connectionservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+            invalid-name:
+              summary: Invalid name
+              value:
+                code: "CON-1015"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_name"
+                  defaultValue: "Invalid HTTP connection name"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_name_description"
+                  defaultValue: "The HTTP connection name is required and must be at most 255 characters"
+            invalid-description:
+              summary: Invalid description
+              value:
+                code: "CON-1020"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_description"
+                  defaultValue: "Invalid HTTP connection description"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_description_description"
+                  defaultValue: "The HTTP connection description must be at most 500 characters"
+            invalid-url:
+              summary: Invalid URL
+              value:
+                code: "CON-1016"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_url"
+                  defaultValue: "Invalid HTTP connection URL"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_url_description"
+                  defaultValue: "The URL must be an absolute http or https URL with a valid host and port and no user name or password, and must use https when the connection sends credentials"
+            invalid-timeout:
+              summary: Invalid timeout
+              value:
+                code: "CON-1017"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_timeout"
+                  defaultValue: "Invalid HTTP connection timeout"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_timeout_description"
+                  defaultValue: "The timeout must be between 1 and 20000 milliseconds"
+            invalid-headers:
+              summary: Invalid headers
+              value:
+                code: "CON-1018"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_headers"
+                  defaultValue: "Invalid HTTP connection headers"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_headers_description"
+                  defaultValue: "Each header needs a valid name that is not repeated and a value without line breaks. Credentials go in authentication, and headers the HTTP client manages, such as Host or Content-Type, cannot be set."
+            invalid-authentication:
+              summary: Invalid authentication
+              value:
+                code: "CON-1019"
+                message:
+                  key: "error.connectionservice.invalid_http_connection_authentication"
+                  defaultValue: "Invalid HTTP connection authentication"
+                description:
+                  key: "error.connectionservice.invalid_http_connection_authentication_description"
+                  defaultValue: "The authentication must give every field its method requires. A changed method, username or URL origin needs the password again."
+            invalid-authentication-type:
+              summary: Unsupported authentication type
+              value:
+                code: "CON-1012"
+                message:
+                  key: "error.connectionservice.invalid_authentication_type"
+                  defaultValue: "Invalid authentication type"
+                description:
+                  key: "error.connectionservice.invalid_authentication_type_description"
+                  defaultValue: "The authentication type must name a method this deployment supports"
+    HTTPConnectionConflict:
+      description: An HTTP endpoint connection with the same name already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1014"
+            message:
+              key: "error.connectionservice.http_connection_already_exists"
+              defaultValue: "An HTTP connection with the same name already exists"
+            description:
+              key: "error.connectionservice.http_connection_already_exists_description"
+              defaultValue: "Choose a different name for the HTTP connection"
+    HTTPConnectionNotFound:
+      description: HTTP endpoint connection not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1013"
+            message:
+              key: "error.connectionservice.http_connection_not_found"
+              defaultValue: "HTTP connection not found"
+            description:
+              key: "error.connectionservice.http_connection_not_found_description"
+              defaultValue: "No HTTP connection exists for the supplied identifier"
+    HTTPConnectionDependencyConflict:
+      description: The HTTP endpoint connection cannot be deleted because a flow uses it
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1021"
+            message:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies"
+              defaultValue: "HTTP connection cannot be deleted"
+            description:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies_description"
+              defaultValue: "The HTTP connection cannot be deleted because 1 flow(s) depend on it. Remove or reassign them first."
     ConnectionDependencyConflict:
       description: The connection cannot be deleted because it is still in use
       content:
@@ -1285,14 +1523,14 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp, email-smtp]
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp, email-smtp, http]
           example: "google"
         categories:
           type: array
           minItems: 1
           items:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider, http]
           example: ["identity-provider"]
 
     ConnectionInstanceSummary:
@@ -1589,6 +1827,86 @@ components:
               pdpAttribute:
                 type: string
                 description: AuthZEN PDP subject property name. Defaults to attribute when omitted.
+
+    HTTPConnectionUpdateRequest:
+      type: object
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Unique per deployment.
+          example: "Risk Engine"
+        description: { type: string, maxLength: 500 }
+        url:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: >-
+            Absolute `http` or `https` URL of the endpoint, with a DNS name or IP literal host, a
+            port from 1 to 65535 and no user name or password; credentials go in `authentication`.
+            Must be `https` when `authentication.type` is not `none`, so a stored credential never
+            crosses the network in clear. Stored with a lower-case scheme and host and without a
+            default port.
+          example: "https://risk.example.com/evaluate"
+        timeoutMs:
+          type: integer
+          minimum: 0
+          maximum: 20000
+          default: 10000
+          description: Timeout of each call in milliseconds. `0` or omitted means 10000.
+        headers:
+          type: array
+          description: >-
+            Plain headers sent on every call. Names are unique, case-insensitively, and values have
+            no line breaks. A PUT replaces the whole list, so omitted means none. Headers that carry
+            credentials (`Authorization`, `Proxy-Authorization`, `Cookie`) or that the HTTP client
+            manages (`Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Connection`,
+            `TE`, `Trailer`, `Upgrade`, `Keep-Alive`, `Expect`) are refused.
+          items: { $ref: '#/components/schemas/HTTPConnectionHeader' }
+        authentication:
+          allOf:
+            - $ref: '#/components/schemas/OutboundAuthentication'
+          description: |
+            How ThunderID authenticates to the endpoint. Omit it to send no credentials.
+            Call `GET /connections/meta?vendor=http` for the methods this deployment supports and
+            the fields each one takes.
+    HTTPConnectionCreateRequest:
+      $ref: '#/components/schemas/HTTPConnectionUpdateRequest'
+    HTTPConnectionResponse:
+      type: object
+      required: [id, name, type, url, timeoutMs, headers, authentication]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "Risk Engine" }
+        description: { type: string }
+        type: { type: string, enum: [http] }
+        url: { type: string, example: "https://risk.example.com/evaluate" }
+        timeoutMs: { type: integer, example: 10000 }
+        headers:
+          type: array
+          items: { $ref: '#/components/schemas/HTTPConnectionHeader' }
+        authentication: { $ref: '#/components/schemas/OutboundAuthentication' }
+      example:
+        id: "0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60"
+        name: "Risk Engine"
+        type: "http"
+        url: "https://risk.example.com/evaluate"
+        timeoutMs: 5000
+        headers:
+          - name: "X-Tenant"
+            value: "acme"
+        authentication:
+          type: "basic"
+          properties:
+            username: "risk-client"
+            password: "******"
+    HTTPConnectionHeader:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string, example: "X-Tenant" }
+        value: { type: string, example: "acme" }
 
     TwilioConnectionUpdateRequest:
       type: object

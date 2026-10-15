@@ -17,9 +17,10 @@ import {Eye, EyeOff, Lock, Plus, RotateCcw, Trash2} from '@wso2/oxygen-ui-icons-
 import {type JSX, type ReactNode, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {
-  parseKeyValuePairs,
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
   sanitizeKeyValuePart,
-  serializeKeyValuePairs,
+  type KeyValueFormat,
   type KeyValuePair,
 } from '../utils/keyValuePairs';
 
@@ -31,8 +32,9 @@ interface KeyedPair extends KeyValuePair {
 interface KeyValuePairsFieldProps {
   id: string;
   label?: string;
-  /** Stored wire value ("Key: value, Other: value"). */
+  /** Form value holding the rows, in `format`. */
   value: string;
+  format?: KeyValueFormat;
   onChange: (value: string) => void;
   error?: string;
   hint?: ReactNode;
@@ -56,8 +58,8 @@ interface RowsState {
 }
 
 /** Rows for the given wire value, always keeping one blank row to type into. */
-function buildRows(raw: string, fromSeq: number): RowsState {
-  const parsed: KeyValuePair[] = parseKeyValuePairs(raw);
+function buildRows(raw: string, format: KeyValueFormat, fromSeq: number): RowsState {
+  const parsed: KeyValuePair[] = decodeKeyValuePairs(raw, format);
   const pairs: KeyValuePair[] = parsed.length > 0 ? parsed : [{name: '', value: ''}];
   return {
     rows: pairs.map((pair, index) => ({key: fromSeq + index + 1, ...pair})),
@@ -67,7 +69,7 @@ function buildRows(raw: string, fromSeq: number): RowsState {
 }
 
 /**
- * Row-per-pair editor for a field the API stores as a single "Key: value" string. Rows are local
+ * Row-per-pair editor for a key-value field held as one form value in `format`. Rows are local
  * state (a row being typed has no name yet, so it cannot round-trip through the serialized value),
  * synced back out on every edit and re-derived when the value changes from outside, e.g. a reset.
  */
@@ -75,6 +77,7 @@ export default function KeyValuePairsField({
   id,
   label = undefined,
   value,
+  format = 'string',
   onChange,
   error = undefined,
   hint = undefined,
@@ -89,27 +92,27 @@ export default function KeyValuePairsField({
 }: KeyValuePairsFieldProps): JSX.Element {
   const {t} = useTranslation('connections');
 
-  const [state, setState] = useState<RowsState>(() => buildRows(value, 0));
+  const [state, setState] = useState<RowsState>(() => buildRows(value, format, 0));
   const [visibleValueKeys, setVisibleValueKeys] = useState<Set<number>>(() => new Set());
 
   // Re-derive when the value changes from outside the editor, e.g. the detail page's Reset. Rows
   // cannot simply be computed from the value on every render: a row being typed has no name yet,
   // so it would not survive the round trip through the serialized form.
   if (value !== state.synced) {
-    setState(buildRows(value, state.seq));
+    setState(buildRows(value, format, state.seq));
   }
 
   const {rows} = state;
 
   const commit = (next: KeyedPair[], seq: number): void => {
-    const serialized: string = serializeKeyValuePairs(next);
+    const serialized: string = encodeKeyValuePairs(next, format);
     setState({rows: next, seq, synced: serialized});
     onChange(serialized);
   };
 
   const updateRow = (key: number, part: 'name' | 'value', text: string): void => {
     const next: KeyedPair[] = rows.map((row) =>
-      row.key === key ? {...row, [part]: sanitizeKeyValuePart(text, part)} : row,
+      row.key === key ? {...row, [part]: sanitizeKeyValuePart(text, part, format)} : row,
     );
     commit(next, state.seq);
   };

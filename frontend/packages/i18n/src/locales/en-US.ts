@@ -1847,6 +1847,7 @@ const translations = {
     'vendor.sms-gateway.description': 'Route SMS through your own HTTP gateway.',
     'vendor.authzen-pdp.description': 'Delegate authorization decisions to an AuthZEN-compatible PDP.',
     'vendor.smtp.description': 'Deliver email through your own SMTP server.',
+    'vendor.http.description': 'Call your own HTTP service from a flow, such as a risk engine or a custom check.',
     'vendor.trustedIdp.description': 'Trusted token issuer for token exchange and ID-JAG.',
 
     // Add custom connection wizard
@@ -1877,6 +1878,9 @@ const translations = {
     'wizard.type.smtp.label': 'Email Provider (SMTP)',
     'wizard.type.smtp.description': 'Deliver email through your own SMTP server.',
     'wizard.type.smtp.tag': 'Message sender · Email',
+    'wizard.type.http.label': 'HTTP Endpoint',
+    'wizard.type.http.description': 'Call your own HTTP service from a flow, such as a risk engine or a custom check.',
+    'wizard.type.http.tag': 'Extension · HTTP',
     'wizard.type.trustedIdp.label': 'Trusted Token Issuer',
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
@@ -1919,10 +1923,19 @@ const translations = {
     'detail.authentication.title': 'Authentication',
     'detail.authentication.description':
       'Configure how ThunderID authenticates requests sent to this policy decision point.',
+    'detail.authentication.originChanged':
+      'The URL origin changed. Enter the credentials again under Authentication before saving.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
       'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
+    'detail.usages.title': 'Usages',
+    'detail.usages.description':
+      'Flows that call this connection. A connection cannot be deleted while a flow uses it.',
+    'detail.usages.empty': 'No flows use this connection.',
+    'detail.usages.unavailable': 'The resources that use this connection could not be determined.',
+    'detail.usages.loadError': 'Failed to load the resources that use this connection.',
+    'detail.usages.resourceType.flow': 'Flow',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
     'detail.dangerZone.delete.title': 'Delete connection',
@@ -2017,6 +2030,18 @@ const translations = {
     'form.fields.authzenBatchEndpoint.label': 'AuthZEN batch evaluation endpoint',
     'form.fields.timeoutMs.label': 'Timeout in milliseconds',
     'form.fields.timeoutMs.hint': 'Maximum time ThunderID waits for one PDP request.',
+    'form.fields.httpEndpointDescription.label': 'Description',
+    'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
+    'form.fields.httpEndpointUrl.label': 'Endpoint URL',
+    'form.fields.httpEndpointUrl.hint':
+      'The http or https URL ThunderID sends requests to. Setting an authentication method requires https.',
+    'form.fields.httpEndpointTimeoutMs.label': 'Timeout in milliseconds',
+    'form.fields.httpEndpointTimeoutMs.hint':
+      'Maximum time ThunderID waits for a response, from 1 to 20000 milliseconds.',
+    'form.fields.httpEndpointHeaders.label': 'HTTP headers',
+    'form.fields.httpEndpointHeaders.hint':
+      'Headers sent with every request. Set credentials under Authentication instead.',
+    'form.fields.httpEndpointHeaders.add': 'Add header',
     'form.fields.retryCount.label': 'Retry count',
     'form.fields.retryCount.hint': 'Number of retries for transient PDP or network failures.',
     'subjectMapping.attributes.title': 'Subject attribute mapping',
@@ -2213,6 +2238,16 @@ const translations = {
       'Use HTTPS for authenticated PDP endpoints. HTTP is allowed only for localhost and loopback IP addresses.',
     'validation.positiveInteger': 'Enter a positive integer.',
     'validation.nonNegativeInteger': 'Enter zero or a positive integer.',
+    'validation.httpEndpointTimeoutRange': 'Enter a whole number from 1 to 20000.',
+    'validation.httpEndpointNameLength': 'Enter a name of at most 255 characters.',
+    'validation.httpEndpointDescriptionLength': 'Enter a description of at most 500 characters.',
+    'validation.httpEndpointUrlUserInfo':
+      'Remove the user name and password from the URL. Set credentials under Authentication.',
+    'validation.httpEndpointHeaderReserved':
+      'Remove reserved headers such as Authorization, Cookie, Host or Content-Type.',
+    'validation.httpEndpointHeaderDuplicate': 'Use each header name only once. Names are not case-sensitive.',
+    'validation.httpsRequiredWithAuthentication':
+      'Use an https URL when an authentication method is set, or set the method to None.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
     'validation.emailAddress': 'Enter a valid email address.',
     'validation.tlsRequiredForAuthentication':
@@ -2223,6 +2258,19 @@ const translations = {
     'errors.CON-1002': 'The limit parameter must be a positive integer.',
     'errors.CON-1003': 'The offset parameter must be a non-negative integer.',
     'errors.CON-1005': 'The selected authentication method is not supported by this deployment.',
+    'errors.CON-1012': 'The selected authentication method is not supported.',
+    'errors.CON-1013': 'The HTTP endpoint connection was not found. It may have been deleted.',
+    'errors.CON-1014': 'An HTTP endpoint connection with this name already exists.',
+    'errors.CON-1015': 'Enter a connection name of 1 to 255 characters.',
+    'errors.CON-1016':
+      'The URL must be an absolute http or https URL without a user name or password, and must use https when authentication is set.',
+    'errors.CON-1017': 'The timeout must be a whole number from 1 to 20000 milliseconds.',
+    'errors.CON-1018':
+      'The headers are not valid. Use each name once, do not use reserved names such as Authorization, Cookie, Host or Content-Type, and keep values on one line.',
+    'errors.CON-1019':
+      'The authentication settings are not valid. Check the method and enter every required credential. After changing the URL origin, enter the password again.',
+    'errors.CON-1020': 'Enter a description of at most 500 characters.',
+    'errors.CON-1021': 'This connection is used by one or more flows. Remove it from those flows before deleting it.',
     'errors.IDP-1001': 'This identity provider no longer exists. It may have already been deleted.',
     'errors.IDP-1002': 'The identity provider ID is invalid or missing.',
     'errors.IDP-1003': 'The identity provider name is invalid or missing.',
@@ -4077,6 +4125,31 @@ const translations = {
     'core.executions.httpRequest.errorHandling.retryDelay.placeholder': '0',
     'core.executions.httpRequest.errorHandling.retryDelay.hint': 'Delay between retries in milliseconds (max 5000).',
 
+    // Extension executor
+    'core.executions.extension.description':
+      'Calls your service through an HTTP endpoint connection and routes the flow on its answer.',
+    'core.executions.extension.connection.label': 'Connection',
+    'core.executions.extension.connection.placeholder': 'Select an HTTP endpoint connection',
+    'core.executions.extension.connection.hint':
+      'The URL, headers, timeout and authentication come from the connection.',
+    'core.executions.extension.connection.noConnections':
+      'No HTTP endpoint connections exist. Create one under Connections, then select it here.',
+    'core.executions.extension.connection.loadError': 'Failed to load HTTP endpoint connections.',
+    'core.executions.extension.inputKeys.label': 'Inputs to send',
+    'core.executions.extension.inputKeys.placeholder': 'username',
+    'core.executions.extension.inputKeys.hint':
+      'User inputs to send to the service. None are sent by default. Add a password or code only when the service needs it.',
+    'core.executions.extension.runtimeDataKeys.label': 'Runtime data to send',
+    'core.executions.extension.runtimeDataKeys.placeholder': 'riskTier',
+    'core.executions.extension.runtimeDataKeys.hint':
+      'Runtime data keys to send. When empty, only the application ID and user ID are sent. Secret flow state is never sent.',
+    'core.executions.extension.responseKeys.label': 'Stored response fields',
+    'core.executions.extension.responseKeys.placeholder': 'riskScore',
+    'core.executions.extension.responseKeys.hint':
+      'Top-level response fields to store for later steps. When empty, every allowed field is stored.',
+    'core.executions.extension.contract.hint':
+      'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
+
     // Executor input configuration
     'core.executions.inputs.title': 'Executor Inputs',
     'core.executions.inputs.typeLabel': 'Type',
@@ -4122,6 +4195,7 @@ const translations = {
     'core.validation.fields.input.idpName': 'Identity provider name is required',
     'core.validation.fields.input.idpId': 'Connection is required',
     'core.validation.fields.input.senderId': 'Notification sender is required',
+    'core.validation.fields.input.connectionId': 'Connection is required',
     'core.validation.fields.input.presentationDefinitionId': 'Presentation definition is required',
     'core.validation.fields.input.label': 'Label is required',
     'core.validation.fields.input.ref': 'Attribute is required',

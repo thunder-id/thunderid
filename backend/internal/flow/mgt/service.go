@@ -328,17 +328,19 @@ func (s *flowMgtService) GetFlowUsages(
 
 // GetResourceDependencies returns the flows that reference the resource identified by
 // (resourceType, id). It implements the resourcedependency.Provider interface: an active flow
-// references an identity provider or notification sender when one of its nodes carries the matching
-// ID in its properties. Such a reference blocks deletion of the target, since the flow would break
-// without it.
+// references an identity provider or notification sender when one of its nodes carries the
+// matching ID in its properties, and an HTTP connection when one of its extension steps does. Such
+// a reference blocks deletion of the target, since the flow would break without it.
 func (s *flowMgtService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
-	var propertyKey string
+	var propertyKey, executorName string
 	switch resourceType {
 	case resourcedependency.ResourceTypeIDP:
 		propertyKey = nodePropertyKeyIDPID
 	case resourcedependency.ResourceTypeNotificationSender:
 		propertyKey = nodePropertyKeyNotificationSenderID
+	case resourcedependency.ResourceTypeHTTPConnection:
+		propertyKey, executorName = nodePropertyKeyConnectionID, executormeta.ExecutorNameExtension
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
@@ -351,7 +353,7 @@ func (s *flowMgtService) GetResourceDependencies(
 
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, flow := range flows {
-		if flowReferencesResource(flow, propertyKey, id) {
+		if flowReferencesResource(flow, executorName, propertyKey, id) {
 			usages = append(usages, resourcedependency.ResourceDependency{
 				ResourceType:     resourcedependency.ResourceTypeFlow,
 				ID:               flow.ID,
@@ -365,10 +367,14 @@ func (s *flowMgtService) GetResourceDependencies(
 }
 
 // flowReferencesResource reports whether any node in the flow carries the given ID in the named
-// property key.
-func flowReferencesResource(flow *providers.CompleteFlowDefinition, propertyKey, id string) bool {
+// property key. A non-empty executorName counts only the nodes that run that executor.
+func flowReferencesResource(flow *providers.CompleteFlowDefinition, executorName, propertyKey, id string) bool {
 	for i := range flow.Nodes {
 		if flow.Nodes[i].Properties == nil {
+			continue
+		}
+		if executorName != "" &&
+			(flow.Nodes[i].Executor == nil || flow.Nodes[i].Executor.Name != executorName) {
 			continue
 		}
 		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && val == id {

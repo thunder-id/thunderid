@@ -113,7 +113,7 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 		// Store failure reason in RuntimeData so it's available to the onFailure handler
 		if nodeResp.Error != nil {
 			if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
-				nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+				nodeResp.RuntimeData[common.RuntimeKeyFailureReasonJSON] = string(jsonBytes)
 			}
 		}
 
@@ -133,7 +133,7 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 				nodeResp.RuntimeData = make(map[string]string)
 			}
 			if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
-				nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+				nodeResp.RuntimeData[common.RuntimeKeyFailureReasonJSON] = string(jsonBytes)
 			}
 
 			// Clear user inputs consumed by this executor
@@ -160,15 +160,15 @@ func (n *taskExecutionNode) enrichRuntimeData(ctx *providers.NodeContext) {
 	}
 
 	if ctx.EntityID != "" {
-		ctx.RuntimeData["applicationId"] = ctx.EntityID
+		ctx.RuntimeData[common.RuntimeKeyApplicationID] = ctx.EntityID
 	}
 
-	if idpID, ok := ctx.NodeProperties["idpId"].(string); ok && idpID != "" {
-		ctx.RuntimeData["idpId"] = idpID
+	if idpID, ok := ctx.NodeProperties[common.NodePropertyIDPID].(string); ok && idpID != "" {
+		ctx.RuntimeData[common.RuntimeKeyIDPID] = idpID
 	}
 
-	if senderID, ok := ctx.NodeProperties["senderId"].(string); ok && senderID != "" {
-		ctx.RuntimeData["senderId"] = senderID
+	if senderID, ok := ctx.NodeProperties[common.NodePropertySenderID].(string); ok && senderID != "" {
+		ctx.RuntimeData[common.RuntimeKeySenderID] = senderID
 	}
 }
 

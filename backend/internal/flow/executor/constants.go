@@ -60,6 +60,7 @@ const (
 	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
 )
 
 // Executor mode constants
@@ -182,6 +183,14 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+	// propertyKeyConnectionID names the HTTP endpoint connection an extension step calls.
+	propertyKeyConnectionID = "connectionId"
+	// propertyKeyInputKeys names the user inputs an extension step sends.
+	propertyKeyInputKeys = "inputKeys"
+	// propertyKeyRuntimeDataKeys restricts the runtime data an extension step sends.
+	propertyKeyRuntimeDataKeys = "runtimeDataKeys"
+	// propertyKeyResponseKeys restricts the response fields an extension step stores.
+	propertyKeyResponseKeys = "responseKeys"
 )
 
 // nonSearchableInputs contains the list of user inputs/ attributes that are non-searchable.

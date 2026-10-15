@@ -155,6 +155,16 @@ func (s *UtilsTestSuite) TestAssembleApplication_CarriesEntityCategory() {
 	s.Equal(providers.EntityCategoryAgent, app.EntityCategory)
 }
 
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesOUAndType() {
+	client := &providers.InboundClient{ID: "app-1", Properties: map[string]interface{}{"type": "browser"}}
+	entity := &providers.Entity{ID: "app-1", Category: providers.EntityCategoryApp, OUID: "ou-1"}
+
+	app := assembleApplication(client, entity)
+
+	s.Equal("ou-1", app.OUID)
+	s.Equal("browser", app.Type)
+}
+
 func (s *UtilsTestSuite) TestAssembleApplication_NoEntityLeavesCategoryEmpty() {
 	app := assembleApplication(&providers.InboundClient{ID: "app-1"}, nil)
 

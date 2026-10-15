@@ -4,7 +4,7 @@
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import type {OutboundAuthMethod} from '../../models/connection';
+import type {ConnectionUsagesResponse, OutboundAuthMethod} from '../../models/connection';
 import ConnectionDetailPage from '../ConnectionDetailPage';
 
 const updateMock = vi.fn().mockResolvedValue({});
@@ -104,9 +104,36 @@ const AUTHZEN_PDP_API_KEY_WITH_NULL_HEADERS = {
   },
 };
 
+const HTTP_CONNECTION = {
+  id: 'http1',
+  type: 'http',
+  name: 'Risk Engine',
+  url: 'https://risk.example.com/evaluate',
+  timeoutMs: 5000,
+  headers: [{name: 'X-Tenant', value: 'acme'}],
+  authentication: {type: 'basic', properties: {username: 'svc', password: '******'}},
+};
+
+const HTTP_NONE_CONNECTION = {
+  ...HTTP_CONNECTION,
+  authentication: undefined,
+};
+
+const HTTP_LOCAL_CONNECTION = {
+  ...HTTP_NONE_CONNECTION,
+  url: 'http://localhost:8090/evaluate',
+};
+
+const ORIGIN_CHANGED_HINT = 'The URL origin changed. Enter the credentials again under Authentication before saving.';
+const HTTPS_REQUIRED = 'Use an https URL when an authentication method is set, or set the method to None.';
+const PASSWORD_FIELD_ID = 'connection-field-authentication.properties.password';
+const USERNAME_FIELD_ID = 'connection-field-authentication.properties.username';
+
 const mockParams: {type: string; id: string} = {type: 'google', id: 'g1'};
 const mockConn: {data: Record<string, unknown>} = {data: CONNECTION};
 const mockMeta: {methods: OutboundAuthMethod[]; isError: boolean} = {methods: [], isError: false};
+const NO_USAGES: ConnectionUsagesResponse = {totalResults: 0, count: 0, summary: {}, usages: []};
+const mockUsages: {data: ConnectionUsagesResponse} = {data: NO_USAGES};
 
 const SMTP_METHODS: OutboundAuthMethod[] = [
   {type: 'none', displayName: 'None'},
@@ -181,7 +208,7 @@ vi.mock('../../api/useUpdateConnection', () => ({
 }));
 vi.mock('../../api/useDeleteConnection', () => ({default: () => ({mutate: deleteMock, isPending: false})}));
 vi.mock('../../api/useGetConnectionUsages', () => ({
-  default: () => ({data: {totalResults: 0, count: 0, summary: {}, usages: []}, isLoading: false}),
+  default: () => ({data: mockUsages.data, isLoading: false, error: null, refetch: vi.fn()}),
 }));
 
 vi.mock('../../components/ConnectionForm', () => ({
@@ -199,6 +226,27 @@ vi.mock('../../components/ConnectionForm', () => ({
         </button>
         <button type="button" data-testid="edit-name" onClick={() => onFieldChange('name', 'Renamed')}>
           edit name
+        </button>
+        <button
+          type="button"
+          data-testid="edit-url-path"
+          onClick={() => onFieldChange('url', 'https://risk.example.com/v2/evaluate')}
+        >
+          edit url path
+        </button>
+        <button
+          type="button"
+          data-testid="edit-url-host"
+          onClick={() => onFieldChange('url', 'https://collector.example.net/evaluate')}
+        >
+          edit url host
+        </button>
+        <button
+          type="button"
+          data-testid="edit-url-back"
+          onClick={() => onFieldChange('url', 'https://risk.example.com/evaluate')}
+        >
+          edit url back
         </button>
         {nameError && <div data-testid="stub-name-error">{nameError}</div>}
       </div>
@@ -332,6 +380,7 @@ describe('ConnectionDetailPage', () => {
     updateMutationState.isError = false;
     mockMeta.methods = [];
     mockMeta.isError = false;
+    mockUsages.data = NO_USAGES;
   });
 
   it('renders the general tab with quick-copy and the credentials form', () => {
@@ -734,5 +783,236 @@ describe('ConnectionDetailPage', () => {
 
     const payload = updateMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload).toMatchObject({authentication: {scheme: 'NONE'}});
+  });
+
+  describe('HTTP endpoint', () => {
+    beforeEach(() => {
+      mockParams.type = 'http';
+      mockParams.id = 'http1';
+      mockConn.data = HTTP_CONNECTION;
+      mockMeta.methods = SMTP_METHODS;
+    });
+
+    function selectMethod(name: string): void {
+      fireEvent.mouseDown(screen.getByRole('combobox'));
+      fireEvent.click(screen.getByRole('option', {name}));
+    }
+
+    function field(id: string): HTMLElement {
+      return document.getElementById(id)!;
+    }
+
+    it('edits authentication in the General tab from the vendor metadata', () => {
+      render(<ConnectionDetailPage />);
+
+      expect(screen.getByLabelText('Connection Configuration')).toBeInTheDocument();
+      expect(screen.getByRole('region', {name: 'Authentication'})).toContainElement(
+        screen.getByTestId('connection-authentication-section'),
+      );
+      expect(screen.queryByTestId('connection-tab-authentication')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('connection-tab-subject-mapping')).not.toBeInTheDocument();
+      expect(field(PASSWORD_FIELD_ID)).toBeDisabled();
+    });
+
+    it('keeps the stored password by omitting it when saving unrelated changes', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-name'));
+      fireEvent.click(screen.getByTestId('save-bar'));
+
+      expect(updateMock.mock.calls[0][0]).toEqual({
+        name: 'Renamed',
+        url: 'https://risk.example.com/evaluate',
+        timeoutMs: 5000,
+        headers: [{name: 'X-Tenant', value: 'acme'}],
+        authentication: {type: 'basic', properties: {username: 'svc'}},
+      });
+    });
+
+    it('keeps the stored password when only the URL path changes', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-path'));
+
+      expect(screen.queryByText(ORIGIN_CHANGED_HINT)).not.toBeInTheDocument();
+      expect(field(PASSWORD_FIELD_ID)).toBeDisabled();
+      fireEvent.click(screen.getByTestId('save-bar'));
+      expect(updateMock.mock.calls[0][0]).toMatchObject({
+        url: 'https://risk.example.com/v2/evaluate',
+        authentication: {type: 'basic', properties: {username: 'svc'}},
+      });
+    });
+
+    it('blocks Save after a URL origin change until the password is entered again', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+
+      expect(screen.getByTestId('save-bar')).toBeDisabled();
+      expect(screen.getByText(ORIGIN_CHANGED_HINT)).toBeInTheDocument();
+      expect(field(PASSWORD_FIELD_ID)).not.toBeDisabled();
+
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'new-pw'}});
+      expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+      fireEvent.click(screen.getByTestId('save-bar'));
+
+      expect(updateMock.mock.calls[0][0]).toMatchObject({
+        url: 'https://collector.example.net/evaluate',
+        authentication: {type: 'basic', properties: {username: 'svc', password: 'new-pw'}},
+      });
+    });
+
+    it('keeps a password typed during the origin change editable after the URL is changed back', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'new-pw'}});
+      fireEvent.click(screen.getByTestId('edit-url-back'));
+
+      expect(screen.queryByText(ORIGIN_CHANGED_HINT)).not.toBeInTheDocument();
+      expect(field(PASSWORD_FIELD_ID)).not.toBeDisabled();
+      expect(field(PASSWORD_FIELD_ID)).toHaveValue('new-pw');
+
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'newer-pw'}});
+      fireEvent.click(screen.getByTestId('save-bar'));
+      expect(updateMock.mock.calls[0][0]).toMatchObject({
+        url: 'https://risk.example.com/evaluate',
+        authentication: {type: 'basic', properties: {username: 'svc', password: 'newer-pw'}},
+      });
+    });
+
+    it('asks for the password again when the method is switched away and back after an origin change', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+      selectMethod('None');
+      expect(screen.queryByText(ORIGIN_CHANGED_HINT)).not.toBeInTheDocument();
+      expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+
+      selectMethod('Username and Password');
+      expect(screen.getByText(ORIGIN_CHANGED_HINT)).toBeInTheDocument();
+      expect(screen.getByTestId('save-bar')).toBeDisabled();
+
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'new-pw'}});
+      expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+    });
+
+    it('drops authentication when an origin change comes with a switch to None', () => {
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+      selectMethod('None');
+      fireEvent.click(screen.getByTestId('save-bar'));
+
+      expect(updateMock.mock.calls[0][0]).toMatchObject({
+        url: 'https://collector.example.net/evaluate',
+        authentication: {type: 'none'},
+      });
+    });
+
+    it('requires the new credentials when an origin change comes with a switch to a method', () => {
+      mockConn.data = HTTP_NONE_CONNECTION;
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+      selectMethod('Username and Password');
+      expect(screen.getByTestId('save-bar')).toBeDisabled();
+
+      fireEvent.change(field(USERNAME_FIELD_ID), {target: {value: 'svc'}});
+      expect(screen.getByTestId('save-bar')).toBeDisabled();
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'pw'}});
+      fireEvent.click(screen.getByTestId('save-bar'));
+
+      expect(updateMock.mock.calls[0][0]).toMatchObject({
+        url: 'https://collector.example.net/evaluate',
+        authentication: {type: 'basic', properties: {username: 'svc', password: 'pw'}},
+      });
+    });
+
+    it('allows a URL origin change without credentials when no authentication is set', () => {
+      mockConn.data = HTTP_LOCAL_CONNECTION;
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-host'));
+
+      expect(screen.queryByText(ORIGIN_CHANGED_HINT)).not.toBeInTheDocument();
+      expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+    });
+
+    it('blocks Save when authentication is set on an http URL', () => {
+      mockConn.data = HTTP_LOCAL_CONNECTION;
+      render(<ConnectionDetailPage />);
+
+      selectMethod('Username and Password');
+      fireEvent.change(field(USERNAME_FIELD_ID), {target: {value: 'svc'}});
+      fireEvent.change(field(PASSWORD_FIELD_ID), {target: {value: 'pw'}});
+
+      expect(screen.getByText(HTTPS_REQUIRED)).toBeInTheDocument();
+      expect(screen.getByTestId('save-bar')).toBeDisabled();
+
+      selectMethod('None');
+      expect(screen.queryByText(HTTPS_REQUIRED)).not.toBeInTheDocument();
+    });
+
+    it('shows the localized message for a rejected URL', async () => {
+      updateMock.mockRejectedValueOnce({response: {status: 400, data: {code: 'CON-1016'}}});
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('edit-url-path'));
+      fireEvent.click(screen.getByTestId('save-bar'));
+
+      expect(
+        await screen.findByText(
+          'The URL must be an absolute http or https URL without a user name or password, and must use https when authentication is set.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('lists the flows that use the connection in the Usages section', () => {
+      mockUsages.data = {
+        totalResults: 2,
+        count: 2,
+        summary: {flow: 2},
+        usages: [
+          {resourceType: 'flow', id: 'f1', displayName: 'Default sign-in', behaviorOnDelete: 'restrict'},
+          {resourceType: 'flow', id: 'f2', displayName: 'Step-up', behaviorOnDelete: 'restrict'},
+        ],
+      };
+      render(<ConnectionDetailPage />);
+
+      const usages = screen.getByRole('region', {name: 'Usages'});
+      expect(usages).toHaveTextContent('Default sign-in');
+      expect(usages).toHaveTextContent('Step-up');
+      expect(usages).toHaveTextContent('Flow');
+    });
+
+    it('says no flows use the connection when it has no usages', () => {
+      render(<ConnectionDetailPage />);
+
+      expect(screen.getByRole('region', {name: 'Usages'})).toHaveTextContent('No flows use this connection.');
+    });
+
+    it('shows the localized message when the server refuses to delete a connection in use', () => {
+      deleteMock.mockImplementationOnce((_id: string, opts: {onSuccess: () => void; onError?: (e: unknown) => void}) =>
+        opts.onError?.({response: {status: 409, data: {code: 'CON-1021'}}}),
+      );
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+      fireEvent.click(screen.getByTestId('connection-delete-button'));
+      fireEvent.click(screen.getByTestId('connection-delete-confirm'));
+
+      expect(
+        screen.getByText(
+          'This connection is used by one or more flows. Remove it from those flows before deleting it.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('does not show a Usages section for connections that do not list usages', () => {
+    render(<ConnectionDetailPage />);
+
+    expect(screen.queryByRole('region', {name: 'Usages'})).not.toBeInTheDocument();
   });
 });

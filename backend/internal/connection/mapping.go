@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -73,12 +74,18 @@ func propertyValues(props []cmodels.Property) (map[string]string, error) {
 // but not to read its secrets could redirect the stored credential to a server they control.
 func mergeStoredSecrets(incoming, existing []cmodels.Property,
 	credentialTargetKeys ...string) []cmodels.Property {
+	return keepStoredSecrets(incoming, existing,
+		credentialTargetUnchanged(incoming, existing, credentialTargetKeys))
+}
+
+// keepStoredSecrets carries over the stored secrets the request omits, dropping the
+// outbound-authentication ones unless targetUnchanged. A caller whose credential target is not a
+// property, such as an HTTP connection's URL origin, folds that check into targetUnchanged.
+func keepStoredSecrets(incoming, existing []cmodels.Property, targetUnchanged bool) []cmodels.Property {
 	incomingNames := make(map[string]bool, len(incoming))
 	for i := range incoming {
 		incomingNames[incoming[i].GetName()] = true
 	}
-
-	targetUnchanged := credentialTargetUnchanged(incoming, existing, credentialTargetKeys)
 
 	merged := make([]cmodels.Property, 0, len(incoming)+len(existing))
 	merged = append(merged, incoming...)
@@ -162,14 +169,17 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code, authzenpdp.ErrorNotFound.Code:
+		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code, authzenpdp.ErrorNotFound.Code,
+			httpconnection.ErrorNotFound.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,
 			idp.ErrorIDPHasBlockingDependencies.Code,
 			notification.ErrorDuplicateSenderName.Code,
 			notification.ErrorSenderHasBlockingDependencies.Code,
 			authzenpdp.ErrorHasBlockingDependencies.Code,
-			authzenpdp.ErrorAlreadyExists.Code:
+			authzenpdp.ErrorAlreadyExists.Code,
+			httpconnection.ErrorAlreadyExists.Code,
+			httpconnection.ErrorHasBlockingDependencies.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

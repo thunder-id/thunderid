@@ -427,6 +427,45 @@ describe('computeValidationNotifications', () => {
       ).toBe(true);
     });
 
+    it.each([
+      ['no connectionId', {}],
+      ['an empty connectionId', {connectionId: ''}],
+    ])('should report an extension executor with %s as an error', (_label, properties) => {
+      const nodes = [
+        createNode({
+          id: 'extension-step-1',
+          data: {
+            action: {executor: {name: 'ExtensionExecutor'}},
+            properties,
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(
+        result
+          .get('extension-step-1_REQUIRED_FIELD_ERROR')
+          ?.hasResourceFieldNotification('extension-step-1_data.properties.connectionId'),
+      ).toBe(true);
+    });
+
+    it('should accept an extension executor with a connection', () => {
+      const nodes = [
+        createNode({
+          id: 'extension-step-1',
+          data: {
+            action: {executor: {name: 'ExtensionExecutor'}},
+            properties: {connectionId: 'conn-1', inputKeys: []},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('extension-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
     it('should not produce notification for executor with all fields present', () => {
       const nodes = [
         createNode({

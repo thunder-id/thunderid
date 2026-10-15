@@ -9,18 +9,23 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 )
@@ -738,4 +743,252 @@ func (s *SMSHandlerTestSuite) TestUsagesSuccess() {
 	s.Require().Len(resp.Usages, 1)
 	s.Equal("flow-1", resp.Usages[0].ID)
 	s.Equal("restrict", resp.Usages[0].BehaviorOnDelete)
+}
+
+const testHTTPConnectionPassword = "risk-engine-password"
+
+type HTTPConnectionHandlerTestSuite struct {
+	suite.Suite
+	mux      *http.ServeMux
+	mockHTTP *httpconnectionmock.HTTPConnectionServiceInterfaceMock
+}
+
+func TestHTTPConnectionHandlerSuite(t *testing.T) {
+	suite.Run(t, new(HTTPConnectionHandlerTestSuite))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) SetupTest() {
+	initConfigWithTestCryptoKey(s.T())
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	h := newHandler(newService(idpmock.NewIDPServiceInterfaceMock(s.T()),
+		notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()), &testResourceServerLister{},
+		&authZENPDPServiceStub{}, s.mockHTTP))
+	s.mux = http.NewServeMux()
+	registerRoutes(s.mux, h)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) basicConnection() *httpconnection.HTTPConnection {
+	auth, err := outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeBasic,
+		Properties: map[string]string{outboundauth.FieldBasicUsername: "svc-user",
+			outboundauth.FieldBasicPassword: testHTTPConnectionPassword}})
+	s.Require().NoError(err)
+	return &httpconnection.HTTPConnection{
+		ID: "http-1", Name: "Risk", Description: "Risk engine", URL: "https://risk.example.com/evaluate",
+		TimeoutMS: 5000, Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		AuthProperties: auth,
+	}
+}
+
+func (s *HTTPConnectionHandlerTestSuite) serve(method, path, body string) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	s.mux.ServeHTTP(rr, httptest.NewRequest(method, path, strings.NewReader(body)))
+	return rr
+}
+
+func (s *HTTPConnectionHandlerTestSuite) errorCode(rr *httptest.ResponseRecorder) string {
+	var resp apierror.ErrorResponse
+	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
+	return resp.Code
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestCreateMapsAuthenticationAndMasksTheResponse() {
+	var received httpconnection.HTTPConnection
+	s.mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { received = args.Get(1).(httpconnection.HTTPConnection) }).
+		Return(s.basicConnection(), (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodPost, "/connections/http", `{"name":"Risk","description":"Risk engine",
+		"url":"https://risk.example.com/evaluate","timeoutMs":5000,"headers":[{"name":"X-Tenant","value":"acme"}],
+		"authentication":{"type":"basic","properties":{"username":"svc-user","password":"`+
+		testHTTPConnectionPassword+`"}}}`)
+
+	s.Equal(http.StatusCreated, rr.Code)
+	s.NotContains(rr.Body.String(), testHTTPConnectionPassword)
+	s.JSONEq(`{"id":"http-1","name":"Risk","description":"Risk engine","type":"http",
+		"url":"https://risk.example.com/evaluate","timeoutMs":5000,
+		"headers":[{"name":"X-Tenant","value":"acme"}],
+		"authentication":{"type":"basic","properties":{"username":"svc-user","password":"******"}}}`,
+		rr.Body.String())
+	s.Equal("https://risk.example.com/evaluate", received.URL)
+	s.Equal([]httpconnection.Header{{Name: "X-Tenant", Value: "acme"}}, received.Headers)
+	authConfig, err := outboundauth.FromProperties(received.AuthProperties)
+	s.Require().NoError(err)
+	s.Equal(outboundauth.Config{Type: outboundauth.TypeBasic, Properties: map[string]string{
+		outboundauth.FieldBasicUsername: "svc-user", outboundauth.FieldBasicPassword: testHTTPConnectionPassword,
+	}}, authConfig)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestOmittedAuthenticationIsNone() {
+	none := &httpconnection.HTTPConnection{ID: "http-1", Name: "Risk", URL: "http://localhost:9000",
+		TimeoutMS: 10000}
+	none.AuthProperties, _ = outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeNone})
+	s.mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.MatchedBy(func(c httpconnection.HTTPConnection) bool {
+		authConfig, err := outboundauth.FromProperties(c.AuthProperties)
+		return err == nil && authConfig.Type == outboundauth.TypeNone
+	})).Return(none, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodPost, "/connections/http", `{"name":"Risk","url":"http://localhost:9000"}`)
+
+	s.Equal(http.StatusCreated, rr.Code)
+	s.JSONEq(`{"id":"http-1","name":"Risk","type":"http","url":"http://localhost:9000","timeoutMs":10000,
+		"headers":[],"authentication":{"type":"none"}}`, rr.Body.String())
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUnsupportedAuthenticationTypeIsRejected() {
+	rr := s.serve(http.MethodPost, "/connections/http",
+		`{"name":"Risk","url":"https://risk.example.com","authentication":{"type":"digest"}}`)
+
+	s.Equal(http.StatusBadRequest, rr.Code)
+	s.Equal(ErrorInvalidAuthenticationType.Code, s.errorCode(rr))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestGetMasksTheSecret() {
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(s.basicConnection(), (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections/http/http-1", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.NotContains(rr.Body.String(), testHTTPConnectionPassword)
+	s.Contains(rr.Body.String(), `"password":"******"`)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUpdateReturnsTheMaskedConnection() {
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(s.basicConnection(), (*tidcommon.ServiceError)(nil))
+	s.mockHTTP.On("UpdateHTTPConnection", mock.Anything, "http-1", mock.Anything).
+		Return(s.basicConnection(), (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodPut, "/connections/http/http-1", `{"name":"Risk","url":"https://risk.example.com"}`)
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.NotContains(rr.Body.String(), testHTTPConnectionPassword)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestDelete() {
+	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").Return((*tidcommon.ServiceError)(nil))
+
+	s.Equal(http.StatusNoContent, s.serve(http.MethodDelete, "/connections/http/http-1", "").Code)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestDeleteOfAConnectionInUseIsAConflict() {
+	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").
+		Return(&httpconnection.ErrorHasBlockingDependencies)
+
+	rr := s.serve(http.MethodDelete, "/connections/http/http-1", "")
+
+	s.Equal(http.StatusConflict, rr.Code)
+	s.Equal(httpconnection.ErrorHasBlockingDependencies.Code, s.errorCode(rr))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesListTheReferencingFlows() {
+	total := 1
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "http-1").
+		Return(&resourcedependency.DependenciesResponse{
+			TotalResults: &total, Count: 1, Summary: map[string]int{resourcedependency.ResourceTypeFlow: 1},
+			Usages: []resourcedependency.ResourceDependency{{
+				ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1", DisplayName: "Default sign-in",
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			}},
+		}, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections/http/http-1/usages", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.JSONEq(`{"totalResults":1,"count":1,"summary":{"flow":1},"usages":[{"resourceType":"flow",
+		"id":"flow-1","displayName":"Default sign-in","behaviorOnDelete":"restrict"}]}`, rr.Body.String())
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "missing").
+		Return((*resourcedependency.DependenciesResponse)(nil), &httpconnection.ErrorNotFound)
+
+	rr := s.serve(http.MethodGet, "/connections/http/missing/usages", "")
+
+	s.Equal(http.StatusNotFound, rr.Code)
+	s.Equal(httpconnection.ErrorNotFound.Code, s.errorCode(rr))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestListReturnsSummaries() {
+	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{*s.basicConnection()}, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections/http", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.JSONEq(`[{"id":"http-1","name":"Risk","description":"Risk engine"}]`, rr.Body.String())
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestServiceErrorsMapToStatus() {
+	cases := []struct {
+		err  tidcommon.ServiceError
+		want int
+	}{
+		{httpconnection.ErrorAlreadyExists, http.StatusConflict},
+		{httpconnection.ErrorHasBlockingDependencies, http.StatusConflict},
+		{httpconnection.ErrorInvalidName, http.StatusBadRequest},
+		{httpconnection.ErrorInvalidDescription, http.StatusBadRequest},
+		{httpconnection.ErrorInvalidURL, http.StatusBadRequest},
+		{httpconnection.ErrorInvalidTimeout, http.StatusBadRequest},
+		{httpconnection.ErrorInvalidHeaders, http.StatusBadRequest},
+		{httpconnection.ErrorInvalidAuthentication, http.StatusBadRequest},
+		{tidcommon.InternalServerError, http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		s.Run(tc.err.Code, func() {
+			s.SetupTest()
+			s.mockHTTP.On("CreateHTTPConnection", mock.Anything, mock.Anything).
+				Return((*httpconnection.HTTPConnection)(nil), &tc.err)
+
+			rr := s.serve(http.MethodPost, "/connections/http", `{"name":"Risk"}`)
+
+			s.Equal(tc.want, rr.Code)
+			s.Equal(tc.err.Code, s.errorCode(rr))
+		})
+	}
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestMissingConnectionIsNotFound() {
+	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "missing").
+		Return((*httpconnection.HTTPConnection)(nil), &httpconnection.ErrorNotFound)
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		rr := s.serve(method, "/connections/http/missing", `{"name":"Risk"}`)
+		s.Equal(http.StatusNotFound, rr.Code, method)
+		s.Equal(httpconnection.ErrorNotFound.Code, s.errorCode(rr), method)
+	}
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestMalformedBodyIsRejected() {
+	for _, path := range []string{"/connections/http", "/connections/http/http-1"} {
+		method := http.MethodPost
+		if path != "/connections/http" {
+			method = http.MethodPut
+		}
+		rr := s.serve(method, path, `{"name":`)
+
+		s.Equal(http.StatusBadRequest, rr.Code, method)
+		s.Equal(ErrorInvalidRequestFormat.Code, s.errorCode(rr), method)
+	}
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestConnectionListingFiltersByHTTPCategory() {
+	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{*s.basicConnection()}, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections?category=http", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	var resp connectionListResponse
+	s.Require().NoError(json.NewDecoder(rr.Body).Decode(&resp))
+	s.Equal([]connectionInstance{{ID: "http-1", Name: "Risk", Description: "Risk engine", Type: httpVendorName,
+		Categories: []connectionCategory{categoryHTTP}}}, resp.Connections)
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestConnectionListingFailsWhenHTTPConnectionsCannotBeListed() {
+	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
+		Return(([]httpconnection.HTTPConnection)(nil), &tidcommon.InternalServerError)
+
+	s.Equal(http.StatusInternalServerError, s.serve(http.MethodGet, "/connections?category=http", "").Code)
 }

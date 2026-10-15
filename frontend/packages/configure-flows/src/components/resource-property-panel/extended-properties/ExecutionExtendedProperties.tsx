@@ -9,6 +9,7 @@ import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
 import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
+import ExtensionProperties from './execution-properties/ExtensionProperties';
 import FederationProperties from './execution-properties/FederationProperties';
 import HttpRequestProperties from './execution-properties/HttpRequestProperties';
 import IdentifyingProperties from './execution-properties/IdentifyingProperties';
@@ -115,6 +116,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.HTTPRequestExecutor:
       executorSpecificProperties = <HttpRequestProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.ExtensionExecutor:
+      executorSpecificProperties = <ExtensionProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.MagicLinkExecutor:
       executorSpecificProperties = <MagicLinkProperties resource={resource} onChange={onChange} />;

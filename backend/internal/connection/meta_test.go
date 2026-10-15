@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
 )
@@ -60,7 +61,7 @@ func (s *MetaTestSuite) describe(vendor string) connectionVendorMeta {
 // A vendor that dials out with configurable credentials describes the methods it accepts, which
 // is what lets the console render an authentication section it was not compiled against.
 func (s *MetaTestSuite) TestDescribesAuthenticatingVendors() {
-	for _, vendor := range []string{emailSMTPVendorName} {
+	for _, vendor := range []string{emailSMTPVendorName, httpVendorName} {
 		s.Run(vendor, func() {
 			resp := s.describe(vendor)
 			s.Require().Len(resp.Authentication.Methods, 2)
@@ -116,7 +117,7 @@ func (s *MetaTestSuite) TestNoVendorDescribesEveryVendor() {
 		s.Equal(s.describe(vendor.Vendor), vendor, vendor.Vendor)
 	}
 	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", smsGatewayVendorName,
-		emailSMTPVendorName, authZENPDPVendorName}, names)
+		emailSMTPVendorName, authZENPDPVendorName, httpVendorName}, names)
 }
 
 // The endpoint must not be able to advertise a method the sender service would reject, so it
@@ -124,6 +125,7 @@ func (s *MetaTestSuite) TestNoVendorDescribesEveryVendor() {
 func (s *MetaTestSuite) TestAdvertisedMethodsMatchTheValidatedSet() {
 	cases := map[string][]outboundauth.Type{
 		emailSMTPVendorName: smtpauth.SupportedTypes(),
+		httpVendorName:      httpconnection.SupportedAuthTypes(),
 	}
 
 	for vendor, supported := range cases {

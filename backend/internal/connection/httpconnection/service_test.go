@@ -1,0 +1,442 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package httpconnection
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
+)
+
+type HTTPConnectionServiceTestSuite struct {
+	suite.Suite
+	ctx       context.Context
+	mockStore *httpConnectionStoreInterfaceMock
+	service   *httpConnectionService
+}
+
+func TestHTTPConnectionServiceTestSuite(t *testing.T) {
+	suite.Run(t, new(HTTPConnectionServiceTestSuite))
+}
+
+func (s *HTTPConnectionServiceTestSuite) SetupTest() {
+	initTestRuntime(s.T(), false)
+	s.ctx = context.Background()
+	s.mockStore = newHttpConnectionStoreInterfaceMock(s.T())
+	s.service = newHTTPConnectionService(s.mockStore)
+}
+
+func (s *HTTPConnectionServiceTestSuite) noneAuth() []cmodels.Property {
+	return authProperties(s.T(), outboundauth.TypeNone, nil)
+}
+
+func (s *HTTPConnectionServiceTestSuite) connection(url string, auth []cmodels.Property) HTTPConnection {
+	return HTTPConnection{Name: "Risk", URL: url, AuthProperties: auth}
+}
+
+// expectCreate captures the connection handed to the store.
+func (s *HTTPConnectionServiceTestSuite) expectCreate() *HTTPConnection {
+	stored := &HTTPConnection{}
+	s.mockStore.On("CreateHTTPConnection", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { *stored = args.Get(1).(HTTPConnection) }).Return(nil).Once()
+	return stored
+}
+
+func (s *HTTPConnectionServiceTestSuite) assertCreateRejected(connection HTTPConnection, want tidcommon.ServiceError) {
+	s.T().Helper()
+	created, svcErr := s.service.CreateHTTPConnection(s.ctx, connection)
+	s.Nil(created)
+	s.Require().NotNil(svcErr)
+	s.Equal(want.Code, svcErr.Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestCreateNormalizesAndStores() {
+	stored := s.expectCreate()
+	auth := basicAuthProperties(s.T())
+
+	created, svcErr := s.service.CreateHTTPConnection(s.ctx, HTTPConnection{
+		Name: " Risk ", Description: "Risk engine", URL: " HTTPS://Risk.Example.COM:443/evaluate?x=1 ",
+		Headers:        []Header{{Name: " X-Tenant ", Value: "acme"}},
+		AuthProperties: auth,
+	})
+
+	s.Require().Nil(svcErr)
+	s.NotEmpty(created.ID)
+	s.Equal(HTTPConnection{
+		ID: created.ID, Name: "Risk", Description: "Risk engine", URL: "https://risk.example.com/evaluate?x=1",
+		TimeoutMS: defaultTimeoutMS, Headers: []Header{{Name: "X-Tenant", Value: "acme"}}, AuthProperties: auth,
+	}, *created)
+	s.Equal(*created, *stored)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestCreateWithoutAuthenticationStoresNone() {
+	stored := s.expectCreate()
+
+	_, svcErr := s.service.CreateHTTPConnection(s.ctx, HTTPConnection{Name: "Risk", URL: "http://localhost:9000/x"})
+
+	s.Require().Nil(svcErr)
+	config, err := outboundauth.FromProperties(stored.AuthProperties)
+	s.Require().NoError(err)
+	s.Equal(outboundauth.TypeNone, config.Type)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestURLIsCanonicalized() {
+	cases := map[string]string{
+		"https://risk.example.com:443/a":         "https://risk.example.com/a",
+		"http://risk.example.com:80/a":           "http://risk.example.com/a",
+		"https://risk.example.com:8443/a":        "https://risk.example.com:8443/a",
+		"https://RISK.example.com":               "https://risk.example.com",
+		"https://[::1]:443/a":                    "https://[::1]/a",
+		"https://[2001:DB8::1]:8443/a":           "https://[2001:db8::1]:8443/a",
+		"https://10.0.0.1/a":                     "https://10.0.0.1/a",
+		"https://risk.example.com:00443/a":       "https://risk.example.com/a",
+		"https://risk.example.com:08443/a":       "https://risk.example.com:8443/a",
+		"https://risk.example.com/a%2Fb?q=1#top": "https://risk.example.com/a%2Fb?q=1#top",
+	}
+	for raw, want := range cases {
+		s.Run(raw, func() {
+			s.SetupTest()
+			stored := s.expectCreate()
+			_, svcErr := s.service.CreateHTTPConnection(s.ctx, s.connection(raw, s.noneAuth()))
+			s.Require().Nil(svcErr)
+			s.Equal(want, stored.URL)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestInvalidURLIsRejected() {
+	for _, raw := range []string{
+		"", "/evaluate", "ftp://risk.example.com", "https:///evaluate", "risk.example.com",
+		"https://user:pass@risk.example.com/x", "https://user@risk.example.com/x", "https://@risk.example.com/x",
+		"https://risk.example.com:0/x", "https://risk.example.com:65536/x", "https://risk.example.com:99999/x",
+		"https://risk..example.com/x", "https://-risk.example.com/x", "https://risk-.example.com/x",
+		"https://risk example.com/x", "https://" + strings.Repeat("a", 64) + ".example.com/x",
+		"https://rïsk.example.com/x", "https://[fe80::1%25en0]/x",
+	} {
+		s.Run(raw, func() {
+			s.assertCreateRejected(s.connection(raw, s.noneAuth()), ErrorInvalidURL)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestAuthenticationRequiresHTTPS() {
+	s.assertCreateRejected(s.connection("http://risk.example.com/x",
+		basicAuthProperties(s.T())), ErrorInvalidURL)
+
+	s.expectCreate()
+	_, svcErr := s.service.CreateHTTPConnection(s.ctx, s.connection("http://risk.example.com/x", s.noneAuth()))
+	s.Nil(svcErr)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestInvalidAuthenticationIsRejected() {
+	cases := map[string][]cmodels.Property{
+		"basic without password": authProperties(s.T(), outboundauth.TypeBasic,
+			map[string]string{outboundauth.FieldBasicUsername: "svc-user"}),
+		"basic without username": authProperties(s.T(), outboundauth.TypeBasic,
+			map[string]string{outboundauth.FieldBasicPassword: testPassword}),
+		"basic username with a colon": authProperties(s.T(), outboundauth.TypeBasic,
+			map[string]string{
+				outboundauth.FieldBasicUsername: "svc:user",
+				outboundauth.FieldBasicPassword: testPassword,
+			}),
+	}
+	for name, auth := range cases {
+		s.Run(name, func() {
+			s.assertCreateRejected(s.connection(testURL, auth), ErrorInvalidAuthentication)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestNameAndDescriptionLimits() {
+	s.assertCreateRejected(HTTPConnection{Name: " ", URL: testURL}, ErrorInvalidName)
+	s.assertCreateRejected(HTTPConnection{Name: strings.Repeat("n", maxNameLength+1), URL: testURL},
+		ErrorInvalidName)
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL,
+		Description: strings.Repeat("d", maxDescriptionLength+1)}, ErrorInvalidDescription)
+
+	s.expectCreate()
+	_, svcErr := s.service.CreateHTTPConnection(s.ctx, HTTPConnection{Name: strings.Repeat("é", maxNameLength),
+		URL: testURL, Description: strings.Repeat("é", maxDescriptionLength)})
+	s.Nil(svcErr, "limits count characters, not bytes")
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestTimeoutBounds() {
+	for _, timeout := range []int{-1, maxTimeoutMS + 1} {
+		s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL, TimeoutMS: timeout}, ErrorInvalidTimeout)
+	}
+	for _, timeout := range []int{1, maxTimeoutMS} {
+		stored := s.expectCreate()
+		_, svcErr := s.service.CreateHTTPConnection(s.ctx, HTTPConnection{Name: "Risk", URL: testURL,
+			TimeoutMS: timeout})
+		s.Require().Nil(svcErr)
+		s.Equal(timeout, stored.TimeoutMS)
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestInvalidHeadersAreRejected() {
+	cases := map[string][]Header{
+		"invalid name":        {{Name: "Bad Header", Value: "v"}},
+		"empty name":          {{Name: "", Value: "v"}},
+		"repeated name":       {{Name: "X-Tenant", Value: "a"}, {Name: "x-tenant", Value: "b"}},
+		"value line break":    {{Name: "X-Tenant", Value: "a\r\nX-Injected: b"}},
+		"authorization":       {{Name: "authorization", Value: "Bearer token"}},
+		"proxy authorization": {{Name: "Proxy-Authorization", Value: "v"}},
+	}
+	for _, name := range []string{"Cookie", "Host", "Content-Length", "CONTENT-TYPE", "Transfer-Encoding",
+		"Connection", "TE", "Trailer", "Upgrade", "Keep-Alive", "Expect"} {
+		cases["reserved "+name] = []Header{{Name: name, Value: "v"}}
+	}
+	for name, headers := range cases {
+		s.Run(name, func() {
+			s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL, Headers: headers}, ErrorInvalidHeaders)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestNameConflictIsReported() {
+	s.mockStore.On("CreateHTTPConnection", mock.Anything, mock.Anything).
+		Return(errors.Join(errNameConflict, errors.New("unique index"))).Once()
+
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL}, ErrorAlreadyExists)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestStoreFailuresAreServerErrors() {
+	failure := errors.New("database unavailable")
+	s.mockStore.On("CreateHTTPConnection", mock.Anything, mock.Anything).Return(failure)
+	s.mockStore.On("ListHTTPConnections", mock.Anything).Return(nil, failure)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(nil, failure)
+	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.Anything).Return(failure)
+
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL}, tidcommon.InternalServerError)
+	_, svcErr := s.service.ListHTTPConnections(s.ctx)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	_, svcErr = s.service.GetHTTPConnection(s.ctx, "id")
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	_, svcErr = s.service.UpdateHTTPConnection(s.ctx, "id", HTTPConnection{Name: "Risk", URL: testURL})
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestGetAndList() {
+	stored := &HTTPConnection{ID: "id", Name: "Risk", URL: testURL}
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(stored, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+	s.mockStore.On("ListHTTPConnections", mock.Anything).Return([]HTTPConnection{*stored}, nil)
+
+	got, svcErr := s.service.GetHTTPConnection(s.ctx, "id")
+	s.Require().Nil(svcErr)
+	s.Equal(stored, got)
+
+	_, svcErr = s.service.GetHTTPConnection(s.ctx, "missing")
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+	_, svcErr = s.service.GetHTTPConnection(s.ctx, " ")
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+
+	listed, svcErr := s.service.ListHTTPConnections(s.ctx)
+	s.Require().Nil(svcErr)
+	s.Equal([]HTTPConnection{*stored}, listed)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUpdateValidatesAndStores() {
+	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.MatchedBy(func(c HTTPConnection) bool {
+		return c.ID == "id" && c.URL == "https://risk.example.com/v2"
+	})).Return(nil).Once()
+
+	updated, svcErr := s.service.UpdateHTTPConnection(s.ctx, "id", HTTPConnection{ID: "ignored", Name: "Risk",
+		URL: "https://risk.example.com:443/v2"})
+
+	s.Require().Nil(svcErr)
+	s.Equal("id", updated.ID)
+
+	_, svcErr = s.service.UpdateHTTPConnection(s.ctx, "id", s.connection("http://risk.example.com/x",
+		basicAuthProperties(s.T())))
+	s.Equal(ErrorInvalidURL.Code, svcErr.Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUpdateAndDeleteReportMissingAndConflict() {
+	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.MatchedBy(func(c HTTPConnection) bool {
+		return c.ID == "missing"
+	})).Return(errConnectionNotFound)
+	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.MatchedBy(func(c HTTPConnection) bool {
+		return c.ID == "taken"
+	})).Return(errNameConflict)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "deleted-meanwhile").
+		Return(&HTTPConnection{ID: "deleted-meanwhile"}, nil)
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "deleted-meanwhile").Return(errConnectionNotFound)
+	s.service.SetDependencyRegistry(s.registryReporting("deleted-meanwhile"))
+
+	_, svcErr := s.service.UpdateHTTPConnection(s.ctx, "missing", HTTPConnection{Name: "Risk", URL: testURL})
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+	_, svcErr = s.service.UpdateHTTPConnection(s.ctx, "taken", HTTPConnection{Name: "Risk", URL: testURL})
+	s.Equal(ErrorAlreadyExists.Code, svcErr.Code)
+	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, "missing").Code)
+	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, " ").Code)
+	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, "deleted-meanwhile").Code)
+}
+
+// registryReporting returns a dependency registry that reports the given usages of connection id.
+func (s *HTTPConnectionServiceTestSuite) registryReporting(id string,
+	usages ...resourcedependency.ResourceDependency) *resourcedependencymock.RegistryMock {
+	total := len(usages)
+	registry := resourcedependencymock.NewRegistryMock(s.T())
+	registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, id).
+		Return(&resourcedependency.DependenciesResponse{
+			TotalResults: &total, Count: total, Summary: map[string]int{}, Usages: usages,
+		}, nil)
+	return registry
+}
+
+func flowUsage(id, name string) resourcedependency.ResourceDependency {
+	return resourcedependency.ResourceDependency{
+		ResourceType: resourcedependency.ResourceTypeFlow, ID: id, DisplayName: name,
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesListTheFlowsThatReferenceTheConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.service.SetDependencyRegistry(s.registryReporting("id", flowUsage("flow-1", "Default sign-in")))
+
+	usages, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal([]resourcedependency.ResourceDependency{flowUsage("flow-1", "Default sign-in")}, usages.Usages)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+
+	_, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "missing")
+
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesAreUnknownWithoutARegistry() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+
+	usages, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Nil(usages.TotalResults)
+	s.Empty(usages.Usages)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteIsRefusedWhileAFlowUsesTheConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.service.SetDependencyRegistry(s.registryReporting("id", flowUsage("flow-1", "Default sign-in")))
+
+	svcErr := s.service.DeleteHTTPConnection(s.ctx, "id")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorHasBlockingDependencies.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.String(), "1 flow(s)")
+	s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteSucceedsWithoutUsages() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(nil).Once()
+	s.service.SetDependencyRegistry(s.registryReporting("id"))
+
+	s.Nil(s.service.DeleteHTTPConnection(s.ctx, "id"))
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteFailsClosedWhenUsagesCannotBeDetermined() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+
+	s.Run("no registry", func() {
+		s.service.SetDependencyRegistry(nil)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.Run("registry error", func() {
+		registry := resourcedependencymock.NewRegistryMock(s.T())
+		registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, "id").
+			Return(nil, errors.New("flow store unavailable"))
+		s.service.SetDependencyRegistry(registry)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.Run("a provider failed to report", func() {
+		registry := resourcedependencymock.NewRegistryMock(s.T())
+		registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, "id").
+			Return(&resourcedependency.DependenciesResponse{TotalResults: nil}, nil)
+		s.service.SetDependencyRegistry(registry)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolvedConnectionCarriesHeadersTimeoutAndBasicCredential() {
+	stored := &HTTPConnection{
+		ID: "id", Name: "Risk", URL: testURL, TimeoutMS: 2500,
+		Headers:        []Header{{Name: "X-Tenant", Value: "acme"}},
+		AuthProperties: basicAuthProperties(s.T()),
+	}
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(stored, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal(testURL, resolved.URL)
+	s.Equal(2500*time.Millisecond, resolved.Timeout)
+	s.Equal("acme", resolved.Headers.Get("X-Tenant"))
+	username, password, ok := (&http.Request{Header: resolved.Headers}).BasicAuth()
+	s.True(ok)
+	s.Equal("svc-user", username)
+	s.Equal(testPassword, password)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolvedConnectionWithoutAuthenticationSendsNoCredential() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{
+		ID: "id", URL: "http://localhost:3000/hook", TimeoutMS: defaultTimeoutMS, AuthProperties: s.noneAuth(),
+	}, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal(http.Header{}, resolved.Headers)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolveFailsForAMissingOrUnusableConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "unsupported").Return(&HTTPConnection{
+		ID: "unsupported", URL: testURL, AuthProperties: s.unsupportedAuth(),
+	}, nil)
+
+	_, svcErr := s.service.GetResolvedConnection(s.ctx, "missing")
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+	_, svcErr = s.service.GetResolvedConnection(s.ctx, "unsupported")
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// unsupportedAuth is a stored authentication whose type the HTTP transport cannot present.
+func (s *HTTPConnectionServiceTestSuite) unsupportedAuth() []cmodels.Property {
+	prop, err := cmodels.NewProperty("authentication_type", "bearer", false)
+	s.Require().NoError(err)
+	return []cmodels.Property{*prop}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestWritesAreRejectedInDeclarativeMode() {
+	initTestRuntime(s.T(), true)
+
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL},
+		declarativeresource.ErrorDeclarativeResourceCreateOperation)
+	_, svcErr := s.service.UpdateHTTPConnection(s.ctx, "id", HTTPConnection{Name: "Risk", URL: testURL})
+	s.Equal(declarativeresource.ErrorDeclarativeResourceUpdateOperation.Code, svcErr.Code)
+	s.Equal(declarativeresource.ErrorDeclarativeResourceDeleteOperation.Code,
+		s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+}

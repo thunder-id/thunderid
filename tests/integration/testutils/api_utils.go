@@ -2657,6 +2657,95 @@ func DeleteNotificationSender(senderID string) error {
 	return nil
 }
 
+// CreateHTTPConnection creates an HTTP endpoint connection via /connections/http and returns its ID.
+func CreateHTTPConnection(conn HTTPConnection) (string, error) {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/http", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
+		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
+	}
+
+	id, ok := respBody["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
+	}
+	return id, nil
+}
+
+// UpdateHTTPConnection replaces an HTTP endpoint connection via PUT /connections/http/{id}.
+func UpdateHTTPConnection(connectionID string, conn HTTPConnection) error {
+	bodyJSON, err := json.Marshal(conn)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HTTP connection: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", TestServerURL+"/connections/http/"+connectionID, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// DeleteHTTPConnection deletes an HTTP endpoint connection via DELETE /connections/http/{id}.
+func DeleteHTTPConnection(connectionID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/connections/http/"+connectionID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete HTTP connection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
 // AuthenticateWithCredential authenticates a user via the credentials endpoint.
 // Returns (true, nil) on success, (false, nil) on auth failure, (false, err) on request error.
 func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, credentialValue string) (bool, error) {

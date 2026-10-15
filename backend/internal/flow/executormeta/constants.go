@@ -49,6 +49,7 @@ const (
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
 	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
+	ExecutorNameExtension                    = "ExtensionExecutor"
 )
 
 // Executor mode constants

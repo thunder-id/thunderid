@@ -329,8 +329,7 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyForceReauth:    {},
 	common.RuntimeKeyMaxAge:         {},
 	common.RuntimeKeySilentAuthOnly: {},
-	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
-	"applicationId": {},
+	common.RuntimeKeyApplicationID:  {},
 }
 
 // sanitizeSnapshotRuntimeData copies RuntimeData for the durable snapshot, dropping the transient SSO

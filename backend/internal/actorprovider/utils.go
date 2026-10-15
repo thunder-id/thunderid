@@ -11,6 +11,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// clientPropertyType is the inbound-client property holding the application type.
+const clientPropertyType = "type"
+
 // BuildApplication assembles the runtime application view read from engineCtx.Application.
 // Entity-agnostic: works for any actor with an inbound-client row.
 func BuildApplication(
@@ -53,6 +56,10 @@ func assembleApplication(
 
 	if entity != nil {
 		app.EntityCategory = entity.Category
+		app.OUID = entity.OUID
+	}
+	if appType, ok := client.Properties[clientPropertyType].(string); ok {
+		app.Type = appType
 	}
 
 	entityAttrs := readEntitySystemAttributes(entity)

@@ -166,6 +166,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		ResourceService:   engineCtx.resourceProvider,
 		UserMgtProvider:   engineCtx.userMgtProvider,
 		AgentMgtProvider:  engineCtx.agentMgtProvider,
+		ObservabilitySvc:  engineCtx.observabilitySvc,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,

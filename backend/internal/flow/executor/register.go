@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -155,35 +156,37 @@ func (r *executorRegistry) GetExecutorMeta(name string) (*providers.ExecutorMeta
 
 // ExecutorDependencies holds service dependencies required to construct built-in executors.
 type ExecutorDependencies struct {
-	FlowFactory           core.FlowFactoryInterface
-	OUService             providers.OrganizationUnitProvider
-	IDPService            providers.IDPProvider
-	NotifSenderSvc        notification.NotificationSenderServiceInterface
-	JWTService            jwt.JWTServiceInterface
-	AuthAssertGen         assert.AuthAssertGeneratorInterface
-	ConsentEnforcer       providers.ConsentProvider
-	AuthnProvider         providers.AuthnProviderManager
-	OTPService            otp.OTPAuthnServiceInterface
-	MagicLinkService      magiclink.MagicLinkAuthnServiceInterface
-	AuthZService          providers.AuthorizationProvider
-	EntityTypeService     entitytype.EntityTypeServiceInterface
-	GroupService          group.GroupServiceInterface
-	RoleService           role.RoleServiceInterface
-	RoleAssignmentService role.RoleAssignmentServiceInterface
-	EntityProvider        entityprovider.EntityProviderInterface
-	UserMgtProvider       providers.UserMgtProvider
-	AgentMgtProvider      providers.AgentMgtProvider
-	AttributeCacheSvc     attributecache.AttributeCacheServiceInterface
-	TemplateRenderer      notificationtemplate.TemplateRendererInterface
-	OAuthSvc              oauth.OAuthAuthnServiceInterface
-	OIDCSvc               oidc.OIDCAuthnServiceInterface
-	GithubSvc             github.GithubOAuthAuthnServiceInterface
-	GoogleSvc             google.GoogleOIDCAuthnServiceInterface
-	OpenID4VPVerifierSvc  openid4vp.OpenID4VPServiceInterface
-	SessionService        session.Service
-	ResourceService       providers.ResourceServerProvider
-	UserService           user.UserServiceInterface
-	CriteriaRevoker       revocation.CriteriaRevoker
+	FlowFactory            core.FlowFactoryInterface
+	OUService              providers.OrganizationUnitProvider
+	IDPService             providers.IDPProvider
+	NotifSenderSvc         notification.NotificationSenderServiceInterface
+	JWTService             jwt.JWTServiceInterface
+	AuthAssertGen          assert.AuthAssertGeneratorInterface
+	ConsentEnforcer        providers.ConsentProvider
+	AuthnProvider          providers.AuthnProviderManager
+	OTPService             otp.OTPAuthnServiceInterface
+	MagicLinkService       magiclink.MagicLinkAuthnServiceInterface
+	AuthZService           providers.AuthorizationProvider
+	EntityTypeService      entitytype.EntityTypeServiceInterface
+	GroupService           group.GroupServiceInterface
+	RoleService            role.RoleServiceInterface
+	RoleAssignmentService  role.RoleAssignmentServiceInterface
+	EntityProvider         entityprovider.EntityProviderInterface
+	UserMgtProvider        providers.UserMgtProvider
+	AgentMgtProvider       providers.AgentMgtProvider
+	AttributeCacheSvc      attributecache.AttributeCacheServiceInterface
+	TemplateRenderer       notificationtemplate.TemplateRendererInterface
+	OAuthSvc               oauth.OAuthAuthnServiceInterface
+	OIDCSvc                oidc.OIDCAuthnServiceInterface
+	GithubSvc              github.GithubOAuthAuthnServiceInterface
+	GoogleSvc              google.GoogleOIDCAuthnServiceInterface
+	OpenID4VPVerifierSvc   openid4vp.OpenID4VPServiceInterface
+	SessionService         session.Service
+	ResourceService        providers.ResourceServerProvider
+	UserService            user.UserServiceInterface
+	CriteriaRevoker        revocation.CriteriaRevoker
+	HTTPConnectionResolver httpconnection.HTTPConnectionResolver
+	ObservabilitySvc       providers.ObservabilityProvider
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -343,6 +346,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameClientSecret,
 				newClientSecretExecutor(deps.FlowFactory))
+		},
+		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameExtension,
+				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionResolver, deps.ObservabilitySvc))
 		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,

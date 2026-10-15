@@ -85,6 +85,7 @@ const (
 	ResourceTypeResourceServer       = "resourceServer"
 	ResourceTypeResource             = "resource"
 	ResourceTypeAction               = "action"
+	ResourceTypeHTTPConnection       = "httpConnection"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

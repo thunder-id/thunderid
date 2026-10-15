@@ -60,6 +60,14 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "senderId"},
 		},
 	},
+	ExecutorNameExtension: {
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "connectionId", IsRequired: true},
+			{Property: "inputKeys"},
+			{Property: "runtimeDataKeys"},
+			{Property: "responseKeys"},
+		},
+	},
 	ExecutorNameGitHubAuth: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "idpId", IsRequired: true},
