@@ -182,14 +182,16 @@ type IDPProvider interface {
 type ConsentProvider interface {
 	// ResolveConsent checks whether the user has provided required consents for the given
 	// application, attribute set, and authorized permission set. Returns nil if all required
-	// consents are active; otherwise returns ConsentPromptData describing which purposes /
-	// elements still need user consent. When forceReprompt is true, consent is re-prompted for
-	// all required claims regardless of existing active consent.
+	// consents are active; otherwise returns a ConsentResolution whose Prompt describes which
+	// purposes / elements still need user consent. When no prompt is needed, an implementation may
+	// instead return a ConsentResolution carrying only the user's saved consent, so the assertion is
+	// restricted to the saved approvals. When forceReprompt is true, consent is re-prompted for all
+	// required claims regardless of existing active consent.
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 		essentialAttributes, optionalAttributes, authorizedPermissions []string,
 		availableAttributes *AttributesResponse, forceReprompt bool,
 		runtimeMetadata map[string][]string) (
-		*ConsentPromptData, *common.ServiceError)
+		*ConsentResolution, *common.ServiceError)
 
 	// RecordConsent records the user's consent decisions and returns the persisted consent record.
 	// If the user denied any essential attribute, ErrorEssentialConsentDenied is returned.
