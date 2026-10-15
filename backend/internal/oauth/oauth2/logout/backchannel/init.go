@@ -25,7 +25,14 @@ func Initialize(
 	if !bcl.IsEnabled() {
 		return nil
 	}
-	httpClient := syshttp.NewHTTPClientWithoutRedirects(
-		time.Duration(bcl.RequestTimeout)*time.Second, bcl.RejectsPrivateAddresses())
+	// Logout tokens are posted to tenant-configured logout endpoints, so the
+	// SSRF dial guard is applied only where the tenant opted in via
+	// RejectsPrivateAddresses; redirects are never followed so the token is
+	// not handed to an attacker-controlled hop.
+	httpClient := syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		Timeout:          time.Duration(bcl.RequestTimeout) * time.Second,
+		DisableRedirects: true,
+		GuardSSRF:        bcl.RejectsPrivateAddresses(),
+	})
 	return newDispatcher(bcl, tokens, clients, httpClient, events)
 }
