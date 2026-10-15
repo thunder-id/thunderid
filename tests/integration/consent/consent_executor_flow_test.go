@@ -1036,6 +1036,38 @@ func (ts *ConsentExecutorFlowTestSuite) TestRecordedGrantIsHonoredOnNextAuthoriz
 		"The attribute consented on the first authorization request should be released on the second")
 }
 
+// TestPreviouslyConsentedAttributeNotRequestedIsNotReleased covers the assertion restriction: an
+// attribute approved in an earlier login is not released once the application no longer requests it,
+// even when a prompt for a newly requested attribute merges into the consent record that still holds it.
+func (ts *ConsentExecutorFlowTestSuite) TestPreviouslyConsentedAttributeNotRequestedIsNotReleased() {
+	defer func() {
+		ts.Require().NoError(testutils.UpdateApplication(consentExecFlowAppID, consentTestApp),
+			"Failed to restore the requested attributes")
+	}()
+
+	ts.setRequestedAttributes("given_name")
+	consentStep, purpose := ts.loginExpectingConsentPrompt(consentExecFlowAppID)
+	ts.Require().ElementsMatch([]string{"given_name"}, promptElementNames(purpose.Optional),
+		"Expected only the requested attribute to be prompted on the first login")
+	ts.Require().Equal("COMPLETE", ts.submitConsentDecisions(consentStep, purpose, true).FlowStatus,
+		"Expected flow to complete after granting consent")
+
+	ts.setRequestedAttributes("email")
+	consentStep, purpose = ts.loginExpectingConsentPrompt(consentExecFlowAppID)
+	ts.Require().ElementsMatch([]string{"email"}, promptElementNames(purpose.Optional),
+		"Expected only the newly requested attribute to be prompted on the second login")
+	finalStep := ts.submitConsentDecisions(consentStep, purpose, true)
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow to complete after granting consent")
+	ts.Require().NotEmpty(finalStep.Assertion, "Expected an assertion on the completed flow")
+
+	claims, err := testutils.DecodeJWT(finalStep.Assertion)
+	ts.Require().NoError(err, "Failed to decode JWT assertion")
+	ts.Require().Equal(consentTestEmail, claims.Additional["email"],
+		"The requested and consented attribute should be released")
+	ts.Require().NotContains(claims.Additional, "given_name",
+		"An attribute consented earlier but not requested now should not be released")
+}
+
 // TestPromptNoneIsRejectedWithLoginRequired covers the prompt=none error path: the server holds no
 // server-side session, so an authorization request that forbids user interaction cannot be satisfied
 // and the client is redirected back with `login_required`.
@@ -1239,6 +1271,37 @@ func (ts *ConsentExecutorFlowTestSuite) TestConsentSubmittedAfterTimeoutIsReject
 		"Expected the re-raised prompt to be answerable")
 }
 
+// TestTimedOutConsentPromptReleasesNoAttributes covers an expired prompt answered with the timeout
+// reason: the flow completes without recording consent and the assertion carries no attributes.
+func (ts *ConsentExecutorFlowTestSuite) TestTimedOutConsentPromptReleasesNoAttributes() {
+	consentStep, _ := ts.loginExpectingConsentPrompt(consentExecFlowTimeoutAppID)
+
+	decisionsJSON, err := marshalConsentDecisions(consentDecisions{
+		Approved: false,
+		Reason:   "timeout",
+		Purposes: []consentPurposeDecision{},
+	})
+	ts.Require().NoError(err, "Failed to build consent decisions payload")
+
+	finalStep, err := common.CompleteFlow(consentStep.ExecutionID,
+		map[string]string{consentDecisionsInputKey: decisionsJSON}, "", consentStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit consent decisions")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus,
+		"Expected the flow to complete when the prompt times out without failOnDeny")
+	ts.Require().NotEmpty(finalStep.Assertion, "Expected an assertion on the completed flow")
+
+	claims, err := testutils.DecodeJWT(finalStep.Assertion)
+	ts.Require().NoError(err, "Failed to decode JWT assertion")
+	ts.Require().NotContains(claims.Additional, "given_name", "A timed out prompt should release no attributes")
+	ts.Require().NotContains(claims.Additional, "email", "A timed out prompt should release no attributes")
+
+	repromptStep, repromptPurpose := ts.loginExpectingConsentPrompt(consentExecFlowTimeoutAppID)
+	ts.Require().ElementsMatch([]string{"given_name", "email"}, promptElementNames(repromptPurpose.Optional),
+		"Expected a timed out prompt to leave no consent behind")
+	ts.Require().Equal("COMPLETE", ts.submitConsentDecisions(repromptStep, repromptPurpose, true).FlowStatus,
+		"Expected the re-raised prompt to be answerable")
+}
+
 // TestMissingPurposeDecisionIsTreatedAsDenied covers an incomplete submission: a prompted purpose the
 // response leaves out is recorded as denied rather than accepted, so a client that drops part of the
 // prompt cannot have consent inferred on the user's behalf.
@@ -1290,6 +1353,17 @@ func (ts *ConsentExecutorFlowTestSuite) loginExpectingConsentPrompt(appID string
 	ts.Require().NoError(err, "Failed to extract the attribute consent purpose")
 
 	return consentStep, purpose
+}
+
+// setRequestedAttributes updates the test application so that its assertion requests only the given
+// user attributes.
+func (ts *ConsentExecutorFlowTestSuite) setRequestedAttributes(attributes ...string) {
+	app := consentTestApp
+	app.AssertionConfig = map[string]interface{}{
+		"userAttributes": attributes,
+	}
+	ts.Require().NoError(testutils.UpdateApplication(consentExecFlowAppID, app),
+		"Failed to update the requested attributes")
 }
 
 // grantTestUserPermissions assigns the test user a role holding every test permission, so the
