@@ -144,4 +144,33 @@ describe('fieldsForMode', () => {
 
     expect(headers).toMatchObject({kind: 'key-value', addLabelKey: 'connections:form.fields.httpHeaders.add'});
   });
+
+  it('asks only for the name and URL when creating an HTTP endpoint, and edits the rest', () => {
+    expect(fieldNames(ConnectionTypes.HTTP, 'create')).toEqual(['name', 'url']);
+    expect(fieldNames(ConnectionTypes.HTTP, 'edit')).toEqual(['name', 'description', 'url', 'timeoutMs', 'headers']);
+    expect(fieldsForMode(ConnectionTypes.HTTP, 'create').find((field) => field.name === 'url')).toMatchObject({
+      kind: 'url',
+      required: true,
+      requiresHttpsWhenAuthenticated: true,
+      rejectsLoopbackHttp: true,
+      rejectsUserInfo: true,
+    });
+    expect(fieldsForMode(ConnectionTypes.HTTP, 'edit').find((field) => field.name === 'headers')).toMatchObject({
+      kind: 'key-value',
+      keyValueFormat: 'pairs',
+      uniqueNames: true,
+    });
+  });
+
+  it('bounds the HTTP endpoint timeout to 1 to 20000 with a 10000 default', () => {
+    const timeout = fieldsForMode(ConnectionTypes.HTTP, 'edit').find((field) => field.name === 'timeoutMs');
+
+    expect(timeout).toMatchObject({kind: 'number', defaultValue: '10000'});
+    for (const valid of ['1', '999', '10000', '19999', '20000']) {
+      expect(timeout?.pattern?.test(valid)).toBe(true);
+    }
+    for (const invalid of ['0', '20001', '30000', '-1', '1.5', '010']) {
+      expect(timeout?.pattern?.test(invalid)).toBe(false);
+    }
+  });
 });

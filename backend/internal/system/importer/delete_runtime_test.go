@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -97,7 +99,7 @@ func newDeleteTestService(
 	return newImportService(
 		appSvc, idpSvc, senderSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil,
-		pdpSvc...,
+		nil, pdpSvc...,
 	)
 }
 
@@ -413,4 +415,48 @@ func TestImportResources_DeleteDryRunStillRefusesAnUnsupportedType(t *testing.T)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Equal(t, ErrorDeleteNotSupported.Code, resp.Results[0].Code)
+}
+
+func (s *ImportHTTPConnectionTestSuite) deleteConnections(ids ...string) *ImportResponse {
+	s.T().Helper()
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	senderSvc := &fakeSenderService{byID: map[string]*ncommon.NotificationSenderDTO{}}
+	s.svc = s.newService(idpSvc, senderSvc, s.httpSvc)
+	deletions := make([]ResourceDeletion, 0, len(ids))
+	for _, id := range ids {
+		deletions = append(deletions, ResourceDeletion{ResourceType: resourceTypeConnection, ID: id})
+	}
+	resp, err := s.svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: deletions,
+		Options:   deleteOptions(),
+	})
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, len(ids))
+	return resp
+}
+
+// The HTTP connection service is the last one asked, so it is reached only when no other holds the id.
+func (s *ImportHTTPConnectionTestSuite) TestDeleteAnHTTPConnection() {
+	s.httpSvc.EXPECT().GetHTTPConnection(mock.Anything, "http-1").
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, nil)
+	s.httpSvc.EXPECT().DeleteHTTPConnection(mock.Anything, "http-1").Return(nil)
+	s.httpSvc.EXPECT().GetHTTPConnection(mock.Anything, "gone").Return(nil, &httpconnection.ErrorNotFound)
+
+	resp := s.deleteConnections("http-1", "gone")
+
+	s.Equal(statusSuccess, resp.Results[0].Status, "message: %s", resp.Results[0].Message)
+	s.Empty(resp.Results[0].Message, "the HTTP connection was reported absent rather than removed")
+	s.Equal(statusSuccess, resp.Results[1].Status)
+	s.Equal("resource already absent", resp.Results[1].Message)
+	s.Equal(1, resp.Summary.Deleted)
+}
+
+func (s *ImportHTTPConnectionTestSuite) TestDeleteReportsAnHTTPConnectionLookupFailure() {
+	s.httpSvc.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(nil, &tidcommon.InternalServerError)
+
+	resp := s.deleteConnections("http-1")
+
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	s.Equal(0, resp.Summary.Deleted)
 }

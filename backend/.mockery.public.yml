@@ -308,6 +308,15 @@ packages:
       pkgname: idpmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/connection/httpconnection:
+    interfaces:
+      HTTPConnectionServiceInterface:
+        config:
+          dir: tests/mocks/connection/httpconnectionmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnectionmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/notification:
     config:
       all: true

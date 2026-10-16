@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -26,9 +27,10 @@ func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	httpService httpconnection.HTTPConnectionServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer) (
 	declarativeresource.ResourceExporter, error) {
-	svc := newService(idpService, notificationService, resourceService, authZENPDPService)
+	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
 	svc.valueCapturer = valueCapturer
 	h := newHandler(svc)
 	registerRoutes(mux, h)
@@ -37,7 +39,7 @@ func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
 		return nil, err
 	}
 
-	return newConnectionExporter(idpService, notificationService, authZENPDPService), nil
+	return newConnectionExporter(idpService, notificationService, authZENPDPService, httpService), nil
 }
 
 func noContent(w http.ResponseWriter, _ *http.Request) {
@@ -123,6 +125,7 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		collectionOpts, itemOpts)
 
 	registerAuthZENPDPVendorRoutes(mux, h, "/connections/authzen-pdp", collectionOpts, itemOpts)
+	registerHTTPConnectionRoutes(mux, h, "/connections/"+httpVendorName, collectionOpts, itemOpts)
 
 	// Vendor metadata. A single route taking the vendor as a query parameter, rather than
 	// /connections/{vendor}/meta, which would have to be registered per vendor and would shadow
@@ -211,4 +214,17 @@ func registerAuthZENPDPVendorRoutes(
 	}
 	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", h.usagesAuthZENPDPConnection, usagesOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
+}
+
+// registerHTTPConnectionRoutes registers CRUD and CORS routes for HTTP endpoint connections.
+func registerHTTPConnectionRoutes(mux *http.ServeMux, h *handler, base string,
+	collectionOpts, itemOpts middleware.CORSOptions) {
+	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listHTTPConnections, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("POST "+base, h.createHTTPConnection, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base, noContent, collectionOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}", h.getHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", h.updateHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteHTTPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
 }

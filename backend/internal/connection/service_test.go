@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -19,9 +20,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 )
@@ -109,7 +112,7 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		&authZENPDPServiceStub{})
+		&authZENPDPServiceStub{}, newHTTPConnectionServiceMock(s.T()))
 }
 
 func (s *ServiceTestSuite) TearDownTest() {
@@ -149,7 +152,7 @@ func (s *ServiceTestSuite) TestCreateAuthZENPDPStoresConfiguredEndpoints() {
 		},
 	}
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService)
+		pdpService, newHTTPConnectionServiceMock(s.T()))
 
 	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.ConnectionRequest{
 		Name:          "PDP",
@@ -167,7 +170,7 @@ func (s *ServiceTestSuite) TestCreateAuthZENPDPStoresConfiguredEndpoints() {
 
 func (s *ServiceTestSuite) TestCreateAuthZENPDPRejectsDuplicateName() {
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		&authZENPDPServiceStub{createErr: &authzenpdp.ErrorAlreadyExists})
+		&authZENPDPServiceStub{createErr: &authzenpdp.ErrorAlreadyExists}, newHTTPConnectionServiceMock(s.T()))
 
 	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.ConnectionRequest{
 		Name:          "PDP",
@@ -187,7 +190,7 @@ func (s *ServiceTestSuite) TestUpdateAuthZENPDPStoresConfiguredEndpoints() {
 		BatchEndpoint: "https://new-pdp.example.com/access/v1/evaluations",
 	}}
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		pdpService)
+		pdpService, newHTTPConnectionServiceMock(s.T()))
 
 	updated, svcErr := s.svc.updateAuthZENPDP(context.Background(), "pdp-1", authzenpdp.ConnectionRequest{
 		Name:          "New PDP",
@@ -204,7 +207,7 @@ func (s *ServiceTestSuite) TestUpdateAuthZENPDPStoresConfiguredEndpoints() {
 func (s *ServiceTestSuite) TestUpdateAuthZENPDPPropagatesDomainError() {
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, &authZENPDPServiceStub{
 		updateErr: &authzenpdp.ErrorAlreadyExists,
-	})
+	}, newHTTPConnectionServiceMock(s.T()))
 
 	updated, svcErr := s.svc.updateAuthZENPDP(context.Background(), "pdp-1", authzenpdp.ConnectionRequest{})
 
@@ -710,7 +713,7 @@ func (s *ServiceTestSuite) TestUsagesAuthZENPDPReturnsReferencingResourceServers
 		},
 	}
 	s.svc = newService(s.mockIDP, s.mockNotif, resourceLister,
-		pdpService)
+		pdpService, newHTTPConnectionServiceMock(s.T()))
 
 	result, svcErr := s.svc.usagesAuthZENPDP(context.Background(), "pdp-1")
 
@@ -751,7 +754,7 @@ func (s *ServiceTestSuite) TestDeleteAuthZENPDPBlocksWhenResourceServerReference
 				},
 			},
 		},
-	}, pdpService)
+	}, pdpService, newHTTPConnectionServiceMock(s.T()))
 
 	svcErr := s.svc.deleteAuthZENPDP(context.Background(), "pdp-1")
 
@@ -764,7 +767,8 @@ func (s *ServiceTestSuite) TestDeleteAuthZENPDPRejectsImmutableConnection() {
 		connection: &authzenpdp.AuthZENPDPConnection{ID: "pdp-1", Name: "PDP"},
 		deleteErr:  &declarativeresource.ErrorDeclarativeResourceDeleteOperation,
 	}
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, pdpService,
+		newHTTPConnectionServiceMock(s.T()))
 
 	svcErr := s.svc.deleteAuthZENPDP(context.Background(), "pdp-1")
 
@@ -784,4 +788,91 @@ func (s *ServiceTestSuite) TestUsagesSMSByProviderWrongProvider() {
 	s.Require().NotNil(svcErr)
 	s.Nil(result)
 	s.mockNotif.AssertNotCalled(s.T(), "GetSenderUsages", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) httpAuth(authType outboundauth.Type, username, password string) []cmodels.Property {
+	values := map[string]string{}
+	if username != "" {
+		values[outboundauth.FieldBasicUsername] = username
+	}
+	if password != "" {
+		values[outboundauth.FieldBasicPassword] = password
+	}
+	props, err := outboundauth.ToProperties(outboundauth.Config{Type: authType, Properties: values})
+	s.Require().NoError(err)
+	return props
+}
+
+// updateHTTPWithStored updates a connection stored at storedURL with a basic password, and returns
+// the authentication handed to the HTTP connection service.
+func (s *ServiceTestSuite) updateHTTPWithStored(storedURL string, request httpconnection.HTTPConnection) (
+	outboundauth.Config, *tidcommon.ServiceError) {
+	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, &authZENPDPServiceStub{}, mockHTTP)
+	mockHTTP.On("GetHTTPConnection", mock.Anything, "http-1").Return(&httpconnection.HTTPConnection{
+		ID: "http-1", Name: "Risk", URL: storedURL,
+		AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", "stored-password"),
+	}, (*tidcommon.ServiceError)(nil))
+	var received httpconnection.HTTPConnection
+	mockHTTP.On("UpdateHTTPConnection", mock.Anything, "http-1", mock.Anything).
+		Run(func(args mock.Arguments) { received = args.Get(2).(httpconnection.HTTPConnection) }).
+		Return(&httpconnection.HTTPConnection{ID: "http-1"}, (*tidcommon.ServiceError)(nil))
+
+	_, svcErr := s.svc.updateHTTP(context.Background(), "http-1", request)
+	if svcErr != nil {
+		return outboundauth.Config{}, svcErr
+	}
+	authConfig, err := outboundauth.FromProperties(received.AuthProperties)
+	s.Require().NoError(err)
+	return authConfig, nil
+}
+
+func (s *ServiceTestSuite) TestUpdateHTTPKeepsStoredPasswordForTheSameTarget() {
+	storedURL := "https://risk.example.com/evaluate"
+	for name, url := range map[string]string{
+		"same url":              storedURL,
+		"path change":           "https://risk.example.com/v2/evaluate?x=1",
+		"explicit default port": "https://risk.example.com:443/evaluate",
+		"host case":             "https://RISK.example.com/evaluate",
+	} {
+		s.Run(name, func() {
+			authConfig, svcErr := s.updateHTTPWithStored(storedURL, httpconnection.HTTPConnection{
+				Name: "Risk", URL: url, AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", ""),
+			})
+			s.Require().Nil(svcErr)
+			s.Equal("stored-password", authConfig.Get(outboundauth.FieldBasicPassword))
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestUpdateHTTPDropsStoredPasswordForAnotherTarget() {
+	storedURL := "https://risk.example.com/evaluate"
+	cases := map[string]httpconnection.HTTPConnection{
+		"host": {Name: "Risk", URL: "https://attacker.example.net/evaluate",
+			AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", "")},
+		"port": {Name: "Risk", URL: "https://risk.example.com:8443/evaluate",
+			AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", "")},
+		"scheme": {Name: "Risk", URL: "http://risk.example.com/evaluate",
+			AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", "")},
+		"username": {Name: "Risk", URL: storedURL,
+			AuthProperties: s.httpAuth(outboundauth.TypeBasic, "other-user", "")},
+		"type": {Name: "Risk", URL: storedURL, AuthProperties: s.httpAuth(outboundauth.TypeNone, "", "")},
+	}
+	for name, request := range cases {
+		s.Run(name, func() {
+			authConfig, svcErr := s.updateHTTPWithStored(storedURL, request)
+			s.Require().Nil(svcErr)
+			s.Empty(authConfig.Get(outboundauth.FieldBasicPassword))
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestUpdateHTTPUsesASuppliedPassword() {
+	authConfig, svcErr := s.updateHTTPWithStored("https://risk.example.com/evaluate", httpconnection.HTTPConnection{
+		Name: "Risk", URL: "https://attacker.example.net/evaluate",
+		AuthProperties: s.httpAuth(outboundauth.TypeBasic, "svc-user", "new-password"),
+	})
+
+	s.Require().Nil(svcErr)
+	s.Equal("new-password", authConfig.Get(outboundauth.FieldBasicPassword))
 }

@@ -17,15 +17,19 @@ import (
 	"github.com/thunder-id/thunderid/internal/application"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/idp"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -91,7 +95,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService),
 	}
@@ -1294,7 +1298,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 
@@ -2855,4 +2859,45 @@ func TestExport_DistinctVariablesDoNotClash(t *testing.T) {
 	if clash != "" {
 		t.Fatalf("expected no clash between distinct variables, got %q", clash)
 	}
+}
+
+func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionPasswordIsAParameter() {
+	authProps, err := outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeBasic,
+		Properties: map[string]string{
+			outboundauth.FieldBasicUsername: "svc-user",
+			outboundauth.FieldBasicPassword: "http-s3cret",
+		}})
+	suite.Require().NoError(err)
+	stored := &httpconnection.HTTPConnection{
+		ID: "http-1", Name: "Risk Engine", URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers:        []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		AuthProperties: authProps,
+	}
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(suite.T())
+	httpService.EXPECT().GetHTTPConnection(mock.Anything, "http-1").Return(stored, nil)
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, "http-1").
+		Return(nil, &idp.ErrorIDPNotFound)
+	suite.mockNotificationService.EXPECT().GetSender(mock.Anything, "http-1").
+		Return(nil, &notification.ErrorSenderNotFound)
+	exportService := newExportService([]declarativeresource.ResourceExporter{
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil,
+			httpService),
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+
+	result, svcErr := exportService.ExportResources(context.Background(), &ExportRequest{
+		Connections: []string{"http-1"}, Options: &ExportOptions{Format: "yaml"},
+	})
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(result.Files, 1)
+	content := result.Files[0].Content
+	assert.Equal(suite.T(), "Risk_Engine.yaml", result.Files[0].FileName)
+	assert.NotContains(suite.T(), content, "http-s3cret")
+	assert.Contains(suite.T(), content, "type: http")
+	assert.Contains(suite.T(), content, "url: https://risk.example.com/evaluate")
+	assert.Contains(suite.T(), content, "timeoutMs: 5000")
+	assert.Contains(suite.T(), content, "username: svc-user")
+	assert.Contains(suite.T(), content, "password: {{.CONNECTION_RISK_ENGINE_PASSWORD}}")
+	suite.Require().NotNil(result.EnvFile)
+	assert.Contains(suite.T(), result.EnvFile.Content, "CONNECTION_RISK_ENGINE_PASSWORD=http-s3cret")
 }

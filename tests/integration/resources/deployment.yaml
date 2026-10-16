@@ -67,6 +67,9 @@ server_config:
 authzen_pdp:
   store: composite
 
+http_connection:
+  store: composite
+
 passkey:
   allowed_origins:
     - "https://localhost:8095"

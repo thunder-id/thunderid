@@ -50,7 +50,7 @@ func (suite *ImportExportErrorSuite) TestImportUserTypeWithoutUpsert() {
 	id := newImportUUID(suite)
 	handle := "import-ut-no-upsert-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	defer suite.deleteImportedUserType(id)
-	options := importOptions{Upsert: false, ContinueOnError: true, Target: "runtime"}
+	options := testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"}
 
 	result := suite.importUserType(userTypeDocument(id, handle, "Import Without Upsert"), false, options)
 	suite.Require().Equal("success", result.Status, "message: %s", result.Message)
@@ -102,13 +102,13 @@ func (suite *ImportExportErrorSuite) TestImportUserTypeInvalidDocuments() {
 }
 
 // importUserType imports a single user type document and returns its outcome.
-func (suite *ImportExportErrorSuite) importUserType(content string, dryRun bool, options importOptions) importItem {
-	payload := suite.importBody(importRequest{Content: content, DryRun: dryRun, Options: options})
+func (suite *ImportExportErrorSuite) importUserType(content string, dryRun bool, options testutils.ImportOptions) testutils.ImportItem {
+	payload := suite.importBody(testutils.ImportRequest{Content: content, DryRun: dryRun, Options: options})
 
 	status, body := suite.postJSON(suite.client, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
-	var resp importResponse
+	var resp testutils.ImportResponse
 	suite.Require().NoError(json.Unmarshal(body, &resp))
 	suite.Require().Len(resp.Results, 1, "body: %s", body)
 	return resp.Results[0]

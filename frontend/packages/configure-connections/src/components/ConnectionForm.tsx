@@ -181,7 +181,9 @@ export default function ConnectionForm({
               id={`connection-field-${field.name}`}
               label={label}
               value={values[field.name] ?? ''}
+              format={field.keyValueFormat}
               onChange={(next) => setField(field.name, next)}
+              error={fieldError(field)}
               hint={field.hintKey ? renderHint(field.hintKey) : undefined}
               namePlaceholder={field.placeholder}
               addLabel={field.addLabelKey ? t(field.addLabelKey) : t('form.keyValue.add')}

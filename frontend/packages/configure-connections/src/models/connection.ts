@@ -16,6 +16,7 @@ export const ConnectionTypes = {
   SMS_GATEWAY: 'sms-gateway',
   AUTHZEN_PDP: 'authzen-pdp',
   SMTP: 'email-smtp',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -45,6 +46,7 @@ export const ConnectionInstanceCategories = {
   SMS_PROVIDER: 'sms-provider',
   AUTHORIZATION_PDP: 'authorization-pdp',
   EMAIL_PROVIDER: 'email-provider',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -374,6 +376,27 @@ export interface AuthZENPDPConnectionRequest {
   subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
 }
 
+/**
+ * Request payload for an HTTP endpoint connection, a service that flow steps call.
+ */
+export interface HTTPConnectionRequest {
+  name: string;
+  description?: string;
+  /** Must be https when authentication is set. */
+  url: string;
+  /** 1 to 20000. Omit for the 10000 default. */
+  timeoutMs?: number;
+  /** Plain headers sent with every request. A PUT replaces the whole list. */
+  headers?: HTTPHeader[];
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthConfig;
+}
+
+export interface HTTPHeader {
+  name: string;
+  value: string;
+}
+
 export interface APIKeyHeader {
   name: string;
   value: string;
@@ -412,7 +435,8 @@ export type ConnectionRequest =
   | VonageConnectionRequest
   | SMSGatewayConnectionRequest
   | AuthZENPDPConnectionRequest
-  | SMTPConnectionRequest;
+  | SMTPConnectionRequest
+  | HTTPConnectionRequest;
 
 /**
  * Vendor response — secrets are never returned. A superset carrying every vendor's
@@ -446,9 +470,11 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   fromAddress?: string;
   fromName?: string;
   tls?: string;
+  /** HTTP endpoint plain headers. The URL and timeout share the fields above. */
+  headers?: HTTPHeader[] | null;
   /**
-   * Outbound authentication. An AuthZEN PDP returns its scheme-based shape, while SMTP and the
-   * SMS gateway return the generic type and properties shape. Each vendor reads only its own fields.
+   * Outbound authentication. An AuthZEN PDP returns its scheme-based shape, while SMTP, the
+   * SMS gateway and an HTTP endpoint return the generic type and properties shape. Each vendor reads only its own fields.
    */
   authentication?: Partial<OutboundAuthenticationResponse> & Partial<OutboundAuthConfig>;
 }
@@ -481,6 +507,8 @@ export interface ConnectionVendorMeta {
   supportsAttributeMapping?: boolean;
   /** Whether this connection exposes outbound service authentication settings. */
   supportsAuthentication?: boolean;
+  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  reentersCredentialsOnOriginChange?: boolean;
   /** Whether this connection exposes subject attribute mappings for authorization requests. */
   supportsSubjectMapping?: boolean;
   /** Copy variant for the General tab settings card. */

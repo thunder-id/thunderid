@@ -19,6 +19,7 @@ import (
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -88,6 +89,16 @@ type authZENPDPAdapter interface {
 		request authzenpdp.ConnectionRequest,
 	) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
 	DeleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
+// httpConnectionAdapter defines the HTTP connection operations required by the importer.
+type httpConnectionAdapter interface {
+	CreateHTTPConnection(ctx context.Context, connection httpconnection.HTTPConnection) (
+		*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	GetHTTPConnection(ctx context.Context, id string) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	UpdateHTTPConnection(ctx context.Context, id string, connection httpconnection.HTTPConnection) (
+		*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	DeleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type flowAdapter interface {
@@ -292,6 +303,7 @@ type importService struct {
 	serverConfigService            serverConfigAdapter
 	gatewayService                 gatewayAdapter
 	notifTemplateService           notificationTemplateAdapter
+	httpConnectionService          httpConnectionAdapter
 	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
@@ -319,6 +331,7 @@ func newImportService(
 	serverConfigService serverConfigAdapter,
 	gatewayService gatewayAdapter,
 	notifTemplateService notificationTemplateAdapter,
+	httpConnectionService httpConnectionAdapter,
 	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
 	var authZENPDPService authZENPDPAdapter
@@ -347,6 +360,7 @@ func newImportService(
 		serverConfigService:            serverConfigService,
 		gatewayService:                 gatewayService,
 		notifTemplateService:           notifTemplateService,
+		httpConnectionService:          httpConnectionService,
 	}
 }
 
@@ -582,23 +596,12 @@ func (s *importService) importDocument(
 	}
 }
 
-// importConnection imports a "connection" document, dispatching to the identity-provider or
-// notification-sender adapter based on which DTO connection.ParseConnectionFromNode resolves.
+// importConnection imports a "connection" document, dispatching to the adapter of the service that
+// holds the DTO connection.ParseConnectionFromNode resolves.
 func (s *importService) importConnection(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
 ) ImportItemOutcome {
-	if authZENPDP, err := connection.ParseAuthZENPDPConnectionFromNode(doc.Node); err != nil {
-		return ImportItemOutcome{
-			ResourceType: resourceTypeConnection,
-			Status:       statusFailed,
-			Code:         ErrorInvalidYAMLContent.Code,
-			Message:      fmt.Sprintf("failed to decode connection document: %v", err),
-		}
-	} else if authZENPDP != nil {
-		return s.importConnectionAuthZENPDP(ctx, authZENPDP, options, dryRun)
-	}
-
-	idpDTO, senderDTO, err := connection.ParseConnectionFromNode(doc.Node)
+	resource, err := connection.ParseConnectionFromNode(doc.Node)
 	if err != nil {
 		return ImportItemOutcome{
 			ResourceType: resourceTypeConnection,
@@ -608,10 +611,23 @@ func (s *importService) importConnection(
 		}
 	}
 
-	if idpDTO != nil {
-		return s.importConnectionIDP(ctx, idpDTO, options, dryRun)
+	switch dto := resource.(type) {
+	case *authzenpdp.AuthZENPDPConnection:
+		return s.importConnectionAuthZENPDP(ctx, dto, options, dryRun)
+	case *httpconnection.HTTPConnection:
+		return s.importConnectionHTTP(ctx, dto, options, dryRun)
+	case *providers.IDPDTO:
+		return s.importConnectionIDP(ctx, dto, options, dryRun)
+	case *ncommon.NotificationSenderDTO:
+		return s.importConnectionSender(ctx, dto, options, dryRun)
+	default:
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			Status:       statusFailed,
+			Code:         ErrorInvalidImportRequest.Code,
+			Message:      "unsupported connection document",
+		}
 	}
-	return s.importConnectionSender(ctx, senderDTO, options, dryRun)
 }
 
 // importConnectionAuthZENPDP creates or updates an AuthZEN PDP connection from an import document.
@@ -646,6 +662,49 @@ func (s *importService) importConnectionAuthZENPDP(
 		return authZENPDPImportServiceError(req, operationCreate, svcErr)
 	}
 	return successOutcome(resourceTypeConnection, created.ID, created.Name, operationCreate)
+}
+
+// importConnectionHTTP creates or updates an HTTP connection from an import document. An update keeps
+// a stored secret the document omits under the same rule the connection API applies.
+func (s *importService) importConnectionHTTP(
+	ctx context.Context, req *httpconnection.HTTPConnection, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.httpConnectionService == nil {
+		return unsupportedAdapterOutcome(resourceTypeConnection, "HTTP connection")
+	}
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, svcErr := s.httpConnectionService.GetHTTPConnection(ctx, req.ID)
+		if svcErr == nil {
+			req.AuthProperties = connection.KeepStoredHTTPSecrets(*req, *existing)
+			if dryRun {
+				return dryRunHTTPConnectionOutcome(req, operationUpdate)
+			}
+			updated, svcErr := s.httpConnectionService.UpdateHTTPConnection(ctx, req.ID, *req)
+			if svcErr != nil {
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+			}
+			return successOutcome(resourceTypeConnection, updated.ID, updated.Name, operationUpdate)
+		}
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+		}
+	}
+	if dryRun {
+		return dryRunHTTPConnectionOutcome(req, operationCreate)
+	}
+	created, svcErr := s.httpConnectionService.CreateHTTPConnection(ctx, *req)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeConnection, created.ID, created.Name, operationCreate)
+}
+
+// dryRunHTTPConnectionOutcome reports the outcome the service's validation gives the connection.
+func dryRunHTTPConnectionOutcome(req *httpconnection.HTTPConnection, operation string) ImportItemOutcome {
+	if svcErr := httpconnection.ValidateHTTPConnection(req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operation, svcErr)
+	}
+	return successOutcome(resourceTypeConnection, req.ID, req.Name, operation)
 }
 
 // authZENPDPConnectionRequest converts an imported connection into the service request shape.

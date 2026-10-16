@@ -79,7 +79,10 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
 
   const trimmedName: string = connectionName.trim();
   const values: ConnectionFormValues = {...emptyValues, ...editedValues, name: trimmedName};
-  const formValid: boolean = Object.keys(validateConnectionForm(values, createFields, 'create')).length === 0;
+  const formErrors: Record<string, string> = validateConnectionForm(values, createFields, 'create');
+  const formValid: boolean = Object.keys(formErrors).length === 0;
+  // The name is entered on its own step, so a format rule on it is reported there.
+  const nameFormatError: string | null = trimmedName && formErrors['name'] ? t(formErrors['name']) : null;
 
   const close = (): void => {
     void navigate(routes.connections.list());
@@ -197,7 +200,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
           </Button>
           <Button
             variant="contained"
-            disabled={!trimmedName}
+            disabled={!trimmedName || Boolean(nameFormatError)}
             onClick={() => setStep(Step.CONFIGURE)}
             data-testid="wizard-continue"
           >
@@ -254,7 +257,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
             setNameError(null);
             setGeneralError(null);
           }}
-          nameError={nameError}
+          nameError={nameError ?? nameFormatError}
         />
       )}
 

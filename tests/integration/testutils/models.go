@@ -547,3 +547,50 @@ type VCHTTPResult struct {
 	StatusCode int
 	Body       []byte
 }
+
+// ImportRequest is the body of POST /import.
+type ImportRequest struct {
+	Content   string                 `json:"content"`
+	DryRun    bool                   `json:"dryRun,omitempty"`
+	Options   ImportOptions          `json:"options"`
+	Vars      map[string]interface{} `json:"variables,omitempty"`
+	Deletions []ResourceDeletion     `json:"deletions,omitempty"`
+}
+
+// ResourceDeletion names a resource an import should remove.
+type ResourceDeletion struct {
+	ResourceType string `json:"resourceType"`
+	ID           string `json:"id"`
+}
+
+// ImportOptions are the options of an import request.
+type ImportOptions struct {
+	Upsert          bool   `json:"upsert"`
+	ContinueOnError bool   `json:"continueOnError"`
+	Target          string `json:"target"`
+}
+
+// ImportResponse is the body POST /import returns.
+type ImportResponse struct {
+	Summary ImportSummary `json:"summary"`
+	Results []ImportItem  `json:"results"`
+}
+
+// ImportSummary counts the outcomes of an import.
+type ImportSummary struct {
+	TotalDocuments int `json:"totalDocuments"`
+	Imported       int `json:"imported"`
+	Deleted        int `json:"deleted,omitempty"`
+	Failed         int `json:"failed"`
+}
+
+// ImportItem is the outcome of one imported document or deletion.
+type ImportItem struct {
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId,omitempty"`
+	ResourceName string `json:"resourceName,omitempty"`
+	Operation    string `json:"operation,omitempty"`
+	Status       string `json:"status"`
+	Code         string `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
+}

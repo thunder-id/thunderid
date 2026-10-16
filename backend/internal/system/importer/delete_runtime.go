@@ -222,7 +222,8 @@ func (s *importService) entityTypeDeleter(resourceType string) deleteFunc {
 
 // hasConnectionAdapter reports whether any of the services a connection can be held by is configured.
 func (s *importService) hasConnectionAdapter() bool {
-	return s.idpService != nil || s.senderService != nil || s.authZENPDPService != nil
+	return s.idpService != nil || s.senderService != nil || s.authZENPDPService != nil ||
+		s.httpConnectionService != nil
 }
 
 // deleteConnection removes a connection from whichever service holds it, as importConnection writes
@@ -265,6 +266,17 @@ func (s *importService) deleteConnection(ctx context.Context, id string) *tidcom
 		if pdpConnection != nil {
 			return s.authZENPDPService.DeleteAuthZENPDPConnection(ctx, id)
 		}
+	}
+
+	if s.httpConnectionService != nil {
+		_, svcErr := s.httpConnectionService.GetHTTPConnection(ctx, id)
+		if svcErr == nil {
+			return s.httpConnectionService.DeleteHTTPConnection(ctx, id)
+		}
+		if !isNotFoundServiceError(svcErr) {
+			return svcErr
+		}
+		absent = svcErr
 	}
 
 	return absent

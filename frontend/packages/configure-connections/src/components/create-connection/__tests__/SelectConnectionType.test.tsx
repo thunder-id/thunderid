@@ -47,6 +47,13 @@ describe('SelectConnectionType', () => {
     expect(onSelect).toHaveBeenCalledWith('email-smtp');
   });
 
+  it('selects the HTTP Endpoint type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    expect(screen.getByText('HTTP Endpoint')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('connection-type-option-http'));
+    expect(onSelect).toHaveBeenCalledWith('http');
+  });
+
   it('selects the Trusted Token Issuer type when clicked', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('connection-type-option-trusted-idp'));

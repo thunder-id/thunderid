@@ -5,13 +5,16 @@ package connection
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -21,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
@@ -43,7 +47,7 @@ func (s *DeclarativeResourceTestSuite) SetupTest() {
 	s.T().Cleanup(config.ResetServerRuntime)
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
-	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif, nil)
+	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif, nil, nil)
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetResourceType() {
@@ -235,10 +239,10 @@ redirectUri: https://app/cb
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Require().NotNil(idpDTO)
-	s.Nil(senderDTO)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
 	s.Equal("corp-google", idpDTO.ID)
 	s.Equal(providers.IDPTypeGoogle, idpDTO.Type)
 }
@@ -257,10 +261,10 @@ tokenExchangeEnabled: true
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Require().NotNil(idpDTO)
-	s.Nil(senderDTO)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
 
 	values, err := propertyValues(idpDTO.Properties)
 	s.Require().NoError(err)
@@ -279,10 +283,10 @@ httpMethod: POST
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Nil(idpDTO)
-	s.Require().NotNil(senderDTO)
+	senderDTO, ok := resource.(*ncommon.NotificationSenderDTO)
+	s.Require().True(ok)
 	s.Equal("prod-sms", senderDTO.ID)
 	s.Equal(ncommon.NotificationProviderTypeCustom, senderDTO.Provider)
 }
@@ -468,7 +472,7 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsExcludesDeclarativeA
 		{ID: "declarative", Name: "Declarative PDP", IsReadOnly: true},
 	}}
 	exporter := newConnectionExporter(s.mockIDP, s.mockNotif,
-		pdpService)
+		pdpService, nil)
 
 	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
 	s.Require().Nil(svcErr)
@@ -698,10 +702,10 @@ authentication:
 `
 	var node yaml.Node
 	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
-	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	resource, err := ParseConnectionFromNode(node.Content[0])
 	s.Require().NoError(err)
-	s.Nil(idpDTO)
-	s.Require().NotNil(senderDTO)
+	senderDTO, ok := resource.(*ncommon.NotificationSenderDTO)
+	s.Require().True(ok)
 	s.Equal("prod-smtp", senderDTO.ID)
 	s.Equal(ncommon.NotificationSenderTypeEmail, senderDTO.Type)
 	s.Equal(ncommon.NotificationProviderTypeSMTP, senderDTO.Provider)
@@ -711,7 +715,7 @@ authentication:
 // connection must externalize, so it never lands in the rendered YAML. The path is derived from
 // the registered method, which is what keeps a new method from needing a change here.
 func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthenticationSecrets() {
-	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
 
 	basicAuth := func(properties map[string]string) *outboundauth.Authentication {
 		return &outboundauth.Authentication{
@@ -740,4 +744,206 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthentic
 	// Nor when the connection authenticates with nothing at all.
 	rules = exporter.GetResourceRulesForResource(&connectionExportModel{Type: emailSMTPVendorName})
 	s.Empty(rules.SecretVariables)
+}
+
+// httpConnectionWithBasicAuth builds an HTTP connection through httpToDTO, so its password is encrypted.
+func (s *DeclarativeResourceTestSuite) httpConnectionWithBasicAuth() httpconnection.HTTPConnection {
+	dto, err := httpToDTO(httpConnectionRequest{
+		Name: "Risk Engine", Description: "Risk", URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "svc-user",
+				outboundauth.FieldBasicPassword: "s3cret",
+			}},
+	})
+	s.Require().NoError(err)
+	dto.ID = "http-1"
+	return *dto
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelFromHTTPUnmasksSecret() {
+	connection := s.httpConnectionWithBasicAuth()
+	s.Require().NotContains(fmt.Sprint(connection.AuthProperties), "s3cret", "the stored password is encrypted")
+
+	model, err := connectionModelFromHTTP(connection)
+
+	s.Require().NoError(err)
+	s.Equal(connectionExportModel{
+		ID: "http-1", Type: httpVendorName, Name: "Risk Engine", Description: "Risk",
+		URL: "https://risk.example.com/evaluate", TimeoutMS: 5000,
+		Headers: []httpconnection.Header{{Name: "X-Tenant", Value: "acme"}},
+		Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "svc-user",
+				outboundauth.FieldBasicPassword: "s3cret",
+			}},
+	}, model)
+	rules := s.exporter.GetResourceRulesForResource(&model)
+	s.Equal([]string{"Authentication.Properties.password"}, rules.SecretVariables)
+}
+
+func (s *DeclarativeResourceTestSuite) TestHTTPConnectionDocumentRoundTrips() {
+	doc := `
+id: http-1
+type: http
+name: Risk Engine
+url: https://risk.example.com/evaluate
+timeoutMs: 5000
+headers:
+  - name: X-Tenant
+    value: acme
+authentication:
+  type: basic
+  properties:
+    username: svc-user
+    password: s3cret
+`
+	parsed, err := parseToConnectionDTOWrapper([]byte(doc))
+	s.Require().NoError(err)
+	connection, ok := parsed.(*httpconnection.HTTPConnection)
+	s.Require().True(ok)
+	s.Equal("http-1", connectionResourceID(connection))
+	s.Equal("https://risk.example.com/evaluate", connection.URL)
+	s.Equal(5000, connection.TimeoutMS)
+	s.Equal([]httpconnection.Header{{Name: "X-Tenant", Value: "acme"}}, connection.Headers)
+	s.NotContains(fmt.Sprint(connection.AuthProperties), "s3cret")
+	authConfig, err := outboundauth.FromProperties(connection.AuthProperties)
+	s.Require().NoError(err)
+	s.Equal("s3cret", authConfig.Get(outboundauth.FieldBasicPassword))
+
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
+	fromNode, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	nodeConnection, ok := fromNode.(*httpconnection.HTTPConnection)
+	s.Require().True(ok)
+	s.Equal("http-1", nodeConnection.ID)
+
+	var other yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte("id: h\ntype: http\nname: H\nurl: https://h.example.com\n"+
+		"authentication:\n  type: kerberos\n"), &other))
+	_, err = ParseConnectionFromNode(other.Content[0])
+	s.Error(err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsListsMutableHTTPConnections() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).Return([]httpconnection.HTTPConnection{
+		{ID: "mutable", Name: "Mutable"},
+		{ID: "declarative", Name: "Declarative", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"mutable"}, ids)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToHTTP() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).
+		Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).
+		Return(nil, &notification.ErrorSenderNotFound)
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	connection := s.httpConnectionWithBasicAuth()
+	httpService.On("GetHTTPConnection", mock.Anything, "http-1").
+		Return(&connection, (*tidcommon.ServiceError)(nil))
+	httpService.On("GetHTTPConnection", mock.Anything, "missing").
+		Return(nil, &httpconnection.ErrorNotFound)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	resource, name, svcErr := exporter.GetResourceByID(context.Background(), "http-1")
+	s.Require().Nil(svcErr)
+	s.Equal("Risk Engine", name)
+	s.Equal(httpVendorName, resource.(*connectionExportModel).Type)
+
+	_, _, svcErr = exporter.GetResourceByID(context.Background(), "missing")
+	s.Require().NotNil(svcErr)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsReportsAnHTTPListFailure() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).
+		Return(nil, &httpconnection.ErrorResultLimitExceededInCompositeMode)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
+
+	s.Nil(ids)
+	s.Require().NotNil(svcErr)
+	s.Equal(httpconnection.ErrorResultLimitExceededInCompositeMode.Code, svcErr.Code)
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetResourceByIDReportsHTTPFailures() {
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).
+		Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).
+		Return(nil, &notification.ErrorSenderNotFound)
+	undecryptable, err := cmodels.DeserializePropertiesFromJSON(
+		`[{"name":"authentication_type","value":"basic"},` +
+			`{"name":"authentication_password","value":"not-a-ciphertext","isSecret":true}]`)
+	s.Require().NoError(err)
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("GetHTTPConnection", mock.Anything, "unreadable").
+		Return(nil, &tidcommon.InternalServerError)
+	httpService.On("GetHTTPConnection", mock.Anything, "undecryptable").
+		Return(&httpconnection.HTTPConnection{ID: "undecryptable", Name: "U", AuthProperties: undecryptable},
+			(*tidcommon.ServiceError)(nil))
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)
+
+	for _, id := range []string{"unreadable", "undecryptable"} {
+		resource, _, svcErr := exporter.GetResourceByID(context.Background(), id)
+		s.Nil(resource, id)
+		s.Require().NotNil(svcErr, id)
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code, id)
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidatesHTTPConnections() {
+	valid := &httpconnection.HTTPConnection{ID: "h", Name: "H", URL: "HTTPS://H.example.com:443/x"}
+	s.Require().NoError(validateConnectionDTOWrapper(valid, nil))
+	s.Equal("https://h.example.com/x", valid.URL)
+	s.NotZero(valid.TimeoutMS, "the default timeout is applied")
+
+	credentialOverHTTP := s.httpConnectionWithBasicAuth()
+	credentialOverHTTP.URL = "http://risk.example.com/evaluate"
+	s.Error(validateConnectionDTOWrapper(&credentialOverHTTP, nil))
+	s.Error(validateConnectionDTOWrapper(&httpconnection.HTTPConnection{ID: "h", Name: "H",
+		URL:     "https://h.example.com",
+		Headers: []httpconnection.Header{{Name: "authorization", Value: "Basic x"}}}, nil))
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreLoadsHTTPByStoreMode() {
+	for mode, loads := range map[string]bool{"mutable": false, "composite": true, "declarative": true} {
+		s.Run(mode, func() {
+			config.ResetServerRuntime()
+			s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+				HTTPConnection: config.HTTPConnectionConfig{Store: mode},
+			}))
+			s.T().Cleanup(config.ResetServerRuntime)
+			store := &connectionDeclarativeStore{
+				httpConnectionStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeHTTPConnection),
+			}
+
+			s.Require().NoError(store.Create("http-1", &httpconnection.HTTPConnection{Name: "H"}))
+
+			got, err := store.httpConnectionStore.Get("http-1")
+			if !loads {
+				s.Error(err)
+				return
+			}
+			s.Require().NoError(err)
+			s.Equal("http-1", got.(*httpconnection.HTTPConnection).ID)
+		})
+	}
 }

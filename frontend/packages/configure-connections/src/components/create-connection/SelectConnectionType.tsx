@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Mail, MessagesSquare, ServerCog, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Mail, MessagesSquare, ServerCog, ShieldCheck, Webhook} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import SelectableConnectionCard from './SelectableConnectionCard';
@@ -102,6 +102,17 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
       tagKey: 'wizard.type.smtp.tag',
       tagDefault: 'Message sender · Email',
       icon: <Mail size={28} />,
+      comingSoon: false,
+    },
+    {
+      type: ConnectionTypes.HTTP,
+      labelKey: 'wizard.type.http.label',
+      labelDefault: 'HTTP Endpoint',
+      descriptionKey: 'wizard.type.http.description',
+      descriptionDefault: 'Call your own HTTP service from a flow, such as a risk engine or a custom check.',
+      tagKey: 'wizard.type.http.tag',
+      tagDefault: 'Extension · HTTP',
+      icon: <Webhook size={28} />,
       comingSoon: false,
     },
   ];

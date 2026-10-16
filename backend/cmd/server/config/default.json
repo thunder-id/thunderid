@@ -320,6 +320,9 @@
   "identity_provider": {
     "store": "composite"
   },
+  "http_connection": {
+    "store": "composite"
+  },
   "application": {
     "store": "composite"
   },

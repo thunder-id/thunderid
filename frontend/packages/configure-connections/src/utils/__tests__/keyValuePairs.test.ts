@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it} from 'vitest';
-import {parseKeyValuePairs, sanitizeKeyValuePart, serializeKeyValuePairs} from '../keyValuePairs';
+import {
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
+  parseKeyValuePairs,
+  sanitizeKeyValuePart,
+  serializeKeyValuePairs,
+} from '../keyValuePairs';
 
 describe('parseKeyValuePairs', () => {
   it('splits comma-separated pairs and trims both parts', () => {
@@ -71,5 +77,26 @@ describe('sanitizeKeyValuePart', () => {
   it('strips colons from names only', () => {
     expect(sanitizeKeyValuePart('X-A:B', 'name')).toBe('X-AB');
     expect(sanitizeKeyValuePart('Bearer a:b', 'value')).toBe('Bearer a:b');
+  });
+});
+
+describe('pairs format', () => {
+  it('round-trips values that contain commas and colons', () => {
+    const pairs = [
+      {name: 'Accept', value: 'application/json, text/plain'},
+      {name: 'X-List', value: 'a, b: c'},
+    ];
+
+    expect(decodeKeyValuePairs(encodeKeyValuePairs(pairs, 'pairs'), 'pairs')).toEqual(pairs);
+  });
+
+  it('drops half-typed rows and encodes no rows as empty', () => {
+    expect(encodeKeyValuePairs([{name: 'X-Tenant', value: ''}], 'pairs')).toBe('');
+    expect(decodeKeyValuePairs('', 'pairs')).toEqual([]);
+  });
+
+  it('keeps commas in values', () => {
+    expect(sanitizeKeyValuePart('a, b', 'value', 'pairs')).toBe('a, b');
+    expect(sanitizeKeyValuePart('X-A,B:C', 'name', 'pairs')).toBe('X-ABC');
   });
 });

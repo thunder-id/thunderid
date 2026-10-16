@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {parseKeyValuePairs} from './keyValuePairs';
+import {decodeKeyValuePairs, encodeKeyValuePairs, type KeyValuePair, parseKeyValuePairs} from './keyValuePairs';
 import type {ConnectionFieldDef} from '../config/connectionFormFields';
 import {AuthenticationMethods, type AuthenticationMethod} from '../models/authentication-methods';
 import type {
@@ -152,6 +152,10 @@ export function responseToFormValues(
       continue;
     }
     const raw: unknown = valueAtPath(response, field.responsePath ?? field.name);
+    if (field.kind === 'key-value' && field.keyValueFormat === 'pairs') {
+      values[field.name] = Array.isArray(raw) ? encodeKeyValuePairs(raw as KeyValuePair[], 'pairs') : '';
+      continue;
+    }
     if (field.kind === 'switch') {
       values[field.name] = raw === true ? 'true' : 'false';
       continue;
@@ -188,6 +192,21 @@ export function outboundAuthenticationFromFormValues(values: ConnectionFormValue
     return {scheme, apiKey: {headers: parseKeyValuePairs(values['httpHeaders'] ?? '')}};
   }
   return {scheme: AuthenticationMethods.NONE};
+}
+
+/**
+ * Whether two URLs differ in scheme, host or port, with default ports normalized. A URL that does
+ * not parse counts as changed unless the text is identical.
+ */
+export function urlOriginChanged(previous: string, next: string): boolean {
+  if (previous === next) {
+    return false;
+  }
+  try {
+    return new URL(previous).origin !== new URL(next).origin;
+  } catch {
+    return true;
+  }
 }
 
 export interface ToRequestOptions {
@@ -239,6 +258,15 @@ export function formValuesToRequest(
       continue;
     }
 
+    // Sent on every edit, even when empty, so removing the last pair clears the stored list.
+    if (field.kind === 'key-value' && field.keyValueFormat === 'pairs') {
+      const pairs: KeyValuePair[] = decodeKeyValuePairs(raw, 'pairs');
+      if (options.mode === 'edit' || pairs.length > 0) {
+        payload[field.name] = pairs;
+      }
+      continue;
+    }
+
     // Numeric API fields must not be sent as strings.
     if (field.kind === 'number') {
       const parsed = Number(raw);
@@ -284,13 +312,37 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
-function isSecureAuthenticatedEndpoint(value: string): boolean {
+function isSecureAuthenticatedEndpoint(value: string, allowLoopbackHttp: boolean): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' || (url.protocol === 'http:' && isLoopbackHost(url.hostname));
+    return url.protocol === 'https:' || (allowLoopbackHttp && url.protocol === 'http:' && isLoopbackHost(url.hostname));
   } catch {
     return false;
   }
+}
+
+/** Error key for a URL that must be https because authentication is set. */
+export const HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR = 'connections:validation.httpsRequiredWithAuthentication';
+
+function hasUserInfo(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.username !== '' || url.password !== '';
+  } catch {
+    return false;
+  }
+}
+
+function keyValueNameError(field: ConnectionFieldDef, raw: string): string | undefined {
+  const names: string[] = decodeKeyValuePairs(raw, field.keyValueFormat).map((pair) => pair.name.toLowerCase());
+  const reserved = new Set<string>((field.reservedNames ?? []).map((name) => name.toLowerCase()));
+  if (names.some((name) => reserved.has(name))) {
+    return 'connections:validation.httpEndpointHeaderReserved';
+  }
+  if (field.uniqueNames && new Set(names).size !== names.length) {
+    return 'connections:validation.httpEndpointHeaderDuplicate';
+  }
+  return undefined;
 }
 
 /**
@@ -338,15 +390,31 @@ export function validateConnectionForm(
       continue;
     }
 
+    if (field.kind === 'url' && field.rejectsUserInfo && hasUserInfo(raw)) {
+      errors[field.name] = 'connections:validation.httpEndpointUrlUserInfo';
+      continue;
+    }
+
+    if (field.kind === 'key-value') {
+      const nameError: string | undefined = keyValueNameError(field, raw);
+      if (nameError) {
+        errors[field.name] = nameError;
+        continue;
+      }
+    }
+
     const authenticationConfigured =
-      values['authenticationScheme'] !== undefined && values['authenticationScheme'] !== AuthenticationMethods.NONE;
+      (values['authenticationScheme'] !== undefined && values['authenticationScheme'] !== AuthenticationMethods.NONE) ||
+      ((values[AUTH_TYPE_FIELD] ?? '') !== '' && values[AUTH_TYPE_FIELD] !== AUTH_TYPE_NONE);
     if (
       authenticationConfigured &&
       field.requiresHttpsWhenAuthenticated &&
       raw !== '' &&
-      !isSecureAuthenticatedEndpoint(raw)
+      !isSecureAuthenticatedEndpoint(raw, !field.rejectsLoopbackHttp)
     ) {
-      errors[field.name] = 'connections:validation.authenticatedEndpointHttps';
+      errors[field.name] = field.rejectsLoopbackHttp
+        ? HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR
+        : 'connections:validation.authenticatedEndpointHttps';
       continue;
     }
 

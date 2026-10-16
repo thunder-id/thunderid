@@ -141,7 +141,7 @@ func (s *ServiceTestSuite) TestACapturedSecretIsNamedAsTheExportNamesIt() {
 		Return(s.twilioSender("the-token"), (*tidcommon.ServiceError)(nil))
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "tw-1").
 		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
-	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
 	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
 		export.ValueReferences)
 

@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -29,6 +31,7 @@ type service struct {
 	notificationService notification.NotificationSenderMgtSvcInterface
 	resourceService     resource.ResourceServiceInterface
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
+	httpService         httpconnection.HTTPConnectionServiceInterface
 	valueCapturer       declarativeresource.ValueCapturer
 }
 
@@ -37,12 +40,14 @@ type service struct {
 func newService(idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
-	authZENPDPService authzenpdp.AuthZENPDPServiceInterface) *service {
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+	httpService httpconnection.HTTPConnectionServiceInterface) *service {
 	return &service{
 		idpService:          idpService,
 		notificationService: notificationService,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
+		httpService:         httpService,
 	}
 }
 
@@ -163,6 +168,22 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 				Description: sender.Description,
 				Type:        vendor,
 				Categories:  []connectionCategory{categoryEmailProvider},
+			})
+		}
+	}
+
+	if category == "" || category == categoryHTTP {
+		connections, svcErr := s.listHTTP(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, connection := range connections {
+			instances = append(instances, connectionInstance{
+				ID:          connection.ID,
+				Name:        connection.Name,
+				Description: connection.Description,
+				Type:        httpVendorName,
+				Categories:  []connectionCategory{categoryHTTP},
 			})
 		}
 	}
@@ -407,6 +428,70 @@ func (s *service) deleteAuthZENPDP(ctx context.Context, id string) *tidcommon.Se
 		return &authzenpdp.ErrorHasBlockingDependencies
 	}
 	return s.authZENPDPService.DeleteAuthZENPDPConnection(ctx, id)
+}
+
+// createHTTP validates and stores an HTTP connection.
+func (s *service) createHTTP(ctx context.Context, connection httpconnection.HTTPConnection) (
+	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	created, svcErr := s.httpService.CreateHTTPConnection(ctx, connection)
+	if svcErr == nil {
+		s.captureHTTPValues(ctx, created)
+	}
+	return created, svcErr
+}
+
+// listHTTP returns all HTTP connections.
+func (s *service) listHTTP(ctx context.Context) ([]httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.ListHTTPConnections(ctx)
+}
+
+// getHTTP returns an HTTP connection by ID.
+func (s *service) getHTTP(ctx context.Context, id string) (*httpconnection.HTTPConnection,
+	*tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.GetHTTPConnection(ctx, id)
+}
+
+// updateHTTP preserves any secret the request omits while its credential target is unchanged, then
+// delegates the update.
+func (s *service) updateHTTP(ctx context.Context, id string, connection httpconnection.HTTPConnection) (
+	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	existing, svcErr := s.getHTTP(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	connection.AuthProperties = KeepStoredHTTPSecrets(connection, *existing)
+	updated, svcErr := s.httpService.UpdateHTTPConnection(ctx, id, connection)
+	if svcErr == nil {
+		s.captureHTTPValues(ctx, updated)
+	}
+	return updated, svcErr
+}
+
+// KeepStoredHTTPSecrets returns the authentication properties of an update to an HTTP connection,
+// with each stored secret the update omits carried over while the credential target is unchanged:
+// the authentication type, the username and the URL origin. Pointing a connection at another server
+// needs the secret again.
+func KeepStoredHTTPSecrets(update, existing httpconnection.HTTPConnection) []cmodels.Property {
+	targetUnchanged := credentialTargetUnchanged(update.AuthProperties, existing.AuthProperties, nil) &&
+		httpconnection.SameOrigin(update.URL, existing.URL)
+	return keepStoredSecrets(update.AuthProperties, existing.AuthProperties, targetUnchanged)
+}
+
+// deleteHTTP deletes an HTTP connection by ID.
+func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceError {
+	if s.httpService == nil {
+		return &tidcommon.InternalServerError
+	}
+	return s.httpService.DeleteHTTPConnection(ctx, id)
 }
 
 // usagesByType verifies the instance is of the expected type, then returns the resources that

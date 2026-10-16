@@ -702,11 +702,22 @@ func (c AuthZENPDPConfig) Validate() error {
 	return nil
 }
 
+// HTTPConnectionConfig holds the configuration of HTTP endpoint connections.
+type HTTPConnectionConfig struct {
+	// Store defines the storage mode for HTTP connections.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
 	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
 	Gateway              GatewayConfig                     `yaml:"gateway"               json:"gateway"`
 	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
+	HTTPConnection       HTTPConnectionConfig              `yaml:"http_connection"       json:"http_connection"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
 	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
