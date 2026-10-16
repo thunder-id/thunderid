@@ -526,18 +526,23 @@ type RuntimeStoreNamespace string
 
 // Namespace constants for the runtime store. All namespaces follow the <category>:<type> format.
 const (
-	NamespaceAttributeCache RuntimeStoreNamespace = "attribute:cache"
-	NamespaceFlow           RuntimeStoreNamespace = "flow:state"
-	NamespaceAuthzCode      RuntimeStoreNamespace = "authz:code"
-	NamespaceAuthzReq       RuntimeStoreNamespace = "authz:req"
-	NamespaceLogoutReq      RuntimeStoreNamespace = "logout:req"
-	NamespacePAR            RuntimeStoreNamespace = "par:req"
-	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
-	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
-	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
-	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"
-	NamespaceVPState        RuntimeStoreNamespace = "vp:state"
-	NamespaceWebAuthn       RuntimeStoreNamespace = "webauthn:session"
+	NamespaceAttributeCache     RuntimeStoreNamespace = "attribute:cache"
+	NamespaceFlow               RuntimeStoreNamespace = "flow:state"
+	NamespaceAuthzCode          RuntimeStoreNamespace = "authz:code"
+	NamespaceAuthzReq           RuntimeStoreNamespace = "authz:req"
+	NamespaceLogoutReq          RuntimeStoreNamespace = "logout:req"
+	NamespacePAR                RuntimeStoreNamespace = "par:req"
+	NamespaceCIBA               RuntimeStoreNamespace = "ciba:req"
+	NamespaceJTI                RuntimeStoreNamespace = "jti:token"
+	NamespaceVCINonce           RuntimeStoreNamespace = "vci:nonce"
+	NamespaceVCIOffer           RuntimeStoreNamespace = "vci:offer"
+	NamespaceVPState            RuntimeStoreNamespace = "vp:state"
+	NamespaceWebAuthn           RuntimeStoreNamespace = "webauthn:session"
+	NamespaceConsoleEnded       RuntimeStoreNamespace = "console:ended"
+	NamespaceConsoleSession     RuntimeStoreNamespace = "console:session"
+	NamespaceConsoleRefreshLock RuntimeStoreNamespace = "console:refresh_lock"
+	NamespaceConsoleSessionByID RuntimeStoreNamespace = "console:sid"
+	NamespaceConsoleLogoutToken RuntimeStoreNamespace = "console:logout_token"
 )
 
 // Error constants

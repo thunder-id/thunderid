@@ -61,6 +61,7 @@ func Initialize(
 	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
+	inProcess *syshttp.InProcessTransport,
 ) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
 	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
@@ -118,6 +119,6 @@ func Initialize(
 	}
 	// Sessions also end without the logout endpoint, such as on user deletion, so delivery follows
 	// only its own flag.
-	dispatcher := backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, cfg)
+	dispatcher := backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, cfg, inProcess)
 	return tokenValidator, dispatcher, nil
 }

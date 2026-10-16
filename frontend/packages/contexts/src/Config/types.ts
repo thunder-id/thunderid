@@ -78,6 +78,27 @@ export interface ClientConfig {
   resource_identifier?: string;
 
   /**
+   * Endpoints of the sign-in backend on the ThunderID server. When set, a console served by the
+   * server, or by the dev server through its proxy, signs in through this backend and the browser
+   * holds no token. Omit it to sign in from the browser.
+   * @example {sign_in: "/console/auth/signin", session: "/console/auth/session", ...}
+   */
+  backend?: {
+    sign_in?: string;
+    session?: string;
+    check_session?: string;
+    refresh?: string;
+    sign_out?: string;
+    proxy?: string;
+    /**
+     * Seconds between checks that the session is still live, so a sign-out elsewhere signs the
+     * console out without waiting for its next request. Omit or set 0 to check only when the console
+     * regains focus.
+     */
+    check_session_interval?: number;
+  };
+
+  /**
    * Server hostname or IP address
    * @example "localhost", "api.example.com", "192.168.1.100"
    */

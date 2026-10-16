@@ -11,6 +11,8 @@
 //     follows redirects, optionally with the SSRF dial guard
 //   - NewHTTPClientWithRootCAs(duration, rootCAs) - creates a client with a custom timeout that never follows
 //     redirects and trusts the given certificate authorities
+//   - NewInProcessHTTPClient(duration, transport) - creates a client that serves requests to the server's own
+//     origin with its handler chain, in process, and never follows redirects
 //
 // Usage examples:
 //
@@ -136,6 +138,19 @@ func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool) HTT
 					RootCAs:    rootCAs,
 				},
 			},
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
+}
+
+// NewInProcessHTTPClient creates an HTTPClient that serves every request with the server's own handler
+// chain through transport, and returns a 3xx response instead of following it. Use it only for URLs on
+// the server's own origin.
+func NewInProcessHTTPClient(timeout time.Duration, transport *InProcessTransport) HTTPClientInterface {
+	return &HTTPClient{
+		client: &http.Client{
+			Timeout:       timeout,
+			Transport:     transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}

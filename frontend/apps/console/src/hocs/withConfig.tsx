@@ -32,6 +32,16 @@ export default function withConfig<P extends object>(WrappedComponent: Component
     // them. Point those endpoints back at the resource server URL.
     const resourceServerUrl = config.trusted_issuer ? getServerUrl().replace(/\/+$/, '') : undefined;
 
+    // With `client.backend` configured, the console signs in through the server's backend, so no token
+    // ever reaches the browser. That backend is on the console's own origin when the server serves the
+    // console, and on the dev server through its proxy. A console served from any other origin, or
+    // federated to a trusted issuer, signs in from the browser instead.
+    const backend = config.client?.backend;
+    const signInOnServer =
+      backend !== undefined &&
+      !config.trusted_issuer &&
+      (import.meta.env.DEV || new URL(getServerUrl()).origin === window.location.origin);
+
     // Behavioral defaults derived from app config and runtime heuristics.
     // config.sdk values are deep-merged on top, so operators can override any of these.
     const sdkDefaults: Partial<ThunderIDProviderProps> = {
@@ -47,6 +57,26 @@ export default function withConfig<P extends object>(WrappedComponent: Component
               applications: `${resourceServerUrl}/applications`,
               users: `${resourceServerUrl}/users`,
             },
+          }
+        : {}),
+      ...(signInOnServer && backend
+        ? {
+            // TODO: Drop the cast once the catalog moves to the @thunderid/react release that adds
+            // `endpoints.backend`. Older releases ignore the key and keep signing in from the browser.
+            endpoints: {
+              backend: {
+                signIn: backend.sign_in,
+                session: backend.session,
+                checkSession: backend.check_session,
+                refresh: backend.refresh,
+                signOut: backend.sign_out,
+                proxy: backend.proxy,
+              },
+            } as ThunderIDProviderProps['endpoints'],
+            // Poll the backend so a sign-out elsewhere signs the console out promptly.
+            ...(backend.check_session_interval
+              ? {syncSession: true, checkSessionInterval: backend.check_session_interval}
+              : {}),
           }
         : {}),
       sendIdTokenInLogoutRequest: false,

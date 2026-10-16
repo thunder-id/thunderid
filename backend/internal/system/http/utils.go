@@ -13,6 +13,33 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
+// IsServerOrigin reports whether the URL is on the server's own public origin: the same scheme, host,
+// and port, with the scheme's default port filled in.
+func IsServerOrigin(rawURL string) bool {
+	target, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	server, err := url.Parse(config.GetServerURL(&config.GetServerRuntime().Config.Server))
+	if err != nil {
+		return false
+	}
+	return target.Hostname() != "" && strings.EqualFold(target.Scheme, server.Scheme) &&
+		strings.EqualFold(target.Hostname(), server.Hostname()) && effectivePort(target) == effectivePort(server)
+}
+
+// effectivePort returns the URL's port, or its scheme's default port when the URL names none. Callers
+// compare schemes separately, so any scheme other than http takes the https default.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(u.Scheme, "http") {
+		return "80"
+	}
+	return "443"
+}
+
 // GetTLSVersion returns the appropriate TLS version constant based on the provided
 // configuration. It defaults to TLS 1.3 if the configured version is not recognized
 // or empty.

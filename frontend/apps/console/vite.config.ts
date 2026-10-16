@@ -122,6 +122,21 @@ export default defineConfig(({command}) => ({
   server: {
     port: PORT,
     host: HOST,
+    // Sign-in runs on the server's backend under /console/auth. Proxying it puts the backend on this
+    // dev origin, as it is when the server serves the console. The forwarded host tells the backend
+    // which origin to send the browser back to; it only does so for an origin the console
+    // application registers a redirect URI on.
+    proxy: {
+      [`${BASE_URL}/auth`]: {
+        target: DEV_SERVER_URL && DEV_SERVER_URL.length > 0 ? DEV_SERVER_URL : 'https://localhost:8090',
+        changeOrigin: true,
+        secure: false,
+        headers: {
+          'X-Forwarded-Host': `${HOST}:${PORT}`,
+          'X-Forwarded-Proto': 'https',
+        },
+      },
+    },
   },
   resolve: {
     alias: {

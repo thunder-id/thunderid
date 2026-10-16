@@ -23,6 +23,15 @@
   "gate_client": {
     "path": "/gate"
   },
+  "console_client": {
+    "client_id": "CONSOLE",
+    "scopes": ["openid", "profile", "email", "ou", "system"],
+    "resource": "https://localhost:8090/mcp",
+    "session": {
+      "mode": "stateful",
+      "idle_timeout": 3600
+    }
+  },
   "tls": {
     "min_version": "1.3",
     "cert_file": "config/certs/server.cert",

@@ -79,6 +79,19 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     client_id: 'CONSOLE',
     resource_identifier: 'https://localhost:8090/mcp',
     scopes: ['openid', 'profile', 'email', 'ou', 'system'],
+    // Sign-in backend on the ThunderID server. The console signs in through it, so no token reaches
+    // the browser. Remove this block to sign in from the browser instead.
+    backend: {
+      sign_in: '/console/auth/signin',
+      session: '/console/auth/session',
+      check_session: '/console/auth/checksession',
+      refresh: '/console/auth/refresh',
+      sign_out: '/console/auth/signout',
+      proxy: '/console/auth/proxy',
+      // Seconds between checks that the session is still live, so signing out of another app signs
+      // the console out too. It is also checked whenever the console regains focus.
+      check_session_interval: 30,
+    },
   },
   // Defaults to the origin this app is served from. Add a `server` block with `public_url`
   // (or `hostname`, `port`, `http_only`) to target a different backend.

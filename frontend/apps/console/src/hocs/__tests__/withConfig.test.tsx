@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import withConfig from '../withConfig';
 
 let capturedProviderProps: Record<string, unknown> = {};
@@ -52,6 +52,9 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests,
     sendIdTokenInLogoutRequest,
     discovery,
+    endpoints,
+    syncSession,
+    checkSessionInterval,
     /* eslint-enable react/require-default-props */
   }: {
     children: React.ReactNode;
@@ -65,6 +68,9 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests?: boolean;
     sendIdTokenInLogoutRequest?: boolean;
     discovery?: Record<string, unknown>;
+    endpoints?: Record<string, unknown>;
+    syncSession?: boolean;
+    checkSessionInterval?: number;
   }) => {
     capturedProviderProps = {
       baseUrl,
@@ -77,6 +83,9 @@ vi.mock('@thunderid/react', () => ({
       sendCookiesInRequests,
       sendIdTokenInLogoutRequest,
       discovery,
+      endpoints,
+      syncSession,
+      checkSessionInterval,
     };
     return (
       <div
@@ -107,6 +116,7 @@ describe('withConfig (console)', () => {
     mockGetTrustedIssuerScopes.mockReturnValue([]);
     mockGetResourceIdentifier.mockReturnValue(undefined);
     mockIsTrustedIssuerGenericOidc.mockReturnValue(false);
+    mockGetServerUrl.mockReturnValue('https://server.example.com');
   });
 
   it('renders without crashing', () => {
@@ -354,6 +364,98 @@ describe('withConfig (console)', () => {
 
       render(<WithConfigComponent />);
       expect(capturedProviderProps.sendCookiesInRequests).toBe(false);
+    });
+  });
+
+  // --- sign-in on the server ---
+
+  describe('sign-in on the server', () => {
+    const backend = {
+      sign_in: '/console/auth/signin',
+      session: '/console/auth/session',
+      check_session: '/console/auth/checksession',
+      refresh: '/console/auth/refresh',
+      sign_out: '/console/auth/signout',
+      proxy: '/console/auth/proxy',
+    };
+
+    beforeEach(() => {
+      mockConfig.client = {backend};
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('polls the backend session when an interval is configured', () => {
+      vi.stubEnv('DEV', true);
+      mockConfig.client = {backend: {...backend, check_session_interval: 30}};
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.syncSession).toBe(true);
+      expect(capturedProviderProps.checkSessionInterval).toBe(30);
+    });
+
+    it('does not poll without an interval', () => {
+      vi.stubEnv('DEV', true);
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.syncSession).toBeUndefined();
+    });
+
+    it('signs in from the browser when no backend is configured', () => {
+      vi.stubEnv('DEV', true);
+      mockConfig.client = {};
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toBeUndefined();
+    });
+
+    it('signs in through the server backend when the console is served by the server', () => {
+      vi.stubEnv('DEV', false);
+      mockGetServerUrl.mockReturnValue(window.location.origin);
+      mockGetClientUrl.mockReturnValue(`${window.location.origin}/console`);
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toEqual({
+        backend: {
+          signIn: '/console/auth/signin',
+          session: '/console/auth/session',
+          checkSession: '/console/auth/checksession',
+          refresh: '/console/auth/refresh',
+          signOut: '/console/auth/signout',
+          proxy: '/console/auth/proxy',
+        },
+      });
+    });
+
+    it('signs in through the server backend on the dev server, through its proxy', () => {
+      vi.stubEnv('DEV', true);
+      mockGetServerUrl.mockReturnValue('https://localhost:8090');
+      mockGetClientUrl.mockReturnValue(`${window.location.origin}/console`);
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toHaveProperty('backend.signIn', '/console/auth/signin');
+    });
+
+    it('signs in from the browser when a built console is served from another origin', () => {
+      vi.stubEnv('DEV', false);
+      mockGetServerUrl.mockReturnValue('https://server.example.com');
+      mockGetClientUrl.mockReturnValue('https://client.example.com');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toBeUndefined();
+    });
+
+    it('signs in from the browser with a trusted issuer, even on the dev server', () => {
+      vi.stubEnv('DEV', true);
+      mockConfig.trusted_issuer = {hostname: 'localhost', port: 8090, http_only: true};
+      mockGetServerUrl.mockReturnValue(window.location.origin);
+      mockGetTrustedIssuerUrl.mockReturnValue('http://localhost:8090');
+      mockGetClientUrl.mockReturnValue(`${window.location.origin}/console`);
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).not.toHaveProperty('backend');
     });
   });
 

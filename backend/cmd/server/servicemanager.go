@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authnprovider/restprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/authzen"
+	"github.com/thunder-id/thunderid/internal/bff"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/connection"
@@ -90,6 +91,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/importer"
 	"github.com/thunder-id/thunderid/internal/system/jose"
@@ -124,7 +126,7 @@ var observabilitySvc observability.ObservabilityServiceInterface
 // complexity is low.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface, *mcpsdk.Server,
-	backchannel.DispatcherInterface) {
+	backchannel.DispatcherInterface, *syshttp.InProcessTransport) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -559,17 +561,26 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 
+	// Serves the server's requests to its own origin, the Console backend's OAuth and API calls and
+	// back-channel logout deliveries to the Console, with the server's handler chain once it is built.
+	inProcess := &syshttp.InProcessTransport{}
+
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouProvider, attributeCacheService, authZService,
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
 		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
-		sessionService, ssoTransport, flowMgtService, oauthCfg)
+		sessionService, ssoTransport, flowMgtService, oauthCfg, inProcess)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 	if dispatcher != nil {
 		err = terminationHook.Add(dispatcher)
 		fatalOnError(ctx, logger, err, "Failed to register the back-channel logout dispatcher")
 	}
+
+	// The Console's backend for frontend. It learns about ended SSO sessions through back-channel
+	// logout, which the dispatcher delivers to it in process.
+	err = bff.Initialize(mux, inProcess, runtimeCryptoSvc, runtimeStoreProvider, actorProvider, jwtService)
+	fatalOnError(ctx, logger, err, "Failed to initialize the Console BFF")
 
 	// Initialized after the OAuth services because credential issuance validates the presented
 	// access token with the OAuth token validator and resolves the wallet application behind it.
@@ -587,7 +598,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, dispatcher, inProcess
 }
 
 // initAttestationProvider initializes the platform attestation provider, terminating server startup

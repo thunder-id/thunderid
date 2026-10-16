@@ -192,6 +192,24 @@ type PasskeyConfig struct {
 	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
 }
 
+// ConsoleClientConfig holds the OAuth settings the Console's backend for frontend signs in with.
+type ConsoleClientConfig struct {
+	ClientID string   `yaml:"client_id" json:"client_id"`
+	Scopes   []string `yaml:"scopes"    json:"scopes"`
+	// Resource is the RFC 8707 resource indicator sent on sign-in. Empty sends none.
+	Resource string                     `yaml:"resource" json:"resource"`
+	Session  ConsoleClientSessionConfig `yaml:"session"  json:"session"`
+}
+
+// ConsoleClientSessionConfig holds how the Console's backend for frontend keeps sessions.
+type ConsoleClientSessionConfig struct {
+	// Mode is "stateful", which keeps the tokens in the runtime store behind an opaque cookie, or
+	// "stateless", which keeps them in encrypted cookies.
+	Mode string `yaml:"mode" json:"mode"`
+	// IdleTimeout is how long, in seconds, a stateful session lasts without being used.
+	IdleTimeout int64 `yaml:"idle_timeout" json:"idle_timeout"`
+}
+
 // DirectAPIConfig holds the configuration for the Direct API endpoints.
 type DirectAPIConfig struct {
 	Enabled *bool `yaml:"enabled" json:"enabled"`
@@ -709,6 +727,7 @@ type Config struct {
 	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
+	ConsoleClient        ConsoleClientConfig               `yaml:"console_client"        json:"console_client"`
 	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
 	Database             DatabaseConfig                    `yaml:"database"              json:"database"`
 	Cache                engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`

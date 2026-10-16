@@ -3996,6 +3996,33 @@ func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_Rej
 	}
 }
 
+// The server's own origin is accepted with the guard on, and over plain HTTP for a public client,
+// because deliveries to it stay in process.
+func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_AcceptsServerOrigin() {
+	sysconfig.ResetServerRuntime()
+	cfg := &sysconfig.Config{}
+	cfg.Server.Hostname = "localhost"
+	cfg.Server.Port = 8090
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+	defer suite.SetupTest()
+
+	p := &providers.OAuthProfile{BackchannelLogoutURI: "https://localhost:8090/console/auth/backchannel-logout",
+		PublicClient: true}
+	assert.NoError(suite.T(), validateBackchannelLogoutURI(p))
+	others := []string{"https://localhost:8091/bcl", "http://localhost:8090/bcl", "https://127.0.0.1:8090/bcl"}
+	for _, uri := range others {
+		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
+		assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), ErrOAuthBackchannelLogoutURIPrivateHost, uri)
+	}
+
+	sysconfig.ResetServerRuntime()
+	cfg.Server.HTTPOnly = true
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+	p = &providers.OAuthProfile{BackchannelLogoutURI: "http://localhost:8090/console/auth/backchannel-logout",
+		PublicClient: true}
+	assert.NoError(suite.T(), validateBackchannelLogoutURI(p))
+}
+
 // An operator with relying parties on internal networks can turn the guard off.
 func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_GuardOffAcceptsPrivateHosts() {
 	sysconfig.ResetServerRuntime()

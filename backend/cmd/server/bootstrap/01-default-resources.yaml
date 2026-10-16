@@ -6132,14 +6132,19 @@ inboundAuthConfig:
       clientId: CONSOLE
       redirectUris:
         - "{{ .PUBLIC_URL }}/console"
+        - "{{ .PUBLIC_URL }}/console/auth/callback"
         {{- range .CONSOLE_REDIRECT_URIS }}
         - "{{ . }}"
+        - "{{ . }}/auth/callback"
         {{- end }}
       postLogoutRedirectUris:
         - "{{ .PUBLIC_URL }}/console"
         {{- range .CONSOLE_REDIRECT_URIS }}
         - "{{ . }}"
         {{- end }}
+      # The Console's backend learns here that an SSO session ended. The server delivers to its own
+      # origin in process.
+      backchannelLogoutUri: "{{ .PUBLIC_URL }}/console/auth/backchannel-logout"
       grantTypes:
         - authorization_code
         - refresh_token

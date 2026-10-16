@@ -85,7 +85,8 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer, backchannelDispatcher, inProcess :=
+		registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -122,6 +123,9 @@ func main() {
 
 	// Create the HTTP server.
 	server := createHTTPServer(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
+	// Requests to the server's own origin, from the Console BFF and the back-channel logout
+	// dispatcher, run through the full handler chain, in process.
+	inProcess.SetHandler(server.Handler)
 	var ln net.Listener
 	if cfg.Server.HTTPOnly {
 		logger.Info(ctx, "TLS is not enabled, starting server without TLS")

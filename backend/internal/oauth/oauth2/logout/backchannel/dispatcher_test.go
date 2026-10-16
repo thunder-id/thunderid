@@ -367,6 +367,43 @@ func (s *DispatcherTestSuite) TestPrivateAddressIsTerminal() {
 	assert.Zero(s.T(), calls.Load())
 }
 
+func (s *DispatcherTestSuite) TestDeliversToOwnOriginInProcess() {
+	// The server's own origin is a private address, which the network client refuses.
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8090},
+	}))
+	s.T().Cleanup(func() {
+		config.ResetServerRuntime()
+		s.Require().NoError(config.InitializeServerRuntime("", &config.Config{}))
+	})
+
+	var got *http.Request
+	var form string
+	inProcess := &syshttp.InProcessTransport{}
+	inProcess.SetHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		_ = r.ParseForm()
+		form = r.PostForm.Get("logout_token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	cfg := testConfig()
+	reject := true
+	cfg.RejectPrivateAddresses = &reject
+	s.build(cfg)
+	s.d.self = syshttp.NewInProcessHTTPClient(time.Second, inProcess)
+	s.withClient("app-1", "https://localhost:8090/console/auth/backchannel-logout")
+	s.start()
+
+	s.d.OnEvent(context.Background(), terminated("app-1"))
+	evt := s.waitFor(1)[0]
+
+	assert.Equal(s.T(), string(event.EventTypeBackchannelLogoutDelivered), evt.Type)
+	require.NotNil(s.T(), got)
+	assert.Equal(s.T(), "/console/auth/backchannel-logout", got.URL.Path)
+	assert.Equal(s.T(), "logout-token", form)
+}
+
 func (s *DispatcherTestSuite) TestSkipsParticipantWithoutURIAndRecordsMissingClient() {
 	srv, _ := s.statusServer(http.StatusOK)
 	s.build(testConfig())

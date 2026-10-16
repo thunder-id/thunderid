@@ -58,8 +58,11 @@ type dispatcher struct {
 	tokens  tokenservice.TokenBuilderInterface
 	clients providers.ActorProvider
 	http    syshttp.HTTPClientInterface
-	events  providers.ObservabilityProvider
-	logger  *log.Logger
+	// self delivers to back-channel logout URIs on the server's own origin, in process. Nil sends
+	// every delivery over the network.
+	self   syshttp.HTTPClientInterface
+	events providers.ObservabilityProvider
+	logger *log.Logger
 
 	intake   chan termination
 	retries  chan *job
@@ -342,7 +345,11 @@ func (d *dispatcher) post(ctx context.Context, uri, token string) outcome {
 	}
 	req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeFormURLEncoded)
 
-	resp, err := d.http.Do(req)
+	client := d.http
+	if d.self != nil && syshttp.IsServerOrigin(uri) {
+		client = d.self
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		// A url.Error repeats the request URL, query included; keep only the cause it wraps.
 		var urlErr *url.Error

@@ -11,6 +11,7 @@ import (
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -38,7 +39,7 @@ func (s *InitTestSuite) TearDownSuite() {
 func (s *InitTestSuite) initialize(cfg oauthconfig.Config) DispatcherInterface {
 	return Initialize(tokenservicemock.NewTokenBuilderInterfaceMock(s.T()),
 		actorprovidermock.NewActorProviderMock(s.T()),
-		observabilityprovidermock.NewObservabilityProviderMock(s.T()), cfg)
+		observabilityprovidermock.NewObservabilityProviderMock(s.T()), cfg, nil)
 }
 
 func oauthConfig(enabled bool) oauthconfig.Config {
@@ -58,4 +59,15 @@ func (s *InitTestSuite) TestInitialize_ReturnsDispatcherWhenEnabled() {
 
 func (s *InitTestSuite) TestInitialize_ReturnsNilWhenDisabled() {
 	assert.Nil(s.T(), s.initialize(oauthConfig(false)))
+}
+
+func (s *InitTestSuite) TestInitialize_DeliversToOwnOriginInProcess() {
+	d := Initialize(tokenservicemock.NewTokenBuilderInterfaceMock(s.T()),
+		actorprovidermock.NewActorProviderMock(s.T()),
+		observabilityprovidermock.NewObservabilityProviderMock(s.T()), oauthConfig(true),
+		&syshttp.InProcessTransport{})
+
+	s.Require().NotNil(d)
+	assert.NotNil(s.T(), d.(*dispatcher).self)
+	assert.Nil(s.T(), s.initialize(oauthConfig(true)).(*dispatcher).self)
 }

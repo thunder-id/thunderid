@@ -14,12 +14,14 @@ import (
 
 // Initialize builds the dispatcher, or returns nil when back-channel logout is disabled. The
 // composition root registers it on the session termination hook, starts it once the server is about
-// to serve, and stops it during graceful shutdown.
+// to serve, and stops it during graceful shutdown. Deliveries to the server's own origin, such as the
+// Console's, go through inProcess instead of the network.
 func Initialize(
 	tokens tokenservice.TokenBuilderInterface,
 	clients providers.ActorProvider,
 	events providers.ObservabilityProvider,
 	cfg oauthconfig.Config,
+	inProcess *syshttp.InProcessTransport,
 ) DispatcherInterface {
 	bcl := cfg.OAuth.Logout.Backchannel
 	if !bcl.IsEnabled() {
@@ -27,5 +29,9 @@ func Initialize(
 	}
 	httpClient := syshttp.NewHTTPClientWithoutRedirects(
 		time.Duration(bcl.RequestTimeout)*time.Second, bcl.RejectsPrivateAddresses())
-	return newDispatcher(bcl, tokens, clients, httpClient, events)
+	d := newDispatcher(bcl, tokens, clients, httpClient, events)
+	if inProcess != nil {
+		d.self = syshttp.NewInProcessHTTPClient(time.Duration(bcl.RequestTimeout)*time.Second, inProcess)
+	}
+	return d
 }

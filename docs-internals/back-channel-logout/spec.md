@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.3
+- **Version:** 0.4
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -221,6 +221,7 @@ The delivery request:
 - A POST to the registered URI, with content type `application/x-www-form-urlencoded` and a body carrying a single `logout_token` parameter.
 - A redirect policy that never follows a 3xx. Following one would turn the POST into a GET at a host the client did not register.
 - While `reject_private_addresses` is true, which is the default, the connection goes through the SSRF-safe dialer: it resolves the host, refuses any loopback, link-local, private, or unspecified address, and connects to the address it checked, so a hostname that resolves to a private address, or changes its answer after registration, is refused. The refusal is terminal and recorded with reason `private_address`, so the cause is visible. With the key set to false, any registered host is dialled. The residual risk of that choice is in [threat-model.md](threat-model.md).
+- A URI on the server's own origin, the scheme, host, and port of its public URL, is delivered in process through the server's own handler chain, with the same middleware a network request gets. No connection is made, so neither the SSRF-safe dialer nor TLS is involved, and a server on `localhost` with a self-signed certificate can still notify its own relying parties. The Console's backend is one: it registers `<public URL>/console/auth/backchannel-logout` and learns about every ended SSO session this way.
 - One timeout per attempt, from `request_timeout`. The response body is drained up to a small cap and discarded, so a hostile endpoint cannot return an unbounded body and only the status code influences behaviour.
 
 Response classification:
@@ -285,8 +286,11 @@ Validation runs on every path, beside the existing redirect URI validation, and 
 | Wildcard | Any `*` anywhere MUST be rejected. This is a URI ThunderID dials, so a wildcard is either meaningless or a request to post tokens at a host the client did not pin |
 | Scheme | MUST be `https` or `http`. Plain `http` is accepted only for a confidential client, so a public client, which Dynamic Client Registration derives from a token endpoint authentication method of `none`, MUST register `https` |
 | Host | By default, `localhost`, `*.localhost`, and IP literals in loopback, link-local, private, or unspecified ranges MUST be rejected. Setting `reject_private_addresses` to false accepts any host, for relying parties on internal networks and local development |
+| Server's own origin | A URI on the server's own origin is accepted whatever its host and scheme, because its deliveries never leave the process. The scheme and host rules guard a token on the network, and this one never reaches it |
 
 The scheme rule is the condition section 2.2 attaches to `http`: the client type must be confidential and the OP must allow it. The confidential half is enforced at registration and the OP half is a project decision. A back-channel endpoint implies a server component, so the restriction costs public clients nothing real. Plain HTTP exists so that confidential relying parties on internal networks and local development setups can receive notifications, and the guide recommends HTTPS for anything outside a private network. Private hosts are refused by default, as the JWKS URI's are, so a deployment that never reads the documentation, including one that enables insecure Dynamic Client Registration, cannot be made to post to an internal address. Deployments whose relying parties sit on internal networks set `reject_private_addresses` to false.
+
+The own-origin exception lets a client make the server post a logout token to any path on its own origin. That reaches nothing an external caller could not: the request carries only the token, no credentials, and passes through the same middleware as a request from the network.
 
 A dedicated validation error is raised for a rejected URI and translated in both the application and the agent service, with defaults in the core locale.
 
@@ -480,6 +484,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC4.7:** Given an application profile stored before this feature shipped, when it is read, then the back-channel logout URI is empty rather than absent or invalid.
 - **AC4.8:** Given any client, when a session is terminated, then the logout token delivered to it carries `sid`.
 - **AC4.9:** Given the Console application edit page, when the OAuth 2 configuration section is rendered, then a single Back-Channel Logout URI field appears after the post-logout redirect block.
+- **AC4.10:** Given a URI on the server's own origin, when it is submitted with the default configuration, then it is accepted even though the host is private, and for a public client even over `http` when the server runs without TLS.
 
 ### R5. Advertise the capability
 
@@ -509,6 +514,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC6.10:** Given `reject_private_addresses` is true and a registered hostname resolves to a loopback, link-local, private, or unspecified address, when a delivery is attempted, then no connection is made, the delivery is not retried, and it is recorded as failed with reason `private_address`.
 - **AC6.11:** Given the listener panics, when the logout completes, then the panic is recovered and logged and the logout result is unaffected.
 - **AC6.12:** Given the terminating transaction fails, when the operation returns, then no listener call is made and no notification is sent.
+- **AC6.13:** Given `reject_private_addresses` is true and a URI on the server's own origin, when a delivery is attempted, then it is served in process by the server's handler chain, with no connection made, and recorded as delivered.
 
 ### R7. Every delivery is recorded
 
@@ -540,3 +546,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.1 | 2026-10-01 | Initial specification, from design discussion #5258. |
 | 0.2 | 2026-10-02 | Aligned with the dispatcher as reviewed in #5608. |
 | 0.3 | 2026-10-05 | Delivery and the discovery flags depend only on the back-channel flag, not on the logout endpoint, as reviewed in #5630. |
+| 0.4 | 2026-10-14 | Deliveries to the server's own origin run in process, and validation accepts that origin, so the Console's backend receives logout tokens. |
