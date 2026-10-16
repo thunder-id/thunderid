@@ -48,7 +48,8 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 	}
 
 	service := newService(gatewayStore)
-	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient())
+	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
+		declarativeresource.SecretFieldsOf(exporters))
 	h := newHandler(service)
 	h.afterDelete = versions.Forget
 	stores := newStoreService(gatewayStore, newGatewayClient())

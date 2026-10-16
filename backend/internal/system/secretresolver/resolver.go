@@ -32,11 +32,22 @@ type Lookup func(ctx context.Context, collection valueref.Collection, name strin
 // Resolver replaces references with the values a Lookup returns.
 type Resolver struct {
 	lookup Lookup
+	// secretFields names, by resource type, the fields a document may refer to a secret from. A
+	// resource type with no entry may refer to none.
+	secretFields map[string][]string
 }
 
-// New builds a Resolver that reads values through lookup.
+// New builds a Resolver that reads values through lookup. Until WithSecretFields names where a
+// secret may stand, no document may refer to one.
 func New(lookup Lookup) *Resolver {
 	return &Resolver{lookup: lookup}
+}
+
+// WithSecretFields names, by resource type, the fields a document may refer to a secret from, as
+// declarativeresource.SecretFieldsOf collects them, and returns the resolver for chaining.
+func (r *Resolver) WithSecretFields(fields map[string][]string) *Resolver {
+	r.secretFields = fields
+	return r
 }
 
 // Resolve returns value with a reference replaced by the value it names. A value that is not a
@@ -70,19 +81,45 @@ func (e *UnresolvedError) Is(target error) bool {
 	return target == ErrNotHeld
 }
 
-// ResolveNode replaces, in place, every reference in a parsed document with the value it names.
+// MisplacedSecretError names every field a document refers to a secret from that is not one a
+// credential is kept in.
+type MisplacedSecretError struct {
+	ResourceType string
+	Fields       []string
+}
+
+func (e *MisplacedSecretError) Error() string {
+	return "a " + e.ResourceType + " may not refer to a secret from " + strings.Join(e.Fields, ", ")
+}
+
+// ResolveDocument replaces, in place, every reference in a parsed document of the given resource
+// type with the value it names.
 //
 // It works on the parsed nodes rather than on the text, so a value containing a quote or a newline
 // cannot break the document it is put into. Only a scalar that is wholly a reference is one: the same
 // text inside a longer value is left as it is. A resolved value is tagged as a string, so one that
 // reads as a number or a boolean is not reinterpreted.
 //
+// A secret is resolved only where the resource keeps a credential, the fields WithSecretFields names
+// for the resource type. Anywhere else the value would be stored as an ordinary one and could be read
+// back, by an API or by whatever the field is sent to, by whoever wrote the document. Such a document
+// is refused with a MisplacedSecretError before the store is read. A secret reference under a YAML
+// anchor is refused too, since an alias would put its resolved value wherever the alias stands.
+//
 // When the store lacks a value, the document is left unresolved and an UnresolvedError names every
 // reference it lacks, so the resource is refused rather than written with the reference text as its
 // value.
-func (r *Resolver) ResolveNode(ctx context.Context, node *yaml.Node) error {
+func (r *Resolver) ResolveDocument(ctx context.Context, resourceType string, node *yaml.Node) error {
 	var references []*yaml.Node
-	collectReferences(node, &references)
+	var misplaced []MisplacedSecret
+	collectReferences(node, "", false, r.secretFields[resourceType], &references, &misplaced)
+	if len(misplaced) > 0 {
+		fields := make([]string, 0, len(misplaced))
+		for _, secret := range misplaced {
+			fields = append(fields, secret.Field)
+		}
+		return &MisplacedSecretError{ResourceType: resourceType, Fields: fields}
+	}
 
 	values := make(map[*yaml.Node]string, len(references))
 	variables := make(map[*yaml.Node]string, len(references))
@@ -177,15 +214,44 @@ func listOf(value string) ([]string, bool) {
 	return listed, true
 }
 
-// collectReferences gathers every scalar node that holds a reference.
-func collectReferences(node *yaml.Node, into *[]*yaml.Node) {
+// MisplacedSecret is a secret reference standing in a field where no credential is kept.
+type MisplacedSecret struct {
+	// Field is where the reference stands, as SecretFieldLister names fields.
+	Field string
+	// Reference is the reference as written, such as "sec:NAME".
+	Reference string
+}
+
+// MisplacedSecrets finds, without resolving anything, every secret reference in a parsed document
+// that stands outside the fields a credential is kept in, or under a YAML anchor. It is what
+// ResolveDocument refuses a document for, offered on its own so a document can be checked where no
+// value store is at hand, as on a control plane authoring it.
+func MisplacedSecrets(node *yaml.Node, secretFields []string) []MisplacedSecret {
+	var references []*yaml.Node
+	var misplaced []MisplacedSecret
+	collectReferences(node, "", false, secretFields, &references, &misplaced)
+	return misplaced
+}
+
+// collectReferences gathers every scalar node that holds a reference, and separately every secret
+// reference that stands where no credential is kept, or under an anchor.
+//
+// path is the node's field as SecretFieldLister names it: keys joined by dots, "[]" for a list item.
+func collectReferences(node *yaml.Node, path string, anchored bool, secretFields []string,
+	into *[]*yaml.Node, misplaced *[]MisplacedSecret) {
 	if node == nil {
 		return
 	}
+	anchored = anchored || node.Anchor != ""
 	if node.Kind == yaml.ScalarNode {
-		if valueref.IsWellFormedReference(node.Value) {
-			*into = append(*into, node)
+		if !valueref.IsWellFormedReference(node.Value) {
+			return
 		}
+		if valueref.IsSecretReference(node.Value) && (anchored || !fieldAllowed(path, secretFields)) {
+			*misplaced = append(*misplaced, MisplacedSecret{Field: path, Reference: node.Value})
+			return
+		}
+		*into = append(*into, node)
 		return
 	}
 	for i, child := range node.Content {
@@ -193,6 +259,62 @@ func collectReferences(node *yaml.Node, into *[]*yaml.Node) {
 		if node.Kind == yaml.MappingNode && i%2 == 0 {
 			continue
 		}
-		collectReferences(child, into)
+		collectReferences(child, childPath(node, path, i), anchored, secretFields, into, misplaced)
 	}
+}
+
+// childPath names the field a node's child stands in.
+//
+// A key is escaped so that it can only name one field: a single key written "credentials.password"
+// or "inboundAuthConfig[].config.clientSecret" would otherwise read as the nested field of that
+// name and pass as one.
+func childPath(parent *yaml.Node, path string, index int) string {
+	switch parent.Kind {
+	case yaml.MappingNode:
+		key := keyEscaper.Replace(parent.Content[index-1].Value)
+		if path == "" {
+			return key
+		}
+		return path + "." + key
+	case yaml.SequenceNode:
+		return path + "[]"
+	default:
+		return path
+	}
+}
+
+// keyEscaper keeps a key's own backslashes, dots and brackets from reading as the path's separators.
+var keyEscaper = strings.NewReplacer(`\`, `\\`, ".", `\.`, "[", `\[`, "]", `\]`)
+
+// hasUnescapedDot reports whether a path goes down another level: a dot that is a separator, not
+// one escaped as part of a key.
+func hasUnescapedDot(path string) bool {
+	escaped := false
+	for _, r := range path {
+		switch {
+		case escaped:
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '.':
+			return true
+		}
+	}
+	return false
+}
+
+// fieldAllowed reports whether a secret may stand in the field: it is named exactly, or its
+// mapping is named with a trailing ".*", which covers the mapping's own keys, dotted ones included,
+// and nothing beneath them.
+func fieldAllowed(path string, secretFields []string) bool {
+	for _, field := range secretFields {
+		if field == path {
+			return true
+		}
+		if prefix, ok := strings.CutSuffix(field, ".*"); ok && strings.HasPrefix(path, prefix+".") &&
+			!hasUnescapedDot(strings.TrimPrefix(path, prefix+".")) {
+			return true
+		}
+	}
+	return false
 }

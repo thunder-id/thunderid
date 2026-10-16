@@ -546,8 +546,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		notifTemplateSvc,
 		authZENPDPService,
 		sharingService,
-		// References in imported configuration are replaced with what this deployment's store holds.
-		secretresolver.New(variablestore.Lookup(references)),
+		// References in imported configuration are replaced with what this deployment's store holds. A
+		// secret is put only where an export of the resource keeps one, which its exporter names.
+		secretresolver.New(variablestore.Lookup(references)).
+			WithSecretFields(declarativeresource.SecretFieldsOf(exporters)),
 	)
 
 	attestationProvider := initAttestationProvider(ctx, logger, runtimeCryptoSvc)

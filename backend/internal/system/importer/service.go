@@ -469,11 +469,15 @@ func (s *importService) ImportResources(
 // A document whose references the store does not all hold is refused, naming them, rather than written
 // with the reference text where a value belongs: a client secret stored as "sec:NAME" would reject
 // every authentication, for a reason that no longer mentions the name.
+//
+// A document that refers to a secret from a field that is not a credential is refused too, before
+// the store is read: resolved there, the secret would be stored as an ordinary value and could be
+// read back by whoever wrote the document.
 func (s *importService) resolveReferences(ctx context.Context, doc parsedDocument) (ImportItemOutcome, bool) {
 	if s.references == nil {
 		return ImportItemOutcome{}, true
 	}
-	err := s.references.ResolveNode(ctx, doc.Node)
+	err := s.references.ResolveDocument(ctx, doc.ResourceType, doc.Node)
 	if err == nil {
 		return ImportItemOutcome{}, true
 	}
@@ -483,6 +487,11 @@ func (s *importService) resolveReferences(ctx context.Context, doc parsedDocumen
 		Status:       statusFailed,
 		Code:         ErrorUnresolvedReference.Code,
 		Message:      err.Error(),
+	}
+	var misplaced *secretresolver.MisplacedSecretError
+	if errors.As(err, &misplaced) {
+		outcome.Code = ErrorMisplacedSecret.Code
+		return outcome, false
 	}
 	var unresolved *secretresolver.UnresolvedError
 	if !errors.As(err, &unresolved) {

@@ -138,6 +138,11 @@ func (e *agentExporter) ViewResource(_ context.Context, document *yaml.Node) (in
 	})
 }
 
+// SecretFields names where an exported agent holds its client secret.
+func (e *agentExporter) SecretFields() []string {
+	return []string{"inboundAuthConfig[].config.clientSecret"}
+}
+
 // GetResourceRules returns parameterization rules for agents with OAuth.
 func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{

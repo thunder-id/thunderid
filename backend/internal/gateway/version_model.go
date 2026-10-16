@@ -150,6 +150,9 @@ type Diff struct {
 	ToVersion   string      `json:"toVersion"`
 	Summary     DiffSummary `json:"summary"`
 	Changes     []Change    `json:"changes"`
+	// MisplacedSecrets are the places the version refers to a secret from a field that holds no
+	// credential. A gateway refuses such a resource on import, so they are reported here first.
+	MisplacedSecrets []ValueReference `json:"misplacedSecrets,omitempty"`
 }
 
 // ApplyResult is what an apply or a revert reports.

@@ -62,8 +62,10 @@ type versionService struct {
 	versions versionStoreInterface
 	exporter export.ExportServiceInterface
 	client   gatewayClientInterface
-	logger   *log.Logger
-	applying gatewayLocks
+	// secretFields names, by resource type, the fields a secret reference may stand in.
+	secretFields map[string][]string
+	logger       *log.Logger
+	applying     gatewayLocks
 }
 
 // gatewayLocks runs one apply or revert at a time per gateway on this node, so the choice an apply
@@ -108,13 +110,15 @@ func (l *gatewayLocks) lock(gatewayID string) func() {
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
-	exporter export.ExportServiceInterface, client gatewayClientInterface) *versionService {
+	exporter export.ExportServiceInterface, client gatewayClientInterface,
+	secretFields map[string][]string) *versionService {
 	return &versionService{
-		gateways: gateways,
-		versions: versions,
-		exporter: exporter,
-		client:   client,
-		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
+		gateways:     gateways,
+		versions:     versions,
+		exporter:     exporter,
+		client:       client,
+		secretFields: secretFields,
+		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
 }
 
@@ -172,6 +176,14 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 	}
 
 	content := joinBundle(documents)
+	// A secret standing where no credential is kept would be refused by every gateway the version is
+	// applied to, so the configuration is refused here, where the field can still be put right.
+	if misplaced := misplacedSecretsIn(content, s.secretFields); len(misplaced) > 0 {
+		s.logger.Warn(ctx, "The configuration refers to a secret from a field that holds no credential",
+			log.String("resourceType", misplaced[0].ResourceType), log.String("field", misplaced[0].Field),
+			log.Int("misplaced", len(misplaced)))
+		return nil, misplacedSecretError(misplaced)
+	}
 	hash := versionHash(content)
 	if kept, svcErr := s.versionWithHash(ctx, hash); svcErr != nil || kept != nil {
 		return kept, svcErr
@@ -597,6 +609,9 @@ func (s *versionService) plan(ctx context.Context, gatewayID string, target *Ver
 	}
 	diff.Changes = markExcluded(diffBundles(held, parseBundle(target.Resources)), excluded)
 	diff.Summary = summarize(diff.Changes)
+	// A version captured before captures refused one may still refer to a secret from a field that
+	// holds no credential; the diff says so, since the gateway will refuse that resource.
+	diff.MisplacedSecrets = misplacedSecretsIn(target.Resources, s.secretFields)
 	return applied, diff, nil
 }
 

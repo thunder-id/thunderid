@@ -5,6 +5,7 @@ package export
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -285,4 +286,23 @@ func TestPlaceholderValuesOfAResourceServer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, variables)
 	assert.Empty(t, secrets)
+}
+
+// The fields an exporter says may hold a secret are the YAML side of its SecretVariables: where its
+// reference export writes "sec:", and so the only places an import may put a secret.
+func TestSecretFieldsMatchWhereTheExportWritesSecrets(t *testing.T) {
+	p := newParameterizer(templatingRules{}, ValueReferences)
+	for name, tc := range map[string]struct {
+		exporter declarativeresource.ResourceExporter
+		model    interface{}
+	}{
+		"application": {application.NewApplicationExporterForTest(nil, nil), &providers.Application{}},
+		"agent":       {agent.NewAgentExporterForTest(nil), &agentmodel.AgentGetResponse{}},
+	} {
+		lister, ok := tc.exporter.(declarativeresource.SecretFieldLister)
+		require.True(t, ok, name)
+		for _, path := range tc.exporter.GetResourceRules().SecretVariables {
+			assert.Contains(t, lister.SecretFields(), p.convertPathToYAMLPath(reflect.TypeOf(tc.model), path), name)
+		}
+	}
 }

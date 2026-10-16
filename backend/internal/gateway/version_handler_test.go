@@ -90,6 +90,7 @@ func TestVersionRoutesMapErrorsToStatuses(t *testing.T) {
 		&ErrorInvalidVersion:           http.StatusBadRequest,
 		&ErrorGatewayUnreachable:       http.StatusBadGateway,
 		&ErrorMissingValues:            http.StatusConflict,
+		&ErrorMisplacedSecret:          http.StatusBadRequest,
 		&tidcommon.InternalServerError: http.StatusInternalServerError,
 	} {
 		stub := &stubVersionService{err: svcErr}

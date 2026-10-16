@@ -283,6 +283,11 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 	return &appDTO, nil
 }
 
+// SecretFields names where an exported application holds its client secret.
+func (e *applicationExporter) SecretFields() []string {
+	return []string{"inboundAuthConfig[].config.clientSecret"}
+}
+
 // GetResourceRules returns the parameterization rules for applications.
 func (e *applicationExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{

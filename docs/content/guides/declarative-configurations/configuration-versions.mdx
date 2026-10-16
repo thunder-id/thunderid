@@ -43,6 +43,10 @@ shares also names it, and so does `latest`.
 - **A version holds references, not values.** A client secret or a user's password appears as a
   [value reference](./value-references.mdx) such as `sec:APPLICATION_ORDERS_CLIENT_SECRET`. The gateway
   fills it in from its own store when the version is applied.
+- **A secret may stand only in a credential field.** A configuration that refers to a secret from any
+  other field, such as a description or a redirect URI, is refused with `400` (`GTW-1026`), naming each
+  place the secret stands, because every gateway would refuse that resource on import. See
+  [Where a Secret May Stand](./value-references.mdx#where-a-secret-may-stand).
 - **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
   holds or can revert to. Those are kept even when that leaves more versions than the number. See
   [Configuration](../../deployment/configuration.mdx).
@@ -86,6 +90,11 @@ secret value.
 
 `GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
 it to.
+
+A version captured before captures refused a misplaced secret may still refer to one from a field that
+holds no credential. The diff lists each such place under `misplacedSecrets`, in the same shape as
+`references`, so the resource can be put right and captured again before the gateway refuses it. A dry
+run reports the same under `diff.misplacedSecrets`.
 
 ## Apply a Version
 

@@ -946,6 +946,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Change'
+        misplacedSecrets:
+          type: array
+          description: |
+            Where the version refers to a secret from a field that holds no credential. A gateway
+            refuses such a resource on import, so put the field right and capture again. A capture
+            refuses the configuration outright; this names what an earlier version still holds.
+          items:
+            $ref: '#/components/schemas/ValueReference'
     ApplyResult:
       type: object
       properties:

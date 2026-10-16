@@ -117,4 +117,15 @@ var (
 			DefaultValue: "The resource refers to a variable or secret this deployment holds no value for",
 		},
 	}
+	// ErrorMisplacedSecret represents a document referring to a secret from a field that is not a
+	// credential, where its value could be read back.
+	ErrorMisplacedSecret = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1007",
+		Error: tidcommon.I18nMessage{Key: "error.import.misplacedSecret", DefaultValue: "Misplaced secret reference"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.misplacedSecret.description",
+			DefaultValue: "A secret reference may only stand in a field that holds a credential",
+		},
+	}
 )

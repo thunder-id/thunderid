@@ -243,6 +243,12 @@ func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (int
 	})
 }
 
+// SecretFields names where an exported user holds its credentials: every key of the credentials
+// map, since which credentials a user has is its type's to say.
+func (e *userExporter) SecretFields() []string {
+	return []string{"credentials.*"}
+}
+
 // GetResourceRules returns the parameterization rules for users.
 func (e *userExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{

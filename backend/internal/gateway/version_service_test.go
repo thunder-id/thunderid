@@ -248,6 +248,17 @@ func unit(id string) string {
 	return "resource_type: organization_unit\nid: " + id + "\nname: " + id
 }
 
+// testSecretFields are the fields a secret may stand in, by resource type, as the exporters name them.
+var testSecretFields = map[string][]string{
+	"application": {"inboundAuthConfig[].config.clientSecret", "client_secret"},
+}
+
+// application returns an application document whose client secret and description are given.
+func application(id, clientSecret, description string) string {
+	return "resource_type: application\nid: " + id + "\nname: " + id + "\ndescription: " + description +
+		"\ninboundAuthConfig:\n  - type: oauth2\n    config:\n      clientSecret: " + clientSecret
+}
+
 func exportOf(env string, ids ...string) *export.ExportResponse {
 	response := &export.ExportResponse{}
 	for _, id := range ids {
@@ -283,7 +294,7 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		client:   &fakeGatewayClient{},
 	}
 	gateways := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client)
+	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client, testSecretFields)
 	return f
 }
 
@@ -652,7 +663,7 @@ func TestApplySendsTheVersionsValues(t *testing.T) {
 func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
 	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
-	svc := newVersionService(declared, f.versions, f.exporter, f.client)
+	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields)
 	f.capture(t, "ou-a")
 
 	_, svcErr := svc.Apply(context.Background(), "gw-d", ApplyRequest{})
@@ -838,4 +849,43 @@ func TestTheCurrentConfigurationReportsAFailedExport(t *testing.T) {
 
 	require.NotNil(t, svcErr)
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A configuration that refers to a secret from a field that holds no credential is refused by every
+// gateway, so a capture refuses it first, naming where the secret stands, and keeps no version.
+func TestACaptureRefusesASecretOutsideACredentialField(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{
+		{Content: application("app-1", "sec:APP_SECRET", "sec:APP_SECRET")},
+		{Content: unit("ou-a")},
+	}}
+
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Nil(t, v)
+	assert.Equal(t, ErrorMisplacedSecret.Code, svcErr.Code)
+	assert.Contains(t, svcErr.ErrorDescription.DefaultValue, "application/app-1 description")
+	assert.NotContains(t, svcErr.ErrorDescription.DefaultValue, "clientSecret")
+	assert.Empty(t, f.versions.versions, "a refused configuration was kept as a version")
+}
+
+// A version captured before captures refused a misplaced secret still holds it; a diff says where,
+// so the resource can be put right before a gateway refuses it.
+func TestADiffReportsASecretStandingOutsideACredentialField(t *testing.T) {
+	f := newVersionFixture(t)
+	content := application("app-1", "sec:APP_SECRET", "sec:APP_SECRET")
+	_, err := f.versions.Add(context.Background(), Version{Hash: versionHash(content), Resources: content})
+	require.NoError(t, err)
+
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []ValueReference{{Name: "APP_SECRET", Kind: ReferenceSecret, ResourceType: "application",
+		ResourceID: "app-1", ResourceName: "app-1", Field: "description"}}, diff.MisplacedSecrets)
+
+	f.capture(t, "ou-a")
+	clean, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	require.Nil(t, svcErr)
+	assert.Empty(t, clean.MisplacedSecrets)
 }

@@ -23,6 +23,12 @@ func heldValues(values map[valueref.Collection]map[string]string) Lookup {
 	}
 }
 
+// testFields is where a document of type "test" may keep a secret: a client secret at the root or
+// in each OAuth entry, and any credential by name.
+var testFields = map[string][]string{"test": {"clientSecret", "oauth[].clientSecret", "credentials.*", "keys[]"}}
+
+func testResolver() *Resolver { return New(store).WithSecretFields(testFields) }
+
 var store = heldValues(map[valueref.Collection]map[string]string{
 	valueref.CollectionVariable: {"CLIENT_ID": "console", "PORT": "8090"},
 	valueref.CollectionSecret:   {"CLIENT_SECRET": "s3cr\"et: with\nnewline"},
@@ -92,7 +98,7 @@ redirectUris:
   - var:CLIENT_ID
 `)
 
-	require.NoError(t, New(store).ResolveNode(context.Background(), node))
+	require.NoError(t, testResolver().ResolveDocument(context.Background(), "test", node))
 
 	assert.Equal(t, map[string]any{
 		"name":          "app",
@@ -112,10 +118,11 @@ func TestResolveNodeNamesWhatIsNotHeld(t *testing.T) {
 clientId: var:CLIENT_ID
 clientSecret: sec:MISSING_SECRET
 other: var:MISSING_VAR
-again: sec:MISSING_SECRET
+credentials:
+  again: sec:MISSING_SECRET
 `)
 
-	err := New(store).ResolveNode(context.Background(), node)
+	err := testResolver().ResolveDocument(context.Background(), "test", node)
 
 	var unresolved *UnresolvedError
 	require.ErrorAs(t, err, &unresolved)
@@ -131,7 +138,8 @@ func TestResolveNodeReportsAStoreFailure(t *testing.T) {
 		return "", false, errors.New("database is down")
 	}
 
-	err := New(failing).ResolveNode(context.Background(), parse(t, "clientId: var:CLIENT_ID"))
+	err := New(failing).WithSecretFields(testFields).ResolveDocument(context.Background(), "test",
+		parse(t, "clientId: var:CLIENT_ID"))
 
 	require.Error(t, err)
 	var unresolved *UnresolvedError
@@ -142,8 +150,8 @@ func TestResolveNodeReportsAStoreFailure(t *testing.T) {
 func TestResolveNodeLeavesADocumentWithoutReferences(t *testing.T) {
 	node := parse(t, "name: app\nlist: [a, b]")
 
-	require.NoError(t, New(store).ResolveNode(context.Background(), node))
-	require.NoError(t, New(store).ResolveNode(context.Background(), nil))
+	require.NoError(t, testResolver().ResolveDocument(context.Background(), "test", node))
+	require.NoError(t, testResolver().ResolveDocument(context.Background(), "test", nil))
 
 	assert.Equal(t, map[string]any{"name": "app", "list": []any{"a", "b"}}, render(t, node))
 }
@@ -173,7 +181,7 @@ nulls:
 scalar: var:REDIRECT_URIS
 `)
 
-	require.NoError(t, New(lists).ResolveNode(context.Background(), node))
+	require.NoError(t, New(lists).WithSecretFields(testFields).ResolveDocument(context.Background(), "test", node))
 
 	assert.Equal(t, map[string]any{
 		"redirectUris": []any{"https://one.test/cb", "https://two.test/cb", "https://kept.test/cb"},
@@ -191,7 +199,7 @@ func TestResolveNodeDoesNotExpandASecretIntoItems(t *testing.T) {
 	})
 	node := parse(t, "keys:\n  - sec:KEYS\n")
 
-	require.NoError(t, New(held).ResolveNode(context.Background(), node))
+	require.NoError(t, New(held).WithSecretFields(testFields).ResolveDocument(context.Background(), "test", node))
 
 	assert.Equal(t, map[string]any{"keys": []any{`["one", "two"]`}}, render(t, node))
 }
@@ -203,8 +211,158 @@ func TestResolveNodeExpandsAnAliasToAListItem(t *testing.T) {
 	})
 	node := parse(t, "first:\n  - &uris var:URIS\nsecond:\n  - *uris\n")
 
-	require.NoError(t, New(held).ResolveNode(context.Background(), node))
+	require.NoError(t, New(held).WithSecretFields(testFields).ResolveDocument(context.Background(), "test", node))
 
 	uris := []any{"https://one.test/cb", "https://two.test/cb"}
 	assert.Equal(t, map[string]any{"first": uris, "second": uris}, render(t, node))
+}
+
+// A secret may stand only where the resource keeps a credential. Anywhere else it would be stored as
+// an ordinary value and could be read back, so the document is refused, naming each such field, and
+// the store is never asked for the secret.
+func TestResolveDocumentRefusesASecretOutsideACredentialField(t *testing.T) {
+	asked := false
+	spying := func(ctx context.Context, collection valueref.Collection, name string) (string, bool, error) {
+		asked = true
+		return store(ctx, collection, name)
+	}
+	node := parse(t, `
+name: sec:CLIENT_SECRET
+clientSecret: sec:CLIENT_SECRET
+oauth:
+  - clientSecret: sec:CLIENT_SECRET
+    redirectUri: sec:CLIENT_SECRET
+credentials:
+  password: sec:CLIENT_SECRET
+  nested:
+    deeper: sec:CLIENT_SECRET
+attributes:
+  password: sec:CLIENT_SECRET
+`)
+
+	err := New(spying).WithSecretFields(testFields).ResolveDocument(context.Background(), "test", node)
+
+	var misplaced *MisplacedSecretError
+	require.ErrorAs(t, err, &misplaced)
+	assert.Equal(t, "test", misplaced.ResourceType)
+	assert.Equal(t, []string{"name", "oauth[].redirectUri", "credentials.nested.deeper", "attributes.password"},
+		misplaced.Fields)
+	assert.Contains(t, err.Error(), "oauth[].redirectUri")
+	assert.False(t, asked, "the store was read for a document that was refused")
+	assert.Equal(t, "sec:CLIENT_SECRET", render(t, node)["clientSecret"], "a refused document was changed")
+}
+
+// A resource type with no credential field may refer to no secret at all, and a resolver that was
+// never told where secrets may stand allows none. Variables are resolved as before.
+func TestResolveDocumentFailsClosedForSecrets(t *testing.T) {
+	node := parse(t, "clientSecret: sec:CLIENT_SECRET\nclientId: var:CLIENT_ID\n")
+
+	err := testResolver().ResolveDocument(context.Background(), "other", node)
+	var misplaced *MisplacedSecretError
+	require.ErrorAs(t, err, &misplaced)
+	assert.Equal(t, []string{"clientSecret"}, misplaced.Fields)
+
+	err = New(store).ResolveDocument(context.Background(), "test", node)
+	require.ErrorAs(t, err, &misplaced)
+
+	require.NoError(t, New(store).ResolveDocument(context.Background(), "other",
+		parse(t, "clientId: var:CLIENT_ID\n")))
+}
+
+// An anchored secret reference is refused wherever it stands: an alias to it would carry the
+// resolved value to the alias's own field, past the check.
+func TestResolveDocumentRefusesAnAnchoredSecret(t *testing.T) {
+	node := parse(t, `
+clientSecret: &secret sec:CLIENT_SECRET
+name: *secret
+oauth: &entry
+  - clientSecret: sec:CLIENT_SECRET
+attributes: *entry
+`)
+
+	err := testResolver().ResolveDocument(context.Background(), "test", node)
+
+	var misplaced *MisplacedSecretError
+	require.ErrorAs(t, err, &misplaced)
+	assert.Equal(t, []string{"clientSecret", "oauth[].clientSecret"}, misplaced.Fields)
+}
+
+// A field named with a trailing ".*" admits any key of that mapping and nothing deeper.
+func TestFieldAllowed(t *testing.T) {
+	fields := []string{"clientSecret", "credentials.*", "oauth[].clientSecret"}
+
+	for path, want := range map[string]bool{
+		"clientSecret":                true,
+		"credentials.password":        true,
+		"credentials.pin":             true,
+		"credentials":                 false,
+		"credentials.a.b":             false,
+		"oauth[].clientSecret":        true,
+		"oauth[].config.clientSecret": false,
+		"":                            false,
+		"xclientSecret":               false,
+	} {
+		assert.Equal(t, want, fieldAllowed(path, fields), path)
+	}
+}
+
+// A key that is spelled like a nested field is still one key, so it cannot stand in for the field
+// it is spelled like.
+func TestResolveDocumentDoesNotMistakeAKeyForANestedField(t *testing.T) {
+	node := parse(t, `
+"credentials.password": sec:CLIENT_SECRET
+"oauth[].clientSecret": sec:CLIENT_SECRET
+credentials:
+  password: sec:CLIENT_SECRET
+`)
+
+	err := testResolver().ResolveDocument(context.Background(), "test", node)
+
+	var misplaced *MisplacedSecretError
+	require.ErrorAs(t, err, &misplaced)
+	assert.Equal(t, []string{`credentials\.password`, `oauth\[\]\.clientSecret`}, misplaced.Fields)
+}
+
+// A credential mapping's own key may hold a dot or a backslash: it is one key, not a path beneath the
+// mapping, so a secret may stand in it; a key that reads like an escaped dot is not mistaken for one.
+func TestResolveDocumentAllowsADottedKeyOfACredentialMapping(t *testing.T) {
+	node := parse(t, `
+credentials:
+  "api.key": sec:CLIENT_SECRET
+  "back\\slash": sec:CLIENT_SECRET
+  nested:
+    deeper: sec:CLIENT_SECRET
+`)
+
+	err := testResolver().ResolveDocument(context.Background(), "test", node)
+
+	var misplaced *MisplacedSecretError
+	require.ErrorAs(t, err, &misplaced)
+	assert.Equal(t, []string{"credentials.nested.deeper"}, misplaced.Fields)
+	assert.True(t, hasUnescapedDot(`a.b`))
+	assert.False(t, hasUnescapedDot(`a\.b`))
+	assert.True(t, hasUnescapedDot(`a\\.b`), "an escaped backslash before a dot leaves the dot a separator")
+}
+
+// MisplacedSecrets names each secret standing outside a credential field, with the reference as
+// written, and resolves nothing.
+func TestMisplacedSecretsNamesEachFieldAndReference(t *testing.T) {
+	node := parse(t, `
+name: sec:NAME_SECRET
+clientSecret: sec:CLIENT_SECRET
+oauth:
+  - clientSecret: sec:CLIENT_SECRET
+    redirectUri: sec:URI_SECRET
+url: var:BASE_URL
+`)
+
+	misplaced := MisplacedSecrets(node, testFields["test"])
+
+	assert.Equal(t, []MisplacedSecret{
+		{Field: "name", Reference: "sec:NAME_SECRET"},
+		{Field: "oauth[].redirectUri", Reference: "sec:URI_SECRET"},
+	}, misplaced)
+	assert.Equal(t, "sec:NAME_SECRET", render(t, node)["name"], "a checked document was changed")
+	allowed := []string{"name", "oauth[].redirectUri", "clientSecret", "oauth[].clientSecret"}
+	assert.Empty(t, MisplacedSecrets(node, allowed))
 }

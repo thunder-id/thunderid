@@ -72,6 +72,24 @@ encrypted, and a client ID is stored as the identifier it is looked up by.
 Because the value is put in when the resource is written, changing a variable or a secret later does
 not change resources already written. Import the configuration again to apply a changed value.
 
+## Where a Secret May Stand
+
+A `sec:` reference is accepted only in a field that holds a credential: an application's or agent's
+`clientSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
+authentication password, and a user's `credentials`. These are the fields an export writes a `sec:`
+placeholder into, and the fields whose stored value is never returned.
+
+A document that refers to a secret from any other field, such as a name, a description, a redirect
+URI or a user attribute, is refused with `IMP-1007` before the secret is read. Resolved there, the
+secret would be stored as an ordinary value that the field's API returns, or that the resource sends
+to another system. A `sec:` reference under a YAML anchor is refused for the same reason. A `var:`
+reference may stand in any field.
+
+A control plane applies the same rule when it captures a
+[configuration version](./configuration-versions.mdx#capture-a-version): a configuration with a secret
+reference outside a credential field is refused with `GTW-1026` before a version is kept, and a diff of
+an earlier version that still holds one lists it under `misplacedSecrets`.
+
 ## When a Value Is Not Held
 
 A resource that refers to a name the store does not hold is refused, and the import's result for it

@@ -63,7 +63,7 @@ func TestImportWritesTheValueAReferenceNames(t *testing.T) {
 // A resource referring to a value this deployment does not hold is refused, naming the reference,
 // while the others in the same import still go through.
 func TestImportRefusesAResourceWhoseReferenceIsNotHeld(t *testing.T) {
-	content := unitReferring("ou-1", "sec:MISSING") + "---\n" + unitReferring("ou-2", "var:TEAM")
+	content := unitReferring("ou-1", "var:MISSING") + "---\n" + unitReferring("ou-2", "var:TEAM")
 
 	resp, ouSvc := importWithReferences(t, heldVariables, content)
 
@@ -78,7 +78,7 @@ func TestImportRefusesAResourceWhoseReferenceIsNotHeld(t *testing.T) {
 	}
 	assert.Equal(t, ErrorUnresolvedReference.Code, refused.Code)
 	assert.Equal(t, "ou-1", refused.ResourceName)
-	assert.Contains(t, refused.Message, "sec:MISSING")
+	assert.Contains(t, refused.Message, "var:MISSING")
 	assert.Equal(t, statusSuccess, imported.Status)
 	require.Len(t, ouSvc.created, 1, "a resource with an unresolved reference was written")
 	assert.Equal(t, "ou-2", ouSvc.created[0].ID)
@@ -107,4 +107,44 @@ func TestImportKeepsAReferenceWithoutAResolver(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	require.Len(t, ouSvc.created, 1)
 	assert.Equal(t, "var:TEAM", ouSvc.created[0].Description)
+}
+
+// A secret referred to from a field that holds no credential is refused with its own code, before
+// the store is read, so no author can read a secret back through an ordinary field.
+func TestImportRefusesASecretOutsideACredentialField(t *testing.T) {
+	asked := false
+	spying := func(ctx context.Context, collection valueref.Collection, name string) (string, bool, error) {
+		asked = true
+		return heldVariables(ctx, collection, name)
+	}
+
+	resp, ouSvc := importWithReferences(t, spying, unitReferring("ou-1", "sec:TEAM"))
+
+	require.Len(t, resp.Results, 1)
+	refused := resp.Results[0]
+	assert.Equal(t, statusFailed, refused.Status)
+	assert.Equal(t, ErrorMisplacedSecret.Code, refused.Code)
+	assert.Equal(t, "ou-1", refused.ResourceName)
+	assert.Contains(t, refused.Message, "description")
+	assert.False(t, asked, "the store was read for a refused document")
+	assert.Empty(t, ouSvc.created)
+}
+
+// Where a resource keeps a credential, as its exporter names it, the secret is resolved.
+func TestImportResolvesASecretInACredentialField(t *testing.T) {
+	held := func(_ context.Context, collection valueref.Collection, name string) (string, bool, error) {
+		return "the-secret", collection == valueref.CollectionSecret && name == "TEAM", nil
+	}
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.(*importService).references = secretresolver.New(held).
+		WithSecretFields(map[string][]string{resourceTypeOrganizationUnit: {"description"}})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: unitReferring("ou-1", "sec:TEAM")})
+
+	require.Nil(t, err)
+	require.Len(t, ouSvc.created, 1)
+	assert.Equal(t, "the-secret", ouSvc.created[0].Description)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 }

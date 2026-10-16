@@ -434,3 +434,81 @@ func (suite *ImportExportErrorSuite) errorCode(body []byte) string {
 	suite.Require().NoError(json.Unmarshal(body, &errResp), "body: %s", body)
 	return errResp.Code
 }
+
+// --- Secret references ---
+
+// TestImportRefusesASecretOutsideACredentialField asserts a document that refers to a secret from a
+// field holding no credential is refused with IMP-1007 before anything is written: resolved there,
+// the secret would be stored as an ordinary value and could be read back.
+func (suite *ImportExportErrorSuite) TestImportRefusesASecretOutsideACredentialField() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	payload := suite.importBody(importRequest{
+		Content: fmt.Sprintf("resource_type: application\nname: Misplaced Secret %s\ncontacts:\n"+
+			"  - sec:MISPLACED_CONTACT_%s\n", suffix, suffix),
+		Options: runtimeOptions(),
+	})
+
+	status, body := suite.postJSON(suite.client, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp importResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	suite.Equal(1, resp.Summary.Failed)
+	suite.Require().Len(resp.Results, 1)
+	suite.Equal("failed", resp.Results[0].Status)
+	suite.Equal("IMP-1007", resp.Results[0].Code)
+	suite.Contains(resp.Results[0].Message, "contacts[]", "the outcome does not say where the secret stands")
+}
+
+// TestImportResolvesASecretInACredentialField asserts a secret referred to from a user's credentials,
+// which the user type says hold credentials, is resolved from this deployment's store and the user is
+// written with it.
+func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "secret-import-" + suffix, Name: "Secret import " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeHandle := "secret-import-person-" + suffix
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: typeHandle, DisplayName: "Secret import person", OUID: ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+
+	secretName := "IMPORTED_PASSWORD_" + suffix
+	status, body := suite.postJSON(suite.client, "/secrets",
+		fmt.Sprintf(`{"name":%q,"value":"Imported@%s"}`, secretName, suffix))
+	suite.Require().Equal(http.StatusCreated, status, "body: %s", body)
+	defer func() {
+		req, err := http.NewRequest(http.MethodDelete, testutils.TestServerURL+"/secrets/"+secretName, nil)
+		if err == nil {
+			if resp, err := suite.client.Do(req); err == nil {
+				_ = resp.Body.Close()
+			}
+		}
+	}()
+
+	username := "secret-import-user-" + suffix
+	payload := suite.importBody(importRequest{
+		Content: fmt.Sprintf("resource_type: user\ntype: %s\nouId: %s\nattributes:\n  username: %s\n"+
+			"credentials:\n  password: sec:%s\n", typeHandle, ouID, username, secretName),
+		Options: runtimeOptions(),
+	})
+	status, body = suite.postJSON(suite.client, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp importResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	suite.Require().Len(resp.Results, 1)
+	suite.Equal("success", resp.Results[0].Status, "the user was not written: %+v", resp.Results[0])
+	if resp.Results[0].ResourceID != "" {
+		defer func() { _ = testutils.DeleteUser(resp.Results[0].ResourceID) }()
+	}
+	suite.Equal(1, resp.Summary.Imported)
+}

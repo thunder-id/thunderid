@@ -149,3 +149,33 @@ func TestDecodeViewRefusesADocumentThatDoesNotDecode(t *testing.T) {
 	assert.Nil(t, view)
 	assert.False(t, shown)
 }
+
+type listingExporter struct {
+	ResourceExporter
+	resourceType string
+	fields       []string
+}
+
+func (e listingExporter) GetResourceType() string { return e.resourceType }
+func (e listingExporter) SecretFields() []string  { return e.fields }
+
+type silentExporter struct{ ResourceExporter }
+
+func (silentExporter) GetResourceType() string { return "flow" }
+
+// Secret fields are collected by resource type from the exporters that name them; one that names
+// none has no entry, so a resource of its type may refer to no secret.
+func TestSecretFieldsOfCollectsByResourceType(t *testing.T) {
+	fields := SecretFieldsOf([]ResourceExporter{
+		listingExporter{resourceType: "application", fields: []string{"inboundAuthConfig[].config.clientSecret"}},
+		silentExporter{},
+		listingExporter{resourceType: "user", fields: []string{"credentials.*"}},
+	})
+
+	assert.Equal(t, map[string][]string{
+		"application": {"inboundAuthConfig[].config.clientSecret"},
+		"user":        {"credentials.*"},
+	}, fields)
+	_, listed := fields["flow"]
+	assert.False(t, listed)
+}

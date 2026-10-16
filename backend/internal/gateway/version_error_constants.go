@@ -105,6 +105,21 @@ var (
 				"A dry run lists them.",
 		},
 	}
+	// ErrorMisplacedSecret is returned when the configuration being captured refers to a secret from a
+	// field that holds no credential. A gateway would refuse the resource on import, and resolved
+	// there the secret would be stored as an ordinary value.
+	ErrorMisplacedSecret = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.misplaced_secret",
+			DefaultValue: "A secret reference stands outside a credential field",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.misplaced_secret.description",
+			DefaultValue: "A secret reference may only stand in a field that holds a credential",
+		},
+	}
 	// ErrorInvalidSelection is returned when an apply's selection names a resource the diff does not
 	// report, or would leave out a resource too long to keep.
 	ErrorInvalidSelection = tidcommon.ServiceError{

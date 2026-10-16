@@ -79,6 +79,10 @@ paths:
         from one gateway to the next, so they are no part of what a version is. Capturing
         configuration that matches a version already captured answers `200` with that version, marked
         `unchanged`, rather than keeping it twice, and the version keeps the values it was captured with.
+
+        A configuration that refers to a secret from a field that holds no credential is refused with
+        `400` (`GTW-1026`), naming each place the secret stands: every gateway would refuse the resource
+        on import. Secrets may stand only in the fields listed under value references.
       requestBody:
         required: false
         content:

@@ -5,6 +5,8 @@ package connection
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -810,4 +812,55 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthentic
 	// Nor when the connection authenticates with nothing at all.
 	rules = exporter.GetResourceRulesForResource(&connectionExportModel{Type: emailSMTPVendorName})
 	s.Empty(rules.SecretVariables)
+}
+
+// yamlPathOf names the YAML field a struct path of connectionExportModel reaches: each struct
+// segment by its yaml tag, and the segments under a map by their key.
+func yamlPathOf(structPath string) string {
+	parts := strings.Split(structPath, ".")
+	current := reflect.TypeOf(connectionExportModel{})
+	named := make([]string, 0, len(parts))
+	for i, part := range parts {
+		if current.Kind() == reflect.Pointer {
+			current = current.Elem()
+		}
+		if current.Kind() == reflect.Map {
+			named = append(named, parts[i:]...)
+			break
+		}
+		field, ok := current.FieldByName(part)
+		if !ok {
+			named = append(named, part)
+			continue
+		}
+		named = append(named, strings.Split(field.Tag.Get("yaml"), ",")[0])
+		current = field.Type
+	}
+	return strings.Join(named, ".")
+}
+
+// Every secret a connection of any vendor exports a reference for is one of the fields the exporter
+// says may hold a secret, so an import can put each one back where it came from and nowhere else.
+func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets() {
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+	fields := exporter.SecretFields()
+	s.Contains(fields, "authentication.properties."+outboundauth.FieldBasicPassword)
+
+	for _, model := range []*connectionExportModel{
+		{Type: "google", ClientSecret: "s"},
+		{Type: "twilio", AuthToken: "t"},
+		{Type: "vonage", APISecret: "a"},
+		{Type: emailSMTPVendorName, Authentication: &outboundauth.Authentication{
+			Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "mailer", outboundauth.FieldBasicPassword: "p",
+			},
+		}},
+	} {
+		rules := exporter.GetResourceRulesForResource(model)
+		s.Require().NotEmpty(rules.SecretVariables, model.Type)
+		for _, path := range rules.SecretVariables {
+			s.Contains(fields, yamlPathOf(path), model.Type)
+		}
+	}
 }

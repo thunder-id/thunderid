@@ -228,6 +228,19 @@ func (e *connectionExporter) GetResourceRulesForResource(
 	}
 }
 
+// SecretFields names every field an exported connection of any vendor holds a credential in: the
+// identity provider client secret, each message vendor's own secret, and the credential fields of
+// every outbound authentication method an email connection can use.
+func (e *connectionExporter) SecretFields() []string {
+	keys := outboundauth.CredentialFieldKeys()
+	fields := make([]string, 0, 3+len(keys))
+	fields = append(fields, "clientSecret", "authToken", "apiSecret")
+	for _, key := range keys {
+		fields = append(fields, "authentication.properties."+key)
+	}
+	return fields
+}
+
 // authenticationResourceRules externalizes each secret field of a connection's outbound
 // authentication to a template variable. The field names are not statically known, since they
 // come from the registered method, so the paths are derived rather than hardcoded. That is what

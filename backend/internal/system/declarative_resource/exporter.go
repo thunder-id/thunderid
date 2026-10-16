@@ -63,6 +63,29 @@ type PerResourceRuler interface {
 	GetResourceRulesForResource(resource interface{}) *ResourceRules
 }
 
+// SecretFieldLister names the fields of an exported document that hold a credential: the only
+// places an import may put the value a "sec:" reference names.
+//
+// Each field is a path from the document root, keys joined by dots, with "[]" standing for any
+// item of a list, such as "inboundAuthConfig[].config.clientSecret". A trailing ".*" names every
+// key of a mapping, for a map of credentials keyed by name. The paths are the YAML side of the
+// exporter's SecretVariables, which is where its reference export writes "sec:" placeholders.
+type SecretFieldLister interface {
+	SecretFields() []string
+}
+
+// SecretFieldsOf collects, by resource type, the secret fields of every exporter that names them.
+// A resource type absent from the result has no field that may hold a secret.
+func SecretFieldsOf(exporters []ResourceExporter) map[string][]string {
+	fields := map[string][]string{}
+	for _, exporter := range exporters {
+		if lister, ok := exporter.(SecretFieldLister); ok {
+			fields[exporter.GetResourceType()] = append(fields[exporter.GetResourceType()], lister.SecretFields()...)
+		}
+	}
+	return fields
+}
+
 // ReferenceWriter is implemented by an exporter that writes some placeholders itself rather than
 // leaving them to the parameterizer, so it can write them in the style the export uses: a value
 // reference such as "sec:NAME" where the export writes references, a template placeholder such as

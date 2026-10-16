@@ -90,6 +90,20 @@ func GetMethod(authType Type) (Method, bool) {
 	return Method{}, false
 }
 
+// CredentialFieldKeys returns, in registration order and without repeats, the key of every field
+// any registered method marks as a credential.
+func CredentialFieldKeys() []string {
+	var keys []string
+	for _, method := range registeredMethods {
+		for _, field := range method.Fields {
+			if field.Credential && !slices.Contains(keys, field.Key) {
+				keys = append(keys, field.Key)
+			}
+		}
+	}
+	return keys
+}
+
 // GetMethods returns the methods for the given types, in the order given, skipping any that
 // names no registered method. Callers pass the set of methods they support and serve the result.
 //

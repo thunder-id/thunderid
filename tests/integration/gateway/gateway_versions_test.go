@@ -435,3 +435,28 @@ func (ts *GatewayVersionsTestSuite) call(method, path string, body any, out any)
 	}
 	return resp.StatusCode
 }
+
+// A capture is refused while a resource refers to a secret from a field that holds no credential:
+// every gateway would refuse to import it, so the configuration is refused here, naming the place.
+func (ts *GatewayVersionsTestSuite) TestACaptureRefusesASecretOutsideACredentialField() {
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "misplaced-" + suffix, Name: "Misplaced " + suffix, Description: "sec:MISPLACED_" + suffix,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(id) }()
+
+	encoded, err := json.Marshal(map[string]any{"note": "misplaced"})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/configuration-versions", bytes.NewReader(encoded))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, resp.StatusCode, string(body))
+	ts.Contains(string(body), "GTW-1026")
+	ts.Contains(string(body), "organization_unit/"+id+" description", "the refusal does not say where the secret stands")
+}
