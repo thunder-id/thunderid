@@ -3,7 +3,7 @@
 
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: always
     environment:
       REDIS_USERNAME: dbuser

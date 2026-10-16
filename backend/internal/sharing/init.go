@@ -37,11 +37,13 @@ func Initialize(
 	// something declares into it, so there is nothing to save by withholding it.
 	fileStore := newFileBasedStore()
 
-	var visibilityCache cache.CacheInterface[bool]
-	var overlayRuleCache cache.CacheInterface[ResolvedOverlay]
+	// Grouped caches: a policy write invalidates one resource's answers at a time, which a cache
+	// keyed only by exact key cannot express.
+	var visibilityCache cache.GroupedCacheInterface[bool]
+	var overlayRuleCache cache.GroupedCacheInterface[ResolvedOverlay]
 	if cacheManager != nil {
-		visibilityCache = cache.GetCache[bool](cacheManager, "SharingVisibilityCache")
-		overlayRuleCache = cache.GetCache[ResolvedOverlay](cacheManager, "SharingOverlayCache")
+		visibilityCache = cache.GetGroupedCache[bool](cacheManager, "SharingVisibilityCache")
+		overlayRuleCache = cache.GetGroupedCache[ResolvedOverlay](cacheManager, "SharingOverlayCache")
 	}
 
 	return newSharingService(dbStore, fileStore, ouHierarchyResolver, ouEnumerator, transactioner,

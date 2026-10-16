@@ -418,6 +418,8 @@ When `cache.type` is `redis`, per-cache `ttl` and `disabled` remain useful. Per-
 
 Set `cache.type` to `redis` and configure `cache.redis.address` to enable Redis-backed cache storage.
 
+Redis-backed caching requires Redis 7.4.0 or later.
+
 ```yaml
 cache:
   type: "redis"
