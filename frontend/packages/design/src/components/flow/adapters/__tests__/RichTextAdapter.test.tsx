@@ -41,6 +41,16 @@ const baseComponent: FlowComponent = {
 };
 
 describe('RichTextAdapter', () => {
+  it('renders left aligned on a page that mounts no DesignProvider', () => {
+    const {getByTestId} = renderWithProviders(
+      <RichTextAdapter component={baseComponent} resolve={(s: string | undefined) => s} />,
+      {designContext: null},
+    );
+
+    expect(getByTestId('rich-text-box').innerHTML).toBe('<p>Hello <strong>World</strong></p>');
+    expect(getByTestId('rich-text-box').getAttribute('data-align')).toBe('left');
+  });
+
   it('renders resolved HTML content', () => {
     const {getByTestId} = renderWithProviders(
       <RichTextAdapter component={baseComponent} resolve={(s: string | undefined) => s} />,

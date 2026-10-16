@@ -29,6 +29,7 @@ export const INPUT_ELEMENT_TYPES = new Set<string>([
   ElementTypes.Checkbox,
   ElementTypes.Dropdown,
   ElementTypes.Select,
+  ElementTypes.UserSelect,
 ]);
 
 /**
