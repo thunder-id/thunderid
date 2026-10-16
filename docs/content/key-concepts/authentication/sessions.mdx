@@ -53,7 +53,10 @@ There are two ways to run the sign-out flow, matching the two [integration model
 
 A session also ends on its own when it passes the idle or absolute timeout, as described above.
 
+When a session ends, through either path or through an administrative action such as deleting the user, <ProductName /> posts a logout token to every application that took part in the session and registered a back-channel logout URI. Expiry sends no notification. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout).
+
 ## Related
 
 - [Single Sign-On for Flows](../../../guides/flows/single-sign-on) shows how to add the SSO nodes to a flow in the Console Flow Builder.
 - [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout) shows how a browser-based application ends the session over OIDC.
+- [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout) shows how the other applications in a session are told that it ended.

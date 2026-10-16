@@ -48,7 +48,8 @@ sections:
     title: Handling authentication
     meta: "~8 min"
     intro: >-
-      Four files, all standard Spring Security: login flow, token validation, and scope-based access control.
+      Five steps, all standard Spring Security: login flow, token validation, scope-based access control, and
+      back-channel logout.
       Spring Security is maintained by the Spring team; {{ProductName}} maintains this guide and the
       configuration below.
     steps:
@@ -139,6 +140,26 @@ sections:
               }
             }
         note: Enable @PreAuthorize with @EnableMethodSecurity on any configuration class.
+      - title: Receive back-channel logout
+        description: >-
+          Spring Security implements OpenID Connect Back-Channel Logout. Two additions to the configuration above
+          stand up the receiving endpoint and end the matching Spring session when {{ProductName}} posts a logout
+          token. Register the endpoint URL as the application's back-channel logout URI in {{ProductName}}.
+        code:
+          file: SecurityConfig.java
+          lang: java
+          content: |-
+            @Bean
+            OidcBackChannelLogoutHandler oidcLogoutHandler() {
+              return new OidcBackChannelLogoutHandler();
+            }
+
+            // In the SecurityFilterChain, next to oauth2Login(...):
+            .oidcLogout(logout -> logout.backChannel(Customizer.withDefaults()))
+        note: >-
+          The endpoint is /logout/connect/back-channel/thunderid, where thunderid is the registration id. Spring
+          correlates each login's sid to the servlet session in an in-memory OidcSessionRegistry, so several instances
+          need a shared one, and the session cookie must be JSESSIONID unless the handler is told otherwise.
 
   - type: table
     id: mapping
