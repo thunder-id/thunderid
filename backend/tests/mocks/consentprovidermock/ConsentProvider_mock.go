@@ -155,23 +155,23 @@ func (_c *ConsentProviderMock_RecordConsent_Call) RunAndReturn(run func(ctx cont
 }
 
 // ResolveConsent provides a mock function for the type ConsentProviderMock
-func (_mock *ConsentProviderMock) ResolveConsent(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *providers.AttributesResponse, forceReprompt bool, runtimeMetadata map[string][]string) (*providers.ConsentPromptData, *common.ServiceError) {
+func (_mock *ConsentProviderMock) ResolveConsent(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *providers.AttributesResponse, forceReprompt bool, runtimeMetadata map[string][]string) (*providers.ConsentResolution, *common.ServiceError) {
 	ret := _mock.Called(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes, forceReprompt, runtimeMetadata)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResolveConsent")
 	}
 
-	var r0 *providers.ConsentPromptData
+	var r0 *providers.ConsentResolution
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *providers.AttributesResponse, bool, map[string][]string) (*providers.ConsentPromptData, *common.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *providers.AttributesResponse, bool, map[string][]string) (*providers.ConsentResolution, *common.ServiceError)); ok {
 		return returnFunc(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes, forceReprompt, runtimeMetadata)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *providers.AttributesResponse, bool, map[string][]string) *providers.ConsentPromptData); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *providers.AttributesResponse, bool, map[string][]string) *providers.ConsentResolution); ok {
 		r0 = returnFunc(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes, forceReprompt, runtimeMetadata)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*providers.ConsentPromptData)
+			r0 = ret.Get(0).(*providers.ConsentResolution)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, []string, []string, []string, *providers.AttributesResponse, bool, map[string][]string) *common.ServiceError); ok {
@@ -268,12 +268,12 @@ func (_c *ConsentProviderMock_ResolveConsent_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *ConsentProviderMock_ResolveConsent_Call) Return(consentPromptData *providers.ConsentPromptData, serviceError *common.ServiceError) *ConsentProviderMock_ResolveConsent_Call {
-	_c.Call.Return(consentPromptData, serviceError)
+func (_c *ConsentProviderMock_ResolveConsent_Call) Return(consentResolution *providers.ConsentResolution, serviceError *common.ServiceError) *ConsentProviderMock_ResolveConsent_Call {
+	_c.Call.Return(consentResolution, serviceError)
 	return _c
 }
 
-func (_c *ConsentProviderMock_ResolveConsent_Call) RunAndReturn(run func(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *providers.AttributesResponse, forceReprompt bool, runtimeMetadata map[string][]string) (*providers.ConsentPromptData, *common.ServiceError)) *ConsentProviderMock_ResolveConsent_Call {
+func (_c *ConsentProviderMock_ResolveConsent_Call) RunAndReturn(run func(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *providers.AttributesResponse, forceReprompt bool, runtimeMetadata map[string][]string) (*providers.ConsentResolution, *common.ServiceError)) *ConsentProviderMock_ResolveConsent_Call {
 	_c.Call.Return(run)
 	return _c
 }
