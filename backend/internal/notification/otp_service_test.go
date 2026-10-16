@@ -290,7 +290,11 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_ExpiredOTP() {
 
 	suite.Nil(err)
 	suite.NotNil(res)
-	suite.Equal(common.OTPVerifyStatusInvalid, res.Status)
+	// Told apart from a wrong code, even though the code presented here is the right one. An expiry
+	// compared nothing, so it must not move a failure counter; the layers above still refuse it
+	// exactly as they refuse a wrong code.
+	suite.Equal(common.OTPVerifyStatusExpired, res.Status)
+	suite.Equal("+15559876543", res.Recipient)
 }
 
 func (suite *OTPServiceTestSuite) TestVerifyOTP_InvalidSessionToken() {

@@ -206,4 +206,17 @@ var (
 			DefaultValue: "No credentials found for the user. Please register a credential first",
 		},
 	}
+	// ErrorAccountSuspended states that a suspension refused an enrolment.
+	ErrorAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "PSK-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.passkeyservice.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.passkeyservice.account_suspended_description",
+			DefaultValue: "The account is suspended",
+		},
+	}
 )

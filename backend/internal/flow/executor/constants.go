@@ -64,6 +64,8 @@ const (
 	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
+	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 )
 
 // Executor mode constants
@@ -178,6 +180,9 @@ const (
 	propertyKeyProvisioningMode = "mode"
 	propertyKeyRequiredScopes   = "requiredScopes"
 	propertyKeyEmailTemplate    = "emailTemplate"
+	// propertyKeyBestEffort marks a delivery node whose failure must not fail the flow, which the
+	// flow graph's edges cannot express.
+	propertyKeyBestEffort = "bestEffort"
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"

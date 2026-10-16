@@ -13,4 +13,9 @@ const (
 	ErrorCodeInvalidRequest       = "AUP-0006"
 	ErrorCodeAmbiguousUser        = "AUP-0007"
 	ErrorCodeEnrollmentFailed     = "AUP-0008"
+	// ErrorCodeAccountLocked and ErrorCodeAccountSuspended say the proof was correct but a hold
+	// refused the identity. A refusal that names no hold raises ErrorCodeAuthenticationFailed, like a
+	// wrong secret.
+	ErrorCodeAccountLocked    = "AUP-0009"
+	ErrorCodeAccountSuspended = "AUP-0010"
 )

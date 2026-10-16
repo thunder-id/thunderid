@@ -28,6 +28,7 @@ type otpExecutor struct {
 	entityProvider entityprovider.EntityProviderInterface
 	otpService     otp.OTPAuthnServiceInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -37,6 +38,7 @@ func newOTPExecutor(
 	otpService otp.OTPAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
+	governance providers.IdentityGovernanceProvider,
 ) *otpExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -78,6 +80,7 @@ func newOTPExecutor(
 		entityProvider: entityProvider,
 		otpService:     otpService,
 		authnProvider:  authnProvider,
+		accessGuard:    newAccessGuard(governance, logger),
 		logger:         logger,
 	}
 }
@@ -155,6 +158,27 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
+	// The dispatch guard, on the one-time password's own scope and only for an entity recipient.
+	// Unless the hold may be stated, a code is generated but not delivered, so the step answers as a
+	// sent code does and the verify step answers as a wrong code does.
+	skipDelivery := false
+	if recipientAttr == authnprovidercm.UserAttributeUserID {
+		withheld, stated, fault := e.accessGuard.heldAtDispatch(ctx.Context, recipient,
+			providers.AccessScopeOTP, ctx.FlowType)
+		if fault != nil {
+			return execResp, fault
+		}
+		if withheld && stated != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
+		if withheld {
+			logger.Debug(ctx.Context, "OTP generate: identity is held; skipping delivery")
+		}
+		skipDelivery = withheld
+	}
+
 	otpCfg := e.resolveOTPProperties(ctx)
 	sessionToken, otpValue, expirySeconds, svcErr :=
 		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
@@ -164,6 +188,12 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
 	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
+	if skipDelivery {
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+	} else if ctx.RuntimeData[common.RuntimeKeySkipDelivery] == dataValueTrue {
+		// A resend after the hold lifted is delivered.
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = ""
+	}
 	// Published from the generated value rather than the configured otpLength property, since the
 	// property is clamped and may fall back to the server default.
 	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))
@@ -302,6 +332,15 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 	authUser, authenticatedClaims, svcErr := e.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	if svcErr != nil {
+		// Same shape as the credentials executor: a stated hold re-prompts with its own message.
+		if stated := statedHold(svcErr).refusal(); stated != nil {
+			logger.Debug(ctx.Context, "OTP verification refused by a stated hold",
+				log.String("code", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = e.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code ||
 			svcErr.Code == authnprovidermgr.ErrorInvalidRequest.Code {
 			logger.Debug(ctx.Context, "OTP verification failed")

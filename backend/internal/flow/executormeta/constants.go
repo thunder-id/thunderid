@@ -53,6 +53,8 @@ const (
 	ExecutorNameRole                         = "RoleExecutor"
 	ExecutorNameGroup                        = "GroupExecutor"
 	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
+	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
+	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 )
 
 // Executor mode constants

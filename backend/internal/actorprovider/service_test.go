@@ -18,9 +18,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
@@ -43,7 +45,7 @@ func (s *ActorProviderTestSuite) SetupTest() {
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.mockAuthn = managermock.NewAuthnProviderManagerMock(s.T())
 	s.mockRole = rolemock.NewRoleServiceInterfaceMock(s.T())
-	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil)
+	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil, nil)
 }
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
@@ -167,7 +169,7 @@ func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	expected := &providers.Entity{ID: "app-1"}
-	s.mockEntity.On("GetEntity", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntityProfile", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
 
 	entity, err := s.provider.GetActor("app-1")
 
@@ -188,8 +190,8 @@ func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAtt
 			mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
 				[]string{"default"}).Return(map[string]string{"default": tc.displayPath},
 				(*tidcommon.ServiceError)(nil)).Once()
-			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType)
-			s.mockEntity.On("GetEntity", "agent-1").Return(&providers.Entity{
+			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType, nil)
+			s.mockEntity.On("GetEntityProfile", "agent-1").Return(&providers.Entity{
 				ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
 				Attributes: []byte(`{"name":"Ledger Agent"}`),
 			}, (*entityprovider.EntityProviderError)(nil)).Once()
@@ -238,10 +240,64 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 }
 
 func (s *ActorProviderTestSuite) TestGetActorRoles_NilRoleService_ReturnsNil() {
-	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil, nil)
+	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil, nil, nil)
 
 	roles, err := provider.GetActorRoles("app-1", []string{"group-1"})
 
 	s.Nil(err)
 	s.Nil(roles)
+}
+
+// An unreadable authority is a server fault, answered as an unreadable client is, never as a held
+// client; a refusal stays the held-client error.
+func (s *ActorProviderTestSuite) TestRefuseHeldActorSeparatesAFaultFromAHold() {
+	client := &providers.OAuthClient{ID: "app-1", ClientID: "client-1"}
+
+	faulty := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	faulty.On("EvaluateAccess", mock.Anything, "app-1", providers.AccessPlaneApplication, providers.AccessScope("")).
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	p := &actorProvider{governance: faulty, logger: log.GetLogger()}
+	svcErr := p.refuseHeldActor(context.Background(), client)
+	s.Require().NotNil(svcErr)
+	s.Require().Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+
+	held := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	held.On("EvaluateAccess", mock.Anything, "app-1", providers.AccessPlaneApplication, providers.AccessScope("")).
+		Return(providers.AccessDecision{Admitted: false}, (*tidcommon.ServiceError)(nil)).Once()
+	p = &actorProvider{governance: held, logger: log.GetLogger()}
+	svcErr = p.refuseHeldActor(context.Background(), client)
+	s.Require().NotNil(svcErr)
+	s.Require().Equal(ErrorActorUnavailable.Code, svcErr.Code)
+}
+
+func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_RefusesAHeldClient() {
+	stored := &providers.OAuthClient{ID: "app-1", ClientID: "client-1"}
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "client-1").Return(stored, nil)
+	gov := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	gov.On("EvaluateAccess", mock.Anything, "app-1", providers.AccessPlaneApplication, providers.AccessScope("")).
+		Return(providers.AccessDecision{Admitted: false}, (*tidcommon.ServiceError)(nil)).Once()
+	gov.On("EvaluateAccess", mock.Anything, "app-1", providers.AccessPlaneApplication, providers.AccessScope("")).
+		Return(providers.AccessDecision{Admitted: true}, (*tidcommon.ServiceError)(nil)).Once()
+	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil, gov)
+
+	client, svcErr := provider.GetOAuthClientByClientID(context.Background(), "client-1")
+	s.Nil(client)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorActorUnavailable.Code, svcErr.Code)
+
+	client, svcErr = provider.GetOAuthClientByClientID(context.Background(), "client-1")
+	s.Nil(svcErr)
+	s.Equal(toProviderOAuthClient(stored), client)
+}
+
+func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_UnknownClientSkipsGovernance() {
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "missing").
+		Return((*providers.OAuthClient)(nil), nil)
+	gov := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil, gov)
+
+	client, svcErr := provider.GetOAuthClientByClientID(context.Background(), "missing")
+
+	s.Nil(client)
+	s.Nil(svcErr)
 }

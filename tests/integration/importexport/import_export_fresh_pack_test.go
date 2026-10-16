@@ -154,6 +154,61 @@ func (suite *ImportExportFreshPackSuite) TestServerConfigExportImportRoundTrip()
 	suite.putServerConfigCORS(`[]`)
 }
 
+// TestAccountAccessExportImportRoundTrip exports the accountAccess section, clears its writable layer,
+// imports the export and checks the effective policy is the one exported. The field set is inert, since
+// last-login recording is off by default.
+func (suite *ImportExportFreshPackSuite) TestAccountAccessExportImportRoundTrip() {
+	const section = "accountAccess"
+	original, err := testutils.GetWritableServerConfig(section)
+	suite.Require().NoError(err)
+	defer func() {
+		suite.Require().NoError(testutils.PutWritableServerConfig(section, original))
+	}()
+
+	suite.Require().NoError(testutils.PutWritableServerConfig(section,
+		[]byte(`{"user":{"lastLoginResolutionSeconds":1234}}`)))
+	exportedPolicy := suite.getMergedServerConfig(section)
+	suite.Require().Contains(string(exportedPolicy), `"lastLoginResolutionSeconds":1234`)
+
+	exported, err := suite.exportResources(exportRequest{ServerConfigs: []string{section}})
+	suite.Require().NoError(err)
+	suite.Require().Contains(exported, `"lastLoginResolutionSeconds":1234`)
+
+	suite.Require().NoError(testutils.PutWritableServerConfig(section, []byte(`{}`)))
+	suite.Require().NotContains(string(suite.getMergedServerConfig(section)), `"lastLoginResolutionSeconds":1234`)
+
+	importResp, err := suite.importResources(importRequest{
+		Content: exported,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Require().Len(importResp.Results, 1)
+	suite.Equal("server_config", importResp.Results[0].ResourceType)
+	suite.Equal("success", importResp.Results[0].Status, importResp.Results[0].Message)
+
+	suite.JSONEq(string(exportedPolicy), string(suite.getMergedServerConfig(section)))
+}
+
+// getMergedServerConfig returns the effective value of a server-config section.
+func (suite *ImportExportFreshPackSuite) getMergedServerConfig(section string) json.RawMessage {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/server-config/"+section, nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, string(body))
+
+	var layers struct {
+		Merged json.RawMessage `json:"merged"`
+	}
+	suite.Require().NoError(json.Unmarshal(body, &layers))
+	return layers.Merged
+}
+
 func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins string) {
 	body := `{"allowedOrigins":` + allowedOrigins + `}`
 	req, err := http.NewRequest(http.MethodPut,

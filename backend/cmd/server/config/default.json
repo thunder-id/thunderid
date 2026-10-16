@@ -314,6 +314,49 @@
   "resource_sharing": {
     "allow_child_ou_cross_tree_sharing": false
   },
+  "account_access": {
+    "user": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 3600,
+        "lock_durations_seconds": [
+          300,
+          900,
+          1800,
+          3600
+        ],
+        "lock_decay_seconds": 86400
+      },
+      "notifications": {
+        "on_lock": {
+          "email": {
+            "enabled": true,
+            "recipient_attribute": "email"
+          }
+        }
+      }
+    },
+    "agent": {
+      "lock_granularity": "authentication_method",
+      "record_last_login": false,
+      "last_login_resolution_seconds": 3600,
+      "default": {
+        "enabled": true,
+        "threshold": 5,
+        "failure_window_seconds": 900,
+        "lock_durations_seconds": [
+          60,
+          300,
+          900
+        ],
+        "lock_decay_seconds": 3600
+      }
+    }
+  },
   "organization_unit": {
     "store": "composite"
   },

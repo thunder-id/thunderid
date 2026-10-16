@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/attributecache"
@@ -186,6 +187,13 @@ type ExecutorDependencies struct {
 	UserService           user.UserServiceInterface
 	CriteriaRevoker       revocation.CriteriaRevoker
 	ResourceMgtService    resource.ResourceServiceInterface
+	// IdentityGovernance answers whether an identity may be used. Required by the executors that
+	// gate on it; a root that leaves it nil gets a flow engine that governs nothing, which is why
+	// both roots wire it.
+	IdentityGovernance providers.IdentityGovernanceProvider
+	// TokenLeeway is the JWT clock-skew allowance. A suspension's revocation cutoff is moved forward
+	// by it, so a token signed just after the hold is revoked too. Zero keeps the plan time.
+	TokenLeeway time.Duration
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -199,11 +207,12 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.AuthnProvider))
+				deps.FlowFactory, deps.AuthnProvider, deps.IdentityGovernance))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(
-				deps.FlowFactory, deps.MagicLinkService, deps.AuthnProvider, deps.EntityProvider))
+				deps.FlowFactory, deps.MagicLinkService, deps.AuthnProvider, deps.EntityProvider,
+				deps.IdentityGovernance))
 		},
 		ExecutorNameOAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOAuth, newOAuthExecutor(
@@ -240,7 +249,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
 				deps.OUService, deps.AuthAssertGen, deps.AuthnProvider, deps.EntityProvider,
-				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService))
+				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService, deps.IdentityGovernance))
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
@@ -264,7 +273,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
-				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
+				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider, deps.IdentityGovernance))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
@@ -275,7 +284,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			}
 			reg.RegisterExecutor(ExecutorNameIdentifying, newIdentifyingExecutor(
 				"", identifyingInputs, []providers.Input{}, deps.FlowFactory, deps.EntityProvider,
-				deps.AuthnProvider))
+				deps.AuthnProvider, deps.IdentityGovernance))
 		},
 		ExecutorNameConsent: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameConsent, newConsentExecutor(
@@ -301,7 +310,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSession: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSession, newSessionExecutor(
-				deps.FlowFactory, deps.SessionService, deps.AuthnProvider))
+				deps.FlowFactory, deps.SessionService, deps.AuthnProvider, deps.IdentityGovernance))
 		},
 		ExecutorNameSessionSignOut: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionSignOut, newSessionSignOutExecutor(
@@ -309,7 +318,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameOTPExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOTPExecutor, newOTPExecutor(
-				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
+				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider,
+				deps.IdentityGovernance))
 		},
 		ExecutorNamePreDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePreDelete,
@@ -347,6 +357,15 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOwnerResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
 				deps.FlowFactory, deps.EntityProvider))
+		},
+		ExecutorNameIdentityGovernance: func(reg ExecutorRegistryInterface,
+			deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameIdentityGovernance,
+				newIdentityGovernanceExecutor(deps.FlowFactory, deps.IdentityGovernance))
+		},
+		ExecutorNamePreSuspend: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreSuspend,
+				newPreSuspendExecutor(deps.FlowFactory, deps.IdentityGovernance, deps.TokenLeeway))
 		},
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
@@ -459,6 +478,7 @@ type applicationAdminProvider interface {
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
 		string, *tidcommon.ServiceError)
+	GetOAuthClientID(ctx context.Context, entityID string) (string, *tidcommon.ServiceError)
 }
 
 // roleAdminProvider is the role seam the access change validator and the role executor consume.

@@ -379,6 +379,70 @@ func (_c *EntityProviderInterfaceMock_GetEntityListCount_Call) RunAndReturn(run 
 	return _c
 }
 
+// GetEntityProfile provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) GetEntityProfile(entityID string) (*providers.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityProfile")
+	}
+
+	var r0 *providers.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) (*providers.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) *providers.Entity); ok {
+		r0 = returnFunc(entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_GetEntityProfile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityProfile'
+type EntityProviderInterfaceMock_GetEntityProfile_Call struct {
+	*mock.Call
+}
+
+// GetEntityProfile is a helper method to define mock.On call
+//   - entityID string
+func (_e *EntityProviderInterfaceMock_Expecter) GetEntityProfile(entityID any) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	return &EntityProviderInterfaceMock_GetEntityProfile_Call{Call: _e.mock.On("GetEntityProfile", entityID)}
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) Run(run func(entityID string)) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) Return(entity *providers.Entity, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(entity, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetEntityProfile_Call) RunAndReturn(run func(entityID string) (*providers.Entity, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLinkedEntities provides a mock function for the type EntityProviderInterfaceMock
 func (_mock *EntityProviderInterfaceMock) GetLinkedEntities(idpID string, sub string) ([]*providers.Entity, *entityprovider.EntityProviderError) {
 	ret := _mock.Called(idpID, sub)

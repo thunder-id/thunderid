@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -60,6 +61,7 @@ type UserServiceInterface interface {
 type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	entityService      entity.EntityServiceInterface
+	governance         identitygovernance.IdentityGovernanceServiceInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
 	entityTypeService  entitytype.EntityTypeServiceInterface
 	uuidGenerator      func() (string, error)
@@ -73,11 +75,13 @@ func newUserService(
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 ) UserServiceInterface {
 	return &userService{
 		authzService:      authzService,
 		entityService:     entityService,
+		governance:        governance,
 		ouService:         ouService,
 		entityTypeService: entityTypeService,
 		uuidGenerator:     utils.GenerateUUIDv7,
@@ -127,7 +131,7 @@ func (us *userService) listAllUsers(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := entitiesToUsersWithAccess(us.accessReader(ctx), entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -158,7 +162,7 @@ func (us *userService) listUsersByOUIDs(
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}
 
-	users := entitiesToUsers(entities)
+	users := entitiesToUsersWithAccess(us.accessReader(ctx), entities)
 	if includeDisplay {
 		us.populateUserDisplayNames(ctx, users, logger)
 		us.populateOUHandles(ctx, users, logger)
@@ -411,7 +415,7 @@ func (us *userService) GetUser(
 	if e.Category != providers.EntityCategoryUser {
 		return nil, &ErrorUserNotFound
 	}
-	user := entityToUser(e)
+	user := userWithAccess(us.accessReader(ctx), e)
 
 	// Check authz using the user's OU ID (fetched from store).
 	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
@@ -468,7 +472,7 @@ func (as *userService) GetUserGroups(ctx context.Context, userID string, limit, 
 	}
 
 	// Fetch user to resolve the OU ID for the authorization check.
-	userEntity, err := as.entityService.GetEntity(ctx, userID)
+	userEntity, err := as.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -529,7 +533,7 @@ func (us *userService) UpdateUser(
 	}
 
 	// Fetch the existing user to obtain its OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -642,7 +646,7 @@ func (us *userService) UpdateUserAttributes(
 	if existingEntity.Category != providers.EntityCategoryUser {
 		return nil, &ErrorUserNotFound
 	}
-	existingUser := entityToUser(existingEntity)
+	existingUser := userWithAccess(us.accessReader(ctx), existingEntity)
 
 	// Reject credential fields here: this endpoint is for attribute updates only.
 	// Credentials must go through UpdateUserCredentials, which enforces its own authz and validation.
@@ -734,7 +738,7 @@ func (us *userService) UpdateUserCredentials(
 	}
 
 	// Fetch user outside the transaction to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -799,7 +803,7 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 	if userID == "" {
 		return &ErrorMissingUserID
 	}
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return &ErrorUserNotFound
@@ -830,7 +834,7 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 	}
 
 	// Fetch the user to resolve the OU ID for the authorization check.
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "User not found", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -959,7 +963,7 @@ func (us *userService) GetUserUsages(
 		return nil, &ErrorMissingUserID
 	}
 
-	existingEntity, err := us.entityService.GetEntity(ctx, userID)
+	existingEntity, err := us.entityService.GetEntityProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			return nil, &ErrorUserNotFound
@@ -1283,4 +1287,13 @@ func (us *userService) ResolveUserOUHandle(
 		user.OUID = ou.ID
 	}
 	return nil
+}
+
+// accessReader resolves the lockout policy for users once. Without governance every recorded lock is
+// reported.
+func (us *userService) accessReader(ctx context.Context) identitygovernance.AccessReaderInterface {
+	if us.governance == nil {
+		return identitygovernance.NewDefaultAccessReader()
+	}
+	return us.governance.NewAccessReader(ctx, providers.EntityCategoryUser)
 }

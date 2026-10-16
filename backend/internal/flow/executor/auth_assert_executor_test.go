@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
@@ -80,7 +81,8 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 
 	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider, suite.mockEntityProvider,
-		suite.mockAttributeCacheSvc, suite.mockRoleService, suite.mockEntityTypeService)
+		suite.mockAttributeCacheSvc, suite.mockRoleService,
+		suite.mockEntityTypeService, admitAllAccess(suite.T()))
 }
 
 func createMockExecutorSimple(t *testing.T, name string,
@@ -498,6 +500,8 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AssertionGenerationFails_S
 		Application: providers.Application{},
 	}
 
+	// P2 resolves the subject before the assertion is generated.
+	suite.setupGetEntityReference("", "")
 	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ServerErrorType,
@@ -2129,4 +2133,149 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCannotOverwriteSi
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The node that grants access records it for the subject it admitted. Recording here (P2) stamps
+// once per flow, after assurance, rather than once per authentication method at P1.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_RecordsAccessGrantedForTheAdmittedSubject() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, testUserID).
+		Return(providers.AccessDecision{Admitted: true}, (*tidcommon.ServiceError)(nil))
+	governance.On("RecordLogin", mock.Anything, testUserID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
+		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService,
+		suite.mockEntityTypeService, governance)
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityCategory: "user", EntityType: "Person",
+		}, (*tidcommon.ServiceError)(nil))
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{})
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, testUserID, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		Context:     context.Background(),
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{},
+	})
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	governance.AssertExpectations(suite.T())
+}
+
+// An unreadable authority is a server fault, as an unreadable subject is when the assertion is built,
+// and records nothing.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_UnreadableAuthorityIsAServerFault() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, testUserID).
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
+		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService,
+		suite.mockEntityTypeService, governance)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityCategory: "user", EntityType: "Person",
+		}, (*tidcommon.ServiceError)(nil))
+
+	_, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		Context:     context.Background(),
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{},
+	})
+
+	suite.Require().Error(err)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
+}
+
+// A held subject is refused and records nothing. The stamp means access was granted, so writing one
+// for a refused sign-in would make a dormancy report count the attempts that did not get in.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_RecordsNothingForARefusedSubject() {
+	governance := refuseAllAccess(suite.T())
+	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
+		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService,
+		suite.mockEntityTypeService, governance)
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityCategory: "user", EntityType: "Person",
+		}, (*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		Context:     context.Background(),
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{},
+	})
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrInvalidCredentials.Code, resp.Error.Code)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
+}
+
+// A disclosed hold is refused with its own error.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_StatesADisclosedHold() {
+	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
+		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService, suite.mockEntityTypeService,
+		decideAccess(suite.T(), providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil))
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityCategory: "user", EntityType: "Person",
+		}, (*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		Context:     context.Background(),
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{},
+	})
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrAccountSuspended.Code, resp.Error.Code)
+}
+
+// A resolution fault before admission is a fault, even when a later resolution would succeed: the
+// assertion must never be signed for a subject the authority was not asked about.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolutionFaultBeforeAdmissionIsAFault() {
+	governance := refuseAllAccess(suite.T())
+	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
+		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService,
+		suite.mockEntityTypeService, governance)
+
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, (*providers.EntityReference)(nil), &tidcommon.InternalServerError).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityCategory: "user", EntityType: "Person",
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+
+	resp, err := suite.executor.Execute(&providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		Context:     context.Background(),
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{},
+	})
+
+	suite.Require().Error(err)
+	assert.Nil(suite.T(), resp)
+	suite.mockAuthnProvider.AssertNumberOfCalls(suite.T(), "GetEntityReference", 1)
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

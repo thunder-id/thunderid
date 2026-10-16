@@ -10,6 +10,111 @@ const translations = {
   // Common namespace - Shared translations across all applications
   // ============================================================================
   common: {
+    // Account status and the identity lifecycle operations
+    // Status text for the listing indicator and the record banner. A key with no category suffix is the user wording, which a
+    // category with nothing of its own falls back to; only the verb differs, since a user signs in
+    // while an agent and an application authenticate.
+    //
+    // None of it mentions that a suspended record stays editable: the status says whether the
+    // identity can get in, and the remediation window belongs in the suspend confirmation.
+    'accountStatus.active.label': 'Active',
+    'accountStatus.active.hint': 'This account can sign in normally.',
+    'accountStatus.active.hint.agent': 'This agent can authenticate normally.',
+    'accountStatus.active.hint.application': 'This application can authenticate normally.',
+    'accountStatus.locked.label': 'Locked',
+    // Covers both ways an account reaches this status. One lifts on its own and one does not, and an
+    // operator who assumes the timer will fix the second will leave the account unusable.
+    'accountStatus.locked.hint':
+      'The account is locked and cannot sign in. A lock from failed sign-ins lifts on its own; a lock left after a suspension is removed stays until an administrator unlocks it or the user completes self-recovery.',
+    // No application wording anywhere under locked: an application resolves only at the application
+    // plane, where an authentication hold is never enforced, so it cannot reach this status.
+    'accountStatus.locked.hint.agent':
+      'The agent is locked and cannot authenticate. A lock from failed attempts lifts on its own; a lock left after a suspension is removed stays until an administrator unlocks it.',
+    // The two ways an account reads LOCKED differ in the one respect an operator acts on: whether a
+    // clock will clear it. The generic line above is used when the read carried no detail.
+    'accountStatus.locked.hint.failedAttempts':
+      'The account is locked after too many failed sign-ins. It unlocks on its own, or an administrator can unlock it now.',
+    'accountStatus.locked.hint.failedAttempts.agent':
+      'The agent is locked after too many failed attempts. It unlocks on its own, or an administrator can unlock it now.',
+    'accountStatus.locked.hint.suspensionReleased':
+      'Suspension removed. The account remains locked until an administrator unlocks it or the user completes self-recovery.',
+    // An agent has no self-service recovery to clear this with, so an operator is the only way out.
+    'accountStatus.locked.hint.suspensionReleased.agent':
+      'Suspension removed. The agent remains locked until an administrator unlocks it.',
+    'accountStatus.suspended.label': 'Suspended',
+    'accountStatus.suspended.hint': 'The account is suspended and cannot sign in until an administrator unsuspends it.',
+    'accountStatus.suspended.hint.agent':
+      'The agent is suspended and cannot authenticate until an administrator unsuspends it.',
+    'accountStatus.suspended.hint.application':
+      'The application is suspended and cannot authenticate until an administrator unsuspends it.',
+    // The operator's own note, shown to the one audience entitled to read it. It is absent when the
+    // suspension was recorded without one, which is supported at every layer, and it never travels
+    // on a refusal.
+    'accountStatus.suspended.operatorNote': 'Operator note: {{operatorNote}}',
+    'accountStatus.suspend.action': 'Suspend',
+    'accountStatus.suspend.confirmTitle': 'Suspend this {{noun}}?',
+    // No mention of locking: a suspension is not a lock, and borrowing the word would suggest it
+    // lifts on its own. Per category, because the three do different things and "sign in" describes
+    // only one of them. Each ends on the clause that is the point of the state: the record stays
+    // editable, so the operator can remediate while the hold is on.
+    'accountStatus.suspend.confirmBody':
+      'The account will no longer be able to sign in. Existing sessions and tokens will be revoked.',
+    'accountStatus.suspend.confirmBody.agent':
+      'The agent will no longer be able to authenticate or obtain new tokens. Existing sessions and tokens will be revoked. You can still update the agent details and credentials while it is suspended.',
+    'accountStatus.suspend.confirmBody.application':
+      'The application will no longer be able to authenticate or obtain new tokens. Existing sessions and tokens will be revoked.',
+    // The operator note is optional at every layer, and the help text says who can read it back. An
+    // operator writing an incident note needs to know that before they write it.
+    'accountStatus.suspend.operatorNoteLabel': 'Operator note (optional)',
+    'accountStatus.suspend.operatorNoteHelp':
+      'Shown to anyone who can read this record. It is never shown on a sign-in attempt.',
+    'accountStatus.suspend.success': 'Account suspended',
+    'accountStatus.unlock.action': 'Unlock',
+    'accountStatus.unlock.success': 'Account unlocked',
+    'accountStatus.unsuspend.action': 'Unsuspend',
+    'accountStatus.unsuspend.confirmTitle': 'Unsuspend this {{noun}}?',
+    'accountStatus.unsuspend.confirmBody':
+      'The suspension will be removed, and the agent can authenticate and obtain tokens again. Sessions and tokens revoked during the suspension are not restored.',
+    'accountStatus.unsuspend.confirmBody.application':
+      'The suspension will be removed, and the application can authenticate and obtain tokens again. Sessions and tokens revoked during the suspension are not restored.',
+    // For a user, unsuspend is not a restore. It releases the hold and leaves the account unable to
+    // sign in, so the copy has to say what it lands on and what still has to happen.
+    'accountStatus.unsuspend.confirmBody.user':
+      'The suspension will be removed. The account remains locked until an administrator unlocks it or the user completes self-recovery.',
+    'accountStatus.unsuspend.success': 'Suspension removed',
+    // Unsuspend, then unlock, as one choice. It skips the post-suspension lock, so the credential
+    // check moves into this confirmation.
+    'accountStatus.unsuspendAndUnlock.action': 'Unsuspend and unlock',
+    'accountStatus.unsuspendAndUnlock.confirmTitle': 'Unsuspend and unlock this {{noun}}?',
+    'accountStatus.unsuspendAndUnlock.confirmBody':
+      'The suspension and the lock will be removed, and the account can sign in right away. Sessions and tokens revoked during the suspension are not restored.',
+    'accountStatus.unsuspendAndUnlock.success': 'Suspension removed and account unlocked',
+    'accountStatus.unsuspendAndUnlock.incomplete':
+      'The suspension was removed, but the unlock failed. Unlock it from the Actions menu.',
+    'accountStatus.subject.user': 'account',
+    'accountStatus.subject.agent': 'agent',
+    'accountStatus.subject.application': 'application',
+    'accountStatus.error': 'The account operation could not be completed.',
+    'accountStatus.cancel': 'Cancel',
+    'accountStatus.actions': 'Actions',
+    // One short line per operation, in the menu rather than only in the dialog. Unsuspend and unlock
+    // need telling apart: both read as "release", and only one acts on the condition the operator is
+    // looking at. Keyed by category where the verb differs.
+    //
+    // Suspend's line says what it withholds; that the record stays editable is said by the
+    // confirmation the operator sees next.
+    'accountStatus.suspend.hint.user': 'Prevent sign-in and revoke existing access.',
+    'accountStatus.suspend.hint.agent': 'Prevent authentication and revoke existing access.',
+    'accountStatus.suspend.hint.application': 'Prevent authentication and revoke existing access.',
+    'accountStatus.unsuspend.hint.user':
+      'Remove the suspension. The account remains locked until an administrator unlocks it or the user completes self-recovery.',
+    'accountStatus.unsuspend.hint.agent': 'Remove the suspension.',
+    'accountStatus.unsuspend.hint.application': 'Remove the suspension.',
+    'accountStatus.unlock.hint.user': 'Clear the failed sign-in lock.',
+    'accountStatus.unlock.hint.agent': 'Clear the failed sign-in lock.',
+    'accountStatus.unsuspendAndUnlock.hint.user':
+      'Remove the suspension and unlock. The account can sign in right away.',
+
     // Actions
     'actions.add': 'Add',
     'actions.edit': 'Edit',
@@ -161,6 +266,7 @@ const translations = {
     'errors.FET-1109': 'The action could not be deleted. Please try again.',
     'errors.FET-1110': 'The permissions supplied for this role are not valid. Refresh the page and try again.',
     'errors.FET-1111': 'A required value for this change is missing. Refresh the page and try again.',
+    'errors.FET-1112': 'The account operation could not be completed. Please try again.',
     'errors.RVS-1001':
       'This change would revoke access through {{entries}} entries, more than the {{max}} allowed for one change.',
 
@@ -736,6 +842,7 @@ const translations = {
     lastLogin: 'Last Login',
     'listing.columns.name': 'Name',
     'listing.columns.userId': 'User ID',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
     noUsers: 'No users found',
     searchUsers: 'Search users...',
@@ -1121,6 +1228,7 @@ const translations = {
     'listing.columns.name': 'Name',
     'listing.columns.agentId': 'Agent ID',
     'listing.columns.organizationUnit': 'Organization Unit',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
 
     // Onboarding (flow driven)
@@ -2458,6 +2566,7 @@ const translations = {
     'listing.addApplication': 'Add Application',
     'listing.columns.name': 'Name',
     'listing.columns.clientId': 'Client ID',
+    'listing.columns.status': 'Status',
     'listing.columns.actions': 'Actions',
     'listing.columns.template': 'Type',
     'listing.search.placeholder': 'Search ..',
@@ -3975,6 +4084,16 @@ const translations = {
       'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
     'core.executions.groupExecutor.description': 'Apply the group change named by the trusted revocation plan.',
 
+    // Identity governance executor operations
+    'core.executions.identityGovernance.mode.suspend': 'Suspend',
+    'core.executions.identityGovernance.mode.unsuspend': 'Unsuspend',
+    'core.executions.identityGovernance.mode.unlock': 'Unlock',
+    'core.executions.identityGovernance.mode.label': 'Operation',
+    'core.executions.identityGovernance.mode.placeholder': 'Select an operation',
+    'core.executions.identityGovernance.mode.hint':
+      'Suspend and unlock act on different holds, so releasing one leaves the other in place. Suspend acts on the identity a Pre Suspend Executor planned earlier in the flow. In a recovery flow only Unlock runs, on the identity that proved control earlier in the flow.',
+    'core.executions.identityGovernance.description': 'Run one lifecycle operation on the identity the flow resolved.',
+
     // Passkey executor modes
     'core.executions.passkey.mode.challenge': 'Challenge',
     'core.executions.passkey.mode.verify': 'Verify',
@@ -5186,6 +5305,9 @@ const translations = {
     'editor.tokens.labels.context.expiryTime': 'Expiry time',
     'editor.tokens.labels.context.magicLink': 'Magic link',
     'editor.tokens.labels.context.inviteLink': 'Invite link',
+    'editor.tokens.labels.context.lockedSignIn': 'Locked sign-in method',
+    'editor.tokens.labels.context.lockDuration': 'Lock duration',
+    'editor.tokens.labels.context.unlockTime': 'Unlock time',
     'editor.validation.emailRequired': 'A subject and body are required.',
     'editor.validation.bodyRequired': 'A body is required.',
     'editor.tokens.noDesign': 'No design tokens match your search.',
@@ -5727,6 +5849,10 @@ const translations = {
     'page.subtitle': 'Settings that apply across your entire ThunderID deployment.',
     'tabs.ariaLabel': 'Settings sections',
     'tabs.cors': 'CORS',
+    // "Account security" rather than "Account lock": the tab is where a deployment decides how an
+    // identity's access is protected, and naming it after the one control it holds today would have
+    // to be renamed again the moment a second one joins it.
+    'tabs.accountSecurity': 'Account security',
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
       'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
@@ -5755,6 +5881,181 @@ const translations = {
 
     // Backend error code translations (per server-config service error envelope).
     'errors.SCF-1003': 'One or more origins are not valid. Enter a valid URL or regular expression.',
+
+    // Automatic account lock. The operator-facing word for the thing that checks a secret is
+    // "sign-in method"; `authentication_method` is the internal term, on the wire and in the
+    // configuration. "Verifier" is not used for it anywhere: that word already means two other
+    // things in this product (the PKCE code verifier, and the OpenID4VP verifier).
+    //
+    // The main view asks only what has to be decided: what gets locked, and when. How long a lock
+    // lasts and how repeated locks escalate are tuning, and live behind the advanced disclosure with
+    // the product's ladder already in them.
+    //
+    // Never promise a specific lock duration to an end user anywhere: a configured duration of zero
+    // is held until an administrator unlocks. That rule is about the account pages, not this screen,
+    // where stating the duration is the entire point.
+    // The section says what the feature is and what a lock does not do; the cards say who each
+    // policy applies to. "Every sign-in method" sounds like it reaches live sessions, and it does
+    // not: only suspension ends existing access, and the card below this one says where it lives.
+    'accountLock.section.title': 'Automatic account lock',
+    'accountLock.section.description':
+      'Temporarily lock sign-in after repeated failed attempts. A lock blocks new sign-ins only; existing sessions and tokens stay active. To end existing access, suspend the account as described in Account suspension.',
+
+    'accountLock.toggle.ariaLabel': 'Automatic lock for {{title}}',
+    'accountLock.user.title': 'Users',
+    'accountLock.user.description': 'Temporarily restrict sign-in after repeated failed attempts.',
+    'accountLock.agent.title': 'Agents',
+    // The client secret caveat sits in the description, since a switched-off card shows no hint.
+    'accountLock.agent.description':
+      'Temporarily restrict authentication after repeated failed attempts. An agent client secret is never locked.',
+
+    // What the whole policy adds up to, in a sentence, above the controls that shape it. The
+    // trigger is keyed on granularity because that is the only clause it changes.
+    'accountLock.summary.trigger.authentication_method':
+      'After {{count}} failed attempts within {{window}}, the affected sign-in method is locked.',
+    'accountLock.summary.trigger.entity':
+      'After {{count}} failed attempts within {{window}}, every sign-in method is locked.',
+    'accountLock.summary.triggerNoWindow.authentication_method':
+      'After {{count}} failed attempts without a successful sign-in, the affected sign-in method is locked.',
+    'accountLock.summary.triggerNoWindow.entity':
+      'After {{count}} failed attempts without a successful sign-in, every sign-in method is locked.',
+    'accountLock.summary.duration.single': 'Each lock lasts {{duration}}.',
+    'accountLock.summary.duration.range': 'The first lock lasts {{from}}, increasing to {{to}} for repeated locks.',
+    'accountLock.summary.duration.permanentOnly': 'A lock is held until an administrator unlocks it.',
+    'accountLock.summary.duration.permanentRange':
+      'The first lock lasts {{from}}, and repeated locks are held until an administrator unlocks.',
+    'accountLock.summary.duration.rangeThenPermanent':
+      'The first {{count}} locks lift on their own, starting at {{from}}. Later locks are held until an administrator unlocks.',
+    // A zero before the last duration is valid but unusual; the rows show which lock it is.
+    'accountLock.summary.duration.mixed':
+      'Some locks are held until an administrator unlocks them, and the others lift on their own.',
+
+    'accountLock.granularity.label': 'Lock applies to',
+    'accountLock.granularity.authenticationMethod': 'Only the sign-in method that failed',
+    'accountLock.granularity.authenticationMethodHint': 'Recommended. Other sign-in methods remain available.',
+    'accountLock.granularity.entity': 'Every sign-in method',
+    'accountLock.granularity.entityHint.user': 'Prevent the user from starting a new sign-in using any method.',
+    'accountLock.granularity.entityHint.agent': 'Prevent the agent from authenticating using any method.',
+
+    'accountLock.threshold.label': 'Lock after',
+    'accountLock.threshold.ariaLabel': 'Failed attempts before lock',
+    'accountLock.threshold.within': 'failed attempts within',
+    'accountLock.window.ariaLabel': 'Period the failed attempts are counted over',
+    'accountLock.window.never': 'No time limit',
+
+    // Duration and its reset are tuning, not a decision most operators make, so they sit behind this
+    // disclosure. The summary at the top of the card already names the first duration and the
+    // ceiling, which is what makes collapsing them safe: a reader still learns how long a lock lasts
+    // without opening anything.
+    'accountLock.advanced.label': 'Advanced settings',
+
+    'accountLock.ladder.label': 'Lock duration',
+    'accountLock.ladder.hint': 'Each repeated lock uses the next duration in the list.',
+    'accountLock.ladder.hintSingle': 'How long a lock lasts before it lifts on its own.',
+    'accountLock.ladder.hintPermanentOnly': 'Every lock is held until an administrator unlocks it.',
+    // Ordinals are stated rather than built from a number, so a locale can give its own forms.
+    // Interpolated as `position`, not `ordinal`: i18next reserves `ordinal` for plural selection and
+    // the typed catalog rejects it as a variable name.
+    'accountLock.ladder.ordinal.1': '1st',
+    'accountLock.ladder.ordinal.2': '2nd',
+    'accountLock.ladder.ordinal.3': '3rd',
+    'accountLock.ladder.ordinal.4': '4th',
+    'accountLock.ladder.ordinal.5': '5th',
+    'accountLock.ladder.ordinal.n': '{{count}}th',
+    'accountLock.ladder.row': '{{position}} lock',
+    'accountLock.ladder.rowLast': '{{position}} and later',
+    'accountLock.ladder.add': 'Add duration',
+    // The invitation an operator sees while there is still only one duration. It has to name what
+    // adding one is for, because progressive locking is not a concept they should need first.
+    'accountLock.ladder.addFirstEscalation': 'Add a longer duration for repeated locks',
+    'accountLock.ladder.remove': 'Remove the {{position}} duration',
+    // A lock that never lifts on its own is chosen once, after the timed durations, so the list of
+    // durations can always grow. The unit list offers it only for a zero already stored mid-list.
+    'accountLock.ladder.untilUnlocked': 'Until an administrator unlocks',
+    'accountLock.ladder.end.label': 'After the last duration',
+    'accountLock.ladder.end.repeat': 'Keep using the last duration',
+    'accountLock.ladder.end.untilUnlocked': 'Hold later locks until an administrator unlocks',
+
+    // The lock notice. Users only: an application has no account holder, and an agent's audience is
+    // its controller rather than an address on the agent's own record.
+    //
+    // The fixed lock template uses the recipient attribute configured below.
+    'accountLock.notify.label': 'Email the account holder',
+    'accountLock.notify.hint': 'Send an email notification when a sign-in method is locked.',
+    'accountLock.notify.attribute': 'Recipient attribute',
+    'accountLock.notify.attributeHint': 'The user attribute the lock email is sent to.',
+    'accountLock.notify.requiredAttribute': 'Enter a recipient attribute.',
+
+    'accountLock.decay.label': 'Reset lock progression',
+    'accountLock.decay.hint': 'Return to the first lock duration after this period passes without another lock.',
+    'accountLock.decay.ariaLabel': 'Period without a lock before the progression resets',
+    'accountLock.decay.never': 'Never reset',
+
+    'accountLock.units.label': 'Unit',
+    'accountLock.units.seconds': 'Seconds',
+    'accountLock.units.minutes': 'Minutes',
+    'accountLock.units.hours': 'Hours',
+    'accountLock.units.days': 'Days',
+    // The unit beside a value of 1.
+    'accountLock.units.second': 'Second',
+    'accountLock.units.minute': 'Minute',
+    'accountLock.units.hour': 'Hour',
+    'accountLock.units.day': 'Day',
+    // Count forms, for the policy summary sentence.
+    'accountLock.units.short.second': '{{count}} second',
+    'accountLock.units.short.seconds': '{{count}} seconds',
+    'accountLock.units.short.minute': '{{count}} minute',
+    'accountLock.units.short.minutes': '{{count}} minutes',
+    'accountLock.units.short.hour': '{{count}} hour',
+    'accountLock.units.short.hours': '{{count}} hours',
+    'accountLock.units.short.day': '{{count}} day',
+    'accountLock.units.short.days': '{{count}} days',
+
+    'accountLock.validation.threshold': 'Enter how many failed attempts should lock the account.',
+    'accountLock.validation.ladder': 'Add at least one lock duration.',
+
+    'accountLock.readOnlyHint':
+      "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
+    'accountLock.unsavedChanges': 'You have unsaved changes',
+    'accountLock.reset': 'Reset',
+    'accountLock.save': 'Save changes',
+    'accountLock.saving': 'Saving...',
+    // The lock and sign-in activity cards share one load and one save, so these name the tab.
+    'accountLock.load.error': 'Failed to load the account security settings.',
+    'accountLock.save.success': 'Account security settings updated.',
+    'accountLock.save.error': 'Failed to update the account security settings.',
+    'accountLock.errors.SCF-1003':
+      'One or more account security settings are not valid. Check the values and try again.',
+
+    // Suspension is not configured here: it runs through administration flows started from each
+    // record's page. The card only points at those flows, so an operator looking for it finds it.
+    'accountSuspension.title': 'Account suspension',
+    'accountSuspension.description':
+      'Suspension ends existing sessions and tokens and blocks access until it is lifted. Start it, or unlock a locked account, from each user, agent or application page. These flows carry out each action.',
+    'accountSuspension.user.title': 'Users',
+    'accountSuspension.agent.title': 'Agents',
+    'accountSuspension.application.title': 'Applications',
+    'accountSuspension.operation.suspend': 'Suspend flow',
+    'accountSuspension.operation.unsuspend': 'Unsuspend flow',
+    'accountSuspension.operation.unlock': 'Unlock flow',
+    'accountSuspension.notConfigured': '{{operation}}: Not configured. <flowsLink>Open flows</flowsLink>',
+    'accountSuspension.load.error': 'Failed to load the account lifecycle flows.',
+
+    // Sign-in activity writes the same section as the lock cards, but is its own card: switching
+    // locking off must not switch recording off.
+    'signInActivity.title': 'Sign-in activity',
+    'signInActivity.description':
+      'Record when each user and agent last signed in. The time is shown on their details pages.',
+    'signInActivity.user.title': 'Users',
+    'signInActivity.user.description': 'Record when each user last signed in.',
+    'signInActivity.agent.title': 'Agents',
+    'signInActivity.agent.description': 'Record when each agent last authenticated.',
+    'signInActivity.toggle.ariaLabel': 'Record sign-in activity for {{title}}',
+    'signInActivity.resolution.label': 'Update the recorded time',
+    'signInActivity.resolution.every': 'On every sign-in',
+    'signInActivity.resolution.atMost': 'At most every {{duration}}',
+    'signInActivity.resolution.hint':
+      'Updating less often saves writes, and the recorded time can be behind by up to this long.',
   },
 } as const;
 

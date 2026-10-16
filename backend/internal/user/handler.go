@@ -380,7 +380,7 @@ func (uh *userHandler) HandleSelfUserGetRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, withoutOperatorNote(user))
 
 	logger.Debug(ctx, "Self user GET response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
@@ -418,7 +418,7 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, updatedUser)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, withoutOperatorNote(updatedUser))
 
 	logger.Debug(ctx, "Self user PUT response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
@@ -672,6 +672,21 @@ func parseFilterExpression(filterStr string) (map[string]interface{}, error) {
 
 		return nil, fmt.Errorf("invalid filter value")
 	}
+}
+
+// withoutOperatorNote returns the user without the operator note. The note is for operators, so the
+// holder's own reads never carry it.
+func withoutOperatorNote(user *providers.User) *providers.User {
+	if user == nil || user.Status == nil || user.Status.Details == nil || user.Status.Details.OperatorNote == "" {
+		return user
+	}
+	details := *user.Status.Details
+	details.OperatorNote = ""
+	status := *user.Status
+	status.Details = &details
+	stripped := *user
+	stripped.Status = &status
+	return &stripped
 }
 
 // sanitizeFilter performs additional sanitization on parsed filters

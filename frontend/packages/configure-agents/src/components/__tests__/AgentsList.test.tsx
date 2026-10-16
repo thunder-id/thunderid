@@ -236,6 +236,22 @@ describe('AgentsList', () => {
     expect(screen.getByText('Second test agent')).toBeInTheDocument();
   });
 
+  it("should show each agent's access status, treating an absent status as active", () => {
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {
+        ...mockAgentsData,
+        agents: [{...mockAgentsData.agents[0], status: {value: 'SUSPENDED'}}, mockAgentsData.agents[1]],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    expect(screen.getByText('Suspended')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
   it('should fall back to the agent id when an agent has no display value', () => {
     vi.mocked(useGetAgents).mockReturnValue({
       data: {...mockAgentsData, agents: [{...mockAgentsData.agents[0], display: undefined}]},

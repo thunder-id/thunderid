@@ -210,6 +210,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 			PasskeyAllowedOrigins:     appDTO.PasskeyAllowedOrigins,
 			Attestation:               appDTO.Attestation,
 		},
+		Status:    appDTO.Status,
 		Type:      model.ApplicationType(appDTO.Type),
 		Template:  appDTO.Template,
 		URL:       appDTO.URL,

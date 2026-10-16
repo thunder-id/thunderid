@@ -16,6 +16,7 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -27,6 +28,7 @@ import (
 type ServiceTestSuite struct {
 	suite.Suite
 	store       *entityStoreInterfaceMock
+	runtime     *entityRuntimeStoreInterfaceMock
 	hashService *hashmock.HashServiceInterfaceMock
 	svc         EntityServiceInterface
 	ctx         context.Context
@@ -39,6 +41,8 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	s.store = newEntityStoreInterfaceMock(s.T())
+	s.runtime = newEntityRuntimeStoreInterfaceMock(s.T())
+	installRuntimeFixture(s.runtime)
 	s.store.On("GetIndexedAttributes").Return(map[string]bool{}).Maybe()
 	s.hashService = hashmock.NewHashServiceInterfaceMock(s.T())
 	// Default: hashService.Generate returns a deterministic hash for any input.
@@ -49,7 +53,7 @@ func (s *ServiceTestSuite) SetupTest() {
 			Salt: "testsalt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Maybe()
-	s.svc = newEntityService(s.store, s.hashService, nil, nil, transaction.NewNoOpTransactioner())
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner())
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }
@@ -73,6 +77,7 @@ func (s *ServiceTestSuite) TestCreateEntity_NilEntity() {
 
 func (s *ServiceTestSuite) TestCreateEntity_StoreCreateFails() {
 	e := testEntity("e1")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
 	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).
 		Return(s.testErr)
 	_, err := s.svc.CreateEntity(s.ctx, e, nil, nil)
@@ -81,6 +86,7 @@ func (s *ServiceTestSuite) TestCreateEntity_StoreCreateFails() {
 
 func (s *ServiceTestSuite) TestCreateEntity_GetAfterCreateFails() {
 	e := testEntity("e2")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
 	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).
 		Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
@@ -90,6 +96,7 @@ func (s *ServiceTestSuite) TestCreateEntity_GetAfterCreateFails() {
 
 func (s *ServiceTestSuite) TestCreateEntity_Success() {
 	e := testEntity("e3")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
 	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).
 		Return(nil)
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
@@ -101,6 +108,7 @@ func (s *ServiceTestSuite) TestCreateEntity_Success() {
 // A new entity's link is written as its linkedIds whether or not other entities hold the subject.
 func (s *ServiceTestSuite) TestCreateEntity_LinkedAccount() {
 	e := testEntity("e-linked")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound).Once()
 	s.store.On("CreateEntity", mock.Anything, mock.MatchedBy(func(got providers.Entity) bool {
 		return string(got.SystemAttributes) == `{"linkedIds":{"idp-a":{"sub-1":{}}}}`
 	}), json.RawMessage(nil), json.RawMessage(nil)).Return(nil).Once()
@@ -109,6 +117,189 @@ func (s *ServiceTestSuite) TestCreateEntity_LinkedAccount() {
 	_, err := s.svc.CreateEntity(s.ctx, e, nil, &providers.LinkedAccount{IdpID: "idp-a", Sub: "sub-1"})
 	s.NoError(err)
 	s.store.AssertNotCalled(s.T(), "ResolveLinkedAccounts", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_RefusesADeclarativeID() {
+	e := testEntity("declarative-id")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(true, nil)
+
+	_, err := s.svc.CreateEntity(s.ctx, e, nil, nil)
+
+	s.ErrorIs(err, ErrAttributeConflict)
+	s.store.AssertNotCalled(s.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_DeclarativeCheckFails() {
+	e := testEntity("declarative-check")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, s.testErr)
+
+	_, err := s.svc.CreateEntity(s.ctx, e, nil, nil)
+
+	s.ErrorIs(err, s.testErr)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_GeneratedIDSkipsTheDeclarativeCheck() {
+	e := testEntity("")
+	s.store.On("CreateEntity", mock.Anything, mock.Anything, json.RawMessage(nil), json.RawMessage(nil)).
+		Return(nil)
+	s.store.On("GetEntity", mock.Anything, mock.Anything).Return(*testEntity("generated"), nil)
+
+	_, err := s.svc.CreateEntity(s.ctx, e, nil, nil)
+
+	s.NoError(err)
+	s.store.AssertNotCalled(s.T(), "IsEntityDeclarative", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestCreateEntity_RuntimeResetFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("reset-fails")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
+	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).Return(nil)
+	runtime.On("ResetRuntimeData", mock.Anything, e.ID, providers.EntityStateActive).Return(s.testErr)
+
+	_, err := svc.CreateEntity(s.ctx, e, nil, nil)
+
+	s.ErrorIs(err, s.testErr)
+	s.store.AssertNotCalled(s.T(), "GetEntity", mock.Anything, mock.Anything)
+}
+
+// A created entity is returned with the runtime state just written, without reading it back, so a
+// committed create never reports a failure.
+func (s *ServiceTestSuite) TestCreateEntity_DoesNotReadTheRuntimeRowBack() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("create-no-read")
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
+	s.store.On("CreateEntity", mock.Anything, *e, json.RawMessage(nil), json.RawMessage(nil)).Return(nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("ResetRuntimeData", mock.Anything, e.ID, providers.EntityStateActive).Return(nil)
+
+	created, err := svc.CreateEntity(s.ctx, e, nil, nil)
+
+	s.Require().NoError(err)
+	s.Equal(providers.EntityStateActive, created.State)
+	s.JSONEq(`{}`, string(created.RuntimeAttributes))
+	runtime.AssertNotCalled(s.T(), "GetRuntimeData", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestDeleteEntity_RuntimeDeleteFailureIsNotReturned() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	s.store.On("DeleteEntity", mock.Anything, "del-runtime").Return(nil)
+	runtime.On("DeleteRuntimeData", mock.Anything, "del-runtime").Return(s.testErr)
+
+	s.NoError(svc.DeleteEntity(s.ctx, "del-runtime"), "the entity is already deleted")
+}
+
+func (s *ServiceTestSuite) TestDeleteEntity_EntityDeleteFailureKeepsTheRuntimeRow() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	s.store.On("DeleteEntity", mock.Anything, "del-fails").Return(s.testErr)
+
+	s.ErrorIs(svc.DeleteEntity(s.ctx, "del-fails"), s.testErr)
+	runtime.AssertNotCalled(s.T(), "DeleteRuntimeData", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestGetEntity_RuntimeReadFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("get-read-fails")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+	_, err := svc.GetEntity(s.ctx, e.ID)
+
+	s.ErrorIs(err, s.testErr)
+}
+
+// A read reports a missing runtime row as the row the entity starts with, and writes nothing.
+func (s *ServiceTestSuite) TestGetEntity_MissingRuntimeRowReadsAsActiveWithoutSeeding() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("get-unseeded")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(map[string]entityRuntimeData{}, nil)
+
+	got, err := svc.GetEntity(s.ctx, e.ID)
+
+	s.Require().NoError(err)
+	s.Equal(providers.EntityStateActive, got.State)
+	s.JSONEq(`{}`, string(got.RuntimeAttributes))
+	runtime.AssertNotCalled(s.T(), "InitializeRuntimeData", mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntity_RuntimeSeedFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("get-seed-fails")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(map[string]entityRuntimeData{}, nil)
+	runtime.On("InitializeRuntimeData", mock.Anything, mock.Anything).Return(s.testErr)
+
+	_, err := svc.GetGovernedEntity(s.ctx, e.ID)
+
+	s.ErrorIs(err, s.testErr)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntity_RuntimeReadAfterSeedFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("get-reread-fails")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(map[string]entityRuntimeData{}, nil).Once()
+	runtime.On("InitializeRuntimeData", mock.Anything, mock.Anything).Return(nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr).Once()
+
+	_, err := svc.GetGovernedEntity(s.ctx, e.ID)
+
+	s.ErrorIs(err, s.testErr)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntity_RuntimeRowMissingAfterSeed() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("get-row-missing")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(map[string]entityRuntimeData{}, nil)
+	runtime.On("InitializeRuntimeData", mock.Anything, mock.Anything).Return(nil)
+
+	_, err := svc.GetGovernedEntity(s.ctx, e.ID)
+
+	s.Error(err)
+}
+
+func (s *ServiceTestSuite) TestUpdateEntity_RuntimeReadFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("update-read-fails")
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("UpdateEntity", mock.Anything, mock.Anything).Return(nil)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+	_, err := svc.UpdateEntity(s.ctx, e.ID, e)
+
+	s.ErrorIs(err, s.testErr)
+}
+
+func (s *ServiceTestSuite) TestListReads_RuntimeReadFails() {
+	svc, runtime := s.newServiceWithRuntimeMock()
+	e := testEntity("list-read-fails")
+	filters := map[string]interface{}{"email": "a@b.com"}
+	s.store.On("GetEntityList", mock.Anything, "user", 10, 0, mock.Anything).Return([]providers.Entity{*e}, nil)
+	s.store.On("GetEntityListByOUIDs", mock.Anything, "user", []string{"ou1"}, 10, 0, mock.Anything).
+		Return([]providers.Entity{*e}, nil)
+	s.store.On("SearchEntities", mock.Anything, filters).Return([]providers.Entity{*e}, nil)
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{e.ID}).Return([]providers.Entity{*e}, nil)
+	runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+	_, err := svc.GetEntityList(s.ctx, providers.EntityCategoryUser, 10, 0, nil)
+	s.ErrorIs(err, s.testErr, "list")
+	_, err = svc.GetEntityListByOUIDs(s.ctx, providers.EntityCategoryUser, []string{"ou1"}, 10, 0, nil)
+	s.ErrorIs(err, s.testErr, "list by OU")
+	_, err = svc.SearchEntities(s.ctx, filters)
+	s.ErrorIs(err, s.testErr, "search")
+	_, err = svc.GetEntitiesByIDs(s.ctx, []string{e.ID})
+	s.ErrorIs(err, s.testErr, "get by IDs")
+}
+
+// newServiceWithRuntimeMock returns a service over s.store with a runtime store mock that has no
+// expectations, for tests that make one runtime call fail.
+func (s *ServiceTestSuite) newServiceWithRuntimeMock() (EntityServiceInterface, *entityRuntimeStoreInterfaceMock) {
+	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
+	svc := newEntityService(s.store, runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner())
+	return svc, runtime
 }
 
 func (s *ServiceTestSuite) TestGetEntity_Success() {
@@ -159,7 +350,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_Success() {
 
 func (s *ServiceTestSuite) newSvcWithEntityType() (*entityService, *entitytypemock.EntityTypeServiceInterfaceMock) {
 	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
-	svc := newEntityService(s.store, s.hashService, ets, nil, transaction.NewNoOpTransactioner())
+	svc := newEntityService(s.store, s.runtime, s.hashService, ets, nil, transaction.NewNoOpTransactioner())
 	return svc.(*entityService), ets
 }
 
@@ -600,6 +791,15 @@ func testCredentialsJSON() json.RawMessage {
 		`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}]}`)
 }
 
+// twoCandidateCredentialsJSON stores two password candidates, as an entity mid-rehash holds.
+func twoCandidateCredentialsJSON() json.RawMessage {
+	return json.RawMessage(`{"password":[` +
+		`{"value":"brokenhash","storageAlgo":"LEGACY",` +
+		`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}},` +
+		`{"value":"testhash","storageAlgo":"PBKDF2",` +
+		`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}]}`)
+}
+
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 	storedCreds := testCredentialsJSON()
 	e := testEntity("auth-id-1")
@@ -607,8 +807,10 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("password123"), mock.Anything).Return(true, nil)
 
-	result, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
+	result, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "password123"})
 	s.NoError(err)
+	s.Nil(failure, "a successful verification produces no failure evidence")
 	s.Equal(e.ID, result.EntityID)
 	s.Equal(e.Category, result.EntityCategory)
 	s.Equal(e.Type, result.EntityType)
@@ -616,12 +818,12 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_Success() {
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_EmptyID() {
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "", map[string]interface{}{"password": "p"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "", map[string]interface{}{"password": "p"})
 	s.ErrorIs(err, ErrEntityNotFound)
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_EmptyCredentials() {
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "some-id", map[string]interface{}{})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "some-id", map[string]interface{}{})
 	s.ErrorIs(err, ErrAuthenticationFailed)
 }
 
@@ -629,18 +831,22 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_EntityNotFound() {
 	s.store.On("GetEntityWithCredentials", mock.Anything, "missing").
 		Return(nil, ErrEntityNotFound)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, "missing", map[string]interface{}{"password": "p"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, "missing", map[string]interface{}{"password": "p"})
 	s.ErrorIs(err, ErrEntityNotFound)
 }
 
-func (s *ServiceTestSuite) TestAuthenticateEntityByID_InactiveEntity() {
+// Whether an identity may be used is the governance authority's question, asked above this layer,
+// so a non-active entity with a correct secret verifies here.
+func (s *ServiceTestSuite) TestAuthenticateEntityByID_DoesNotCheckStateItself() {
 	e := testEntity("inactive-1")
 	e.State = providers.EntityState("SUSPENDED")
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", []byte("p"), mock.Anything).Return(true, nil)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "p"})
-	s.ErrorIs(err, ErrEntityNotFound)
+	result, _, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "p"})
+	s.Require().NoError(err)
+	s.Equal(e.ID, result.EntityID)
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_WrongCredentials() {
@@ -650,8 +856,11 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_WrongCredentials() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "wrong"})
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
 	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Require().NotNil(failure, "a compared and rejected secret is attributable")
+	s.Equal(e.ID, failure.EntityID)
 }
 
 func (s *ServiceTestSuite) TestAuthenticateEntityByID_VerifyError() {
@@ -661,7 +870,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_VerifyError() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("password123"), mock.Anything).Return(false, s.testErr)
 
-	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
+	_, _, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
 	s.ErrorIs(err, ErrAuthenticationFailed)
 }
 
@@ -676,7 +885,7 @@ func (s *ServiceTestSuite) TestAuthenticateEntity_DelegatesToByID() {
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
 	s.hashService.On("Verify", []byte("pass"), mock.Anything).Return(true, nil)
 
-	result, err := s.svc.AuthenticateEntity(s.ctx, filters, map[string]interface{}{"password": "pass"})
+	result, _, err := s.svc.AuthenticateEntity(s.ctx, filters, map[string]interface{}{"password": "pass"})
 	s.NoError(err)
 	s.Equal(id, result.EntityID)
 }
@@ -913,6 +1122,7 @@ func (s *ServiceTestSuite) TestLinkAccount_RecordsLink() {
 func (s *ServiceTestSuite) TestCreateEntity_CallerLinkedIDsDropped() {
 	e := testEntity("e-raw-links")
 	e.SystemAttributes = json.RawMessage(`{"name":"x","linkedIds":{"idp-a":{"sub-1":{}}}}`)
+	s.store.On("IsEntityDeclarative", mock.Anything, e.ID).Return(false, ErrEntityNotFound)
 	s.store.On("CreateEntity", mock.Anything, mock.MatchedBy(func(got providers.Entity) bool {
 		return string(got.SystemAttributes) == `{"name":"x"}`
 	}), json.RawMessage(nil), json.RawMessage(nil)).Return(nil).Once()
@@ -1097,7 +1307,7 @@ func (s *ServiceTestSuite) TestResolveLinkedAccounts_RejectsEmptyArguments() {
 // Every holder of the subject is returned with its OU handle, for the user to pick between them.
 func (s *ServiceTestSuite) TestGetLinkedEntities_ReturnsHoldersWithOUHandles() {
 	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
-	s.svc = newEntityService(s.store, s.hashService, nil, ouService, transaction.NewNoOpTransactioner())
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, ouService, transaction.NewNoOpTransactioner())
 	first, second := testEntity("e-holder-1"), testEntity("e-holder-2")
 	second.OUID = "ou-2"
 	s.store.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").
@@ -1145,13 +1355,439 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 	s.JSONEq(`{"name":"New"}`, string(written))
 }
 
+// --- Failure evidence ---
+// Whether a failed verification was proven, and whose it was. The provider does the counting.
+
+// A compared and rejected secret names the entity it was compared against. The evidence rides
+// beside the error, so the error itself still identifies nobody.
+func (s *ServiceTestSuite) TestAWrongCredentialProducesEvidence() {
+	e := testEntity("count-1")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
+
+	result, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(result, "a refusal returns no authenticate result")
+	s.Require().NotNil(failure)
+	s.Equal(e.ID, failure.EntityID)
+}
+
+// The evidence names the entity the comparison ran against, the one the caller resolved, never one
+// re-derived from the request.
+func (s *ServiceTestSuite) TestEvidenceNamesTheComparedEntity() {
+	id := "count-2"
+	e := testEntity(id)
+	filters := map[string]interface{}{"username": "someone"}
+	s.store.On("IdentifyEntity", mock.Anything, filters).Return(&id, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, id).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.Anything).Return(false, nil)
+
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, filters,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Require().NotNil(failure)
+	s.Equal(id, failure.EntityID)
+}
+
+// An identifier naming nobody produces no evidence: nothing was compared and there is no counter.
+func (s *ServiceTestSuite) TestAnUnknownIdentifierProducesNoEvidence() {
+	filters := map[string]interface{}{"username": "ghost"}
+	s.store.On("IdentifyEntity", mock.Anything, filters).Return(nil, ErrEntityNotFound)
+
+	_, failure, err := s.svc.AuthenticateEntity(s.ctx, filters,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrEntityNotFound)
+	s.Nil(failure)
+}
+
+// An entity with no stored credential of the type supplied produces no evidence. The refusal is
+// real, but nothing was compared, so nothing about a secret was proven.
+func (s *ServiceTestSuite) TestNoStoredCredentialOfThatTypeProducesNoEvidence() {
+	e := testEntity("count-3")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"pin": "1234"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// And an entity holding no credentials at all produces none either.
+func (s *ServiceTestSuite) TestAnEntityWithNoStoredCredentialsProducesNoEvidence() {
+	e := testEntity("count-4")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// A credential blob that will not decode produces no evidence. It is a server fault, and counting it
+// would lock an account whose secret nobody guessed.
+func (s *ServiceTestSuite) TestACorruptCredentialBlobProducesNoEvidence() {
+	e := testEntity("count-5")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: json.RawMessage(`not json`)}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.Require().Error(err)
+	s.NotErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// A hash service that could not answer produces no evidence: "could not check" is not "wrong", and
+// counting it would let an outage lock accounts.
+func (s *ServiceTestSuite) TestAnIndeterminateHashServiceProducesNoEvidence() {
+	e := testEntity("count-6")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.Anything).
+		Return(false, errors.New("hash service unavailable"))
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// Among several stored candidates, a matching one still wins even when another could not be
+// evaluated: the entity keeps authenticating while an old hash sits unreadable beside the live one.
+func (s *ServiceTestSuite) TestAMatchingCandidateWinsOverAnIndeterminateOne() {
+	e := testEntity("count-7")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: twoCandidateCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "brokenhash"
+	})).Return(false, errors.New("unsupported algorithm"))
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "testhash"
+	})).Return(true, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "right"})
+	s.Require().NoError(err)
+	s.Nil(failure)
+}
+
+// But when none of them matched and one was indeterminate, the failure is not proven, so it produces
+// no evidence.
+func (s *ServiceTestSuite) TestNoMatchWithAnIndeterminateCandidateProducesNoEvidence() {
+	e := testEntity("count-8")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: twoCandidateCredentialsJSON()}, nil)
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "brokenhash"
+	})).Return(false, errors.New("unsupported algorithm"))
+	s.hashService.On("Verify", mock.Anything, mock.MatchedBy(func(c cryptolib.Credential) bool {
+		return c.Hash == "testhash"
+	})).Return(false, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{"password": "wrong"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// Two credential types, one provably wrong and one that could not be evaluated: the proven one
+// decides, whichever order the map is read in.
+func (s *ServiceTestSuite) TestAProvenMismatchDecidesOverAnIndeterminateSibling() {
+	e := testEntity("count-11")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{
+			Entity: e,
+			SchemaCredentials: json.RawMessage(`{` +
+				`"password":[{"value":"testhash","storageAlgo":"PBKDF2",` +
+				`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}],` +
+				`"pin":[{"value":"brokenhash","storageAlgo":"LEGACY",` +
+				`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}}]}`),
+		}, nil)
+	s.hashService.On("Verify", []byte("wrong"), mock.Anything).Return(false, nil)
+	// Maybe, and that is the assertion's companion: the proven mismatch short-circuits, so whether
+	// the unevaluable sibling is reached at all depends on map order. The verdict must not.
+	s.hashService.On("Verify", []byte("0000"), mock.Anything).
+		Return(false, errors.New("unsupported algorithm")).Maybe()
+
+	for range 8 {
+		_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+			map[string]interface{}{"password": "wrong", "pin": "0000"})
+		s.ErrorIs(err, ErrAuthenticationFailed)
+		s.Require().NotNil(failure, "a proven mismatch must decide regardless of map order")
+		s.Equal(e.ID, failure.EntityID)
+	}
+}
+
+// And a correct secret beside an unevaluable one still refuses, with no evidence: every supplied
+// credential that has a stored counterpart has to verify, and one of them could not be checked.
+func (s *ServiceTestSuite) TestACorrectSecretBesideAnIndeterminateOneProducesNoEvidence() {
+	e := testEntity("count-12")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{
+			Entity: e,
+			SchemaCredentials: json.RawMessage(`{` +
+				`"password":[{"value":"testhash","storageAlgo":"PBKDF2",` +
+				`"storageAlgoParams":{"salt":"testsalt","iterations":1,"keySize":32}}],` +
+				`"pin":[{"value":"brokenhash","storageAlgo":"LEGACY",` +
+				`"storageAlgoParams":{"salt":"s","iterations":1,"keySize":32}}]}`),
+		}, nil)
+	s.hashService.On("Verify", []byte("right"), mock.Anything).Return(true, nil)
+	s.hashService.On("Verify", []byte("0000"), mock.Anything).
+		Return(false, errors.New("unsupported algorithm"))
+
+	for range 8 {
+		_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+			map[string]interface{}{"password": "right", "pin": "0000"})
+		s.ErrorIs(err, ErrAuthenticationFailed)
+		s.Nil(failure)
+	}
+}
+
+// A step that verifies no secret produces no evidence. Provisioning an entity earlier in the same
+// flow is not an attempt at a password.
+func (s *ServiceTestSuite) TestAStepThatVerifiesNoSecretProducesNoEvidence() {
+	e := testEntity("count-9")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: testCredentialsJSON()}, nil)
+
+	_, failure, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: "count-9"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+	s.Nil(failure)
+}
+
+// suspendedEntity returns a suspended entity.
+func suspendedEntity(id string) *providers.Entity {
+	e := testEntity(id)
+	e.State = providers.EntityStateSuspended
+	return e
+}
+
+// A suspended record stays writable, so an operator can remediate it.
+func (s *ServiceTestSuite) TestSuspendedEntityStillAcceptsWrites() {
+	e := suspendedEntity("e-held")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil).Maybe()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).Return(nil)
+	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.Anything).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)),
+		"an operator must be able to correct a held record")
+	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(`{"clientSecret":"s3cret"}`)),
+		"rotating the exposed secret is the remediation the hold exists to allow")
+}
+
+func (s *ServiceTestSuite) TestActiveEntityStillAcceptsWrites() {
+	e := testEntity("e-open")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).Return(nil).Once()
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+}
+
+// An accessState key in system attributes is profile data and does not reach the runtime row.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_DoesNotTouchRuntimeState() {
+	e := testEntity("e-runtime")
+	e.SystemAttributes = json.RawMessage(`{"name":"Old"}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	sent := json.RawMessage(`{"name":"New","accessState":{"suspend":{}}}`)
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, sent))
+
+	s.JSONEq(string(sent), string(written))
+	s.runtime.AssertNotCalled(s.T(), "SetAccessSuspension", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+	s.runtime.AssertNotCalled(s.T(), "ClearAccessState", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// installRuntimeFixture stubs the runtime store for service tests. SQL behavior is tested against
+// SQLite.
+func installRuntimeFixture(store *entityRuntimeStoreInterfaceMock) {
+	records := map[string]entityRuntimeData{}
+	store.On("GetRuntimeData", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, ids []string) (map[string]entityRuntimeData, error) {
+			result := map[string]entityRuntimeData{}
+			for _, id := range ids {
+				if row, ok := records[id]; ok {
+					result[id] = row
+				}
+			}
+			return result, nil
+		}).Maybe()
+	store.On("InitializeRuntimeData", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, rows []entityRuntimeData) error {
+			for _, row := range rows {
+				if _, ok := records[row.ID]; !ok {
+					records[row.ID] = row
+				}
+			}
+			return nil
+		}).Maybe()
+	store.On("ResetRuntimeData", mock.Anything, mock.Anything, mock.Anything).Return(
+		func(_ context.Context, id string, state providers.EntityState) error {
+			if state == "" {
+				state = providers.EntityStateActive
+			}
+			records[id] = entityRuntimeData{ID: id, State: state, Attributes: json.RawMessage(`{}`)}
+			return nil
+		}).Maybe()
+	store.On("DeleteRuntimeData", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, id string) error {
+			delete(records, id)
+			return nil
+		}).Maybe()
+}
+
+// governedRead stubs the profile row and a runtime row at revision 7 for one GetGovernedEntity.
+func (s *ServiceTestSuite) governedRead(e *providers.Entity, state providers.EntityState, runtimeAttrs string) {
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	row := entityRuntimeData{ID: e.ID, State: state, Revision: 7}
+	if runtimeAttrs != "" {
+		row.Attributes = json.RawMessage(runtimeAttrs)
+	}
+	s.runtime = newEntityRuntimeStoreInterfaceMock(s.T())
+	s.runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).
+		Return(map[string]entityRuntimeData{e.ID: row}, nil).Once()
+	s.svc = newEntityService(s.store, s.runtime, s.hashService, nil, nil, transaction.NewNoOpTransactioner())
+}
+
+// The governed read carries the category, the parsed lock state and the runtime row's revision.
+func (s *ServiceTestSuite) TestGetGovernedEntityReadsTheRuntimeRow() {
+	e := testEntity("e-gov")
+	e.OUID = "ou-1"
+	s.governedRead(e, providers.EntityStateActive, `{"accessState":{"lock":{"authenticationMethods":`+
+		`{"credential":{"failureCount":3,"lockCount":2,"unlockAt":"2026-09-08T10:15:00Z",`+
+		`"lastFailedAt":"2026-09-08T10:00:00Z"}}}}}`)
+
+	governed, err := s.svc.GetGovernedEntity(s.ctx, e.ID)
+	s.Require().NoError(err)
+	s.Equal(e.ID, governed.ID)
+	s.Equal(e.Category, governed.Category)
+	s.Equal(e.Type, governed.Type)
+	s.Equal("ou-1", governed.OUID)
+	s.Equal(providers.EntityStateActive, governed.State)
+
+	credential := governed.AccessState.Lock.AuthenticationMethods[providers.AccessScopeCredential]
+	s.Equal(int64(7), governed.Revision)
+	s.Equal(3, credential.FailureCount)
+	s.Equal(2, credential.LockCount)
+	s.Equal("2026-09-08T10:15:00Z", credential.UnlockAt)
+	s.Equal("2026-09-08T10:00:00Z", credential.LastFailedAt)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntityParsesSuspensionAndEntityHold() {
+	e := testEntity("e-gov-held")
+	s.governedRead(e, providers.EntityStateSuspended, `{"accessState":{"suspend":`+
+		`{"suspendedAt":"2026-09-10T11:02:00Z","operatorNote":"Credential exposure"},`+
+		`"lock":{"entity":{"unlockAt":"9999-12-31T23:59:59Z","reason":"POST_SUSPENDED"}},`+
+		`"lastLoginAt":"2026-09-09T18:22:04Z"}}`)
+
+	governed, err := s.svc.GetGovernedEntity(s.ctx, e.ID)
+	s.Require().NoError(err)
+	s.Equal(providers.EntityStateSuspended, governed.State)
+	s.Require().NotNil(governed.AccessState.Suspend)
+	s.Equal("2026-09-10T11:02:00Z", governed.AccessState.Suspend.SuspendedAt)
+	s.Equal("Credential exposure", governed.AccessState.Suspend.OperatorNote)
+	s.Equal("2026-09-09T18:22:04Z", governed.AccessState.LastLoginAt)
+	s.Require().NotNil(governed.AccessState.Lock.Entity)
+	s.Equal(int64(7), governed.Revision)
+	s.Equal(identitygovernance.PermanentUnlockAt, governed.AccessState.Lock.Entity.UnlockAt)
+	s.Equal(identitygovernance.LockReasonPostSuspension, governed.AccessState.Lock.Entity.Reason)
+	s.Empty(governed.AccessState.Lock.AuthenticationMethods)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntityWithNoAccessState() {
+	for _, attrs := range []string{"", `{"name":"only"}`} {
+		e := testEntity("e-gov-empty")
+		s.governedRead(e, providers.EntityStateActive, attrs)
+
+		governed, err := s.svc.GetGovernedEntity(s.ctx, e.ID)
+		s.Require().NoError(err)
+		s.Equal(identitygovernance.AccessState{}, governed.AccessState)
+	}
+}
+
+// An unknown scope is kept and an unknown member is ignored.
+func (s *ServiceTestSuite) TestGetGovernedEntityToleratesUnknownKeys() {
+	e := testEntity("e-gov-future")
+	s.governedRead(e, providers.EntityStateActive, `{"accessState":{"somethingLater":{"x":1},`+
+		`"lock":{"authenticationMethods":{"some_future_method":{"failureCount":2}}}}}`)
+
+	governed, err := s.svc.GetGovernedEntity(s.ctx, e.ID)
+	s.Require().NoError(err)
+	s.Equal(2, governed.AccessState.Lock.AuthenticationMethods["some_future_method"].FailureCount)
+}
+
+// An access-state document that cannot be parsed fails the read.
+func (s *ServiceTestSuite) TestGetGovernedEntityRefusesAnUnparsableDocument() {
+	e := testEntity("e-gov-bad")
+	s.governedRead(e, providers.EntityStateActive, `not json`)
+
+	_, err := s.svc.GetGovernedEntity(s.ctx, e.ID)
+	s.Error(err)
+}
+
+// An unknown identity is reported with the governance sentinel, so lifecycle operations answer it as
+// a client error.
+func (s *ServiceTestSuite) TestGetGovernedEntityReportsAnUnknownIdentity() {
+	s.store.On("GetEntity", mock.Anything, "missing").
+		Return(providers.Entity{}, ErrEntityNotFound).Once()
+
+	_, err := s.svc.GetGovernedEntity(s.ctx, "missing")
+	s.ErrorIs(err, identitygovernance.ErrEntityNotFound)
+}
+
+func (s *ServiceTestSuite) TestGetGovernedEntityPropagatesAReadFailure() {
+	readErr := errors.New("store unavailable")
+	s.store.On("GetEntity", mock.Anything, "e1").Return(providers.Entity{}, readErr).Once()
+
+	_, err := s.svc.GetGovernedEntity(s.ctx, "e1")
+	s.ErrorIs(err, readErr)
+}
+
+func (s *ServiceTestSuite) TestGetEntityProfileDoesNotHydrateTheRuntimeRow() {
+	e := testEntity("e-category")
+	e.Category = providers.EntityCategoryAgent
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+
+	profile, err := s.svc.GetEntityProfile(s.ctx, e.ID)
+
+	s.Require().NoError(err)
+	s.Equal(providers.EntityCategoryAgent, profile.Category)
+	s.runtime.AssertNotCalled(s.T(), "GetRuntimeData", mock.Anything, mock.Anything)
+}
+
+// A read failure is returned as an error, never as a zero-value profile.
+func (s *ServiceTestSuite) TestGetEntityProfilePropagatesAReadFailure() {
+	s.store.On("GetEntity", mock.Anything, "missing").
+		Return(providers.Entity{}, ErrEntityNotFound).Once()
+
+	_, err := s.svc.GetEntityProfile(s.ctx, "missing")
+
+	s.Require().ErrorIs(err, ErrEntityNotFound)
+}
+
 // newServiceWithIndexedEmail returns a service whose store indexes email. Its store and entity type
 // mocks carry no other expectations, so any schema, uniqueness, or write call fails the test.
 func (s *ServiceTestSuite) newServiceWithIndexedEmail() (*entityService, *entityStoreInterfaceMock) {
 	store := newEntityStoreInterfaceMock(s.T())
 	store.On("GetIndexedAttributes").Return(map[string]bool{"email": true})
 	ets := entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
-	svc := newEntityService(store, s.hashService, ets, nil, transaction.NewNoOpTransactioner()).(*entityService)
+	runtime := newEntityRuntimeStoreInterfaceMock(s.T())
+	installRuntimeFixture(runtime)
+	svc := newEntityService(store, runtime, s.hashService, ets, nil,
+		transaction.NewNoOpTransactioner()).(*entityService)
 	return svc, store
 }
 

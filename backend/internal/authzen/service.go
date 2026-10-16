@@ -439,7 +439,7 @@ func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (S
 	if s.entityProvider == nil {
 		return subject, nil
 	}
-	entity, err := s.entityProvider.GetEntity(subject.ID)
+	entity, err := s.entityProvider.GetEntityProfile(subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return subject, nil

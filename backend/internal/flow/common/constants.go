@@ -156,6 +156,10 @@ const (
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
 	// cross-frame store, so it survives a CALL into another flow.
 	RuntimeKeyRevocationPlan = "revocationPlan"
+	// RuntimeKeyProvenSubject holds the identity whose control an executor proved in this execution.
+	// Only a verifying executor writes it, on the executor-only store; a node acting on proof reads
+	// the subject from here, never from an input.
+	RuntimeKeyProvenSubject = "provenSubject"
 	// RuntimeKeyClientID holds the OAuth client ID for the current flow execution, if applicable.
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.

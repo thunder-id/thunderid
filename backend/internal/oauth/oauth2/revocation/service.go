@@ -75,8 +75,10 @@ type revocationService struct {
 	jwtService          jwt.JWTServiceInterface
 	store               revocationStoreInterface
 	tokenFamilyLifetime time.Duration
-	revokeTokenFamily   bool
-	observabilitySvc    providers.ObservabilityProvider
+	// validationLeeway is how long past exp a token is still accepted, so a row outlives it by that much.
+	validationLeeway  time.Duration
+	revokeTokenFamily bool
+	observabilitySvc  providers.ObservabilityProvider
 	// maxEntriesPerChange bounds one RevokeCriteriaBatch call.
 	maxEntriesPerChange int
 	logger              *log.Logger
@@ -88,11 +90,12 @@ type revocationService struct {
 // When revokeTokenFamily is true, an explicit revocation of a token carrying a token family id also revokes
 // the whole family (so a login's access tokens drop with its refresh token). tokenFamilyLifetime bounds
 // each token-family deny-list entry (revoked_at + tokenFamilyLifetime); a non-positive value falls back
-// to defaultTokenFamilyRevocationTTL.
+// to defaultTokenFamilyRevocationTTL. validationLeeway extends every entry by the JWT leeway.
 func newRevocationService(
 	jwtService jwt.JWTServiceInterface,
 	store revocationStoreInterface,
 	tokenFamilyLifetime time.Duration,
+	validationLeeway time.Duration,
 	revokeTokenFamily bool,
 	observabilitySvc providers.ObservabilityProvider,
 	maxEntriesPerChange int,
@@ -104,6 +107,7 @@ func newRevocationService(
 		jwtService:          jwtService,
 		store:               store,
 		tokenFamilyLifetime: tokenFamilyLifetime,
+		validationLeeway:    max(validationLeeway, 0),
 		revokeTokenFamily:   revokeTokenFamily,
 		observabilitySvc:    observabilitySvc,
 		maxEntriesPerChange: maxEntriesPerChange,
@@ -259,6 +263,9 @@ func (s *revocationService) RevokeCriteriaBatch(ctx context.Context,
 	}
 	if err := s.store.insertCriteria(ctx, rows); err != nil {
 		s.logger.Error(ctx, "Failed to revoke tokens by criteria", log.Error(err))
+		for _, revocation := range revocations {
+			s.publishCriteriaRevocationFailedEvent(ctx, revocation)
+		}
 		return &tidcommon.InternalServerError
 	}
 
@@ -298,8 +305,18 @@ func (s *revocationService) validatedCriterionRow(revocation CriteriaRevocation,
 		Value:      revocation.Criterion.Value,
 		Reason:     revocation.Reason,
 		RevokedAt:  revokedAt,
-		ExpiryTime: now.Add(s.resolveCriterionLifetime(revocation.TTL)),
+		ExpiryTime: s.criterionExpiry(now, revokedAt, revocation.TTL),
 	}, nil
+}
+
+// criterionExpiry is when a row may lapse: after the last token it covers, one issued at the cutoff,
+// has expired and its leeway has passed. A suspension's cutoff lies ahead of the write.
+func (s *revocationService) criterionExpiry(now, revokedAt time.Time, requested time.Duration) time.Time {
+	base := now
+	if revokedAt.After(base) {
+		base = revokedAt
+	}
+	return base.Add(s.resolveCriterionLifetime(requested) + s.validationLeeway)
 }
 
 // resolveCriterionLifetime returns how long a criteria deny-list row must survive. The configured
@@ -349,6 +366,32 @@ func extractExpiryTime(payload map[string]interface{}) time.Time {
 		return time.Unix(int64(exp), 0).UTC()
 	}
 	return time.Now().UTC()
+}
+
+// publishCriteriaRevocationFailedEvent emits a TOKEN_REVOCATION_FAILED alert. A suspension whose
+// containment fails this way is not placed, so this is what an operator alerts on.
+func (s *revocationService) publishCriteriaRevocationFailedEvent(ctx context.Context,
+	revocation CriteriaRevocation) {
+	if s.observabilitySvc == nil || !s.observabilitySvc.IsEnabled() {
+		return
+	}
+
+	evt := event.NewEvent(
+		syscontext.GetTraceID(ctx),
+		string(event.EventTypeTokenRevocationFailed),
+		event.ComponentAuthHandler,
+	).
+		WithStatus(providers.StatusFailure).
+		WithData(event.DataKey.CriterionType, string(revocation.Criterion.Type)).
+		WithData(event.DataKey.RevocationReason, string(revocation.Reason))
+	switch revocation.Criterion.Type {
+	case CriterionTypeSubject:
+		evt.WithData(event.DataKey.Subject, revocation.Criterion.Value)
+	case CriterionTypeApplicationKey:
+		evt.WithData(event.DataKey.ClientID, revocation.Criterion.Value)
+	}
+
+	s.observabilitySvc.PublishEvent(ctx, evt)
 }
 
 // publishTokenRevokedEvent emits a TOKEN_REVOKED audit event.

@@ -141,7 +141,7 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	applied := ts.captureAndApply("applications and agents")
 
 	embedded := ts.shown(applied, "application", embeddedID)
-	ts.Equal(ts.read("/applications/"+embeddedID), embedded.Resource,
+	ts.Equal(withoutAccessState(ts.read("/applications/"+embeddedID)), embedded.Resource,
 		"an application with no OAuth profile shows as its own read")
 	ts.Empty(embedded.Parts)
 
@@ -156,7 +156,7 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	ts.NotEmpty(viewed["attributes"])
 	ts.Regexp(`^\{\{\.AGENT_[A-Z0-9_]+_CLIENT_ID\}\}$`, viewed["clientId"])
 	// The export writes an empty list as no value, so a scope claim with no claims reads as null.
-	ts.Equal(emptyAsNil(withoutClient(live)), emptyAsNil(withoutClient(viewed)))
+	ts.Equal(emptyAsNil(withoutClient(withoutAccessState(live))), emptyAsNil(withoutClient(viewed)))
 	ts.NotContains(fmt.Sprint(viewed), "-secret-"+suffix, "a client secret was shown")
 	ts.Empty(agent.Parts)
 
@@ -224,7 +224,7 @@ func (ts *GatewayVersionsTestSuite) TestTheAppliedDirectoryShowsAsItsReads() {
 	agentTypeID := ts.defaultAgentTypeID()
 	ts.Equal(ts.read("/agent-types/"+agentTypeID), ts.shown(applied, "agent_type", agentTypeID).Resource)
 	user := ts.shown(applied, "user", userID)
-	ts.Equal(ts.read("/users/"+userID), user.Resource)
+	ts.Equal(withoutAccessState(ts.read("/users/"+userID)), user.Resource)
 	ts.Empty(user.Parts)
 
 	group := ts.shown(applied, "group", groupID)
@@ -598,6 +598,18 @@ func (ts *GatewayVersionsTestSuite) field(value any, name string) []any {
 		values[i] = item[name]
 	}
 	return values
+}
+
+// withoutAccessState leaves out of a read the access status and last login, which the runtime keeps
+// and a version never holds.
+func withoutAccessState(read document) document {
+	trimmed := make(document, len(read))
+	for key, value := range read {
+		if key != "status" && key != "lastLoginAt" {
+			trimmed[key] = value
+		}
+	}
+	return trimmed
 }
 
 // withoutUpdatedAt leaves out of a read the time it was last written, which an apply moves.

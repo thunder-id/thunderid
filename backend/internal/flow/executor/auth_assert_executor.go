@@ -44,6 +44,7 @@ type authAssertExecutor struct {
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
 	entityTypeService   entitytype.EntityTypeServiceInterface
+	accessGuard         *accessGuard
 	logger              *log.Logger
 }
 
@@ -60,6 +61,7 @@ func newAuthAssertExecutor(
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 ) *authAssertExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
@@ -81,6 +83,7 @@ func newAuthAssertExecutor(
 		attributeCacheSvc:   attributeCacheSvc,
 		roleService:         roleService,
 		entityTypeService:   entityTypeService,
+		accessGuard:         newAccessGuard(governance, logger),
 		logger:              logger,
 	}
 }
@@ -106,6 +109,18 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 			return execResp, nil
 		}
 
+		// Every flow passes this node on its way to a grant, so the check also covers a subject
+		// restored from a session. It sits outside generateAuthAssertion, whose errors become a 500.
+		subjectID, svcErr, fault := a.refuseHeldSubject(ctx, execResp, logger)
+		if fault != nil {
+			return nil, fault
+		}
+		if svcErr != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = svcErr
+			return execResp, nil
+		}
+
 		token, err := a.generateAuthAssertion(ctx, execResp, logger)
 		// A client failure is recorded on the response; a returned error is a server fault.
 		if execResp.Status == providers.ExecFailure {
@@ -116,6 +131,9 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		}
 
 		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
+
+		// Stamped after the assertion, so a failure records no grant.
+		a.accessGuard.recordLogin(ctx.Context, subjectID)
 
 		execResp.Status = providers.ExecComplete
 		execResp.Assertion = token
@@ -128,6 +146,36 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		log.String("status", string(execResp.Status)))
 
 	return execResp, nil
+}
+
+// refuseHeldSubject resolves the authenticated subject, asks whether it may still be used, and
+// returns its entity ID. The resolved AuthUser stays on the response, so generateAuthAssertion signs
+// the subject admitted here.
+func (a *authAssertExecutor) refuseHeldSubject(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse, logger *log.Logger) (string, *tidcommon.ServiceError, error) {
+	if a.authnProvider == nil {
+		return "", nil, nil
+	}
+
+	authUser, entityRef, svcErr := a.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return "", nil, errors.New("something went wrong while fetching entity references")
+		}
+		logger.Debug(ctx.Context, "The authenticated subject names no local entity")
+		return "", errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped), nil
+	}
+	if entityRef == nil {
+		return "", nil, errors.New("entity reference resolved to nothing")
+	}
+	execResp.AuthUser = authUser
+
+	// The grant: where a sign-in completes, so the entity-wide counter clears here and not per step.
+	refusal, fault := a.accessGuard.refuseSignInIfHeld(ctx.Context, entityRef.EntityID)
+	if fault != nil || refusal != nil {
+		return "", refusal, fault
+	}
+	return entityRef.EntityID, nil, nil
 }
 
 // checkAssurance verifies that the assurance accumulated in this execution satisfies the

@@ -53,7 +53,7 @@ func newCredentialsAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameCredentialsAuth))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []providers.Input{},
-		flowFactory, entityProvider, nil)
+		flowFactory, entityProvider, nil, nil)
 	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
 		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{})
 
@@ -194,6 +194,16 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 		userCredentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message on the sign-in page.
+		if stated := statedHold(svcErr).refusal(); stated != nil {
+			b.logger.Debug(ctx.Context, "Authentication refused by a stated hold",
+				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("code", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = b.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
+
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = b.GetRequiredInputs(ctx)

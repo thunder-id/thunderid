@@ -245,7 +245,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
+			// A stated hold replaces the generic failure. See the same site in the OIDC executor.
 			execResp.Error = svcErr
+			if hold := statedHold(svcErr); hold != holdNone {
+				execResp.Error = hold.refusal()
+			}
 			return nil
 		}
 

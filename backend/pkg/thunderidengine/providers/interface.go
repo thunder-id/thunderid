@@ -333,3 +333,42 @@ type RuntimeCryptoProvider interface {
 	// GetSupportedEncryptionAlgorithms returns the list of algorithms supported by Encrypt and Decrypt.
 	GetSupportedEncryptionAlgorithms() []string
 }
+
+// IdentityGovernanceProvider checks access, records granted activity, and applies lifecycle operations.
+type IdentityGovernanceProvider interface {
+	// EvaluateAccess reports whether the identity may be used at the given plane and authentication
+	// method scope. A hold is reported in the decision. An empty entityID, or one with no local
+	// identity, is admitted, as there is nothing to govern. A non-nil error means the authority could
+	// not answer, and the caller must refuse.
+	EvaluateAccess(ctx context.Context, entityID string, plane AccessPlane,
+		scope AccessScope) (AccessDecision, *common.ServiceError)
+
+	// AdmitSignIn is EvaluateAccess at AccessPlaneSession for a completing sign-in. When it admits, it
+	// also clears a lapsed entity-wide failure record; it never clears a live lock, and a failed clear
+	// does not refuse.
+	AdmitSignIn(ctx context.Context, entityID string) (AccessDecision, *common.ServiceError)
+
+	// Unlock clears an automatic lock early, for the support call where a user cannot wait out the
+	// lock. It returns the account to the bottom of the escalation, and it does not release a
+	// suspension.
+	Unlock(ctx context.Context, entityID string) *common.ServiceError
+
+	// Suspend places an administrative hold that withholds authentication, sessions, token issuance and
+	// recovery, leaving the record writable. It writes state only, so the caller composes revocation, and
+	// succeeds without writing on an already suspended identity. operatorNote is optional and never disclosed.
+	Suspend(ctx context.Context, entityID, operatorNote string) *common.ServiceError
+
+	// ValidateSuspend checks that the caller may suspend the identity and writes nothing. A suspend
+	// flow runs it before containment, so a target it refuses leaves every token and session alone.
+	// An identity already suspended passes: repeating a suspension is how containment is re-run.
+	ValidateSuspend(ctx context.Context, entityID string) *common.ServiceError
+
+	// RecordLogin stamps when this identity was last granted access, if the deployment enabled it, so
+	// an external rule can find unused identities. Call it when access is granted, not when a secret
+	// verifies, and never fail the grant on its error.
+	RecordLogin(ctx context.Context, entityID string) *common.ServiceError
+
+	// Unsuspend releases the hold. A user lands on a non-expiring entity-wide lock, cleared by
+	// self-service recovery or an unlock; an agent or application returns to ACTIVE.
+	Unsuspend(ctx context.Context, entityID string) *common.ServiceError
+}

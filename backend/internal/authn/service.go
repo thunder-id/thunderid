@@ -27,6 +27,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -35,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -103,6 +105,7 @@ type authenticationService struct {
 	googleService          google.GoogleOIDCAuthnServiceInterface
 	githubService          github.GithubOAuthAuthnServiceInterface
 	entityTypeService      entitytype.EntityTypeServiceInterface
+	governance             identitygovernance.IdentityGovernanceServiceInterface
 }
 
 // newAuthenticationService creates a new instance of AuthenticationService.
@@ -120,6 +123,7 @@ func newAuthenticationService(
 	googleAuthnSvc google.GoogleOIDCAuthnServiceInterface,
 	githubAuthnSvc github.GithubOAuthAuthnServiceInterface,
 	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 ) AuthenticationServiceInterface {
 	return &authenticationService{
 		idpService:             idpSvc,
@@ -135,7 +139,49 @@ func newAuthenticationService(
 		googleService:          googleAuthnSvc,
 		githubService:          githubAuthnSvc,
 		entityTypeService:      entityTypeSvc,
+		governance:             governance,
 	}
+}
+
+// refuseIfHeld refuses a held subject as the response is built, at the session plane with no
+// authentication method, so an administrative hold applies and an automatic lock does not. It is
+// not in validateAndAppendAuthAssertion, which skipAssertion bypasses.
+func (as *authenticationService) refuseIfHeld(ctx context.Context, entityID string,
+	refusal *tidcommon.ServiceError, logger *log.Logger) *tidcommon.ServiceError {
+	if as.governance == nil || entityID == "" {
+		return nil
+	}
+
+	// Asked on a runtime context: these endpoints carry no authorized identity. Each call is a
+	// completed sign-in, so it also clears a lapsed entity-wide lock.
+	decision, svcErr := as.governance.AdmitSignIn(security.WithRuntimeContext(ctx), entityID)
+	if svcErr != nil {
+		// The service has logged the cause.
+		return &tidcommon.InternalServerError
+	}
+	if !decision.Admitted {
+		logger.Debug(ctx, "Refused an authentication response for a held identity")
+		// The hold the decision names, as the flow states it, or the refusal an authentication
+		// failure produces when it names none.
+		switch decision.Reason {
+		case providers.AccessRefusalReasonSuspended:
+			return &authnprovidermgr.ErrorAccountSuspended
+		case providers.AccessRefusalReasonLocked:
+			return &authnprovidermgr.ErrorAccountLocked
+		default:
+			return refusal
+		}
+	}
+	return nil
+}
+
+// recordLogin stamps when the subject was last granted access. A failure is logged by the authority
+// and never fails the response.
+func (as *authenticationService) recordLogin(ctx context.Context, entityID string) {
+	if as.governance == nil || entityID == "" {
+		return
+	}
+	_ = as.governance.RecordLogin(security.WithRuntimeContext(ctx), entityID)
 }
 
 // AuthenticateWithCredentials authenticates a user using credentials.
@@ -173,6 +219,11 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
 	}
 
+	if svcErr := as.refuseIfHeld(ctx, entityRef.EntityID, &ErrorInvalidCredentials,
+		logger); svcErr != nil {
+		return nil, svcErr
+	}
+
 	authResponse := &common.AuthenticationResponse{
 		ID:   entityRef.EntityID,
 		Type: entityRef.EntityType,
@@ -207,6 +258,7 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -271,7 +323,10 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, &tidcommon.InternalServerError
 		}
-		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
+		switch svcErr.Code {
+		case authnprovidermgr.ErrorAccountLocked.Code, authnprovidermgr.ErrorAccountSuspended.Code:
+			return nil, svcErr
+		case authnprovidermgr.ErrorAuthenticationFailed.Code:
 			return nil, &ErrorOTPAuthenticationFailed
 		}
 		return nil, svcErr
@@ -280,6 +335,11 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
 	if svcErr != nil {
 		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
+	}
+
+	if svcErr := as.refuseIfHeld(ctx, entityRef.EntityID, &ErrorOTPAuthenticationFailed,
+		logger); svcErr != nil {
+		return nil, svcErr
 	}
 
 	authResponse := &common.AuthenticationResponse{
@@ -304,6 +364,7 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -418,6 +479,11 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
 
+	if svcErr := as.refuseIfHeld(ctx, entityRef.EntityID, &ErrorFederatedAuthenticationFailed,
+		logger); svcErr != nil {
+		return nil, svcErr
+	}
+
 	user := &providers.Entity{
 		ID:       entityRef.EntityID,
 		Category: providers.EntityCategory(entityRef.EntityCategory),
@@ -447,6 +513,7 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -645,6 +712,10 @@ func (as *authenticationService) verifyAssertionSubject(ctx context.Context, ass
 func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svcErr *tidcommon.ServiceError,
 	logger *log.Logger) *tidcommon.ServiceError {
 	switch svcErr.Code {
+	case authnprovidermgr.ErrorAccountLocked.Code, authnprovidermgr.ErrorAccountSuspended.Code:
+		// A stated hold keeps its code; a refusal that names no hold arrives as
+		// ErrorAuthenticationFailed.
+		return svcErr
 	// Ambiguity here means more than one user holds a recorded link to the same federated subject.
 	case authnprovidermgr.ErrorAuthenticationFailed.Code, authnprovidermgr.ErrorUserNotFound.Code,
 		authnprovidermgr.ErrorAmbiguousUser.Code, authnprovidermgr.ErrorInvalidRequest.Code,
@@ -661,6 +732,8 @@ func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svc
 func (as *authenticationService) mapCredentialsAuthnError(ctx context.Context, svcErr *tidcommon.ServiceError,
 	logger *log.Logger) *tidcommon.ServiceError {
 	switch svcErr.Code {
+	case authnprovidermgr.ErrorAccountLocked.Code, authnprovidermgr.ErrorAccountSuspended.Code:
+		return svcErr
 	case authnprovidermgr.ErrorAuthenticationFailed.Code:
 		return &ErrorInvalidCredentials
 	case authnprovidermgr.ErrorUserNotFound.Code:
@@ -825,10 +898,7 @@ func (as *authenticationService) StartPasskeyRegistration(
 
 	result, svcErr := as.authnProvider.InitiateEnrollment(ctx, passkey.CredentialType, req, nil)
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
-		}
-		return nil, &ErrorPasskeyEnrollmentFailed
+		return nil, passkeyEnrollmentError(svcErr)
 	}
 	return result, nil
 }
@@ -853,13 +923,23 @@ func (as *authenticationService) FinishPasskeyRegistration(
 	authUser, _, svcErr := as.authnProvider.Enroll(
 		ctx, nil, credentials, nil, nil, providers.AuthUser{})
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
-		}
-		return nil, &ErrorPasskeyEnrollmentFailed
+		return nil, passkeyEnrollmentError(svcErr)
 	}
 
 	return as.buildPasskeyAuthenticationResponse(ctx, authUser, skipAssertion, existingAssertion, logger)
+}
+
+// passkeyEnrollmentError maps a passkey enrolment error. A stated hold keeps its code; any other
+// client error is an enrolment failure.
+func passkeyEnrollmentError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr.Type == tidcommon.ServerErrorType {
+		return &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case authnprovidermgr.ErrorAccountLocked.Code, authnprovidermgr.ErrorAccountSuspended.Code:
+		return svcErr
+	}
+	return &ErrorPasskeyEnrollmentFailed
 }
 
 // StartPasskeyAuthentication starts the passkey authentication process.
@@ -921,6 +1001,13 @@ func (as *authenticationService) buildPasskeyAuthenticationResponse(ctx context.
 		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
 	}
 
+	// Shared by FinishPasskeyAuthentication and FinishPasskeyRegistration, so one check covers two
+	// of the five endpoints.
+	if svcErr := as.refuseIfHeld(ctx, entityRef.EntityID, &ErrorPasskeyAuthenticationFailed,
+		logger); svcErr != nil {
+		return nil, svcErr
+	}
+
 	authResponse := &common.AuthenticationResponse{
 		ID:   entityRef.EntityID,
 		Type: entityRef.EntityType,
@@ -928,6 +1015,7 @@ func (as *authenticationService) buildPasskeyAuthenticationResponse(ctx context.
 	}
 
 	if skipAssertion {
+		as.recordLogin(ctx, entityRef.EntityID)
 		return authResponse, nil
 	}
 
@@ -941,5 +1029,6 @@ func (as *authenticationService) buildPasskeyAuthenticationResponse(ctx context.
 		common.AuthenticatorPasskey, existingAssertion, logger); svcErr != nil {
 		return nil, svcErr
 	}
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }

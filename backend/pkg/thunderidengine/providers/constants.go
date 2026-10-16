@@ -300,12 +300,127 @@ type EntityState string
 const (
 	// EntityStateActive represents an active entity.
 	EntityStateActive EntityState = "ACTIVE"
+
+	// EntityStateSuspended represents an entity placed on an administrative security hold.
+	EntityStateSuspended EntityState = "SUSPENDED"
 )
 
 // String returns the string representation of the entity state.
 func (es EntityState) String() string {
 	return string(es)
 }
+
+// AccessStatus is the status a management read reports for an entity. LOCKED is derived at read
+// time from the stored unlock time and is never stored.
+type AccessStatus string
+
+const (
+	// AccessStatusActive means nothing is withheld.
+	AccessStatusActive AccessStatus = "ACTIVE"
+
+	// AccessStatusLocked means an automatic lock is live.
+	AccessStatusLocked AccessStatus = "LOCKED"
+
+	// AccessStatusSuspended means an administrator has suspended the entity. The record stays
+	// writable.
+	AccessStatusSuspended AccessStatus = "SUSPENDED"
+)
+
+// String returns the string representation of the access status.
+func (as AccessStatus) String() string {
+	return string(as)
+}
+
+// AccessHoldReason says what put an entity into the status it reports. Reported only on a
+// management read, never on a refusal.
+type AccessHoldReason string
+
+const (
+	// AccessHoldReasonFailedAttempts is an automatic lock formed by failed attempts. It lifts at
+	// the reported expiry.
+	AccessHoldReasonFailedAttempts AccessHoldReason = "FAILED_ATTEMPTS"
+
+	// AccessHoldReasonSuspensionReleaseLock is the entity-wide lock left when a suspension is
+	// cleared. It reports as LOCKED with no expiry and does not lift on its own.
+	AccessHoldReasonSuspensionReleaseLock AccessHoldReason = "SUSPENSION_RELEASE_LOCK"
+
+	// AccessHoldReasonAdministrativeSuspension is a suspension an administrator placed.
+	AccessHoldReasonAdministrativeSuspension AccessHoldReason = "ADMINISTRATIVE_SUSPENSION"
+)
+
+// String returns the string representation of the hold reason.
+func (r AccessHoldReason) String() string {
+	return string(r)
+}
+
+// AccessPlane is the point at which access is checked. The caller names the plane and the
+// governance service decides which holds apply there.
+type AccessPlane string
+
+const (
+	// AccessPlaneAuthentication is right after an authentication method verifies its input. It is
+	// the only plane scoped to an authentication method. An authentication hold applies here and at
+	// dispatch only.
+	AccessPlaneAuthentication AccessPlane = "authentication"
+
+	// AccessPlaneDispatch is before a challenge (a one-time password, a magic link, a passkey
+	// request) is sent. Sending a challenge never counts as a failure.
+	AccessPlaneDispatch AccessPlane = "dispatch"
+
+	// AccessPlaneRecovery is self-service recovery. A suspension applies here; an automatic lock
+	// never does, since recovery is how a locked account is released.
+	AccessPlaneRecovery AccessPlane = "recovery"
+
+	// AccessPlaneSession is a subject being resolved at the grant, from a session or a flow.
+	AccessPlaneSession AccessPlane = "session"
+
+	// AccessPlaneIssuance is the refresh grant issuing tokens from an existing grant.
+	AccessPlaneIssuance AccessPlane = "issuance"
+
+	// AccessPlaneApplication is an application being resolved at runtime.
+	AccessPlaneApplication AccessPlane = "application"
+)
+
+// AccessScope names the authentication method an access check is scoped to. An empty scope checks
+// the identity without naming a method.
+type AccessScope string
+
+const (
+	// AccessScopeCredential covers password, PIN, secret answer and other values verified in one
+	// credential check.
+	AccessScopeCredential AccessScope = "credential"
+
+	// AccessScopeOTP is the one-time-password method.
+	AccessScopeOTP AccessScope = "otp"
+
+	// AccessScopePasskey is the passkey method.
+	AccessScopePasskey AccessScope = "passkey"
+
+	// AccessScopeFederated is the external identity provider.
+	AccessScopeFederated AccessScope = "federated"
+
+	// AccessScopeMagicLink is the magic-link method.
+	AccessScopeMagicLink AccessScope = "magiclink"
+
+	// AccessScopeOpenID4VP is the verifiable-presentation method.
+	AccessScopeOpenID4VP AccessScope = "openid4vp"
+
+	// AccessScopeSystemCredential covers clientSecret and flowSecret.
+	AccessScopeSystemCredential AccessScope = "system_credential" // #nosec G101 -- scope name, not a secret
+)
+
+// AccessRefusalReason is the hold a refusal states. It never names the locked method or the
+// time left.
+type AccessRefusalReason string
+
+const (
+	// AccessRefusalReasonLocked says the account is locked, by failed attempts or by a lifted
+	// suspension.
+	AccessRefusalReasonLocked AccessRefusalReason = "locked"
+
+	// AccessRefusalReasonSuspended says an administrator has suspended the account.
+	AccessRefusalReasonSuspended AccessRefusalReason = "suspended"
+)
 
 // ConsentStatus defines the possible statuses for a consent record.
 type ConsentStatus string

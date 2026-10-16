@@ -198,7 +198,12 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
+			// A stated hold replaces the generic failure. Terminal either way: the IdP round trip
+			// is spent.
 			execResp.Error = svcErr
+			if hold := statedHold(svcErr); hold != holdNone {
+				execResp.Error = hold.refusal()
+			}
 			return nil
 		}
 

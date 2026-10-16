@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -54,7 +56,7 @@ func (suite *PasskeyAuthExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
 		mock.Anything, mock.Anything, mock.Anything).Return(mockExec)
 
-	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider)
+	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider, admitAllAccess(suite.T()))
 }
 
 func createMockPasskeyAuthExecutor(t *testing.T) providers.Executor {
@@ -222,6 +224,51 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_ServiceError_Cli
 	assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue, "User has no registered passkeys")
 }
 
+// A withheld challenge answers exactly as a user with no registered passkey does.
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_HeldMatchesNoRegisteredPasskey() {
+	noPasskey := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	noPasskey.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.mockAuthnProvider.On("InitiateAuthentication", mock.Anything, passkey.CredentialType,
+		mock.Anything, mock.Anything).Return(nil, &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
+		Code:             authnprovidercm.ErrorCodeAuthenticationFailed,
+		ErrorDescription: passkey.ErrorNoCredentialsFound.ErrorDescription,
+	}).Once()
+	want, err := suite.executor.Execute(noPasskey)
+	suite.Require().NoError(err)
+
+	held := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	held.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.executor.accessGuard = testAccessGuard(decideAccess(suite.T(), providers.AccessDecision{}, nil))
+	got, err := suite.executor.Execute(held)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, got.Status)
+	suite.Equal(want.Status, got.Status)
+	suite.Equal(*want.Error, *got.Error)
+}
+
+// A disclosed hold is stated; an unreadable authority is a fault.
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_HeldStatedOrFault() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.executor.accessGuard = testAccessGuard(decideAccess(suite.T(),
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+
+	suite.executor.accessGuard = testAccessGuard(decideAccess(suite.T(), providers.AccessDecision{},
+		&tidcommon.InternalServerError))
+	_, err = suite.executor.Execute(ctx)
+	suite.Error(err)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "InitiateAuthentication",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_ServiceError_Server() {
 	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
 	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
@@ -331,6 +378,32 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_InvalidPasskey_Clie
 	assert.Contains(suite.T(), inputIDs, inputClientDataJSON)
 	assert.Contains(suite.T(), inputIDs, inputAuthenticatorData)
 	assert.Contains(suite.T(), inputIDs, inputSignature)
+}
+
+// A stated hold re-prompts with its own message, as a failed assertion re-prompts.
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_IdentityHeld_RepromptsWithSuspension() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeVerify, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	ctx.RuntimeData[runtimePasskeySessionToken] = testSessionToken
+	ctx.UserInputs = map[string]string{
+		inputCredentialID:      testCredentialIDValue,
+		inputClientDataJSON:    "client-data",
+		inputAuthenticatorData: "authenticator-data",
+		inputSignature:         "signature",
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return(
+		providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),
+		&authnprovidermgr.ErrorAccountSuspended)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), ErrAccountSuspended.Code, resp.Error.Code)
+	assert.NotEmpty(suite.T(), resp.Inputs)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_ServiceError_Server() {
@@ -613,6 +686,40 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ServiceErro
 	assert.Contains(suite.T(), inputIDs, inputCredentialID)
 	assert.Contains(suite.T(), inputIDs, inputClientDataJSON)
 	assert.Contains(suite.T(), inputIDs, inputAttestationObject)
+}
+
+// A stated suspension refuses both registration steps with its own error: the start ends the
+// step, and the finish re-prompts as a failed registration does.
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStatesADisclosedSuspension() {
+	start := createPasskeyNodeContext(passkeyExecutorModeRegStart, providers.FlowTypeRegistration)
+	start.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.mockAuthnProvider.On("InitiateEnrollment", mock.Anything, passkey.CredentialType,
+		mock.Anything, mock.Anything).Return(nil, &authnprovidermgr.ErrorAccountSuspended).Once()
+
+	resp, err := suite.executor.Execute(start)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+
+	finish := createPasskeyNodeContext(passkeyExecutorModeRegFinish, providers.FlowTypeRegistration)
+	finish.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	finish.RuntimeData[runtimePasskeySessionToken] = testSessionToken
+	finish.UserInputs = map[string]string{
+		inputCredentialID:      testCredentialIDValue,
+		inputClientDataJSON:    "client-data",
+		inputAttestationObject: "attestation",
+	}
+	suite.mockAuthnProvider.On("Enroll", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return(
+		providers.AuthUser{}, nil, &authnprovidermgr.ErrorAccountSuspended).Once()
+
+	resp, err = suite.executor.Execute(finish)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.NotEmpty(resp.Inputs)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ServiceError_Server() {

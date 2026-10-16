@@ -83,6 +83,14 @@ func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
 		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
 		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
 		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
+		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
+		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
+		{cfg.UserUnsuspendFlow, providers.FlowTypeAdministration, "userUnsuspendFlow"},
+		{cfg.AgentUnlockFlow, providers.FlowTypeAdministration, "agentUnlockFlow"},
+		{cfg.AgentSuspendFlow, providers.FlowTypeAdministration, "agentSuspendFlow"},
+		{cfg.AgentUnsuspendFlow, providers.FlowTypeAdministration, "agentUnsuspendFlow"},
+		{cfg.ApplicationSuspendFlow, providers.FlowTypeAdministration, "applicationSuspendFlow"},
+		{cfg.ApplicationUnsuspendFlow, providers.FlowTypeAdministration, "applicationUnsuspendFlow"},
 	}
 	ctx := context.Background()
 
@@ -131,6 +139,16 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 			ro.GroupMembershipRemovalFlow, wr.GroupMembershipRemovalFlow),
 		ActionDeletionFlow: mergeFlowTypeConfig(
 			ro.ActionDeletionFlow, wr.ActionDeletionFlow),
+
+		UserUnlockFlow:         mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
+		UserSuspendFlow:        mergeFlowTypeConfig(ro.UserSuspendFlow, wr.UserSuspendFlow),
+		UserUnsuspendFlow:      mergeFlowTypeConfig(ro.UserUnsuspendFlow, wr.UserUnsuspendFlow),
+		AgentUnlockFlow:        mergeFlowTypeConfig(ro.AgentUnlockFlow, wr.AgentUnlockFlow),
+		AgentSuspendFlow:       mergeFlowTypeConfig(ro.AgentSuspendFlow, wr.AgentSuspendFlow),
+		AgentUnsuspendFlow:     mergeFlowTypeConfig(ro.AgentUnsuspendFlow, wr.AgentUnsuspendFlow),
+		ApplicationSuspendFlow: mergeFlowTypeConfig(ro.ApplicationSuspendFlow, wr.ApplicationSuspendFlow),
+		ApplicationUnsuspendFlow: mergeFlowTypeConfig(ro.ApplicationUnsuspendFlow,
+			wr.ApplicationUnsuspendFlow),
 	}
 }
 

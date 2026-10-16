@@ -6,6 +6,7 @@ package user
 import (
 	"encoding/json"
 
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -82,7 +83,7 @@ type CreateUserByPathRequest struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }
 
-// entityToUser converts an Entity to a User.
+// entityToUser converts an Entity to a User, without its access status.
 func entityToUser(e *providers.Entity) providers.User {
 	return providers.User{
 		ID:         e.ID,
@@ -93,11 +94,32 @@ func entityToUser(e *providers.Entity) providers.User {
 	}
 }
 
+// userWithAccess converts an Entity to a User with its access status. The entity must come from a read
+// that loads the runtime row the status is derived from.
+func userWithAccess(reader identitygovernance.AccessReaderInterface, e *providers.Entity) providers.User {
+	user := entityToUser(e)
+	access := reader.Read(*e)
+	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
+	return user
+}
+
 // entitiesToUsers converts a slice of Entity to a slice of User.
 func entitiesToUsers(entities []providers.Entity) []providers.User {
 	users := make([]providers.User, len(entities))
 	for i := range entities {
 		users[i] = entityToUser(&entities[i])
+	}
+	return users
+}
+
+// entitiesToUsersWithAccess converts entities to users with their access status, against one reader
+// resolved once for the page.
+func entitiesToUsersWithAccess(reader identitygovernance.AccessReaderInterface,
+	entities []providers.Entity) []providers.User {
+	users := make([]providers.User, len(entities))
+	for i := range entities {
+		users[i] = userWithAccess(reader, &entities[i])
 	}
 	return users
 }

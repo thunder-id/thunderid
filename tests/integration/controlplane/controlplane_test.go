@@ -92,6 +92,45 @@ func (ts *ControlPlaneTestSuite) TestRuntimeEndpointsAreNotServed() {
 	}
 }
 
+// The account access policy and the notification defaults are configuration, so a Control Plane
+// serves both sections for authoring and export. A policy written here is the one exported.
+func (ts *ControlPlaneTestSuite) TestTheAccountAccessAndNotificationSectionsAreServed() {
+	for _, name := range []string{"accountAccess", "notification"} {
+		status, raw := ts.call(http.MethodGet, "/server-config/"+name, nil, nil)
+		ts.Equal(http.StatusOK, status, "%s: %s", name, raw)
+	}
+
+	status, raw := ts.call(http.MethodPut, "/server-config/accountAccess",
+		map[string]any{"user": map[string]any{"default": map[string]any{"threshold": 7}}}, nil)
+	ts.Require().Less(status, http.StatusBadRequest, "the policy must be writable here: %s", raw)
+	defer func() {
+		status, raw := ts.call(http.MethodPut, "/server-config/accountAccess", map[string]any{}, nil)
+		ts.Less(status, http.StatusBadRequest, "failed to clear the written policy: %s", raw)
+	}()
+
+	var layers struct {
+		Merged struct {
+			User struct {
+				Default struct {
+					Threshold int `json:"threshold"`
+				} `json:"default"`
+			} `json:"user"`
+		} `json:"merged"`
+	}
+	status, raw = ts.call(http.MethodGet, "/server-config/accountAccess", nil, &layers)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Equal(7, layers.Merged.User.Default.Threshold, "the written threshold must be in force")
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw = ts.call(http.MethodPost, "/export", map[string]any{"serverConfigs": []string{"accountAccess"}},
+		&exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Contains(exported.Resources, "accountAccess", "the export must carry the section")
+	ts.Regexp(`threshold"?:\s*7\b`, exported.Resources, "the export must carry the written policy")
+}
+
 // A token from the trusted issuer is accepted only when it carries the system scope.
 func (ts *ControlPlaneTestSuite) TestATokenWithoutTheSystemScopeIsRefused() {
 	unscoped := os.Getenv(testutils.UnscopedTokenEnv)

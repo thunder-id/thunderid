@@ -75,7 +75,8 @@ func (s *ApplicationTypeTestSuite) TestBuildBasicApplicationResponseType() {
 	}, nil)
 	s.Equal(model.ApplicationTypeM2M, withType.Type)
 
-	absent := buildBasicApplicationResponse(inboundmodel.InboundClient{ID: "app-2"}, nil)
+	absent := buildBasicApplicationResponse(
+		inboundmodel.InboundClient{ID: "app-2"}, nil)
 	s.Equal(model.ApplicationType(""), absent.Type)
 }
 

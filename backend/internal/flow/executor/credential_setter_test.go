@@ -6,6 +6,7 @@ package executor
 import (
 	"testing"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type CredentialSetterTestSuite struct {
@@ -45,7 +48,7 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 			},
 		}, mock.Anything).Return(suite.mockBaseExecutor)
 
-	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider)
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider, nil)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_Success() {
@@ -267,4 +270,108 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyInputIdentifier() {
 
 func TestCredentialSetterSuite(t *testing.T) {
 	suite.Run(t, new(CredentialSetterTestSuite))
+}
+
+// nodeContext builds a context that reaches the credential write.
+func (suite *CredentialSetterTestSuite) nodeContext() *providers.NodeContext {
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeRecovery,
+		UserInputs:  map[string]string{userAttributePassword: "Replaced-Secret-9!"},
+		RuntimeData: map[string]string{"userID": testUserID},
+	}
+
+	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(testUserID)
+	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]providers.Input{
+		{Identifier: userAttributePassword, Type: providers.InputTypePassword, Required: true},
+	})
+
+	return ctx
+}
+
+// A completed write records whose control was proven, on the executor-only cross-frame store. The
+// value is the identity, not a flag: a later node reads who to act on from here rather than from an
+// input, so a flow cannot prove one account and act on another.
+func (suite *CredentialSetterTestSuite) TestASuccessfulWriteRecordsTheProvenSubject() {
+	ctx := suite.nodeContext()
+	suite.mockEntityProvider.On("UpdateCredentials", testUserID, mock.Anything).Return(nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), testUserID, resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
+}
+
+// A failed write proves nothing, so it records nothing. Without this a node downstream would treat a
+// write that did not happen as control that was proven.
+func (suite *CredentialSetterTestSuite) TestAFailedWriteRecordsNothing() {
+	ctx := suite.nodeContext()
+	suite.mockEntityProvider.On("UpdateCredentials", testUserID, mock.Anything).
+		Return(&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSchemaValidationFailed})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Empty(suite.T(), resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
+}
+
+// heldCredentialWrite runs a credential write for a held identity against the given decision.
+func (suite *CredentialSetterTestSuite) heldCredentialWrite(
+	decision providers.AccessDecision) (*providers.ExecutorResponse, error) {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("EvaluateAccess", mock.Anything, testUserID, providers.AccessPlaneRecovery,
+		providers.AccessScope("")).
+		Return(decision, (*tidcommon.ServiceError)(nil)).Once()
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider,
+		governance)
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{userAttributePassword: "securePass123!"},
+	}
+	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(testUserID)
+	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]providers.Input{
+		{Identifier: userAttributePassword, Type: providers.InputTypePassword, Required: true},
+	})
+	return suite.executor.Execute(ctx)
+}
+
+// A held identity gets no new credential, and by default the refusal is the setter's own.
+func (suite *CredentialSetterTestSuite) TestExecute_HeldIdentityIsRefused() {
+	resp, err := suite.heldCredentialWrite(providers.AccessDecision{})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrCredentialSetFailed.Code, resp.Error.Code)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything)
+}
+
+// When the policy permits it, the refusal states the hold.
+func (suite *CredentialSetterTestSuite) TestExecute_StatedHoldIsReturned() {
+	resp, err := suite.heldCredentialWrite(providers.AccessDecision{
+		Reason: providers.AccessRefusalReasonSuspended,
+	})
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+}
+
+// An unreadable authority fails the write as a failed write, never as a hold, and writes nothing.
+func (suite *CredentialSetterTestSuite) TestExecute_GovernanceFaultFailsTheWrite() {
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider,
+		decideAccess(suite.T(), providers.AccessDecision{}, &tidcommon.InternalServerError))
+
+	resp, err := suite.executor.Execute(suite.nodeContext())
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrCredentialSetFailed.Code, resp.Error.Code)
+	suite.Empty(resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything)
 }

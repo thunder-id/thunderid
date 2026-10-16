@@ -204,7 +204,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_HashesSystem
 			Salt: "salt", Iterations: 1, KeySize: 32,
 		},
 	}, nil).Once()
-	svc := newEntityService(fileStore, hashService, nil, nil, transaction.NewNoOpTransactioner())
+	svc := newEntityService(fileStore, nil, hashService, nil, nil, transaction.NewNoOpTransactioner())
 
 	cfg := DeclarativeLoaderConfig{
 		Directory: "applications",

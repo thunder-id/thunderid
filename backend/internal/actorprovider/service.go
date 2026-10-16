@@ -27,6 +27,7 @@ type actorProvider struct {
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
 	entityTypeSvc  entitytype.EntityTypeServiceInterface
+	governance     providers.IdentityGovernanceProvider
 	logger         *log.Logger
 }
 
@@ -38,6 +39,7 @@ func newActorProvider(
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
 	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
@@ -45,6 +47,7 @@ func newActorProvider(
 		authnProvider:  authnProvider,
 		roleService:    roleService,
 		entityTypeSvc:  entityTypeSvc,
+		governance:     governance,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -59,6 +62,13 @@ func (p *actorProvider) GetOAuthClientByClientID(
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+
+	// Every OAuth entry point resolves the client here, so one check covers them all. Machine-facing
+	// callers fold the refusal into the unregistered-client answer; only the browser funnel shows it.
+	if svcErr := p.refuseHeldActor(ctx, client); svcErr != nil {
+		return nil, svcErr
+	}
+
 	return toProviderOAuthClient(client), nil
 }
 
@@ -81,6 +91,28 @@ func (p *actorProvider) GetOAuthClientByID(
 		return nil, &tidcommon.InternalServerError
 	}
 	return toProviderOAuthClient(client), nil
+}
+
+// refuseHeldActor asks whether the resolved actor may be used at the application plane. Applications
+// do not lock automatically, so only an administrative hold applies.
+func (p *actorProvider) refuseHeldActor(ctx context.Context,
+	client *providers.OAuthClient) *tidcommon.ServiceError {
+	if p.governance == nil || client == nil || client.ID == "" {
+		return nil
+	}
+
+	decision, svcErr := p.governance.EvaluateAccess(ctx, client.ID,
+		providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		// An unreadable authority refuses with the server error an unreadable client gets here. The
+		// authority has logged the cause.
+		return &tidcommon.InternalServerError
+	}
+	if !decision.Admitted {
+		p.logger.Debug(ctx, "Refused a held actor", log.String("clientID", client.ClientID))
+		return &ErrorActorUnavailable
+	}
+	return nil
 }
 
 // GetOAuthProfileByID returns the stored OAuth profile for the given entity UUID.
@@ -128,7 +160,7 @@ func (p *actorProvider) AuthenticateActor(
 
 // GetActor returns the backing entity record for the given actor ID.
 func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntity(actorID)
+	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}

@@ -34,6 +34,14 @@ type AuthenticateResult struct {
 	OUID           string                   `json:"ouId"`
 }
 
+// CredentialFailure names the entity a credential comparison ran against and did not match. It
+// travels beside the authentication error, never inside it, which identifies nobody. Returned only
+// for a proven bad secret; nil when nothing was compared or the comparison was indeterminate.
+type CredentialFailure struct {
+	// EntityID is the entity whose stored credential the comparison ran against.
+	EntityID string
+}
+
 // StoredCredential represents a single credential entry stored in the entity's schema or
 // system credentials column.
 type StoredCredential struct {
@@ -65,4 +73,12 @@ type entityStoreEntry struct {
 	Entity            providers.Entity
 	Credentials       json.RawMessage
 	SystemCredentials json.RawMessage
+}
+
+// entityRuntimeData is an entity's row in ENTITY_RUNTIME_DATA. It is not cached with the profile.
+type entityRuntimeData struct {
+	ID         string
+	State      providers.EntityState
+	Attributes json.RawMessage
+	Revision   int64
 }

@@ -176,6 +176,11 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
 		})
 	}
+	// A recovery flow is marked the same way, so the default provider admits its proofs at the
+	// recovery plane, where a lock withholds nothing and a suspension still refuses.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
+	}
 	fe.replayPromptInputs(ctx)
 
 	nodeCtx := &providers.NodeContext{

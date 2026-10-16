@@ -113,7 +113,7 @@ func (s *otpService) VerifyOTP(
 	if time.Now().UnixMilli() > sessionData.ExpiryTime {
 		logger.Debug(ctx, "OTP has expired")
 		return &common.VerifyOTPResultDTO{
-			Status:        common.OTPVerifyStatusInvalid,
+			Status:        common.OTPVerifyStatusExpired,
 			Recipient:     sessionData.Recipient,
 			RecipientAttr: sessionData.RecipientAttr,
 		}, nil

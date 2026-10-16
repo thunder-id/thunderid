@@ -359,6 +359,71 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow() {
 	ts.Require().Equal("invalid_grant", reuse.errorCode, "a consumed request must not issue tokens again")
 }
 
+// A CIBA request authenticated before its user is suspended is refused at redemption: the request's
+// authentication time falls before the suspension's cutoff. The user is this test's own, so the
+// suite's shared user stays usable.
+func (ts *CIBATestSuite) TestCIBASuspensionBeforeRedemptionRefusesTheGrant() {
+	const (
+		username = "ciba_suspend_user"
+		password = "cibasuspend123"
+	)
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: ts.ouID,
+		Type: "ciba-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "` + password + `",
+			"email": "ciba_suspend_user@example.com",
+			"mobile_number": "+1987654322"
+		}`),
+	})
+	ts.Require().NoError(err, "failed to create the suspended CIBA user")
+	defer func() {
+		if err := testutils.DeleteUser(userID); err != nil {
+			ts.T().Logf("failed to delete the suspended CIBA user: %v", err)
+		}
+	}()
+
+	status, bcResp := ts.cibaBackchannelAuthorize(username, "openid")
+	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed")
+
+	var executionID, inviteToken string
+	ts.Require().Eventually(func() bool {
+		msg := ts.mockServer.GetLastMessage()
+		if msg == nil || extractCIBALinkParam(msg.Message, "auth_req_id") != bcResp.AuthReqID {
+			return false
+		}
+		executionID = extractCIBALinkParam(msg.Message, "executionId")
+		inviteToken = extractCIBALinkParam(msg.Message, "inviteToken")
+		return executionID != "" && inviteToken != ""
+	}, 5*time.Second, 100*time.Millisecond, "expected the CIBA notification for this request")
+
+	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
+		map[string]string{"inviteToken": inviteToken}, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username, "password": password,
+	}, "action_001", resumeStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+	callbackStatus, _ := ts.cibaPostCallback(bcResp.AuthReqID, flowStep.Assertion)
+	ts.Require().Equal(http.StatusOK, callbackStatus, "the request must be authenticated before the suspension")
+
+	status, flowStatus, err := testutils.RunAdministrationFlow("default-user-suspend-flow",
+		map[string]string{"subject": userID})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().Equal("COMPLETE", flowStatus, "the suspension must be placed")
+
+	tokenRes := ts.cibaPollToken(bcResp.AuthReqID, "")
+	if tokenRes.errorCode == "slow_down" {
+		time.Sleep(cibaPollIntervalSeconds * time.Second)
+		tokenRes = ts.cibaPollToken(bcResp.AuthReqID, "")
+	}
+	ts.NotEqual(http.StatusOK, tokenRes.statusCode, "a request authenticated before the suspension must not issue tokens")
+	ts.Empty(tokenRes.accessToken)
+}
+
 // TestCIBAFlowFailureDeniesRequest verifies that a terminal flow failure is propagated to the polling
 // client instead of leaving the request PENDING until it expires. The flow mints a signed error
 // assertion, the gate relays it to the callback in the same field a success assertion uses, and the

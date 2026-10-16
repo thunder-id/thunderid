@@ -5,6 +5,7 @@ package authentication
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -267,18 +268,6 @@ var (
 			},
 		},
 	}
-
-	testUserWithMobile = testutils.User{
-		Type: smsAuthEntityType.Handle,
-		Attributes: json.RawMessage(`{
-			"username": "smsuser",
-			"password": "testpassword",
-			"email": "smsuser@example.com",
-			"given_name": "SMS",
-			"family_name": "User",
-			"mobile_number": "+1234567890"
-		}`),
-	}
 )
 
 var (
@@ -298,6 +287,10 @@ type SMSAuthFlowTestSuite struct {
 	suite.Suite
 	config     *common.TestSuiteConfig
 	mockServer *testutils.MockNotificationServer
+	// user is this test case's own account, created fresh for every case, so wrong-code cases cannot
+	// lock out the cases after them.
+	user   testutils.User
+	userID string
 }
 
 func TestSMSAuthFlowTestSuite(t *testing.T) {
@@ -331,16 +324,6 @@ func (ts *SMSAuthFlowTestSuite) SetupSuite() {
 	}
 	time.Sleep(100 * time.Millisecond)
 	ts.T().Log("Mock notification server started successfully")
-
-	// Create test user with mobile number using the created OU
-	testUserWithMobile := testUserWithMobile
-	testUserWithMobile.OUID = smsAuthTestOU.ID
-	userIDs, err := testutils.CreateMultipleUsers(testUserWithMobile)
-	if err != nil {
-		ts.T().Fatalf("Failed to create test user during setup: %v", err)
-	}
-	ts.config.CreatedUserIDs = userIDs
-	ts.T().Logf("Test user created with ID: %s", ts.config.CreatedUserIDs[0])
 
 	// Create notification sender
 	customSender := testutils.NotificationSender{
@@ -402,12 +385,42 @@ func (ts *SMSAuthFlowTestSuite) SetupSuite() {
 	smsAuthTestAppID = appID
 }
 
-func (ts *SMSAuthFlowTestSuite) TearDownSuite() {
-	// Delete test users
-	if err := testutils.CleanupUsers(ts.config.CreatedUserIDs); err != nil {
-		ts.T().Logf("Failed to cleanup users during teardown: %v", err)
-	}
+// SetupTest gives the case its own account, with attributes nothing else in the suite shares.
+func (ts *SMSAuthFlowTestSuite) SetupTest() {
+	unique := fmt.Sprintf("%d", time.Now().UnixNano())
+	attributes, err := json.Marshal(map[string]interface{}{
+		"username":      "smsuser_" + unique,
+		"password":      "testpassword",
+		"email":         "smsuser_" + unique + "@example.com",
+		"given_name":    "SMS",
+		"family_name":   "User",
+		"mobile_number": "+1700" + unique[len(unique)-7:],
+	})
+	ts.Require().NoError(err, "Failed to build test user attributes")
 
+	ts.user = testutils.User{
+		Type:       smsAuthEntityType.Handle,
+		OUID:       smsAuthTestOU.ID,
+		Attributes: attributes,
+	}
+	userID, err := testutils.CreateUser(ts.user)
+	ts.Require().NoError(err, "Failed to create the test user")
+	ts.userID = userID
+}
+
+// TearDownTest removes the case's account, so a suite run leaves nothing behind and no case inherits
+// the counters of the one before it.
+func (ts *SMSAuthFlowTestSuite) TearDownTest() {
+	if ts.userID == "" {
+		return
+	}
+	if err := testutils.DeleteUser(ts.userID); err != nil {
+		ts.T().Logf("Failed to delete the test user during teardown: %v", err)
+	}
+	ts.userID = ""
+}
+
+func (ts *SMSAuthFlowTestSuite) TearDownSuite() {
 	// Stop mock server
 	if ts.mockServer != nil {
 		err := ts.mockServer.Stop()
@@ -474,7 +487,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	ts.mockServer.ClearMessages()
 
 	// Step 2: Continue the flow with mobile number
-	userAttrs, err := testutils.GetUserAttributes(testUserWithMobile)
+	userAttrs, err := testutils.GetUserAttributes(ts.user)
 	ts.Require().NoError(err, "Failed to get user attributes")
 
 	inputs := map[string]string{
@@ -583,7 +596,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername() {
 
 	// Step 2: Continue the flow with username
 	var userAttrs map[string]interface{}
-	err = json.Unmarshal(testUserWithMobile.Attributes, &userAttrs)
+	err = json.Unmarshal(ts.user.Attributes, &userAttrs)
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	inputs := map[string]string{
@@ -651,7 +664,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername() {
 func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowInvalidOTP() {
 	// Step 1: Initialize the flow and provide mobile number
 	var userAttrs map[string]interface{}
-	err := json.Unmarshal(testUserWithMobile.Attributes, &userAttrs)
+	err := json.Unmarshal(ts.user.Attributes, &userAttrs)
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	inputs := map[string]string{
@@ -705,7 +718,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowInvalidOTP() {
 func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowRetryAfterInvalidOTP() {
 	// Step 1: Initialize the flow and provide mobile number
 	var userAttrs map[string]interface{}
-	err := json.Unmarshal(testUserWithMobile.Attributes, &userAttrs)
+	err := json.Unmarshal(ts.user.Attributes, &userAttrs)
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	inputs := map[string]string{
@@ -873,7 +886,7 @@ func (ts *SMSAuthFlowTestSuite) useOTPPropertiesFlow(
 // message the mock notification server received.
 func (ts *SMSAuthFlowTestSuite) sendOTPAndCaptureMessage() (*common.FlowStep, *testutils.SMSMessage) {
 	var userAttrs map[string]interface{}
-	ts.Require().NoError(json.Unmarshal(testUserWithMobile.Attributes, &userAttrs),
+	ts.Require().NoError(json.Unmarshal(ts.user.Attributes, &userAttrs),
 		"Failed to unmarshal user attributes")
 
 	ts.mockServer.ClearMessages()
@@ -984,7 +997,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
 
 	// Get user attributes
 	var userAttrs map[string]interface{}
-	err := json.Unmarshal(testUserWithMobile.Attributes, &userAttrs)
+	err := json.Unmarshal(ts.user.Attributes, &userAttrs)
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
 
 	// Step 1: Initialize the flow with mobile number - single action should auto-select

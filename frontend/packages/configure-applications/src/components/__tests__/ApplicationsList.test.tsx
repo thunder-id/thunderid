@@ -214,6 +214,25 @@ describe('ApplicationsList', () => {
     expect(screen.getByText('Second test application')).toBeInTheDocument();
   });
 
+  it("should show each application's access status, treating an absent status as active", () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: {
+        ...mockApplicationsData,
+        applications: [
+          {...mockApplicationsData.applications[0], status: {value: 'SUSPENDED'}},
+          mockApplicationsData.applications[1],
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    renderComponent();
+
+    expect(screen.getByText('Suspended')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
   it('should display client IDs as chips', () => {
     vi.mocked(useGetApplications).mockReturnValue({
       data: mockApplicationsData,

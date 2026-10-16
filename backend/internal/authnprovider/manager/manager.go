@@ -133,6 +133,14 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 				return authUser, nil, &ErrorAmbiguousUser
 			}
+		case authnprovidercm.ErrorCodeAccountLocked:
+			// A provider whose authority permitted the refusal to state the hold. Normalized to this
+			// package's own error, message included: the provider's strings are placeholders.
+			m.logger.Debug(ctx, "authentication refused a locked account")
+			return authUser, nil, &ErrorAccountLocked
+		case authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "authentication refused a suspended account")
+			return authUser, nil, &ErrorAccountSuspended
 		}
 		m.logger.Debug(ctx, "authentication failed with client error from provider",
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
@@ -334,7 +342,12 @@ func (m *authnProviderManager) InitiateEnrollment(ctx context.Context, credentia
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	result, svcErr := selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	if stated := statedHold(svcErr); stated != nil {
+		m.logger.Debug(ctx, "enrollment initiation refused by a stated hold", log.String("code", stated.Code))
+		return nil, stated
+	}
+	return result, svcErr
 }
 
 // Enroll routes a credential to the matching provider to complete enrollment and merges
@@ -364,6 +377,9 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			m.logger.Debug(ctx, "enrollment failed with invalid request error from provider",
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &ErrorInvalidRequest
+		case authnprovidercm.ErrorCodeAccountLocked, authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "enrollment refused by a stated hold", log.String("code", svcErr.Code))
+			return authUser, nil, statedHold(svcErr)
 		default:
 			m.logger.Debug(ctx, "enrollment failed with client error from provider",
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
@@ -694,4 +710,19 @@ func isEntityRefsEqual(ref1, ref2 *providers.EntityReference) bool {
 	}
 	// EntityCategory is intentionally excluded — it's optional and may be missing.
 	return true
+}
+
+// statedHold normalizes a provider's stated hold to this package's error, message included, or
+// returns nil for anything else.
+func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil || svcErr.Type != tidcommon.ClientErrorType {
+		return nil
+	}
+	switch svcErr.Code {
+	case authnprovidercm.ErrorCodeAccountLocked:
+		return &ErrorAccountLocked
+	case authnprovidercm.ErrorCodeAccountSuspended:
+		return &ErrorAccountSuspended
+	}
+	return nil
 }

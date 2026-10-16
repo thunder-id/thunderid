@@ -319,7 +319,7 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 		}
 
 		// Check for duplicates in the store (covers both DB and already-loaded file resources)
-		_, err := svc.GetEntity(context.Background(), e.ID)
+		_, err := svc.GetEntityProfile(context.Background(), e.ID)
 		if err == nil {
 			return fmt.Errorf("duplicate user ID '%s': user already exists", e.ID)
 		}

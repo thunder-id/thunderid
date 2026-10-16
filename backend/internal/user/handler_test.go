@@ -56,6 +56,38 @@ func TestHandleSelfUserGetRequest_Success(t *testing.T) {
 	require.JSONEq(t, string(expectedUser.Attributes), string(respUser.Attributes))
 }
 
+func TestHandleSelfUserGetRequest_OmitsOperatorNote(t *testing.T) {
+	userID := testUserID123
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	suspended := &providers.User{ID: userID, Status: &providers.AccessStatusReport{
+		Value: providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{
+			Reason:       providers.AccessHoldReasonAdministrativeSuspension,
+			Since:        "2026-10-09T10:00:00Z",
+			OperatorNote: "Under investigation",
+		},
+	}}
+	mockSvc.On("GetUser", mock.Anything, userID, false).Return(suspended, nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserGetRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotContains(t, rr.Body.String(), "operatorNote")
+	var respUser providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
+	require.Equal(t, providers.AccessStatusSuspended, respUser.Status.Value)
+	require.Equal(t, "2026-10-09T10:00:00Z", respUser.Status.Details.Since)
+	require.Equal(t, "Under investigation", suspended.Status.Details.OperatorNote,
+		"the service's value is not modified")
+}
+
 func TestHandleSelfUserGetRequest_IncludeDisplay(t *testing.T) {
 	userID := testUserID123
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
@@ -117,6 +149,30 @@ func TestHandleSelfUserPutRequest_Success(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
 	require.Equal(t, updatedUser.ID, respUser.ID)
 	require.JSONEq(t, string(updatedUser.Attributes), string(respUser.Attributes))
+}
+
+func TestHandleSelfUserPutRequest_OmitsOperatorNote(t *testing.T) {
+	userID := testUserID456
+	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
+	attributes := json.RawMessage(`{"email":"alice@example.com"}`)
+
+	mockSvc := NewUserServiceInterfaceMock(t)
+	updatedUser := &providers.User{ID: userID, Attributes: attributes, Status: &providers.AccessStatusReport{
+		Value:   providers.AccessStatusSuspended,
+		Details: &providers.AccessStatusDetails{OperatorNote: "Under investigation"},
+	}}
+	mockSvc.On("UpdateUserAttributes", mock.Anything, userID, attributes).Return(updatedUser, nil)
+
+	handler := newUserHandler(mockSvc)
+	body := bytes.NewBufferString(`{"attributes":{"email":"alice@example.com"}}`)
+	req := httptest.NewRequest(http.MethodPut, "/users/me", body)
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserPutRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotContains(t, rr.Body.String(), "operatorNote")
 }
 
 func TestHandleSelfUserPutRequest_InvalidBody(t *testing.T) {

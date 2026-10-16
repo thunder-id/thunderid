@@ -309,6 +309,61 @@ func (ts *MCPTestSuite) TestInitialize_RevokedToken_Rejected() {
 		"a revoked token must be rejected once the revocation cache has synced")
 }
 
+// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
+// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
+// shared admin is never suspended.
+func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
+	const (
+		typeHandle = "mcp-suspend-operator"
+		username   = "mcp-suspend-operator"
+		password   = "McpSuspend@123"
+	)
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: typeHandle, DisplayName: typeHandle, OUID: ts.ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err, "failed to create the operator user type")
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: typeHandle, OUID: ts.ouID,
+		Attributes: []byte(`{"username": "` + username + `", "password": "` + password + `"}`),
+	})
+	ts.Require().NoError(err, "failed to create the operator")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "MCP Suspended Operator Role", OUID: ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{systemActionHandle}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "failed to grant the operator the system permission")
+	defer func() { _ = testutils.DeleteRole(roleID) }()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
+		username, password, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "the token must work before the suspension")
+
+	status, flowStatus, err := testutils.RunAdministrationFlow("default-user-suspend-flow",
+		map[string]string{"subject": userID})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().Equal("COMPLETE", flowStatus, "the suspension must be placed")
+
+	ts.Require().Eventually(func() bool {
+		resp := ts.initializeMCPSession(tokenResp.AccessToken)
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, 5*time.Second, 250*time.Millisecond,
+		"a suspended operator's token must be rejected once the revocation cache has synced")
+}
+
 // A token that is valid and carries the required scope, but was minted for a different — still
 // real, registered — resource (testutils.SystemResourceIdentifier, the product's generic
 // bootstrapped default, distinct from this harness's actual mcpResourceIdentifier), is rejected.

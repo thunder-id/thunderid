@@ -13805,7 +13805,7 @@
           "executor": {
             "name": "CredentialSetter"
           },
-          "onSuccess": "recovery_complete",
+          "onSuccess": "release_account_locks",
           "layout": {
             "size": {
               "width": 206,
@@ -13813,6 +13813,25 @@
             },
             "position": {
               "x": 2820,
+              "y": 340
+            }
+          }
+        },
+        {
+          "id": "release_account_locks",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "IdentityGovernanceExecutor",
+            "mode": "unlock"
+          },
+          "onSuccess": "recovery_complete",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 3200,
               "y": 340
             }
           }
@@ -13853,7 +13872,7 @@
               "height": 340
             },
             "position": {
-              "x": 3140,
+              "x": 3580,
               "y": 250
             }
           }
@@ -13867,7 +13886,7 @@
               "height": 34
             },
             "position": {
-              "x": 3600,
+              "x": 4040,
               "y": 375
             }
           }
@@ -14228,7 +14247,7 @@
           "executor": {
             "name": "CredentialSetter"
           },
-          "onSuccess": "recovery_complete",
+          "onSuccess": "release_account_locks",
           "layout": {
             "size": {
               "width": 206,
@@ -14236,6 +14255,25 @@
             },
             "position": {
               "x": 2500,
+              "y": 340
+            }
+          }
+        },
+        {
+          "id": "release_account_locks",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "IdentityGovernanceExecutor",
+            "mode": "unlock"
+          },
+          "onSuccess": "recovery_complete",
+          "layout": {
+            "size": {
+              "width": 206,
+              "height": 113
+            },
+            "position": {
+              "x": 2880,
               "y": 340
             }
           }
@@ -14276,7 +14314,7 @@
               "height": 340
             },
             "position": {
-              "x": 2820,
+              "x": 3260,
               "y": 250
             }
           }
@@ -14290,7 +14328,7 @@
               "height": 34
             },
             "position": {
-              "x": 3280,
+              "x": 3720,
               "y": 375
             }
           }

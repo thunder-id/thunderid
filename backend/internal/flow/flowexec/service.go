@@ -50,6 +50,7 @@ type flowExecService struct {
 	attestationVerifier providers.AttestationProvider
 	jwtService          jwt.JWTServiceInterface
 	serverConfigSvc     serverConfigProvider
+	governance          providers.IdentityGovernanceProvider
 	cfg                 flowconfig.Config
 }
 
@@ -64,6 +65,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	jwtService jwt.JWTServiceInterface,
 	serverConfigSvc serverConfigProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg flowconfig.Config) FlowExecServiceInterface {
 	return &flowExecService{
 		flowProvider:        flowProvider,
@@ -77,8 +79,28 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		graphBuilder:        graphBuilder,
 		jwtService:          jwtService,
 		serverConfigSvc:     serverConfigSvc,
+		governance:          governance,
 		cfg:                 cfg,
 	}
+}
+
+// refuseHeldApplication refuses a flow driven by a suspended application, at the application plane.
+func (s *flowExecService) refuseHeldApplication(ctx context.Context, appID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if s.governance == nil || appID == "" {
+		return nil
+	}
+
+	decision, svcErr := s.governance.EvaluateAccess(ctx, appID, providers.AccessPlaneApplication, "")
+	if svcErr != nil {
+		// An unreadable authority refuses. The authority has logged the cause.
+		return &tidcommon.InternalServerError
+	}
+	if !decision.Admitted {
+		logger.Debug(ctx, "Refused a flow for a held application", log.String("appID", appID))
+		return &ErrorFlowApplicationNotUsable
+	}
+	return nil
 }
 
 // Execute executes a flow with the given data
@@ -149,6 +171,13 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		if svcErr := validateAdministrationCaller(ctx, engineCtx.FlowType); svcErr != nil {
 			return nil, svcErr
 		}
+	}
+
+	// Checked after the context loads, so it covers a new flow and one started before the
+	// application was suspended. Only a loaded application is checked: an onboarding or
+	// administration flow loads none, and its caller-supplied ID names nothing to ask about.
+	if svcErr := s.refuseHeldApplication(ctx, engineCtx.Application.ID, logger); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Set trace ID to engine context (request context is already set during context loading)
@@ -968,6 +997,10 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 		return "", err
 	}
 
+	if svcErr := s.refuseHeldApplication(ctx, engineCtx.Application.ID, logger); svcErr != nil {
+		return "", svcErr
+	}
+
 	// Replace the RuntimeData with initContext RuntimeData
 	engineCtx.RuntimeData = initContext.RuntimeData
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
@@ -1022,6 +1055,10 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 			log.String("flowType", initContext.FlowType),
 			log.String("error", err.Error.DefaultValue))
 		return nil, err
+	}
+
+	if svcErr := s.refuseHeldApplication(ctx, engineCtx.Application.ID, logger); svcErr != nil {
+		return nil, svcErr
 	}
 
 	engineCtx.RuntimeData = initContext.RuntimeData

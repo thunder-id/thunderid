@@ -49,7 +49,7 @@ func (s *ServiceTestSuite) SetupTest() {
 }
 
 func (s *ServiceTestSuite) mockValidSubject() {
-	s.entityProviderMock.On("GetEntity", testSubjectID).Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", testSubjectID).Return(&providers.Entity{
 		ID:       testSubjectID,
 		Category: providers.EntityCategory(testSubjectType),
 	}, nil)
@@ -185,7 +185,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessProviderNotImplementedUsesEmptyGrou
 		Action:   Action{Name: "report:read"},
 	}
 
-	s.entityProviderMock.On("GetEntity", "app1").Return(
+	s.entityProviderMock.On("GetEntityProfile", "app1").Return(
 		(*providers.Entity)(nil),
 		entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeNotImplemented, "not implemented", "not implemented"),
@@ -352,7 +352,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessInvalidSubjectType() {
 		Action:   Action{Name: testBookingReadAction},
 	}
 
-	s.entityProviderMock.On("GetEntity", "user1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user1").Return(&providers.Entity{
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil)
@@ -426,7 +426,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", testSubjectID).Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", testSubjectID).Return(&providers.Entity{
 		ID:       testSubjectID,
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -521,7 +521,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchInvalidActionReturnsFalse() {
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", "user1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user1").Return(&providers.Entity{
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -573,7 +573,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchInvalidSubjectReturnsItemError
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", "agent1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "agent1").Return(&providers.Entity{
 		ID:       "agent1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -619,11 +619,11 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchGroupResolutionFailureReturnsI
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", "user1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user1").Return(&providers.Entity{
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
-	s.entityProviderMock.On("GetEntity", "user2").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user2").Return(&providers.Entity{
 		ID:       "user2",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -674,7 +674,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchMissingActionReturnsItemError(
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", "user1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user1").Return(&providers.Entity{
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -719,7 +719,7 @@ func (s *ServiceTestSuite) TestEvaluateAccessBatchAllInvalidActionsReturnsFalseW
 		},
 	}
 
-	s.entityProviderMock.On("GetEntity", "user1").Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", "user1").Return(&providers.Entity{
 		ID:       "user1",
 		Category: providers.EntityCategoryUser,
 	}, nil).Once()
@@ -826,7 +826,7 @@ func (s *ServiceTestSuite) TestSearchActionsRejectsMismatchedSubjectType() {
 		Resource: Resource{Type: "booking", ID: testBookingResourceID},
 	}
 
-	s.entityProviderMock.On("GetEntity", testSubjectID).Return(&providers.Entity{
+	s.entityProviderMock.On("GetEntityProfile", testSubjectID).Return(&providers.Entity{
 		ID:       testSubjectID,
 		Category: providers.EntityCategoryUser,
 	}, nil)

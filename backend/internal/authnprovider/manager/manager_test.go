@@ -82,7 +82,6 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Success_WithTokens() {
 			AttributeToken:       attrToken,
 			AuthenticatedClaims:  runtimeAttrs,
 		}, (*tidcommon.ServiceError)(nil))
-
 	returnedAuthUser, rtAttrs, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
 		nil, meta, providers.AuthUser{})
 
@@ -163,7 +162,6 @@ func (s *ManagerTestSuite) TestAuthenticateUser_UnmappedCredentialRoutesToDefaul
 			EntityReferenceToken: map[string]interface{}{"userID": "user-1"},
 			AttributeToken:       "tok",
 		}, (*tidcommon.ServiceError)(nil))
-
 	returnedAuthUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
 		nil, meta, providers.AuthUser{})
 
@@ -452,7 +450,6 @@ func (s *ManagerTestSuite) TestAuthenticateUser_ReAuth() {
 		Return(firstResult, (*tidcommon.ServiceError)(nil)).Once()
 	s.mockProvider.On("Authenticate", context.Background(), identifiers, credentials, meta).
 		Return(secondResult, (*tidcommon.ServiceError)(nil)).Once()
-
 	au1, _, _ := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, meta, providers.AuthUser{})
 	au2, _, _ := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, meta, au1)
 
@@ -825,7 +822,6 @@ func TestNewAuthnProviderManager_NamedProviderHandlesClaimedCredential(t *testin
 			EntityReferenceToken: map[string]interface{}{"userID": "user-1"},
 			AttributeToken:       map[string]interface{}{"token": "tok"},
 		}, (*tidcommon.ServiceError)(nil))
-
 	mgr, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: []string{"password"}},
 	})
@@ -856,7 +852,6 @@ func (s *ManagerTestSuite) TestAuthenticateUser_MultipleCredentialKeysSameProvid
 			EntityReferenceToken: map[string]interface{}{"userID": "user-1"},
 			AttributeToken:       "tok",
 		}, (*tidcommon.ServiceError)(nil))
-
 	authUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
 		nil, meta, providers.AuthUser{})
 
@@ -933,6 +928,26 @@ func (s *ManagerTestSuite) TestInitiateEnrollment_RoutesToDefaultProvider() {
 	s.Equal(expected, result)
 }
 
+// A stated hold is normalized at initiation too; any other provider error passes through as before.
+func (s *ManagerTestSuite) TestInitiateEnrollment_NormalizesAStatedHold() {
+	cases := map[string]string{
+		authnprovidercm.ErrorCodeAccountLocked:    ErrorAccountLocked.Code,
+		authnprovidercm.ErrorCodeAccountSuspended: ErrorAccountSuspended.Code,
+		authnprovidercm.ErrorCodeEnrollmentFailed: authnprovidercm.ErrorCodeEnrollmentFailed,
+	}
+	for providerCode, expectedCode := range cases {
+		s.SetupTest()
+		s.mockProvider.On("InitiateEnrollment", context.Background(), "passkey", mock.Anything, mock.Anything).
+			Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: providerCode})
+
+		result, svcErr := s.mgr.InitiateEnrollment(context.Background(), "passkey", nil, nil)
+
+		s.Nil(result)
+		s.Require().NotNil(svcErr)
+		s.Equal(expectedCode, svcErr.Code, "provider code %s", providerCode)
+	}
+}
+
 func (s *ManagerTestSuite) TestEnroll_Success() {
 	credentials := map[string]interface{}{"passkey": "cred"}
 	meta := &providers.AuthnMetadata{}
@@ -997,6 +1012,8 @@ func (s *ManagerTestSuite) TestEnroll_ClientErrorMapping() {
 		{authnprovidercm.ErrorCodeUserNotFound, ErrorUserNotFound.Code},
 		{authnprovidercm.ErrorCodeInvalidRequest, ErrorInvalidRequest.Code},
 		{authnprovidercm.ErrorCodeEnrollmentFailed, ErrorEnrollmentFailed.Code},
+		{authnprovidercm.ErrorCodeAccountLocked, ErrorAccountLocked.Code},
+		{authnprovidercm.ErrorCodeAccountSuspended, ErrorAccountSuspended.Code},
 		{"SOMETHING_ELSE", ErrorEnrollmentFailed.Code},
 	}
 	for _, tc := range cases {
@@ -1693,4 +1710,59 @@ func (s *ManagerTestSuite) TestResolveLinkCandidates_ResolvedStateHasNoPendingId
 	s.Nil(svcErr)
 	s.Nil(candidates)
 	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_IdentityHeld() {
+	provider := providermock.NewAuthnProviderInterfaceMock(s.T())
+	mgr, err := Initialize(provider, nil)
+	s.Require().NoError(err)
+
+	credentials := map[string]interface{}{"password": "correct"}
+	provider.On("Authenticate", mock.Anything, mock.Anything, credentials, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidercm.ErrorCodeAccountLocked,
+		}).Once()
+
+	_, _, svcErr := mgr.AuthenticateUser(context.Background(),
+		map[string]interface{}{"username": "alice"}, credentials, nil,
+		&providers.AuthnMetadata{}, providers.AuthUser{})
+	s.Require().NotNil(svcErr)
+	s.Require().Equal(ErrorAccountLocked.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestTheTwoHoldsAreDistinguishable() {
+	if ErrorAccountLocked.Code == ErrorAccountSuspended.Code {
+		s.T().Fatal("expected the two holds to carry different codes")
+	}
+	if ErrorAccountLocked.Error.DefaultValue == ErrorAccountSuspended.Error.DefaultValue {
+		s.T().Fatal("expected the two holds to carry different messages")
+	}
+	for _, held := range []tidcommon.ServiceError{ErrorAccountLocked, ErrorAccountSuspended} {
+		if held.Error.DefaultValue == ErrorAuthenticationFailed.Error.DefaultValue {
+			s.T().Fatalf("expected %q to differ from the wrong-secret message", held.Code)
+		}
+		if held.Type != tidcommon.ClientErrorType {
+			s.T().Fatalf("expected %q to be a client error", held.Code)
+		}
+	}
+}
+
+func (s *ManagerTestSuite) TestAnUnstatedHoldIsIndistinguishable() {
+	provider := providermock.NewAuthnProviderInterfaceMock(s.T())
+	mgr, err := Initialize(provider, nil)
+	s.Require().NoError(err)
+
+	credentials := map[string]interface{}{"password": "correct"}
+	provider.On("Authenticate", mock.Anything, mock.Anything, credentials, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidercm.ErrorCodeAuthenticationFailed,
+		}).Once()
+
+	_, _, svcErr := mgr.AuthenticateUser(context.Background(),
+		map[string]interface{}{"username": "alice"}, credentials, nil,
+		&providers.AuthnMetadata{}, providers.AuthUser{})
+	s.Require().NotNil(svcErr)
+	s.Require().Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
 }

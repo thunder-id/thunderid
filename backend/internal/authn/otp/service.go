@@ -27,7 +27,10 @@ const (
 type OTPAuthnServiceInterface interface {
 	GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *notifcommon.OTPConfig) (
 		sessionToken string, otpValue string, expirySeconds int64, svcErr *tidcommon.ServiceError)
-	Authenticate(ctx context.Context, sessionToken, otp string) (*common.AuthnResult, *tidcommon.ServiceError)
+	// Authenticate verifies a one-time password. The second return is failure evidence: non-nil
+	// only when a code was compared and did not match. See VerificationFailure.
+	Authenticate(ctx context.Context, sessionToken, otp string) (*common.AuthnResult,
+		*VerificationFailure, *tidcommon.ServiceError)
 }
 
 // otpAuthnService is the default implementation of OTPAuthnServiceInterface.
@@ -70,15 +73,15 @@ func (s *otpAuthnService) GenerateOTP(ctx context.Context,
 
 // Authenticate verifies the provided OTP against the session token and returns the authenticated user.
 func (s *otpAuthnService) Authenticate(ctx context.Context, sessionToken,
-	otpCode string) (*common.AuthnResult, *tidcommon.ServiceError) {
+	otpCode string) (*common.AuthnResult, *VerificationFailure, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Verifying OTP for authentication")
 
 	if strings.TrimSpace(sessionToken) == "" {
-		return nil, &ErrorInvalidSessionToken
+		return nil, nil, &ErrorInvalidSessionToken
 	}
 	if strings.TrimSpace(otpCode) == "" {
-		return nil, &ErrorInvalidOTP
+		return nil, nil, &ErrorInvalidOTP
 	}
 
 	result, svcErr := s.notifOTPService.VerifyOTP(ctx, notifcommon.VerifyOTPDTO{
@@ -86,25 +89,18 @@ func (s *otpAuthnService) Authenticate(ctx context.Context, sessionToken,
 		OTPCode:      otpCode,
 	})
 	if svcErr != nil {
+		// A session that will not decode names nobody, so nothing is attributable here.
 		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
+			return nil, nil, &tidcommon.InternalServerError
 		}
 		switch svcErr.Code {
 		case notification.ErrorInvalidSessionToken.Code:
-			return nil, &ErrorInvalidSessionToken
+			return nil, nil, &ErrorInvalidSessionToken
 		case notification.ErrorInvalidOTP.Code:
-			return nil, &ErrorInvalidOTP
+			return nil, nil, &ErrorInvalidOTP
 		default:
-			return nil, &ErrorClientErrorFromOTPService
+			return nil, nil, &ErrorClientErrorFromOTPService
 		}
-	}
-
-	if result.Status != notifcommon.OTPVerifyStatusVerified {
-		return nil, &ErrorIncorrectOTP
-	}
-	if result.Recipient == "" {
-		logger.Error(ctx, "Recipient not found in OTP verification result")
-		return nil, &tidcommon.InternalServerError
 	}
 
 	recipientAttr := result.RecipientAttr
@@ -112,8 +108,23 @@ func (s *otpAuthnService) Authenticate(ctx context.Context, sessionToken,
 		recipientAttr = userAttributeMobileNumber
 	}
 
+	if result.Status != notifcommon.OTPVerifyStatusVerified {
+		// Only a compared, mismatched code counts. An expired or unrecognized status counts against
+		// nobody, or an unanswered challenge could lock its recipient. The client sees the wrong-code
+		// refusal either way.
+		var failure *VerificationFailure
+		if result.Status == notifcommon.OTPVerifyStatusInvalid && result.Recipient != "" {
+			failure = &VerificationFailure{RecipientAttr: recipientAttr, Recipient: result.Recipient}
+		}
+		return nil, failure, &ErrorIncorrectOTP
+	}
+	if result.Recipient == "" {
+		logger.Error(ctx, "Recipient not found in OTP verification result")
+		return nil, nil, &tidcommon.InternalServerError
+	}
+
 	return &common.AuthnResult{
 		Token:               map[string]interface{}{recipientAttr: result.Recipient},
 		AuthenticatedClaims: map[string]interface{}{recipientAttr: result.Recipient},
-	}, nil
+	}, nil, nil
 }

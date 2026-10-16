@@ -568,6 +568,120 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientError() {
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
+// bestEffortContext is a send-mode node with a recipient and the named properties.
+func bestEffortContext(properties map[string]interface{}) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID:  "test-execution-id",
+		ExecutorMode: ExecutorModeSend,
+		NodeInputs: []providers.Input{
+			{Identifier: "email", Type: providers.InputTypeEmail, Required: true},
+		},
+		UserInputs:     map[string]string{"email": "user@example.com"},
+		NodeProperties: properties,
+	}
+}
+
+// A best-effort node completes when the send fails, so the flow's earlier steps stand.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWhenSendFails() {
+	ctx := bestEffortContext(map[string]interface{}{"emailTemplate": emailUserInviteProperty, "bestEffort": true})
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		emailUserInviteHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "s", Body: "b"}, nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.Anything).
+		Return(&tidcommon.InternalServerError)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Nil(resp.Error)
+	// Not "true": a best-effort send that claimed delivery would make a silent failure
+	// indistinguishable from a real one to any later node or audit.
+	suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+}
+
+// A best-effort node completes when no email provider is named, the same as any other send failure.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWithNoProvider() {
+	ctx := bestEffortContext(map[string]interface{}{"emailTemplate": emailUserInviteProperty, "bestEffort": true})
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		emailUserInviteHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "s", Body: "b"}, nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.Anything).
+		Return(&notification.ErrorInvalidProvider)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+}
+
+// A best-effort node completes when the template cannot be rendered: nothing can be delivered.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWhenRenderFails() {
+	ctx := bestEffortContext(map[string]interface{}{"emailTemplate": emailUserInviteProperty, "bestEffort": true})
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		emailUserInviteHandle, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Code: "NTPL-404"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	// Without the property this path returns a bare Go error, which the task node turns into a 500.
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+}
+
+// A best-effort node completes when there is no recipient, rather than failing the flow.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWithNoRecipient() {
+	ctx := bestEffortContext(map[string]interface{}{"emailTemplate": emailUserInviteProperty, "bestEffort": true})
+	ctx.UserInputs = nil
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+}
+
+// A best-effort node completes when the recipient lookup or the node's configuration fails.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWhenPreparationFails() {
+	lookupFails := bestEffortContext(map[string]interface{}{
+		"emailTemplate": emailUserInviteProperty, "bestEffort": true})
+	lookupFails.UserInputs = nil
+	lookupFails.RuntimeData = map[string]string{userAttributeUserID: "test-user-id"}
+	suite.mockEntityProvider.On("GetEntityProfile", "test-user-id").Return(
+		nil, entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "provider error", "system failure")).Once()
+
+	for name, ctx := range map[string]*providers.NodeContext{
+		"recipient lookup": lookupFails,
+		"missing template": bestEffortContext(map[string]interface{}{"bestEffort": true}),
+		"empty template":   bestEffortContext(map[string]interface{}{"emailTemplate": "", "bestEffort": true}),
+	} {
+		resp, err := suite.executor.Execute(ctx)
+
+		suite.Require().NoError(err, name)
+		suite.Equal(providers.ExecComplete, resp.Status, name)
+		suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent], name)
+	}
+}
+
+// Off by default. A recovery flow's mail *is* the operation, so a send failure there must still fail.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_WithoutBestEffortASendFailureStillFails() {
+	ctx := bestEffortContext(map[string]interface{}{"emailTemplate": emailUserInviteProperty})
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		emailUserInviteHandle, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "s", Body: "b"}, nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.Anything).
+		Return(&notification.ErrorInvalidProvider)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
+}
+
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientErrorsBecomeProviderNotConfigured() {
 	cases := []struct {
 		name    string
@@ -1091,7 +1205,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ResolvesEmailFromEntit
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"workEmail":"database-resolved@example.com"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", "test-db-user-id").Return(mockEntity, nil)
 
 	suite.mockTemplateRenderer.On("Resolve",
 		ctx.Context,
@@ -1169,7 +1283,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderMissingE
 		ID:         "test-db-user-id",
 		Attributes: []byte(`{"other":"data"}`),
 	}
-	suite.mockEntityProvider.On("GetEntity", "test-db-user-id").Return(mockEntity, nil)
+	suite.mockEntityProvider.On("GetEntityProfile", "test-db-user-id").Return(mockEntity, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1211,7 +1325,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderError() 
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "test-user-id").Return(
+	suite.mockEntityProvider.On("GetEntityProfile", "test-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "provider error", "system failure"))
 
@@ -1235,7 +1349,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EntityProviderUserNotF
 		},
 	}
 
-	suite.mockEntityProvider.On("GetEntity", "non-existent-user-id").Return(
+	suite.mockEntityProvider.On("GetEntityProfile", "non-existent-user-id").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeEntityNotFound, "user not found", "entity not found"))
 

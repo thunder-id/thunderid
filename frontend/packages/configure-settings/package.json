@@ -74,6 +74,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-i18next": "catalog:",
+    "react-router": "catalog:",
     "rimraf": "catalog:",
     "rolldown": "catalog:",
     "tslib": "catalog:",
@@ -93,6 +94,7 @@
     "@wso2/oxygen-ui": "catalog:",
     "@wso2/oxygen-ui-icons-react": "catalog:",
     "react": "catalog:",
-    "react-i18next": "catalog:"
+    "react-i18next": "catalog:",
+    "react-router": "catalog:"
   }
 }

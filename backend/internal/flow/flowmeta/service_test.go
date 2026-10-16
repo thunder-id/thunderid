@@ -57,7 +57,7 @@ func (suite *FlowMetaServiceTestSuite) SetupTest() {
 	suite.mockDesignResolve = resolvemock.NewDesignResolveServiceInterfaceMock(suite.T())
 	suite.mockI18nService = mgtmock.NewI18nServiceInterfaceMock(suite.T())
 	suite.service = newFlowMetaService(
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
 		suite.mockOUService,
 		suite.mockDesignResolve,
 		suite.mockI18nService,
@@ -88,7 +88,7 @@ func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
 		SystemAttributes: sysAttrs,
 	}
 	suite.mockInboundClient.On("GetInboundClientByEntityID", mock.Anything, appID).Return(client, nil)
-	suite.mockEntityProvider.On("GetEntity", appID).
+	suite.mockEntityProvider.On("GetEntityProfile", appID).
 		Return(entity, (*entityprovider.EntityProviderError)(nil))
 }
 

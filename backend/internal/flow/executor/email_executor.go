@@ -51,6 +51,7 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface,
 				// to. It is not marked required, because the shipped flows declare their email
 				// steps before any provider exists. Sending without one fails at execution.
 				{Property: propertyKeyNotificationSenderID},
+				{Property: propertyKeyBestEffort},
 			},
 		},
 	)
@@ -91,19 +92,39 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	}
 
 	if e.notifSenderSvc == nil {
+		if isBestEffort(ctx) {
+			logger.Error(ctx.Context, "Notification sender service is not configured; sending nothing")
+			return bestEffortResponse(execResp), nil
+		}
 		return nil, errors.New("notification sender service is not configured")
 	}
 
 	if e.templateRenderer == nil {
+		if isBestEffort(ctx) {
+			logger.Error(ctx.Context, "Template renderer is not configured; sending nothing")
+			return bestEffortResponse(execResp), nil
+		}
 		return nil, errors.New("template renderer is not configured")
+	}
+
+	// A best-effort node completes without sending rather than undo what the flow already did.
+	failOrSkip := func(err error) (*providers.ExecutorResponse, error) {
+		if isBestEffort(ctx) {
+			logger.Error(ctx.Context, "Failed to prepare email; sending nothing", log.Error(err))
+			return bestEffortResponse(execResp), nil
+		}
+		return nil, err
 	}
 
 	recipient, err := e.resolveRecipientEmail(ctx, logger)
 	if err != nil {
-		return nil, err
+		return failOrSkip(err)
 	}
 	if recipient == "" {
 		logger.Debug(ctx.Context, "Email recipient not found")
+		if isBestEffort(ctx) {
+			return bestEffortResponse(execResp), nil
+		}
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailRecipientMissing
 		return execResp, nil
@@ -113,21 +134,21 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	if tmplProp, ok := ctx.NodeProperties[propertyKeyEmailTemplate]; ok {
 		tmplStr, ok := tmplProp.(string)
 		if !ok {
-			return nil, fmt.Errorf("invalid type for %s: expected string, got %T with value %v",
-				propertyKeyEmailTemplate, tmplProp, tmplProp)
+			return failOrSkip(fmt.Errorf("invalid type for %s: expected string, got %T with value %v",
+				propertyKeyEmailTemplate, tmplProp, tmplProp))
 		}
 		if tmplStr == "" {
-			return nil, fmt.Errorf("email template property is empty in node configuration")
+			return failOrSkip(fmt.Errorf("email template property is empty in node configuration"))
 		}
 		handle = tmplStr
 		logger.Debug(ctx.Context, "EmailExecutor: resolved email template", log.String("handle", handle))
 	} else {
-		return nil, fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate)
+		return failOrSkip(fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate))
 	}
 
 	senderID, err := e.resolveSenderID(ctx)
 	if err != nil {
-		return nil, err
+		return failOrSkip(err)
 	}
 
 	templateData := e.resolveTemplateData(ctx)
@@ -139,6 +160,13 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 			ThemeID: ctx.Application.ThemeID,
 		})
 	if svcErr != nil {
+		// A template the deployment does not carry is the same class of problem as a mail server that
+		// is down: on a best-effort node it must not undo what the flow already did.
+		if isBestEffort(ctx) {
+			logger.Error(ctx.Context, "Failed to render email template; sending nothing",
+				log.String("handle", handle), log.String("errorCode", svcErr.Code))
+			return bestEffortResponse(execResp), nil
+		}
 		return nil, fmt.Errorf("failed to render email template: %s", svcErr.Code)
 	}
 
@@ -149,6 +177,11 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		IsHTML:  true,
 	})
 	if notifSvcErr != nil {
+		if isBestEffort(ctx) {
+			logger.Error(ctx.Context, "Failed to send email; sending nothing",
+				log.String("errorCode", notifSvcErr.Code))
+			return bestEffortResponse(execResp), nil
+		}
 		// A client error means the node names no usable email provider, a configuration problem
 		// the flow can surface to the caller; anything else is a server-side delivery failure.
 		if notifSvcErr.Type == tidcommon.ClientErrorType {
@@ -166,6 +199,22 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// isBestEffort reports whether this node's failure must not fail the flow. Off by default, since a
+// recovery flow's mail is the operation itself.
+func isBestEffort(ctx *providers.NodeContext) bool {
+	bestEffort, _ := ctx.NodeProperties[propertyKeyBestEffort].(bool)
+	return bestEffort
+}
+
+// bestEffortResponse completes a node whose delivery failed but must not fail the flow. It sets
+// `emailSent` to false, so later nodes and audits see that nothing was sent.
+func bestEffortResponse(execResp *providers.ExecutorResponse) *providers.ExecutorResponse {
+	execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
+	execResp.Status = providers.ExecComplete
+	execResp.Error = nil
+	return execResp
 }
 
 // resolveSenderID reads the notification sender from the node properties. An absent property
@@ -208,7 +257,7 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 		if e.entityProvider == nil {
 			return "", errors.New("entity provider is not configured for email resolution")
 		}
-		user, providerErr := e.entityProvider.GetEntity(userID)
+		user, providerErr := e.entityProvider.GetEntityProfile(userID)
 		if providerErr != nil {
 			if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				return "", nil

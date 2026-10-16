@@ -43,8 +43,11 @@ type OTPVerifyStatus string
 const (
 	// OTPVerifyStatusVerified indicates a successful OTP verification.
 	OTPVerifyStatusVerified OTPVerifyStatus = "VERIFIED"
-	// OTPVerifyStatusInvalid indicates an invalid OTP verification attempt.
+	// OTPVerifyStatusInvalid indicates the code presented did not match the one issued.
 	OTPVerifyStatusInvalid OTPVerifyStatus = "INVALID"
+	// OTPVerifyStatusExpired indicates the code had already expired, so nothing was compared. It is
+	// kept apart from OTPVerifyStatusInvalid so the failure counter skips it; clients see one refusal.
+	OTPVerifyStatusExpired OTPVerifyStatus = "EXPIRED"
 )
 
 const (

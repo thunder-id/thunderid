@@ -77,6 +77,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: () => <div data-testid="account-status-action" />,
     ResourceAvatar: ({
       value = undefined,
       fallback = undefined,
@@ -416,6 +417,44 @@ describe('AgentEditPage', () => {
       descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
 
       expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Access status', () => {
+    const renderAgent = (agent: Record<string, unknown>): void => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, ...agent},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+    };
+
+    it('shows the suspension banner for a suspended agent', () => {
+      renderAgent({status: {value: 'SUSPENDED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Suspended');
+      expect(screen.getByRole('status')).toHaveTextContent('The agent is suspended');
+    });
+
+    it('shows no banner for an active agent', () => {
+      renderAgent({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable agent', () => {
+      renderAgent({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('hides the lifecycle action on a read-only agent', () => {
+      renderAgent({isReadOnly: true});
+
+      expect(screen.queryByTestId('account-status-action')).not.toBeInTheDocument();
     });
   });
 

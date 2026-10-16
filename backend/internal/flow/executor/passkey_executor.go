@@ -50,6 +50,7 @@ const (
 type passkeyAuthExecutor struct {
 	providers.Executor
 	authnProvider providers.AuthnProviderManager
+	accessGuard   *accessGuard
 	logger        *log.Logger
 }
 
@@ -59,6 +60,7 @@ var _ providers.Executor = (*passkeyAuthExecutor)(nil)
 func newPasskeyAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authnProvider providers.AuthnProviderManager,
+	governance providers.IdentityGovernanceProvider,
 ) *passkeyAuthExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -120,6 +122,7 @@ func newPasskeyAuthExecutor(
 	return &passkeyAuthExecutor{
 		Executor:      base,
 		authnProvider: authnProvider,
+		accessGuard:   newAccessGuard(governance, logger),
 		logger:        logger,
 	}
 }
@@ -170,6 +173,24 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 
+	// The dispatch guard, on the user-bound challenge only; a usernameless challenge names no
+	// identity. Unless the hold may be stated, the refusal is the one a user with no registered
+	// passkey gets.
+	withheld, stated, fault := p.accessGuard.heldAtDispatch(ctx.Context, userID,
+		providers.AccessScopePasskey, ctx.FlowType)
+	if fault != nil {
+		return execResp, fault
+	}
+	if withheld {
+		logger.Debug(ctx.Context, "Identity is held; withholding the passkey challenge")
+		execResp.Status = providers.ExecFailure
+		execResp.Error = passkeyStartFailure(passkey.ErrorNoCredentialsFound.ErrorDescription.DefaultValue)
+		if stated != nil {
+			execResp.Error = stated
+		}
+		return execResp, nil
+	}
+
 	// Get relying party ID from node properties or use a default
 	relyingPartyID := p.getRelyingPartyID(ctx)
 	if relyingPartyID == "" {
@@ -190,10 +211,7 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
 				log.MaskedString(log.LoggerKeyUserID, userID),
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			execResp.Status = providers.ExecFailure
-			execResp.Error = tidcommon.CustomServiceError(ErrPasskeyAuthFailed, tidcommon.I18nMessage{
-				Key:          ErrPasskeyAuthFailed.ErrorDescription.Key,
-				DefaultValue: "Failed to start passkey authentication: " + svcErr.ErrorDescription.DefaultValue,
-			})
+			execResp.Error = passkeyStartFailure(svcErr.ErrorDescription.DefaultValue)
 			return execResp, nil
 		}
 		logger.Error(ctx.Context, "Failed to start passkey authentication",
@@ -298,6 +316,15 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *providers.NodeContext, execRe
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message.
+		if stated := statedHold(svcErr).refusal(); stated != nil {
+			logger.Debug(ctx.Context, "Passkey verification refused by a stated hold",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.String("code", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = p.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey verification failed",
 				log.MaskedString(log.LoggerKeyUserID, userID),
@@ -362,6 +389,14 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
 	// Start passkey registration
 	initResponse, svcErr := p.authnProvider.InitiateEnrollment(ctx.Context, passkey.CredentialType, regReq, nil)
 	if svcErr != nil {
+		// A stated hold fails the step with its own error.
+		if stated := statedHold(svcErr).refusal(); stated != nil {
+			logger.Debug(ctx.Context, "Passkey registration refused by a stated hold",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.String("code", stated.Code))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey registration",
 				log.MaskedString(log.LoggerKeyUserID, userID),
@@ -460,6 +495,15 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message, as a failed registration does.
+		if stated := statedHold(svcErr).refusal(); stated != nil {
+			logger.Debug(ctx.Context, "Passkey registration refused by a stated hold",
+				log.String("code", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = allInputs
+			execResp.Error = stated
+			return execResp, nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey registration failed",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
@@ -487,6 +531,14 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Passkey registration finished successfully",
 		log.MaskedString("credentialID", finishReq.CredentialID))
 	return execResp, nil
+}
+
+// passkeyStartFailure is the error for a passkey challenge that could not be started.
+func passkeyStartFailure(description string) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrPasskeyAuthFailed, tidcommon.I18nMessage{
+		Key:          ErrPasskeyAuthFailed.ErrorDescription.Key,
+		DefaultValue: "Failed to start passkey authentication: " + description,
+	})
 }
 
 // getRelyingPartyID retrieves the relying party ID from node properties.

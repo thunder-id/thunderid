@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"gopkg.in/yaml.v3"
+
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type declarativeSystemCredentialHasher interface {
@@ -65,6 +68,20 @@ func loadDeclarativeResources(
 		if entity == nil {
 			return nil, fmt.Errorf("parser returned nil entity without error")
 		}
+
+		var initial struct {
+			State providers.EntityState `yaml:"state" json:"state"`
+		}
+		if err := yaml.Unmarshal(data, &initial); err != nil {
+			return nil, fmt.Errorf("failed to parse initial entity state: %w", err)
+		}
+		entity.State = initial.State
+		if entity.State == "" {
+			entity.State = providers.EntityStateActive
+		}
+
+		// Runtime values are never supplied by declarative profiles.
+		entity.RuntimeAttributes = nil
 
 		resource := &entityStoreEntry{
 			Entity:            *entity,

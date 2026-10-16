@@ -36,6 +36,7 @@ type identifyingExecutor struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -51,6 +52,7 @@ func newIdentifyingExecutor(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	governance providers.IdentityGovernanceProvider,
 ) *identifyingExecutor {
 	if name == "" {
 		name = ExecutorNameIdentifying
@@ -70,6 +72,7 @@ func newIdentifyingExecutor(
 		Executor:       base,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
+		accessGuard:    newAccessGuard(governance, logger),
 		logger:         logger,
 	}
 }
@@ -83,7 +86,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
-		entity, epErr := i.entityProvider.GetEntity(entityID)
+		entity, epErr := i.entityProvider.GetEntityProfile(entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
@@ -226,6 +229,37 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		}
 		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
+	}
+
+	// Gate self-service recovery here, as this path never reaches the assertion check. Only recovery
+	// flows are checked, at the recovery plane, and a held account is refused.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		svcErr, fault := i.accessGuard.refuseIfHeld(ctx.Context, *userID, providers.AccessPlaneRecovery, "")
+		if fault != nil {
+			// Answered as a failed lookup, as IdentifyEntity failing is above.
+			logger.Error(ctx.Context, "Failed to check the recovery target", log.Error(fault))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+			return execResp, nil
+		}
+		if svcErr != nil {
+			logger.Debug(ctx.Context, "Identity is held; refusing the recovery target")
+			// A stated hold fails the step with its own error; the node's onFailure decides what
+			// follows. A refusal that names no hold takes the unknown-user branch.
+			if isStatedRefusal(svcErr) {
+				execResp.Status = providers.ExecFailure
+				execResp.Error = svcErr
+				return execResp, nil
+			}
+			if loginHintAttr == "" {
+				execResp.Status = providers.ExecUserInputRequired
+				execResp.Inputs = i.GetRequiredInputs(ctx)
+			} else {
+				execResp.Status = providers.ExecFailure
+			}
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+			return execResp, nil
+		}
 	}
 
 	execResp.RuntimeData[userAttributeUserID] = *userID

@@ -262,7 +262,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_Success() {
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound)
 
 	validator := makeUserValidator()
@@ -282,7 +282,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DuplicateEntity
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return(&providers.Entity{Category: providers.EntityCategoryUser, ID: "user-1"}, nil)
 
 	validator := makeUserValidator()
@@ -303,7 +303,7 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_DBError() {
 	}
 
 	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
-	svcMock.On("GetEntity", context.Background(), "user-1").
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
 		Return((*providers.Entity)(nil), errors.New("db error"))
 
 	validator := makeUserValidator()

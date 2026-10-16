@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/reactsdk"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
@@ -47,6 +48,7 @@ func Initialize(
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
 	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 	cfg authnconfig.Config,
 ) (AuthenticationServiceInterface, DirectAuthGuardInterface) {
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
@@ -104,6 +106,7 @@ func Initialize(
 		googleSvc,
 		githubSvc,
 		entityTypeSvc,
+		governance,
 	)
 
 	directAuthGuard := newDirectAuthGuard(cfg.DirectAuthSecret)

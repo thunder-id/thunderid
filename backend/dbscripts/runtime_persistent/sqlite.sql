@@ -132,3 +132,18 @@ CREATE INDEX idx_consent_authz_user ON "CONSENT_AUTHORIZATION" (DEPLOYMENT_ID, U
 
 -- Index for loading a consent's authorization records.
 CREATE INDEX idx_consent_authz_consent ON "CONSENT_AUTHORIZATION" (CONSENT_ID, DEPLOYMENT_ID);
+
+-- Table to store ThunderID-owned runtime data per entity: state, runtime attributes and revision.
+-- Part of the database.runtime_persistent classification: authoritative account-access state that
+-- must survive a runtime database flush.
+CREATE TABLE "ENTITY_RUNTIME_DATA" (
+    DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
+    ENTITY_ID           VARCHAR(36) NOT NULL,
+    STATE               VARCHAR(50) NOT NULL,
+    RUNTIME_ATTRIBUTES  TEXT NOT NULL DEFAULT '{}',
+    REVISION            BIGINT NOT NULL DEFAULT 0,
+    CREATED_AT          TEXT NOT NULL,
+    UPDATED_AT          TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ENTITY_ID),
+    CHECK (json_valid(RUNTIME_ATTRIBUTES) AND json_type(RUNTIME_ATTRIBUTES) = 'object')
+);

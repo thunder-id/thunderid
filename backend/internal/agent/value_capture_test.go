@@ -80,8 +80,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CapturesTheUpdatedAgent() {
 	capturer := &recordingCapturer{}
 	svc.valueCapturer = capturer
 	suite.withDisplayPaths(svc, "name")
-	clearMockCalls(mockEntity, "GetEntity")
-	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
 		Return(buildAgentEntityFixture("old-name", "", "", ""), nil)
 
 	_, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{

@@ -91,6 +91,12 @@ type AgentGetResponse struct {
 	// directly YAML-marshaled, so AttributesYAML carries the decoded map for export.
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
 	AttributesYAML map[string]interface{} `json:"-"                    yaml:"attributes,omitempty"`
+	// Status is the effective access status and what produced it, derived at read time: SUSPENDED
+	// beats LOCKED beats ACTIVE. Read-only, and excluded from the YAML export as runtime state.
+	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`
+	// LastLoginAt is when this agent was last granted access. Recorded by the runtime, never by a
+	// profile write, and absent until a sign-in has been recorded.
+	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -109,6 +115,13 @@ type BasicAgentResponse struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	IsReadOnly  bool            `json:"isReadOnly"`
+	// Status is the effective access status and what produced it, derived at read time. Present on
+	// the list view as well as the detail view, so an operator can see which accounts are held
+	// without opening each one.
+	Status *providers.AccessStatusReport `json:"status,omitempty"`
+	// LastLoginAt is when this agent was last granted access. Absent until a sign-in has been
+	// recorded.
+	LastLoginAt string `json:"lastLoginAt,omitempty"`
 }
 
 // AgentListResponse is the paginated list response.

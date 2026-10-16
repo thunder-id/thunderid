@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -347,6 +348,40 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_InvalidNonce
 	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
 	assert.Equal(suite.T(), nonceMismatchErr, execResp.Error)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// A stated hold reaches the response as the flow's own hold error, not the manager's code forwarded
+// verbatim. An undisclosed hold arrives as an authentication failure and takes that branch.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_StatedHoldUsesTheFlowError() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-held",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code": "auth_code_123",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyOIDCNonce: "expected_nonce_123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-123",
+		},
+	}
+
+	execResp := &providers.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil),
+			&authnprovidermgr.ErrorAccountSuspended)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
+	assert.Equal(suite.T(), ErrAccountSuspended.Code, execResp.Error.Code)
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidNonce() {

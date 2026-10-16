@@ -166,6 +166,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		ResourceService:   engineCtx.resourceProvider,
 		UserMgtProvider:   engineCtx.userMgtProvider,
 		AgentMgtProvider:  engineCtx.agentMgtProvider,
+		// A nil provider leaves identity governance disabled.
+		IdentityGovernance: engineCtx.identityGovernance,
+		TokenLeeway:        time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -192,7 +195,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil, flowConfig)
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.identityGovernance, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -241,7 +245,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.transactioner, revocationEnforcer, revocationService,
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
-		nil, nil, engineCtx.flowProvider, oauthConfig)
+		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -406,6 +410,7 @@ type engineContext struct {
 	authzProvider             providers.AuthorizationProvider
 	attestationProvider       providers.AttestationProvider
 	captchaValidationProvider providers.CaptchaValidationProvider
+	identityGovernance        providers.IdentityGovernanceProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -585,6 +590,12 @@ func WithLogConfig(config engineconfig.LogConfig) Option {
 	return func(ctx *engineContext) {
 		ctx.logConfig = config
 	}
+}
+
+// WithIdentityGovernanceProvider supplies optional identity governance.
+// Omitting this option or passing nil disables governance checks and lifecycle operations.
+func WithIdentityGovernanceProvider(provider providers.IdentityGovernanceProvider) Option {
+	return func(c *engineContext) { c.identityGovernance = provider }
 }
 
 // WithAttestationProvider supplies the Attestation provider.

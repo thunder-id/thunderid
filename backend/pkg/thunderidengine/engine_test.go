@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18nprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/idpprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -117,12 +118,19 @@ func validEngineContext(t *testing.T) *engineContext {
 		idpProvider:           idpprovidermock.NewIDPProviderMock(t),
 		consentProvider:       consentprovidermock.NewConsentProviderMock(t),
 		defaultAuthnProvider:  newTestDefaultAuthnProvider(t),
+		identityGovernance:    identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t),
 	}
 }
 
 func (suite *EngineTestSuite) TestValidateEngineContext() {
 	suite.T().Run("valid context passes", func(t *testing.T) {
 		assert.NoError(t, validateEngineContext(validEngineContext(t)))
+	})
+
+	suite.T().Run("missing identity governance provider is optional", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.identityGovernance = nil
+		assert.NoError(t, validateEngineContext(ctx))
 	})
 
 	suite.T().Run("missing server home", func(t *testing.T) {
@@ -439,6 +447,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 
 	require.NotNil(t, eng)
 	require.NotNil(t, eng.engineCtx)
+	assert.Nil(t, eng.engineCtx.identityGovernance)
 	assert.NotNil(t, eng.engineCtx.runtimeCryptoSvc)
 	assert.NotNil(t, eng.engineCtx.jwtService)
 	assert.NotNil(t, eng.engineCtx.jweService)
@@ -504,6 +513,8 @@ func (suite *EngineTestSuite) TestNew_InitializesRuntimeStoreWhenNotInjected() {
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithIdentityGovernanceProvider(
+			identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
 		// Restrict to built-in executors that only depend on FlowFactory; the others assume
 		// non-nil typed provider dependencies (e.g. the GitHub/Google/OIDC auth executors) that
 		// this minimal test setup does not wire up.
@@ -662,6 +673,8 @@ func (suite *EngineTestSuite) TestNew_AppliesLogFormatToServicesBuiltInsideNew()
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithIdentityGovernanceProvider(
+			identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
 		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 	)
 	require.NotNil(t, eng)
@@ -728,6 +741,8 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 			WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 			WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 			WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+			WithIdentityGovernanceProvider(
+				identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
 			WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 		}
 		return New(http.NewServeMux(), slices.Concat(baseOpts, opts)...)
@@ -745,4 +760,13 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 	require.NotNil(t, eng)
 	matcher = cors.GetDynamicMatcher(context.Background())
 	assert.Nil(t, matcher)
+}
+
+func (suite *EngineTestSuite) TestIdentityGovernanceOption() {
+	provider := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	var ctx engineContext
+	WithIdentityGovernanceProvider(provider)(&ctx)
+	suite.Same(provider, ctx.identityGovernance)
+	WithIdentityGovernanceProvider(nil)(&ctx)
+	suite.Nil(ctx.identityGovernance)
 }

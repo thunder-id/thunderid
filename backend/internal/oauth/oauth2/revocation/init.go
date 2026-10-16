@@ -36,10 +36,11 @@ func Initialize(
 			"oauth.revocation.criteria.max_entries_per_change must not be negative, got %d", maxEntriesPerChange)
 	}
 	tokenFamilyRevocationTTL := time.Duration(cfg.OAuth.RefreshToken.ValidityPeriod) * time.Second
+	validationLeeway := time.Duration(cfg.JWT.Leeway) * time.Second
 	store := newRevocationStore()
 	return newEnforcementService(observabilitySvc, store), newRevocationService(
-		jwtService, store, tokenFamilyRevocationTTL, revocationCfg.TokenFamily.OnExplicitRevokeEnabled(),
-		observabilitySvc, maxEntriesPerChange), nil
+		jwtService, store, tokenFamilyRevocationTTL, validationLeeway,
+		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
 }
 
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service.

@@ -2956,3 +2956,43 @@ func DeleteResource(resourceServerID, resourceID string) error {
 	}
 	return nil
 }
+
+// RunAdministrationFlow executes an ADMINISTRATION flow, addressed by handle, as the admin and
+// returns the HTTP status and the flow status. It is how a test suspends, unsuspends or unlocks an
+// identity.
+func RunAdministrationFlow(handle string, inputs map[string]string) (int, string, error) {
+	token, err := GetAccessToken()
+	if err != nil {
+		return 0, "", err
+	}
+	return RunAdministrationFlowWithToken(token, handle, inputs)
+}
+
+// RunAdministrationFlowWithToken is RunAdministrationFlow as the operator the bearer token names. The
+// token goes on the raw client because the shared clients treat /flow/execute as public.
+func RunAdministrationFlowWithToken(token, handle string, inputs map[string]string) (int, string, error) {
+	flowID, err := GetFlowIDByHandle(handle, "ADMINISTRATION")
+	if err != nil {
+		return 0, "", err
+	}
+	payload, err := json.Marshal(map[string]interface{}{"flowId": flowID, "inputs": inputs})
+	if err != nil {
+		return 0, "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/flow/execute", bytes.NewReader(payload))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := GetRawHTTPClient().Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	var step struct {
+		FlowStatus string `json:"flowStatus"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&step)
+	return resp.StatusCode, step.FlowStatus, nil
+}

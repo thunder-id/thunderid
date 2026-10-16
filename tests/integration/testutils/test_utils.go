@@ -792,6 +792,36 @@ func startServerInternal(port string, extraArgs ...string) error {
 	return nil
 }
 
+// StartServerExpectingExit stops the running server and starts one that is expected to refuse its
+// configuration and exit. It returns nil once the process has exited, and an error if the server
+// stays up for the timeout, in which case it is stopped. Call RestartServer to run normally again.
+func StartServerExpectingExit(timeout time.Duration) error {
+	ensureInitialized()
+	StopServer()
+	time.Sleep(3 * time.Second)
+
+	if err := startServerInternal(serverPort); err != nil {
+		return err
+	}
+	cmd := serverCmd
+	exited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(exited)
+	}()
+
+	select {
+	case <-exited:
+		serverCmd = nil
+		serverPid = 0
+		removePidFile()
+		return nil
+	case <-time.After(timeout):
+		StopServer()
+		return fmt.Errorf("the server was still running %s after it started", timeout)
+	}
+}
+
 // RestartServerWithResourcesFile stops the running server and restarts it with the -resources flag
 // pointing to the given single-file declarative resources YAML. Call RestartServer to return to
 // normal mode afterwards.
@@ -884,6 +914,10 @@ func StopServer() {
 	}
 }
 
+// restartReadyTimeout bounds how long a restarted server may take to answer liveness; a remote or
+// emulated database makes a start slower than the 30 seconds a local SQLite one needs.
+const restartReadyTimeout = 3 * time.Minute
+
 // RestartServer stops the current server and starts a new one with the same configuration.
 func RestartServer() error {
 	ensureInitialized()
@@ -901,11 +935,18 @@ func RestartServer() error {
 		return fmt.Errorf("failed to restart server: %v", err)
 	}
 
-	if err := waitForServerReady(30 * time.Second); err != nil {
+	if err := waitForServerReady(restartReadyTimeout); err != nil {
 		return fmt.Errorf("server did not become ready after restart: %w", err)
 	}
 
 	return nil
+}
+
+// WaitForServerReady waits for the server's liveness endpoint, so a slow start (a remote database)
+// does not depend on a fixed sleep.
+func WaitForServerReady(timeout time.Duration) error {
+	ensureInitialized()
+	return waitForServerReady(timeout)
 }
 
 // waitForServerReady polls the server's health endpoint until it responds with a 2xx

@@ -18,7 +18,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const (
@@ -52,18 +54,49 @@ type PasskeyServiceInterface interface {
 type passkeyService struct {
 	entityService entity.EntityServiceInterface
 	sessionStore  sessionStoreInterface
+	governance    identitygovernance.IdentityGovernanceServiceInterface
 	logger        *log.Logger
 }
 
 // newPasskeyService creates a new instance of passkey service.
 func newPasskeyService(
 	entitySvc entity.EntityServiceInterface, sessionStore sessionStoreInterface,
+	governance identitygovernance.IdentityGovernanceServiceInterface,
 ) PasskeyServiceInterface {
 	return &passkeyService{
 		entityService: entitySvc,
 		sessionStore:  sessionStore,
+		governance:    governance,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
+}
+
+// refuseHeldEnrolment refuses a credential-management write for a held identity. Checked at the
+// recovery plane, so a locked-out user can still enroll a passkey. A suspension is stated; a refusal
+// that names no hold is the invalid-session-token error.
+func (w *passkeyService) refuseHeldEnrolment(ctx context.Context, userID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if w.governance == nil || userID == "" {
+		return nil
+	}
+
+	// Asked on a runtime context: the enrolment's subject is not necessarily one the caller may read.
+	decision, svcErr := w.governance.EvaluateAccess(
+		security.WithRuntimeContext(ctx), userID, providers.AccessPlaneRecovery, "")
+	if svcErr != nil {
+		// The service has logged the cause.
+		return &tidcommon.InternalServerError
+	}
+	if !decision.Admitted {
+		logger.Debug(ctx, "Refused a passkey enrolment for a held identity",
+			log.MaskedString("userID", userID))
+		// A lock never refuses at the recovery plane, so a suspension is the only hold to state.
+		if decision.Reason == providers.AccessRefusalReasonSuspended {
+			return &ErrorAccountSuspended
+		}
+		return &ErrorInvalidSessionToken
+	}
+	return nil
 }
 
 // StartRegistration initiates passkey credential registration for a user.
@@ -87,6 +120,12 @@ func (w *passkeyService) StartRegistration(
 	// Retrieve entity
 	coreEntity, svcErr := w.getEntity(ctx, req.UserID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Checked after the read, so an unknown user keeps its own answer. A held identity is sent no
+	// registration challenge.
+	if svcErr := w.refuseHeldEnrolment(ctx, req.UserID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -213,6 +252,11 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	// Retrieve entity
 	coreEntity, svcErr := w.getEntity(ctx, userID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Checked again before the credential is stored, since the target comes from the WebAuthn session.
+	if svcErr := w.refuseHeldEnrolment(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -509,7 +553,7 @@ func (w *passkeyService) getEntity(
 ) (*providers.Entity, *tidcommon.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	e, err := w.entityService.GetEntity(ctx, entityID)
+	e, err := w.entityService.GetEntityProfile(ctx, entityID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
 			logger.Debug(ctx, "Entity not found", log.MaskedString("entityID", entityID))

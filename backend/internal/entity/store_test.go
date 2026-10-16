@@ -83,7 +83,6 @@ func dbEntityRow() map[string]interface{} {
 		"ou_id":             "ou-1",
 		"category":          "user",
 		"type":              "employee",
-		"state":             "ACTIVE",
 		"attributes":        `{"email":"a@b.com"}`,
 		"system_attributes": nil,
 	}
@@ -920,7 +919,6 @@ func goodRow() map[string]interface{} {
 		"ou_id":             "ou-1",
 		"category":          "user",
 		"type":              "employee",
-		"state":             "ACTIVE",
 		"attributes":        `{"email":"a@b.com"}`,
 		"system_attributes": `{"key":"val"}`,
 	}
@@ -932,7 +930,7 @@ func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_Success() {
 	s.Equal("entity-1", e.ID)
 	s.Equal(providers.EntityCategoryUser, e.Category)
 	s.Equal("employee", e.Type)
-	s.Equal(providers.EntityStateActive, e.State)
+	s.Empty(e.State)
 	s.Equal("ou-1", e.OUID)
 	s.NotNil(e.Attributes)
 	s.NotNil(e.SystemAttributes)
@@ -975,11 +973,11 @@ func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_MissingType() {
 	s.Error(err)
 }
 
-func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_MissingState() {
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_WithoutState() {
 	row := goodRow()
-	delete(row, "state")
-	_, err := buildEntityFromResultRow(row)
-	s.Error(err)
+	e, err := buildEntityFromResultRow(row)
+	s.NoError(err)
+	s.Empty(e.State)
 }
 
 func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_BadAttributes() {

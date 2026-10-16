@@ -651,6 +651,12 @@ spec:
           type: TASK_EXECUTION
           executor:
             name: CredentialSetter
+          onSuccess: release_account_locks
+        - id: release_account_locks
+          type: TASK_EXECUTION
+          executor:
+            name: IdentityGovernanceExecutor
+            mode: unlock
           onSuccess: recovery_complete
         - id: recovery_complete
           type: PROMPT

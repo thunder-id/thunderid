@@ -323,3 +323,48 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_WritableWinsForEveryAdministratio
 	s.Require().True(ok)
 	s.Equal(wr, merged)
 }
+
+// Every lifecycle purpose is validated as an administration flow, merged, and reaches the handle
+// validator. The validator table and merge function are separate lists, so this walks all eight.
+func (s *FlowConfigHandlerTestSuite) TestLifecyclePurposesAreValidatedAndMerged() {
+	handles := []string{
+		"user-unlock", "user-suspend", "user-unsuspend",
+		"agent-unlock", "agent-suspend", "agent-unsuspend",
+		"application-suspend", "application-unsuspend",
+	}
+	cfg := flowconfig.FlowSectionConfig{
+		UserUnlockFlow:           flowconfig.FlowTypeConfig{DefaultHandle: handles[0]},
+		UserSuspendFlow:          flowconfig.FlowTypeConfig{DefaultHandle: handles[1]},
+		UserUnsuspendFlow:        flowconfig.FlowTypeConfig{DefaultHandle: handles[2]},
+		AgentUnlockFlow:          flowconfig.FlowTypeConfig{DefaultHandle: handles[3]},
+		AgentSuspendFlow:         flowconfig.FlowTypeConfig{DefaultHandle: handles[4]},
+		AgentUnsuspendFlow:       flowconfig.FlowTypeConfig{DefaultHandle: handles[5]},
+		ApplicationSuspendFlow:   flowconfig.FlowTypeConfig{DefaultHandle: handles[6]},
+		ApplicationUnsuspendFlow: flowconfig.FlowTypeConfig{DefaultHandle: handles[7]},
+	}
+
+	seen := map[string]providers.FlowType{}
+	s.handler.SetHandleValidator(
+		func(_ context.Context, handle string, flowType providers.FlowType) bool {
+			seen[handle] = flowType
+			return true
+		})
+	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
+
+	for _, handle := range handles {
+		flowType, checked := seen[handle]
+		s.Truef(checked, "%s was never validated", handle)
+		s.Equalf(providers.FlowTypeAdministration, flowType, "%s must be an administration flow", handle)
+	}
+
+	merged, ok := s.handler.Merge(cfg, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Require().True(ok)
+	s.Equal(handles[0], merged.UserUnlockFlow.DefaultHandle)
+	s.Equal(handles[1], merged.UserSuspendFlow.DefaultHandle)
+	s.Equal(handles[2], merged.UserUnsuspendFlow.DefaultHandle)
+	s.Equal(handles[3], merged.AgentUnlockFlow.DefaultHandle)
+	s.Equal(handles[4], merged.AgentSuspendFlow.DefaultHandle)
+	s.Equal(handles[5], merged.AgentUnsuspendFlow.DefaultHandle)
+	s.Equal(handles[6], merged.ApplicationSuspendFlow.DefaultHandle)
+	s.Equal(handles[7], merged.ApplicationUnsuspendFlow.DefaultHandle)
+}

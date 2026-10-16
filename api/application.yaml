@@ -1687,6 +1687,8 @@ components:
           example:
             env: "production"
             team: "platform"
+        status:
+          $ref: '#/components/schemas/ApplicationAccessStatus'
 
     ApplicationGetResponse:
       type: object
@@ -1820,6 +1822,8 @@ components:
           example:
             env: "production"
             team: "platform"
+        status:
+          $ref: '#/components/schemas/ApplicationAccessStatus'
 
     BasicApplicationResponse:
       type: object
@@ -1890,6 +1894,8 @@ components:
           type: boolean
           description: Indicates if the application is read-only (declarative/immutable).
           example: false
+        status:
+          $ref: '#/components/schemas/ApplicationAccessStatus'
 
     ApplicationListResponse:
       type: object
@@ -2803,6 +2809,25 @@ components:
           type: array
           items:
             type: string
+
+    ApplicationAccessStatus:
+      type: object
+      readOnly: true
+      description: |
+        The application's effective access status. Computed when the application is read, and
+        never accepted on a write.
+      properties:
+        value:
+          type: string
+          readOnly: true
+          enum: [ACTIVE, SUSPENDED]
+          description: |
+            `ACTIVE` or `SUSPENDED`. Applications are never locked.
+
+            While suspended, the application cannot be used for authorization, token, userinfo or
+            flow requests, but the record can still be updated. The suspend flow places the
+            suspension and the unsuspend flow removes it, returning the application to `ACTIVE`.
+          example: "ACTIVE"
 
     Error:
       type: object

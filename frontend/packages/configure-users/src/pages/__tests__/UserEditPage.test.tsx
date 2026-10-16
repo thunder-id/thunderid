@@ -18,6 +18,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/components')>();
   return {
     ...actual,
+    AccountStatusAction: () => <div data-testid="account-status-action" />,
     CopyableId: vi.fn(() => null),
   };
 });
@@ -447,6 +448,43 @@ describe('UserEditPage', () => {
       render(<UserEditPage />);
 
       expect(screen.getByText('Failed to load user information')).toBeInTheDocument();
+    });
+  });
+
+  describe('Access status', () => {
+    const renderUser = (user: Record<string, unknown>): void => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, ...user},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      render(<UserEditPage />);
+    };
+
+    it('shows the lock banner for a locked user', () => {
+      renderUser({status: {value: 'LOCKED'}});
+
+      expect(screen.getByRole('status')).toHaveTextContent('Locked');
+      expect(screen.getByRole('status')).toHaveTextContent('The account is locked');
+    });
+
+    it('shows no banner for an active user', () => {
+      renderUser({});
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('offers the lifecycle action on a writable user', () => {
+      renderUser({});
+
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    it('hides the lifecycle action on a read-only user', () => {
+      renderUser({isReadOnly: true});
+
+      expect(screen.queryByTestId('account-status-action')).not.toBeInTheDocument();
     });
   });
 

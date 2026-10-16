@@ -24,6 +24,37 @@ var (
 		},
 	}
 
+	// ErrorAccountLocked and ErrorAccountSuspended state the hold; a refusal that names no hold arrives
+	// as ErrorAuthenticationFailed. They never say which
+	// method is locked, for how long, or when it lifts.
+	ErrorAccountLocked = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.account_locked",
+			DefaultValue: "Account locked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.account_locked_description",
+			DefaultValue: "This account is locked",
+		},
+	}
+
+	// ErrorAccountSuspended is the administrative hold. It names no way back on purpose: self
+	// service cannot lift a suspension, so advice to reset a password would be advice to fail.
+	ErrorAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.account_suspended_description",
+			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
+
 	// ErrorEnrollmentFailed is returned when the underlying provider rejects the enrollment
 	// attempt due to a client-side reason (e.g. invalid credential data).
 	ErrorEnrollmentFailed = tidcommon.ServiceError{

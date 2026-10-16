@@ -21,6 +21,22 @@ var ErrorActorNotFound = tidcommon.ServiceError{
 	},
 }
 
+// ErrorActorUnavailable is returned when the actor resolves but an administrative hold withholds it.
+// Machine-facing callers must fold it into the unregistered-client answer; only the browser
+// authorization funnel shows it, as an unavailable page.
+var ErrorActorUnavailable = tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: "ACP-1003",
+	Error: tidcommon.I18nMessage{
+		Key:          "error.actor_unavailable",
+		DefaultValue: "Actor unavailable",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.actor_unavailable_description",
+		DefaultValue: "The requested actor is currently unavailable",
+	},
+}
+
 // ErrorEntityNotFound is returned when the backing entity record cannot be resolved.
 var ErrorEntityNotFound = tidcommon.ServiceError{
 	Type: tidcommon.ClientErrorType,

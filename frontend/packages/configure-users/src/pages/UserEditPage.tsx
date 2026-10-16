@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AccessStatusBanner,
+  AccountStatusAction,
   PageLoadingAnimation,
   QueryErrorNotice,
   ResourceAvatar,
@@ -393,7 +395,13 @@ export default function UserEditPage() {
     },
   ];
 
-  if (!user.isReadOnly && credentialFields.length > 0) {
+  // A declarative resource has no writable row at all, so editing is withheld for it. **A suspended
+  // record is not withheld**, and that is deliberate rather than an oversight: the server keeps it
+  // writable so an operator can rotate a credential or correct an attribute while the hold is on,
+  // which is the whole purpose of the state.
+  const editingWithheld = user.isReadOnly === true;
+
+  if (!editingWithheld && credentialFields.length > 0) {
     tabs.push({
       key: 'credentials',
       label: t('users:manageUser.tabs.credentials', 'Credentials'),
@@ -458,7 +466,21 @@ export default function UserEditPage() {
             <Chip label={matchedSchema?.displayName ?? user.type} size="small" sx={{px: 0.5}} />
           </Stack>
         </PageTitle.SubHeader>
+        {!user.isReadOnly && (
+          <PageTitle.Actions>
+            <AccountStatusAction
+              category="user"
+              subject={user.id}
+              status={user.status}
+              onChanged={() => {
+                refetch().catch(() => undefined);
+              }}
+            />
+          </PageTitle.Actions>
+        )}
       </PageTitle>
+
+      <AccessStatusBanner status={user.status} sx={{mb: 2}} />
 
       {/* Tabs */}
       <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="user settings tabs">
@@ -494,7 +516,7 @@ export default function UserEditPage() {
           saveLabel={t('users:manageUser.save', 'Save')}
           savingLabel={t('users:manageUser.saving', 'Saving…')}
           isSaving={updateUserMutation.isPending}
-          saveDisabled={user.isReadOnly === true}
+          saveDisabled={editingWithheld}
           error={
             updateUserMutation.error
               ? getUserErrorMessage(

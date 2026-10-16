@@ -96,6 +96,7 @@ func (suite *InitTestSuite) TestInitialize_ReadsTheOAuthConfig() {
 	cfg.OAuth.RefreshToken.ValidityPeriod = 7200
 	explicit := false
 	cfg.OAuth.Revocation.TokenFamily.OnExplicitRevoke = &explicit
+	cfg.JWT.Leeway = 30
 
 	_, writeService, err := Initialize(cfg, suite.mockJWTService, nil)
 
@@ -105,6 +106,7 @@ func (suite *InitTestSuite) TestInitialize_ReadsTheOAuthConfig() {
 	suite.Equal(7, svc.maxEntriesPerChange)
 	suite.Equal(2*time.Hour, svc.tokenFamilyLifetime)
 	suite.False(svc.revokeTokenFamily)
+	suite.Equal(30*time.Second, svc.validationLeeway)
 }
 
 func (suite *InitTestSuite) TestInitialize_ZeroMaxEntriesPerChangeIsKept() {

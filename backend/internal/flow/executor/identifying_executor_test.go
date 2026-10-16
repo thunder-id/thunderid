@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type IdentifyingExecutorTestSuite struct {
@@ -45,7 +46,7 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
-		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider)
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider, nil)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
@@ -59,7 +60,7 @@ func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
 		[]providers.Input{},
 		suite.mockFlowFactory,
 		suite.mockEntityProvider,
-		nil,
+		nil, nil,
 	)
 	assert.NotNil(suite.T(), exec)
 }
@@ -1032,7 +1033,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Succe
 	filters := map[string]interface{}{userAttributeUserID: entityID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", entityID).
+	suite.mockEntityProvider.On("GetEntityProfile", entityID).
 		Return(&providers.Entity{ID: entityID}, nil)
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1047,7 +1048,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_NotFo
 	filters := map[string]interface{}{userAttributeUserID: "missing-id"}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", "missing-id").
+	suite.mockEntityProvider.On("GetEntityProfile", "missing-id").
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1063,7 +1064,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyEntity_WithEntityID_Syste
 	filters := map[string]interface{}{userAttributeUserID: testUserID}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).
+	suite.mockEntityProvider.On("GetEntityProfile", testUserID).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
 	result, err := suite.executor.IdentifyEntity(context.Background(), filters, execResp, entitytype.TypeCategoryUser)
@@ -1445,4 +1446,78 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_HolderLookupF
 	suite.Require().NoError(err)
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
+}
+
+// identifyRecoveryTarget identifies testuser in a recovery flow against the given decision or fault,
+// by login hint when hintAttr is set.
+func (suite *IdentifyingExecutorTestSuite) identifyRecoveryTarget(decision providers.AccessDecision,
+	fault *tidcommon.ServiceError, hintAttr string) (*providers.ExecutorResponse, error) {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("EvaluateAccess", mock.Anything, testUserID, providers.AccessPlaneRecovery,
+		providers.AccessScope("")).
+		Return(decision, fault).Once()
+	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []providers.Input{},
+		[]providers.Input{}, suite.mockFlowFactory, suite.mockEntityProvider, nil, governance)
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "testuser"}).
+		Return(&userID, nil)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRecovery,
+		UserInputs:  map[string]string{"username": "testuser"},
+	}
+	if hintAttr != "" {
+		ctx.NodeProperties = map[string]interface{}{propertyKeyLoginHintAttribute: hintAttr}
+		ctx.UserInputs = map[string]string{userInputLoginHint: "testuser"}
+		return suite.executor.Execute(ctx)
+	}
+	mockBase := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: "username", Type: "string", Required: true},
+	})
+	return suite.executor.Execute(ctx)
+}
+
+// A held recovery target answers as an unknown one by default.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetReadsAsUnknown() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, nil, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+}
+
+// When the policy permits it, a held recovery target fails the step with the hold's own error.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetStatesTheHold() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{
+		Reason: providers.AccessRefusalReasonSuspended,
+	}, nil, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+}
+
+// With the identifier supplied by login hint there is no one to re-prompt, so a held target fails
+// the step as an unknown one.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_HeldRecoveryTargetByLoginHintFails() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, nil, "username")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
+	suite.Empty(resp.Inputs)
+	suite.Empty(resp.RuntimeData[userAttributeUserID])
+}
+
+// An unreadable authority fails the step as a failed lookup, not as an unknown or held user.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_RecoveryTargetGovernanceFaultFails() {
+	resp, err := suite.identifyRecoveryTarget(providers.AccessDecision{}, &tidcommon.InternalServerError, "")
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrFailedToIdentifyEntity.Code, resp.Error.Code)
+	suite.Empty(resp.RuntimeData[userAttributeUserID])
 }

@@ -24,11 +24,13 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
@@ -37,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/otpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
@@ -1821,7 +1824,8 @@ func (suite *AuthenticationServiceTestSuite) TestValidateAndAppendAuthAssertionU
 	}
 
 	err := service.validateAndAppendAuthAssertion(
-		context.Background(), authResponse, testUser, common.AuthenticatorSMSOTP, existingAssertion, logger)
+		context.Background(), authResponse, testUser, common.AuthenticatorSMSOTP, existingAssertion,
+		logger)
 
 	suite.NotNil(err)
 	suite.Equal("UPDATE_ERROR", err.Code)
@@ -2122,6 +2126,32 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyRegistration_Clien
 		suite.Equal(ErrorPasskeyEnrollmentFailed.Code, err.Code)
 	}
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// A stated hold reaches the client from both registration steps; it is not folded into the
+// enrolment failure.
+func (suite *AuthenticationServiceTestSuite) TestPasskeyRegistrationStatesADisclosedHold() {
+	credential := PasskeyPublicKeyCredentialDTO{ID: "credential-id-123", Type: "public-key"}
+	for _, held := range []tidcommon.ServiceError{
+		authnprovidermgr.ErrorAccountSuspended, authnprovidermgr.ErrorAccountLocked,
+	} {
+		heldErr := held
+		assertion := suite.createTestAssertion(testUserID)
+		suite.mockJWTService.On("VerifyJWT", mock.Anything, assertion, "", mock.Anything).Return(nil).Once()
+		suite.mockAuthnProvider.On("InitiateEnrollment", mock.Anything, passkey.CredentialType, mock.Anything,
+			mock.Anything).Return(nil, &heldErr).Once()
+		suite.mockAuthnProvider.On("Enroll", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything).Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), &heldErr).Once()
+
+		_, err := suite.service.StartPasskeyRegistration(
+			context.Background(), testUserID, testRelyingPartyID, testRelyingPartyName, nil, "", assertion)
+		suite.Require().NotNil(err)
+		suite.Equal(held.Code, err.Code)
+
+		_, err = suite.service.FinishPasskeyRegistration(context.Background(), credential, testSessionTkn, false, "")
+		suite.Require().NotNil(err)
+		suite.Equal(held.Code, err.Code)
+	}
 }
 
 func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyRegistration_ServerError() {
@@ -2701,6 +2731,7 @@ func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
 		suite.mockGoogleService,
 		suite.mockGithubService,
 		suite.mockEntityTypeSvc,
+		nil,
 	)
 	suite.NotNil(svc)
 }
@@ -2738,4 +2769,95 @@ func (suite *AuthenticationServiceTestSuite) createTestAssertionWithoutAssurance
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
 	return fmt.Sprintf("header.%s.signature", encodedPayload)
+}
+
+// At the atomic endpoints an unreadable authority is a server fault, as an unreadable entity is
+// there, not the endpoint's invalid-credentials refusal.
+func (suite *AuthenticationServiceTestSuite) TestRefuseIfHeldAnswersAFaultWithAServerError() {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, "u1").
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	as := &authenticationService{governance: governance}
+
+	svcErr := as.refuseIfHeld(context.Background(), "u1", &ErrorInvalidCredentials, log.GetLogger())
+	suite.Require().NotNil(svcErr)
+	suite.Require().Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// credentialsAuthenticationFor sets up a password sign-in that resolves to testUserID.
+func (suite *AuthenticationServiceTestSuite) credentialsAuthenticationFor(
+	governance identitygovernance.IdentityGovernanceServiceInterface) {
+	suite.service.governance = governance
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityType: testUserType, OUID: testOrgUnit,
+		}, nil).Once()
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil).Once()
+}
+
+// A successful atomic sign-in records when access was granted, on a runtime context.
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsRecordsTheLogin() {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, testUserID).
+		Return(providers.AccessDecision{Admitted: true}, (*tidcommon.ServiceError)(nil)).Once()
+	governance.On("RecordLogin", mock.MatchedBy(security.IsRuntimeContext), testUserID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	suite.credentialsAuthenticationFor(governance)
+
+	result, svcErr := suite.service.AuthenticateWithCredentials(context.Background(),
+		map[string]interface{}{"username": "testuser"}, map[string]interface{}{"password": "testpass"}, true, "")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(testUserID, result.ID)
+}
+
+// A failed stamp never fails the sign-in.
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsIgnoresAFailedStamp() {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, testUserID).
+		Return(providers.AccessDecision{Admitted: true}, (*tidcommon.ServiceError)(nil)).Once()
+	governance.On("RecordLogin", mock.Anything, testUserID).Return(&tidcommon.InternalServerError).Once()
+	suite.credentialsAuthenticationFor(governance)
+
+	_, svcErr := suite.service.AuthenticateWithCredentials(context.Background(),
+		map[string]interface{}{"username": "testuser"}, map[string]interface{}{"password": "testpass"}, true, "")
+
+	suite.Nil(svcErr)
+}
+
+// A refused sign-in records nothing.
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsRecordsNothingWhenRefused() {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.On("AdmitSignIn", mock.Anything, testUserID).
+		Return(providers.AccessDecision{}, (*tidcommon.ServiceError)(nil)).Once()
+	suite.credentialsAuthenticationFor(governance)
+
+	_, svcErr := suite.service.AuthenticateWithCredentials(context.Background(),
+		map[string]interface{}{"username": "testuser"}, map[string]interface{}{"password": "testpass"}, true, "")
+
+	suite.Require().NotNil(svcErr)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
+}
+
+// A disclosed reason picks the suspended or locked error.
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsStatesADisclosedHold() {
+	for reason, want := range map[providers.AccessRefusalReason]string{
+		providers.AccessRefusalReasonSuspended: authnprovidermgr.ErrorAccountSuspended.Code,
+		providers.AccessRefusalReasonLocked:    authnprovidermgr.ErrorAccountLocked.Code,
+	} {
+		governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+		governance.On("AdmitSignIn", mock.Anything, testUserID).
+			Return(providers.AccessDecision{Reason: reason}, (*tidcommon.ServiceError)(nil)).Once()
+		suite.credentialsAuthenticationFor(governance)
+
+		_, svcErr := suite.service.AuthenticateWithCredentials(context.Background(),
+			map[string]interface{}{"username": "testuser"}, map[string]interface{}{"password": "testpass"}, true, "")
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(want, svcErr.Code, "reason %s", reason)
+	}
 }

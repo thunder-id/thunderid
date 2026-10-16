@@ -71,6 +71,23 @@ export type {NameSuggestionProps} from './lab/components/NameSuggestion';
 export {default as PageLoadingAnimation} from './lab/components/PageLoadingAnimation';
 export {default as ResourceAvatar} from './lab/components/ResourceAvatar';
 export {default as SettingsCard} from './lab/components/SettingsCard';
+
+// Account status and the identity lifecycle operations
+export {default as AccessStatusIndicator} from './AccountStatus/AccessStatusIndicator';
+export type {AccessStatusIndicatorProps} from './AccountStatus/AccessStatusIndicator';
+export {default as AccessStatusBanner} from './AccountStatus/AccessStatusBanner';
+export type {AccessStatusBannerProps} from './AccountStatus/AccessStatusBanner';
+export {default as AccountStatusAction} from './AccountStatus/AccountStatusAction';
+export type {AccountStatusActionProps} from './AccountStatus/AccountStatusAction';
+export {
+  default as useLifecycleActions,
+  LIFECYCLE_FLOW_PURPOSES,
+  LIFECYCLE_FLOWS_QUERY_KEY,
+} from './AccountStatus/useLifecycleActions';
+export type {LifecycleActions} from './AccountStatus/useLifecycleActions';
+export {default as useLifecycleAction} from './AccountStatus/useLifecycleAction';
+export type {LifecycleActionVariables} from './AccountStatus/useLifecycleAction';
+export type {LifecycleAction} from './AccountStatus/lifecycleAction';
 export {default as UnsavedChangesBar} from './lab/components/UnsavedChangesBar';
 
 // Utils

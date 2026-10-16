@@ -22,7 +22,7 @@ func TestGetConfig_EmptyLayersSerializeToArrays(t *testing.T) {
 	store.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
 
 	svc := newServerConfigService(store,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}})
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}}, nil)
 
 	layers, svcErr := svc.GetConfig(context.Background(), ConfigNameCORS)
 	require.Nil(t, svcErr)

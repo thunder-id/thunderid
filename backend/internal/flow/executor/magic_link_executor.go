@@ -30,6 +30,7 @@ type magicLinkExecutor struct {
 	entityProvider   entityprovider.EntityProviderInterface
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface
 	authnProvider    providers.AuthnProviderManager
+	accessGuard      *accessGuard
 	logger           *log.Logger
 }
 
@@ -51,6 +52,7 @@ func newMagicLinkExecutor(
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
+	governance providers.IdentityGovernanceProvider,
 ) *magicLinkExecutor {
 	defaultInputs := []providers.Input{{
 		Ref:        "magic_link_token_input",
@@ -64,7 +66,7 @@ func newMagicLinkExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameMagicLink))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameMagicLink, defaultInputs, prerequisites,
-		flowFactory, entityProvider, nil)
+		flowFactory, entityProvider, nil, nil)
 	base := flowFactory.CreateExecutor(ExecutorNameMagicLink, providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites, &providers.ExecutorMeta{
 			SupportedModes: []string{ExecutorModeGenerate, ExecutorModeVerify},
@@ -80,6 +82,7 @@ func newMagicLinkExecutor(
 		entityProvider:               entityProvider,
 		magicLinkService:             magicLinkService,
 		authnProvider:                authnProvider,
+		accessGuard:                  newAccessGuard(governance, logger),
 		logger:                       logger,
 	}
 }
@@ -181,6 +184,31 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 			}
 			userID = *identifiedUserID
 		}
+		// The dispatch guard, taking the branch this executor already has for a user who does not
+		// exist: skip delivery, report success. A held account and an unknown one are one response,
+		// and no link leaves. Nothing is counted, as the send is not an attempt at a secret.
+		withheld, stated, fault := m.accessGuard.heldAtDispatch(ctx.Context, userID,
+			providers.AccessScopeMagicLink, ctx.FlowType)
+		if fault != nil {
+			// Answered as a failed lookup is above: skip delivery, report success.
+			logger.Error(ctx.Context, "Failed to check the magic link recipient", log.Error(fault))
+			execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+		if withheld {
+			logger.Debug(ctx.Context, "Identity is held, completing without delivery")
+			if stated != nil {
+				// Tells the holder why no link arrived.
+				execResp.Status = providers.ExecFailure
+				execResp.Error = stated
+				return execResp, nil
+			}
+			execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+			execResp.Status = providers.ExecComplete
+			return execResp, nil
+		}
+
 		execResp.RuntimeData[userAttributeUserID] = userID
 		subject = userID
 	}
@@ -210,6 +238,10 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 
 	if destValue != "" {
 		execResp.RuntimeData[destAttr] = destValue
+	}
+	// An earlier skipped attempt in this flow left the flag set; this link is delivered.
+	if ctx.RuntimeData[common.RuntimeKeySkipDelivery] == dataValueTrue {
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = ""
 	}
 
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
@@ -326,6 +358,13 @@ func (m *magicLinkExecutor) executeVerify(ctx *providers.NodeContext) (*provider
 		ctx.Context, nil, creds, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = newAuthUser
 	if svcErr != nil {
+		// A hold takes the failed-verification branch rather than a server error. Terminal either
+		// way, as a magic link is spent.
+		if hold := statedHold(svcErr); hold != holdNone {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = hold.refusal()
+			return execResp, nil
+		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr

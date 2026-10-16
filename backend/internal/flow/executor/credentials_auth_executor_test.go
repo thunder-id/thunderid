@@ -716,3 +716,77 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_PreResolvedUser_WithP
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
 }
+
+// An undisclosed hold answers exactly as a mistyped password. A stated hold keeps the prompt with its
+// own message, so a locked holder still reaches the recovery link on the form.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_StatedHoldsDifferFromEachOther() {
+	cases := []struct {
+		name       string
+		svcErr     *tidcommon.ServiceError
+		wantStatus providers.ExecutorStatus
+		wantCode   string
+		wantInputs bool
+	}{
+		{
+			name:       "an undisclosed hold is a wrong password",
+			svcErr:     &authnprovidermgr.ErrorAuthenticationFailed,
+			wantStatus: providers.ExecUserInputRequired,
+			wantCode:   ErrInvalidCredentials.Code,
+			wantInputs: true,
+		},
+		{
+			name:       "a stated lock keeps the prompt and the exit",
+			svcErr:     &authnprovidermgr.ErrorAccountLocked,
+			wantStatus: providers.ExecUserInputRequired,
+			wantCode:   ErrAccountLocked.Code,
+			wantInputs: true,
+		},
+		{
+			name:       "a stated suspension keeps the prompt with its own message",
+			svcErr:     &authnprovidermgr.ErrorAccountSuspended,
+			wantStatus: providers.ExecUserInputRequired,
+			wantCode:   ErrAccountSuspended.Code,
+			wantInputs: true,
+		},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil), tc.svcErr)
+
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				ExecutionID: "flow-hold",
+				FlowType:    providers.FlowTypeAuthentication,
+				UserInputs: map[string]string{
+					userAttributeUsername: "testuser",
+					userAttributePassword: "correcthorse",
+				},
+				RuntimeData: make(map[string]string),
+			})
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tc.wantStatus, resp.Status)
+			assert.NotNil(suite.T(), resp.Error)
+			assert.Equal(suite.T(), tc.wantCode, resp.Error.Code)
+			if tc.wantInputs {
+				assert.NotEmpty(suite.T(), resp.Inputs)
+			} else {
+				assert.Empty(suite.T(), resp.Inputs)
+			}
+		})
+	}
+}
+
+// The stated messages are not the wrong-secret message. Without this the setting could be wired end
+// to end and still show the holder nothing new, which is what it used to do.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_StatedHoldsSaySomethingNew() {
+	assert.NotEqual(suite.T(), ErrInvalidCredentials.Error.DefaultValue,
+		ErrAccountLocked.Error.DefaultValue)
+	assert.NotEqual(suite.T(), ErrInvalidCredentials.Error.DefaultValue,
+		ErrAccountSuspended.Error.DefaultValue)
+	assert.NotEqual(suite.T(), ErrAccountLocked.Error.DefaultValue,
+		ErrAccountSuspended.Error.DefaultValue)
+}

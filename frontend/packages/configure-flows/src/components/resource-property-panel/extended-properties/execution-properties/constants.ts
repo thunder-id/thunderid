@@ -157,6 +157,36 @@ export const CRITERIA_REVOCATION_MODES = [
 ] as const;
 
 /**
+ * Available lifecycle operations for the Identity Governance executor.
+ *
+ * Must stay in step with the executor's SupportedModes in the backend
+ * (backend/internal/flow/executor/identity_governance_executor.go). The executor declares no default
+ * mode, so a node that names none cannot be saved.
+ *
+ * `image` is a lucide icon name. The mode is what the node does, so the icon moves with the label.
+ */
+export const IDENTITY_GOVERNANCE_MODES = [
+  {
+    value: 'suspend',
+    translationKey: 'flows:core.executions.identityGovernance.mode.suspend',
+    displayLabel: 'Suspend Identity',
+    image: 'ShieldBan',
+  },
+  {
+    value: 'unsuspend',
+    translationKey: 'flows:core.executions.identityGovernance.mode.unsuspend',
+    displayLabel: 'Unsuspend Identity',
+    image: 'ShieldCheck',
+  },
+  {
+    value: 'unlock',
+    translationKey: 'flows:core.executions.identityGovernance.mode.unlock',
+    displayLabel: 'Unlock Identity',
+    image: 'LockKeyholeOpen',
+  },
+] as const;
+
+/**
  * Available modes for Passkey executor.
  */
 export const PASSKEY_MODES = [
@@ -247,4 +277,6 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.AccessChangeValidator,
   ExecutionTypes.RoleExecutor,
   ExecutionTypes.GroupExecutor,
+  ExecutionTypes.PreSuspend,
+  ExecutionTypes.IdentityGovernance,
 ]);

@@ -88,7 +88,7 @@ func newProvisioningExecutor(
 		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil)
 
 	return &provisioningExecutor{
 		Executor:                     base,
@@ -538,7 +538,7 @@ func (p *provisioningExecutor) handleExistingEntity(ctx *providers.NodeContext,
 		return false, nil
 	}
 
-	existingEntity, getEntityErr := p.entityProvider.GetEntity(entityID)
+	existingEntity, getEntityErr := p.entityProvider.GetEntityProfile(entityID)
 	if getEntityErr != nil {
 		return false, errors.New("failed to retrieve the existing entity")
 	}

@@ -1568,6 +1568,50 @@ var (
 			DefaultValue: "The {{param(input)}} input is required and must not be empty",
 		},
 	}
+
+	// ErrIdentityGovernanceFailed is returned when a lifecycle operation could not be applied. It
+	// names no cause; the server log carries the mode and subject.
+	ErrIdentityGovernanceFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1112",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed",
+			DefaultValue: "Operation failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.identity_governance_failed_desc",
+			DefaultValue: "The requested account operation could not be completed",
+		},
+	}
+
+	// ErrAccountLocked and ErrAccountSuspended state the hold that refused a step. A refusal that names
+	// no hold takes the executor's ordinary failure, like a wrong secret.
+	ErrAccountLocked = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1113",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked",
+			DefaultValue: "Account locked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_locked_desc",
+			DefaultValue: "This account is locked",
+		},
+	}
+
+	// ErrAccountSuspended names no way back, because there is none that the holder can take.
+	ErrAccountSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1114",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended",
+			DefaultValue: "Account suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.account_suspended_desc",
+			DefaultValue: "This account is suspended. Contact an administrator",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -124,8 +125,15 @@ func authenticate(
 
 	oauthApp, svcErr := actorProvider.GetOAuthClientByClientID(ctx, clientID)
 	if svcErr != nil {
-		logger.Error(ctx, "Failed to retrieve OAuth client",
-			log.String("error", svcErr.Error.DefaultValue), log.MaskedString("clientID", clientID))
+		// Every resolution failure, held or unregistered, folds into one invalid_client answer.
+		// Logged at debug, since a client error is the caller's doing.
+		if svcErr.Type == tidcommon.ClientErrorType {
+			logger.Debug(ctx, "Refusing client authentication: the client did not resolve",
+				log.MaskedString("clientID", clientID))
+		} else {
+			logger.Error(ctx, "Failed to retrieve OAuth client",
+				log.String("error", svcErr.Error.DefaultValue), log.MaskedString("clientID", clientID))
+		}
 		return nil, errInvalidClientCredentials
 	}
 	if oauthApp == nil {
