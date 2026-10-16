@@ -15,6 +15,11 @@
       "outputs": ["dist/**"],
       "inputs": ["$TURBO_DEFAULT$", "src/data/sample-bundles/**"]
     },
+    "@thunderid/console-cp#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "inputs": ["$TURBO_DEFAULT$", "src/data/sample-bundles/**"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

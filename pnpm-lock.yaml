@@ -690,6 +690,9 @@ importers:
       '@thunderid/configure-notification-templates':
         specifier: workspace:^
         version: link:../../packages/configure-notification-templates
+      '@thunderid/configure-onboarding':
+        specifier: workspace:^
+        version: link:../../packages/configure-onboarding
       '@thunderid/configure-organization-units':
         specifier: workspace:^
         version: link:../../packages/configure-organization-units
@@ -861,7 +864,7 @@ importers:
         version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       babel-plugin-react-compiler:
         specifier: 'catalog:'
         version: 19.1.0-rc.3
@@ -885,7 +888,293 @@ importers:
         version: 5.2.0(supports-color@10.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+
+  frontend/apps/console-cp:
+    dependencies:
+      '@dnd-kit/abstract':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/collision':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/dom':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/helpers':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/react':
+        specifier: 0.4.0
+        version: 0.4.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@emotion/cache':
+        specifier: ^11.14.0
+        version: 11.14.0
+      '@emotion/react':
+        specifier: ^11.14.0
+        version: 11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2)
+      '@hookform/resolvers':
+        specifier: 'catalog:'
+        version: 5.2.2(react-hook-form@7.65.0(react@19.2.3))(zod@4.3.6)
+      '@lexical/html':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/link':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/react':
+        specifier: 0.38.2
+        version: 0.38.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yjs@13.6.30)
+      '@lexical/rich-text':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/selection':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/utils':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@monaco-editor/react':
+        specifier: 'catalog:'
+        version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@tanstack/react-query-devtools':
+        specifier: 'catalog:'
+        version: 5.90.2(@tanstack/react-query@5.90.5(react@19.2.3))(react@19.2.3)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../../packages/components
+      '@thunderid/configure-agent-types':
+        specifier: workspace:^
+        version: link:../../packages/configure-agent-types
+      '@thunderid/configure-agents':
+        specifier: workspace:^
+        version: link:../../packages/configure-agents
+      '@thunderid/configure-applications':
+        specifier: workspace:^
+        version: link:../../packages/configure-applications
+      '@thunderid/configure-connections':
+        specifier: workspace:^
+        version: link:../../packages/configure-connections
+      '@thunderid/configure-design':
+        specifier: workspace:^
+        version: link:../../packages/configure-design
+      '@thunderid/configure-flows':
+        specifier: workspace:^
+        version: link:../../packages/configure-flows
+      '@thunderid/configure-gateways':
+        specifier: workspace:^
+        version: link:../../packages/configure-gateways
+      '@thunderid/configure-groups':
+        specifier: workspace:^
+        version: link:../../packages/configure-groups
+      '@thunderid/configure-import-export':
+        specifier: workspace:^
+        version: link:../../packages/configure-import-export
+      '@thunderid/configure-notification-templates':
+        specifier: workspace:^
+        version: link:../../packages/configure-notification-templates
+      '@thunderid/configure-onboarding':
+        specifier: workspace:^
+        version: link:../../packages/configure-onboarding
+      '@thunderid/configure-organization-units':
+        specifier: workspace:^
+        version: link:../../packages/configure-organization-units
+      '@thunderid/configure-resource-servers':
+        specifier: workspace:^
+        version: link:../../packages/configure-resource-servers
+      '@thunderid/configure-roles':
+        specifier: workspace:^
+        version: link:../../packages/configure-roles
+      '@thunderid/configure-settings':
+        specifier: workspace:^
+        version: link:../../packages/configure-settings
+      '@thunderid/configure-translations':
+        specifier: workspace:^
+        version: link:../../packages/configure-translations
+      '@thunderid/configure-user-types':
+        specifier: workspace:^
+        version: link:../../packages/configure-user-types
+      '@thunderid/configure-users':
+        specifier: workspace:^
+        version: link:../../packages/configure-users
+      '@thunderid/configure-verifiable-credentials':
+        specifier: workspace:^
+        version: link:../../packages/configure-verifiable-credentials
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../../packages/contexts
+      '@thunderid/design':
+        specifier: workspace:^
+        version: link:../../packages/design
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../../packages/hooks
+      '@thunderid/i18n':
+        specifier: workspace:^
+        version: link:../../packages/i18n
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../../packages/logger
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.3.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@thunderid/react-router':
+        specifier: 'catalog:'
+        version: 1.2.2(@thunderid/browser@1.2.2)(@thunderid/react@1.3.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2))(react-router@8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../../packages/utils
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.13.1(react@19.2.3)
+      '@xyflow/react':
+        specifier: 12.9.2
+        version: 12.9.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@xyflow/system':
+        specifier: ^0.0.72
+        version: 0.0.72
+      classnames:
+        specifier: 2.5.1
+        version: 2.5.1
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
+      dayjs:
+        specifier: 'catalog:'
+        version: 1.11.18
+      dompurify:
+        specifier: '>=3.4.13'
+        version: 3.4.14
+      elkjs:
+        specifier: ^0.11.0
+        version: 0.11.1
+      framer-motion:
+        specifier: 'catalog:'
+        version: 12.39.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      html-react-parser:
+        specifier: 5.2.10
+        version: 5.2.10(@types/react@19.2.14)(react@19.2.3)
+      i18next:
+        specifier: 25.6.0
+        version: 25.6.0(typescript@5.9.3)
+      lexical:
+        specifier: 0.38.2
+        version: 0.38.2
+      lodash-es:
+        specifier: 'catalog:'
+        version: 4.18.1
+      monaco-editor:
+        specifier: ^0.55.1
+        version: 0.55.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      react-hook-form:
+        specifier: 'catalog:'
+        version: 7.65.0(react@19.2.3)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      react-syntax-highlighter:
+        specifier: ^16.1.0
+        version: 16.1.1(react@19.2.3)
+      yaml:
+        specifier: 2.8.3
+        version: 2.8.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.6
+    devDependencies:
+      '@codecov/vite-plugin':
+        specifier: 'catalog:'
+        version: 2.0.1(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@rolldown/plugin-babel':
+        specifier: 'catalog:'
+        version: 0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/build-plugins':
+        specifier: workspace:^
+        version: link:../../packages/build-plugins
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../../packages/eslint-plugin
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../../packages/prettier-config
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../../packages/test-utils
+      '@thunderid/types':
+        specifier: workspace:^
+        version: link:../../packages/types
+      '@types/lodash-es':
+        specifier: 'catalog:'
+        version: 4.17.12
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.14)
+      '@types/react-syntax-highlighter':
+        specifier: ^15.5.13
+        version: 15.5.13
+      '@vitejs/plugin-basic-ssl':
+        specifier: 'catalog:'
+        version: 2.3.0(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
+      babel-plugin-react-compiler:
+        specifier: 'catalog:'
+        version: 19.1.0-rc.3
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      jsdom:
+        specifier: 'catalog:'
+        version: 27.0.1(supports-color@10.2.2)
+      rollup-plugin-visualizer:
+        specifier: 'catalog:'
+        version: 6.0.5(rolldown@1.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 8.0.16
+        version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
+      vite-plugin-svgr:
+        specifier: 'catalog:'
+        version: 5.2.0(supports-color@10.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest:
+        specifier: '>=4.1.0'
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/apps/gate:
     dependencies:
@@ -994,7 +1283,7 @@ importers:
         version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       babel-plugin-react-compiler:
         specifier: 'catalog:'
         version: 19.1.0-rc.3
@@ -1021,7 +1310,7 @@ importers:
         version: 5.2.0(supports-color@10.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/build-plugins:
     devDependencies:
@@ -1036,7 +1325,7 @@ importers:
         version: 24.7.2
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -1057,7 +1346,7 @@ importers:
         version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/components:
     dependencies:
@@ -1127,10 +1416,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -1157,7 +1446,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-agent-types:
     dependencies:
@@ -1227,10 +1516,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -1257,7 +1546,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-agents:
     devDependencies:
@@ -1335,10 +1624,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -1386,7 +1675,7 @@ importers:
         version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-applications:
     devDependencies:
@@ -1470,10 +1759,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -1524,7 +1813,7 @@ importers:
         version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       zod:
         specifier: 'catalog:'
         version: 4.3.6
@@ -1600,10 +1889,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -1630,7 +1919,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-design:
     devDependencies:
@@ -1705,10 +1994,10 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -1750,7 +2039,7 @@ importers:
         version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-flows:
     devDependencies:
@@ -1870,10 +2159,10 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -1945,10 +2234,109 @@ importers:
         version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       zod:
         specifier: 'catalog:'
         version: 4.3.6
+
+  frontend/packages/configure-gateways:
+    devDependencies:
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../components
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../contexts
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../eslint-plugin
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@thunderid/i18n':
+        specifier: workspace:^
+        version: link:../i18n
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.3.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../test-utils
+      '@thunderid/types':
+        specifier: workspace:^
+        version: link:../types
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.13.1(react@19.2.3)
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      prettier:
+        specifier: 'catalog:'
+        version: 3.6.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.0.0-beta.45(@emnapi/core@1.10.0)(@emnapi/runtime@1.11.3)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: '>=4.1.0'
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-groups:
     devDependencies:
@@ -2014,10 +2402,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -2056,7 +2444,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-import-export:
     devDependencies:
@@ -2113,10 +2501,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -2158,7 +2546,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       yaml:
         specifier: 2.8.3
         version: 2.8.3
@@ -2240,10 +2628,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -2270,7 +2658,118 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+
+  frontend/packages/configure-onboarding:
+    devDependencies:
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../components
+      '@thunderid/configure-applications':
+        specifier: workspace:^
+        version: link:../configure-applications
+      '@thunderid/configure-import-export':
+        specifier: workspace:^
+        version: link:../configure-import-export
+      '@thunderid/configure-users':
+        specifier: workspace:^
+        version: link:../configure-users
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../contexts
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../eslint-plugin
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@thunderid/i18n':
+        specifier: workspace:^
+        version: link:../i18n
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../logger
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.3.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../test-utils
+      '@thunderid/types':
+        specifier: workspace:^
+        version: link:../types
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.13.1(react@19.2.3)
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      framer-motion:
+        specifier: 'catalog:'
+        version: 12.39.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      prettier:
+        specifier: 'catalog:'
+        version: 3.6.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      rolldown:
+        specifier: 'catalog:'
+        version: 1.0.0-beta.45(@emnapi/core@1.10.0)(@emnapi/runtime@1.11.3)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: '>=4.1.0'
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-organization-units:
     dependencies:
@@ -2355,10 +2854,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -2388,7 +2887,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-resource-servers:
     dependencies:
@@ -2473,10 +2972,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -2503,7 +3002,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-roles:
     devDependencies:
@@ -2575,10 +3074,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -2617,7 +3116,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-settings:
     devDependencies:
@@ -2665,10 +3164,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -2704,7 +3203,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-translations:
     dependencies:
@@ -2777,10 +3276,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -2807,7 +3306,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-user-types:
     dependencies:
@@ -2895,10 +3394,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -2925,7 +3424,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-users:
     dependencies:
@@ -3013,10 +3512,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3043,7 +3542,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/configure-verifiable-credentials:
     devDependencies:
@@ -3103,10 +3602,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -3145,7 +3644,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/contexts:
     dependencies:
@@ -3176,10 +3675,10 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       '@wso2/oxygen-ui':
         specifier: 'catalog:'
         version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
@@ -3209,7 +3708,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/create:
     dependencies:
@@ -3249,7 +3748,7 @@ importers:
         version: 24.7.2
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3264,7 +3763,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/design:
     dependencies:
@@ -3340,10 +3839,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3373,7 +3872,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/eslint-plugin:
     dependencies:
@@ -3388,7 +3887,7 @@ importers:
         version: 8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)
       '@vitest/eslint-plugin':
         specifier: 1.6.13
-        version: 1.6.13(@typescript-eslint/eslint-plugin@8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)(vitest@4.1.10)
+        version: 1.6.13(@typescript-eslint/eslint-plugin@8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)(vitest@4.1.7)
       eslint-config-prettier:
         specifier: 10.1.8
         version: 10.1.8(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))
@@ -3443,7 +3942,7 @@ importers:
         version: 24.7.2
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3461,7 +3960,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/hooks:
     dependencies:
@@ -3498,10 +3997,10 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3531,7 +4030,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/i18n:
     dependencies:
@@ -3571,7 +4070,7 @@ importers:
         version: 19.2.14
       '@vitest/browser-playwright':
         specifier: 'catalog:'
-        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+        version: 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3589,7 +4088,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/logger:
     dependencies:
@@ -3629,7 +4128,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/prettier-config:
     dependencies:
@@ -3654,7 +4153,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/test-utils:
     dependencies:
@@ -3733,7 +4232,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/types:
     devDependencies:
@@ -3751,7 +4250,7 @@ importers:
         version: 24.7.2
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3769,7 +4268,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   frontend/packages/utils:
     dependencies:
@@ -3794,7 +4293,7 @@ importers:
         version: 24.7.2
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
-        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
@@ -3812,7 +4311,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: '>=4.1.0'
-        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+        version: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
   samples/apps/agentid-playground: {}
 
@@ -4019,7 +4518,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: ^22.15.19
-        version: 22.20.1
+        version: 22.19.19
 
   samples/apps/wayfinder-sample/backend:
     dependencies:
@@ -8087,8 +8586,8 @@ packages:
   '@types/node@17.0.45':
     resolution: {integrity: sha512-w+tIMs3rq2afQdsPJlODhoUEKzFP1ayaoyl1CcnwtIlsVe7K7bA1NGm4s3PraqTLlXnbIN84zuBlxBWo1u9BLw==}
 
-  '@types/node@22.20.1':
-    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+  '@types/node@22.19.19':
+    resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
 
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
@@ -8458,8 +8957,8 @@ packages:
       vitest:
         optional: true
 
-  '@vitest/expect@4.1.10':
-    resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
+  '@vitest/expect@4.1.7':
+    resolution: {integrity: sha512-1R+tw0ortHEbZDGMymm+pN7/AFQ/RkFFdtd7EN+VBpynKmLbP8A3rpEXdshBJ7+8hQ9zBJh/i1s0yKNtxAnU7w==}
 
   '@vitest/mocker@4.1.10':
     resolution: {integrity: sha512-v0xaezt+DKEmKfaxg133ldzADrwLGd7Ze1MfQQTYfvs8OqZIwbxyxaYURivwV7sWy5fqn3rH5uOrSp07bp44Ow==}
@@ -8472,20 +8971,40 @@ packages:
       vite:
         optional: true
 
+  '@vitest/mocker@4.1.7':
+    resolution: {integrity: sha512-vY7nuamKgfvpA1Koa3oYIw/k7D6kZnpGyNMZW8loow2bsBYla1TFdqTaXncWdRn4pgwNs+90RhnXhJScDwQeJA==}
+    peerDependencies:
+      msw: ^2.4.9
+      vite: '>=8.0.16'
+    peerDependenciesMeta:
+      msw:
+        optional: true
+      vite:
+        optional: true
+
   '@vitest/pretty-format@4.1.10':
     resolution: {integrity: sha512-W1HsjSH4MXQ9YfmmhLAoIYf1HRfekQCGngeIgcei6MP5QQGWUe0gkopdZQaVCFO+JDJMrAJGwa5pRpNpvy4P8Q==}
 
-  '@vitest/runner@4.1.10':
-    resolution: {integrity: sha512-IKI6kpIH+LmpROplyLwBBaCfMgOZOMsygVa6BARD6ahA04VRuJSa6OaVG7kRvSEMD870Vd91rSSw0eegtWyLGg==}
+  '@vitest/pretty-format@4.1.7':
+    resolution: {integrity: sha512-umgCarTOYQWIaDMvGDRZij+6b9oVeLIyJzfN+AS88e0ZOU3QTgNNSTtjQOpcvWr3np1N0j4WgZj+sb3oYBDscw==}
 
-  '@vitest/snapshot@4.1.10':
-    resolution: {integrity: sha512-xRkfOT1qpTAi/Ti4Y1LtfRc3kEuqxGw59eN2jN9pRWMtS/XDevekhcFSqvQqjUNGksfjMJu3Y+oJ+4Ypn2OaJw==}
+  '@vitest/runner@4.1.7':
+    resolution: {integrity: sha512-BapjmAQ2aI78WdMEfeUWivnfVzB+VPGwWRQcJE0OUq7qEeEcBsCSf+0T5iREBNE5nBb4wA5Ya0W6IA+sghdEFw==}
+
+  '@vitest/snapshot@4.1.7':
+    resolution: {integrity: sha512-ZacLzja+TmJeZ1h14xW2FB/WpeimUD3haBXQPyJqxvo8jQTmfeA8zv58mtjN2C7EHXZDYVcVYdYmAxjkWVvKCw==}
 
   '@vitest/spy@4.1.10':
     resolution: {integrity: sha512-PLf/Ugvoq5wO/b4rwYCR1h2PSIdXz7wnkQFMiUpLdtM7l6pqVFcQIBEHyT1+l+cj7mNwAfZHzqXqDyjvOuwbDw==}
 
+  '@vitest/spy@4.1.7':
+    resolution: {integrity: sha512-kbkI5LMWakyuTIvs6fUJ5qdIVb1XVKsYJAT4OJ938cHMROYMSfmoQdZy0aaAnjbbc8F61vkoTqz/Az+/HiIu5Q==}
+
   '@vitest/utils@4.1.10':
     resolution: {integrity: sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA==}
+
+  '@vitest/utils@4.1.7':
+    resolution: {integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==}
 
   '@vue/compiler-core@3.5.42':
     resolution: {integrity: sha512-2Ye1ilMtKXxl8qZUrQ5j0CdgenFp/HFQmta6rfRyfEsTG69L6Wk+tWuNoHYHMx9E8tF2Slvdg1FuwDvAXdy1LQ==}
@@ -14501,20 +15020,20 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.10:
-    resolution: {integrity: sha512-R9jUTe5S4Qb0HCd4TNqpC7oGcrMssMRGXLW80ubjWsW9VH5GF8y1Y0SFLY9AbqSk6nt0PnOx4H4WNJYZ13GUPw==}
+  vitest@4.1.7:
+    resolution: {integrity: sha512-flYyaFd2CgoCoU+0UKt3pxksgC+S02iTDN0n3LtqaMeXsI9SBcdNujc2k0DeFLzUn/0k538yNjOSdwgCqcrwJA==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.10
-      '@vitest/browser-preview': 4.1.10
-      '@vitest/browser-webdriverio': 4.1.10
-      '@vitest/coverage-istanbul': 4.1.10
-      '@vitest/coverage-v8': 4.1.10
-      '@vitest/ui': 4.1.10
+      '@vitest/browser-playwright': 4.1.7
+      '@vitest/browser-preview': 4.1.7
+      '@vitest/browser-webdriverio': 4.1.7
+      '@vitest/coverage-istanbul': 4.1.7
+      '@vitest/coverage-v8': 4.1.7
+      '@vitest/ui': 4.1.7
       happy-dom: '*'
       jsdom: '*'
       vite: 8.0.16
@@ -20351,7 +20870,7 @@ snapshots:
 
   '@types/node@17.0.45': {}
 
-  '@types/node@22.20.1':
+  '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
 
@@ -20784,20 +21303,20 @@ snapshots:
       '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       babel-plugin-react-compiler: 19.1.0-rc.3
 
-  '@vitest/browser-playwright@4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)':
+  '@vitest/browser-playwright@4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)':
     dependencies:
-      '@vitest/browser': 4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
+      '@vitest/browser': 4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
       '@vitest/mocker': 4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       playwright: 1.60.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)':
+  '@vitest/browser@4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)':
     dependencies:
       '@blazediff/core': 1.9.1
       '@vitest/mocker': 4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
@@ -20806,7 +21325,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
@@ -20814,7 +21333,7 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/coverage-istanbul@4.1.10(supports-color@10.2.2)(vitest@4.1.10)':
+  '@vitest/coverage-istanbul@4.1.10(supports-color@10.2.2)(vitest@4.1.7)':
     dependencies:
       '@babel/core': 7.29.7(supports-color@10.2.2)
       '@istanbuljs/schema': 0.1.6
@@ -20826,11 +21345,11 @@ snapshots:
       magicast: 0.5.2
       obug: 2.1.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/eslint-plugin@1.6.13(@typescript-eslint/eslint-plugin@8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)(vitest@4.1.10)':
+  '@vitest/eslint-plugin@1.6.13(@typescript-eslint/eslint-plugin@8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)(vitest@4.1.7)':
     dependencies:
       '@typescript-eslint/scope-manager': 8.59.3
       '@typescript-eslint/utils': 8.59.3(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)
@@ -20838,16 +21357,16 @@ snapshots:
     optionalDependencies:
       '@typescript-eslint/eslint-plugin': 8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@5.9.3)
       typescript: 5.9.3
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/expect@4.1.10':
+  '@vitest/expect@4.1.7':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
+      '@vitest/spy': 4.1.7
+      '@vitest/utils': 4.1.7
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
@@ -20859,27 +21378,47 @@ snapshots:
     optionalDependencies:
       vite: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
 
+  '@vitest/mocker@4.1.7(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
+    dependencies:
+      '@vitest/spy': 4.1.7
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
+
   '@vitest/pretty-format@4.1.10':
     dependencies:
       tinyrainbow: 3.1.0
 
-  '@vitest/runner@4.1.10':
+  '@vitest/pretty-format@4.1.7':
     dependencies:
-      '@vitest/utils': 4.1.10
+      tinyrainbow: 3.1.0
+
+  '@vitest/runner@4.1.7':
+    dependencies:
+      '@vitest/utils': 4.1.7
       pathe: 2.0.3
 
-  '@vitest/snapshot@4.1.10':
+  '@vitest/snapshot@4.1.7':
     dependencies:
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/utils': 4.1.10
+      '@vitest/pretty-format': 4.1.7
+      '@vitest/utils': 4.1.7
       magic-string: 0.30.21
       pathe: 2.0.3
 
   '@vitest/spy@4.1.10': {}
 
+  '@vitest/spy@4.1.7': {}
+
   '@vitest/utils@4.1.10':
     dependencies:
       '@vitest/pretty-format': 4.1.10
+      convert-source-map: 2.0.0
+      tinyrainbow: 3.1.0
+
+  '@vitest/utils@4.1.7':
+    dependencies:
+      '@vitest/pretty-format': 4.1.7
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
@@ -27990,15 +28529,15 @@ snapshots:
       tsx: 4.22.4
       yaml: 2.8.3
 
-  vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)):
+  vitest@4.1.7(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)):
     dependencies:
-      '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/runner': 4.1.10
-      '@vitest/snapshot': 4.1.10
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
+      '@vitest/expect': 4.1.7
+      '@vitest/mocker': 4.1.7(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitest/pretty-format': 4.1.7
+      '@vitest/runner': 4.1.7
+      '@vitest/snapshot': 4.1.7
+      '@vitest/spy': 4.1.7
+      '@vitest/utils': 4.1.7
       es-module-lexer: 2.1.0
       expect-type: 1.3.0
       magic-string: 0.30.21
@@ -28015,8 +28554,8 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
       '@types/node': 24.7.2
-      '@vitest/browser-playwright': 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.10)
-      '@vitest/coverage-istanbul': 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+      '@vitest/browser-playwright': 4.1.10(playwright@1.60.0)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))(vitest@4.1.7)
+      '@vitest/coverage-istanbul': 4.1.10(supports-color@10.2.2)(vitest@4.1.7)
       jsdom: 27.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - msw

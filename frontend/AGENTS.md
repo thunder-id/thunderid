@@ -1,8 +1,9 @@
 # Frontend — Agent Guide
 
-Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with two React apps —
-`frontend/apps/console` (admin console) and `frontend/apps/gate` (login, registration, recovery) — plus shared and
-feature packages under `frontend/packages/`.
+Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo under `frontend/` with three React apps,
+`frontend/apps/console` (admin console), `frontend/apps/console-cp` (the console the control plane serves: the same
+shell plus gateway management, with every administration operation running natively rather than through a flow) and
+`frontend/apps/gate` (login, registration, recovery), plus shared and feature packages under `frontend/packages/`.
 
 For feature-package layout and app boundaries, see the
 [Frontend Development overview](../docs/community/contributing/contributing-code/frontend-development/overview.mdx).
