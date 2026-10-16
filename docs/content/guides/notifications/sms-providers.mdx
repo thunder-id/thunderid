@@ -78,9 +78,9 @@ so do not add `Authorization` under **Other HTTP headers** when either method is
 
 #### Customize the Gateway Request Body
 
-<ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
+<ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template body as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
 
-To change the request body, edit the SMS template for the scenario your flow uses, such as `sms_otp.yaml` for the `OTP` scenario. Templates load at startup, so restart the server after editing one.
+To change the request body, edit the SMS template your flow uses (for example the `otp` template) from the Console under **Customize → Notifications → SMS Templates**, or through the [Notification Templates API](./templates#api). Changes take effect immediately, with no restart.
 
 For a connection with `contentType` set to `JSON`, write the template body as the JSON object your gateway accepts:
 
@@ -96,7 +96,7 @@ body: |
   message=Your verification code is {{ctx(otpCode)}}
 ```
 
-Keep the template's `contentType` set to `text/plain`. With `text/html`, <ProductName /> escapes HTML characters in substituted values, which breaks JSON quoting.
+SMS bodies are sent as plain text, and `{{ctx(...)}}` values are substituted without HTML escaping, so JSON quoting and form syntax are preserved.
 
 ## Update an SMS Provider
 

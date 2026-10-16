@@ -214,7 +214,7 @@ The recovery flow drives [Account Recovery](../try-it-out/account-recovery). It:
 - Verifies the token from the email link.
 - Lands the user on a **Set new password** screen and updates the credential.
 
-The recovery flow sends its email through an email provider, so create the provider before the flow.
+The recovery flow sends its email through an email provider, so create the provider before the flow. The email node names its template by handle in its `emailTemplate` property; to tailor that email's wording, localization, and branding, see [Customize Notifications](../build-notifications).
 
 <Stepper stepNode="h3" as="h3">
 

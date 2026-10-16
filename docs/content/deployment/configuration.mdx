@@ -38,6 +38,7 @@ Controls the <ProductName /> server's network settings and identity.
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
 | `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. The number is never less than one. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
+| `notification.template.store` | `mutable` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
 
 Resources are stored against this identifier, so it is fixed for the life of a deployment's data.
 
@@ -687,7 +688,7 @@ declarativeResources:
 `singleFile.keys` and `configMap.items` / `secret.items` are mutually exclusive.
 :::
 
-Templates (email and other templated content) are now supported as a declarative resource. See the templates guide for schema, examples, and the configured directory location: [Template declarative resources](../guides/declarative-configurations/templates.mdx).
+Notification templates (email and SMS) are managed at runtime and are also supported as declarative resources (`resource_type: notification_template`). See [Notification Templates](../guides/notifications/templates.mdx) for authoring and Console management, and [Import Declarative Resources](../guides/declarative-configurations/import-resources.mdx#notification-templates) for the declarative schema.
 
 ## Resource Configuration
 

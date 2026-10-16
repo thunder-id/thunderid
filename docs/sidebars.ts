@@ -160,6 +160,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/build-users', label: 'Model Your Users'},
                 {type: 'doc', id: 'use-cases/b2c/build-access', label: 'Define Access'},
                 {type: 'doc', id: 'use-cases/b2c/build-flows', label: 'Build the Flows'},
+                {type: 'doc', id: 'use-cases/b2c/build-notifications', label: 'Customize Notifications'},
                 {type: 'doc', id: 'use-cases/b2c/build-application', label: 'Register the Application'},
                 {type: 'doc', id: 'use-cases/b2c/build-onboarding', label: 'Onboard Internal Staff'},
                 {type: 'doc', id: 'use-cases/b2c/build-sessions', label: 'Keep Them Signed In'},

@@ -1,55 +1,36 @@
 ---
 title: Template Resources
 docType: reference
-description: Learn about Template Resources and how to apply it in configuration, integration, and operational workflows.
+description: Declare a notification template as a resource, keyed by its channel and handle, so it is created or updated with the rest of your configuration.
 sidebar_position: 4
 ---
 
 # Template Resources
 
-<ProductName /> supports loading templated content (for example: email templates) as declarative resources at startup. Templates are YAML files placed under the configured templates directory and are loaded into the `template` service used by executors (e.g., EmailExecutor).
+A notification template is a declarative resource. <ProductName /> stores templates in its database and manages them at runtime, and `resource_type: notification_template` is how you create or update one from a configuration file rather than the Console or API.
 
-Where to place files
-
-- Templates are loaded from `templates` under the config resources directory. When running from a container the path is `/app/config/resources/templates`.
-
-YAML schema (minimal example)
+A template is keyed by its channel and handle. The handle is unique within a channel and does not change after creation, so importing a document with the same `(channel, handle)` and `upsert` enabled updates the existing template, while a new handle creates one.
 
 ```yaml
-id: invite-email
-displayName: "User invitation email"
-scenario: USER_INVITE
-type: email
-subject: "You're invited"
-contentType: "text/html"
-body: |
-  Hi,
-  Click here to join: {{ctx(inviteLink)}}
+resource_type: notification_template
+channel: email
+handle: user-invite
+ouHandle: default
+displayName: User Invitation Email
+content:
+  subject: "{{t(userInvite.email.subject)}}"
+  body: "<p>{{t(userInvite.email.body)}}</p><p>{{ctx(inviteLink)}}</p>"
+design:
+  colorScheme: light
 ```
 
-Required fields
+An `email` template carries a `subject` and may set a `design`; an `sms` template carries a `body` only, and a subject or design on it is rejected. For the full field reference and an SMS example, see the [`notification_template` resource](./import-resources#notification-templates).
 
-- `id`: unique template identifier
-- `displayName`: human-friendly name
-- `scenario`: scenario type (see supported values below)
-- `type`: template type (e.g., `email`)
-- `subject`: subject used when sending emails
-- `contentType`: MIME type, e.g. `text/plain` or `text/html`
-- `body`: template body using `{{ctx(key)}}` syntax for placeholder substitution
+Whether a declared template can also be edited through the API and Console depends on `notification.template.store`. With `mutable`, the default, declared templates are imported into the database and stay editable. With `declarative`, templates come from files alone and writes through the API are refused. With `composite`, file-declared templates are read-only alongside editable database templates.
 
-Supported scenarios
+This resource replaces the earlier file-based template store, which loaded templates keyed by `scenario` and `type` from a `templates` directory at startup. A template is now addressed by `(channel, handle)`, and the `scenario` and `type` fields no longer apply.
 
-- `USER_INVITE`: used during the user invite flow
+## See Also
 
-Supported context placeholders
-
-- `{{ctx(inviteLink)}}`: the invite link for user registration
-
-Notes
-
-- Templates are validated at load time. Unknown or invalid scenarios will cause initialization to fail.
-- Template rendering uses `{{ctx(key)}}` placeholders which are substituted with context data at render time.
-
-Examples and usage
-
-Place example YAML files in the configured templates directory and restart server. The executor will fetch templates by scenario and render them with provided template data.
+- [Notification Templates](../notifications/templates) for authoring content, placeholders, and Console management.
+- [Import Declarative Resources](./import-resources) for the import model, variables, and deletions.

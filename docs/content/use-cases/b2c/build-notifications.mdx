@@ -1,0 +1,45 @@
+---
+title: Customize Notifications
+docType: use-case
+sidebar_position: 5
+description: Tailor the email and SMS messages your consumer flows send, with your own wording, branding, and language, without editing server files.
+---
+
+# Customize Notifications
+
+The flows you built send messages: the recovery flow emails a reset link, and a sign-in flow can email or text a one-time code. You can tailor what those messages say and how they look, at runtime through the Console or the management API, instead of editing files on the server. For the content format and the runtime values each message can use, see the [Notification Templates](../../../guides/notifications/templates) guide.
+
+## Notification Templates
+
+A notification template is the content <ProductName /> sends on one channel for one purpose, so the password recovery email and the SMS one-time code are two separate templates. Each belongs to a channel, `email` or `sms`, and carries a stable **handle**, such as `password-recovery` or `otp`, that a flow node uses to pick it. A template <ProductName /> ships and one an administrator creates are the same kind of resource, and the defaults are preloaded at installation.
+
+The content is written once and stays language-neutral. Instead of a copy per language, it references translation keys, so the Translation feature supplies the wording when the message is sent. Branding stays out of the content too: an email body references design tokens that the [Design](../../../guides/design/overview) feature resolves against your theme, so one design change covers every email, while SMS carries no branding.
+
+## Working with a Template
+
+Every template is handled the same way, whether it shipped by default or an administrator creates it. Managing templates requires administrative authorization. To author and use one:
+
+<Stepper stepNode="h3" as="h3">
+
+### Manage the content
+
+Create a template for a purpose the product does not cover yet, or open a preloaded one, then edit its content. An email template has a subject and an HTML body; an SMS template a plain-text body. Write the wording as `{{t(...)}}` translation keys, add `{{design(...)}}` tokens in an email body for colors drawn from your theme, and use `{{ctx(...)}}` for the values the flow provides at send time, such as `otpCode`. A placeholder that could not resolve is rejected when you save, so a broken template never reaches production.
+
+### Engage it in a flow
+
+A flow's email or SMS node sends a template by naming its handle in the node's `emailTemplate` property. The recovery flow's email node names the `password-recovery` handle (see [Build the Flows](../build-flows#build-the-account-recovery-flow)), so reaching that node sends the template. Preloaded templates are already named by the flows that use them.
+
+### Preview the notification
+
+Check the resolved content for a chosen language and design theme, with `{{ctx(...)}}` shown as-is, before it goes out, so a broken layout or a missing translation surfaces while you edit rather than in a customer's inbox.
+
+</Stepper>
+
+## How It Works
+
+When a flow reaches a node that sends a notification, <ProductName /> resolves the template's translation keys for the language in effect, applies the design for email, and substitutes the `{{ctx(...)}}` values the flow produced, then hands the finished message to the sender. This phase renders in the system default language, and resolving each recipient's own language is an upcoming enhancement. Rendering is fail-closed: if a translation key, a design token, or a required value cannot be resolved, the send fails rather than going out with a gap, so the flows you built need no change to benefit from this.
+
+## Next Steps
+
+- Customize the message your recovery flow sends in [Build the Flows](../build-flows#build-the-account-recovery-flow).
+- See the whole solution run end to end in [How It All Runs](../build-run).
