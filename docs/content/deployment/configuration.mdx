@@ -41,6 +41,12 @@ Controls the <ProductName /> server's network settings and identity.
 
 Resources are stored against this identifier, so it is fixed for the life of a deployment's data.
 
+Every read and write acts for one deployment: the one a request carries, which on a server that holds one
+deployment is always `server.identifier`. That covers every stored resource, the gateways a deployment
+registers, its configuration versions, the version each gateway runs and the changes a gateway is set to
+leave alone. A server built to serve several deployments from one process keeps each one's gateways and
+versions apart by that identifier, so none sees another's.
+
 One registered gateway is the default gateway, marked `isDefault` in the Gateway API. The first gateway registered through `POST /gateways` becomes the default. Registering another with `isDefault: true` moves the default to it, so no more than one gateway is the default at a time. The Console shows the default gateway's `baseUrl` in the runtime endpoints it lists for applications and agents. With no default gateway, it shows the server's own URL. A gateway declared in a file is never the default.
 
 When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.

@@ -13,10 +13,14 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
 const storeDeploymentID = "test-deployment-id"
+
+// scoped is a request's context as the edge leaves it: it names the deployment the stores scope by.
+func scoped() context.Context { return deployment.WithID(context.Background(), storeDeploymentID) }
 
 type StoreTestSuite struct {
 	suite.Suite
@@ -32,7 +36,7 @@ func TestStoreTestSuite(t *testing.T) {
 func (s *StoreTestSuite) SetupTest() {
 	s.providerMock = providermock.NewDBProviderInterfaceMock(s.T())
 	s.dbClientMock = providermock.NewDBClientInterfaceMock(s.T())
-	s.store = &store{dbProvider: s.providerMock, deploymentID: storeDeploymentID}
+	s.store = &store{dbProvider: s.providerMock}
 }
 
 func (s *StoreTestSuite) expectDBClient() {
@@ -49,7 +53,7 @@ func (s *StoreTestSuite) TestListIsDeploymentScoped() {
 				"base_url": "https://dp.test", "management_key": "sealed"},
 		}, nil).Once()
 
-	gateways, err := s.store.List(context.Background())
+	gateways, err := s.store.List(scoped())
 
 	s.Require().NoError(err)
 	s.Require().Len(gateways, 1)
@@ -61,7 +65,7 @@ func (s *StoreTestSuite) TestGetByIDReturnsNilWhenAbsent() {
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetGatewayByID, "absent", storeDeploymentID).
 		Return([]map[string]interface{}{}, nil).Once()
 
-	gw, err := s.store.GetByID(context.Background(), "absent")
+	gw, err := s.store.GetByID(scoped(), "absent")
 
 	s.Require().NoError(err)
 	s.Nil(gw)
@@ -75,7 +79,7 @@ func (s *StoreTestSuite) TestGetByIDReadsTheWholeRow() {
 				"ca_certificate": "-----BEGIN CERTIFICATE-----"},
 		}, nil).Once()
 
-	gw, err := s.store.GetByID(context.Background(), "gw-1")
+	gw, err := s.store.GetByID(scoped(), "gw-1")
 
 	s.Require().NoError(err)
 	s.Require().NotNil(gw)
@@ -93,10 +97,10 @@ func (s *StoreTestSuite) TestTheUniquenessLookupsReadTheWholeRow() {
 		call  func() (*Gateway, error)
 	}{
 		"by name": {queryGetGatewayByName, func() (*Gateway, error) {
-			return s.store.GetByName(context.Background(), "production")
+			return s.store.GetByName(scoped(), "production")
 		}},
 		"by base url": {queryGetGatewayByBaseURL, func() (*Gateway, error) {
-			return s.store.GetByBaseURL(context.Background(), "https://dp.test")
+			return s.store.GetByBaseURL(scoped(), "https://dp.test")
 		}},
 	} {
 		s.Run(name, func() {
@@ -122,7 +126,7 @@ func (s *StoreTestSuite) TestCountReadsTheTotal() {
 	s.dbClientMock.On("QueryContext", mock.Anything, queryCountGateways, storeDeploymentID).
 		Return([]map[string]interface{}{{"total": int64(3)}}, nil).Once()
 
-	total, err := s.store.Count(context.Background())
+	total, err := s.store.Count(scoped())
 
 	s.Require().NoError(err)
 	s.Equal(3, total)
@@ -140,7 +144,7 @@ func (s *StoreTestSuite) TestCreateReturnsTheStoredRow() {
 				"base_url": "https://dp.test", "management_key": "sealed"},
 		}, nil).Once()
 
-	created, err := s.store.Create(context.Background(), &Gateway{
+	created, err := s.store.Create(scoped(), &Gateway{
 		ID: "gw-1", Name: "production",
 		BaseURL: "https://dp.test", Key: "sealed",
 	}, 5)
@@ -159,7 +163,7 @@ func (s *StoreTestSuite) TestCreateReturnsNilWhenTheLimitRefusesIt() {
 		storeDeploymentID, storeDeploymentID, 1).
 		Return([]map[string]interface{}{}, nil).Once()
 
-	created, err := s.store.Create(context.Background(), &Gateway{ID: "gw-1"}, 1)
+	created, err := s.store.Create(scoped(), &Gateway{ID: "gw-1"}, 1)
 
 	s.Require().NoError(err)
 	s.Nil(created)
@@ -195,7 +199,7 @@ func (s *StoreTestSuite) TestCreatingTheDefaultGatewayMovesTheDefault() {
 				"management_key": "sealed", "is_default": true},
 		}, nil).Once()
 
-	created, err := s.store.Create(context.Background(), &Gateway{
+	created, err := s.store.Create(scoped(), &Gateway{
 		ID: "gw-2", Name: "production", BaseURL: "https://dp.test", Key: "sealed",
 		IsDefault: true,
 	}, 5)
@@ -220,7 +224,7 @@ func (s *StoreTestSuite) TestARefusedDefaultRegistrationKeepsTheDefault() {
 		storeDeploymentID, storeDeploymentID, 1).
 		Return([]map[string]interface{}{}, nil).Once()
 
-	created, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 1)
+	created, err := s.store.Create(scoped(), &Gateway{ID: "gw-2", IsDefault: true}, 1)
 
 	s.Require().NoError(err)
 	s.Nil(created)
@@ -234,7 +238,7 @@ func (s *StoreTestSuite) TestAFailureReleasingTheDefaultIsReported() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
 		Return(int64(0), errors.New("boom")).Once()
 
-	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+	_, err := s.store.Create(scoped(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
 
 	s.Require().Error(err)
 	s.dbClientMock.AssertNotCalled(s.T(), "QueryContext", mock.Anything, queryInsertGateway,
@@ -254,7 +258,7 @@ func (s *StoreTestSuite) TestADefaultWriteTheIndexRefusesReportsTheDefaultTaken(
 		storeDeploymentID, storeDeploymentID, 5).
 		Return(nil, &pq.Error{Code: "23505", Constraint: defaultIndexName}).Once()
 
-	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+	_, err := s.store.Create(scoped(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
 
 	s.Require().ErrorIs(err, errDefaultTaken)
 }
@@ -262,7 +266,7 @@ func (s *StoreTestSuite) TestADefaultWriteTheIndexRefusesReportsTheDefaultTaken(
 func (s *StoreTestSuite) TestAMissingTransactionerIsReported() {
 	s.providerMock.On("GetConfigDBTransactioner").Return(nil, errors.New("no database")).Once()
 
-	_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
+	_, err := s.store.Create(scoped(), &Gateway{ID: "gw-2", IsDefault: true}, 5)
 
 	s.Require().Error(err)
 }
@@ -287,7 +291,7 @@ func (s *StoreTestSuite) TestUpdateIsDeploymentScoped() {
 		"gw-1", "production", "https://dp.test", "sealed", "", storeDeploymentID).
 		Return(int64(1), nil).Once()
 
-	err := s.store.Update(context.Background(), &Gateway{
+	err := s.store.Update(scoped(), &Gateway{
 		ID: "gw-1", Name: "production",
 		BaseURL: "https://dp.test", Key: "sealed",
 	})
@@ -300,7 +304,7 @@ func (s *StoreTestSuite) TestDeleteIsDeploymentScoped() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteGateway, "gw-1", storeDeploymentID).
 		Return(int64(1), nil).Once()
 
-	s.Require().NoError(s.store.Delete(context.Background(), "gw-1"))
+	s.Require().NoError(s.store.Delete(scoped(), "gw-1"))
 }
 
 // A database failure is reported rather than returned as an empty result, which would read as
@@ -310,7 +314,7 @@ func (s *StoreTestSuite) TestAQueryFailureIsReported() {
 	s.dbClientMock.On("QueryContext", mock.Anything, queryListGateways, storeDeploymentID).
 		Return(nil, errors.New("connection reset")).Once()
 
-	_, err := s.store.List(context.Background())
+	_, err := s.store.List(scoped())
 
 	s.Require().Error(err)
 }
@@ -318,7 +322,7 @@ func (s *StoreTestSuite) TestAQueryFailureIsReported() {
 func (s *StoreTestSuite) TestAProviderFailureIsReported() {
 	s.providerMock.On("GetConfigDBClient").Return(nil, errors.New("no pool")).Once()
 
-	_, err := s.store.List(context.Background())
+	_, err := s.store.List(scoped())
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to get database client")
@@ -334,13 +338,13 @@ func (s *StoreTestSuite) TestEveryLookupReportsAFailure() {
 		call  func() (*Gateway, error)
 	}{
 		"by id": {queryGetGatewayByID, func() (*Gateway, error) {
-			return s.store.GetByID(context.Background(), "gw-1")
+			return s.store.GetByID(scoped(), "gw-1")
 		}},
 		"by name": {queryGetGatewayByName, func() (*Gateway, error) {
-			return s.store.GetByName(context.Background(), "production")
+			return s.store.GetByName(scoped(), "production")
 		}},
 		"by base url": {queryGetGatewayByBaseURL, func() (*Gateway, error) {
-			return s.store.GetByBaseURL(context.Background(), "https://dp.test")
+			return s.store.GetByBaseURL(scoped(), "https://dp.test")
 		}},
 	} {
 		s.Run(name, func() {
@@ -364,10 +368,10 @@ func (s *StoreTestSuite) TestEveryLookupReportsAbsenceAsNil() {
 		call  func() (*Gateway, error)
 	}{
 		"by name": {queryGetGatewayByName, func() (*Gateway, error) {
-			return s.store.GetByName(context.Background(), "absent")
+			return s.store.GetByName(scoped(), "absent")
 		}},
 		"by base url": {queryGetGatewayByBaseURL, func() (*Gateway, error) {
-			return s.store.GetByBaseURL(context.Background(), "https://absent")
+			return s.store.GetByBaseURL(scoped(), "https://absent")
 		}},
 	} {
 		s.Run(name, func() {
@@ -395,7 +399,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false,
 			storeDeploymentID, storeDeploymentID, 5).Return(nil, failure).Once()
 
-		_, err := s.store.Create(context.Background(), &Gateway{ID: "gw-1"}, 5)
+		_, err := s.store.Create(scoped(), &Gateway{ID: "gw-1"}, 5)
 
 		s.Require().Error(err)
 	})
@@ -407,7 +411,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			storeDeploymentID).Return(int64(0), failure).Once()
 
-		s.Require().Error(s.store.Update(context.Background(), &Gateway{ID: "gw-1"}))
+		s.Require().Error(s.store.Update(scoped(), &Gateway{ID: "gw-1"}))
 	})
 
 	s.Run("delete", func() {
@@ -416,7 +420,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 		s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteGateway, "gw-1", storeDeploymentID).
 			Return(int64(0), failure).Once()
 
-		s.Require().Error(s.store.Delete(context.Background(), "gw-1"))
+		s.Require().Error(s.store.Delete(scoped(), "gw-1"))
 	})
 
 	s.Run("count", func() {
@@ -425,7 +429,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 		s.dbClientMock.On("QueryContext", mock.Anything, queryCountGateways, storeDeploymentID).
 			Return(nil, failure).Once()
 
-		_, err := s.store.Count(context.Background())
+		_, err := s.store.Count(scoped())
 
 		s.Require().Error(err)
 	})
@@ -438,7 +442,31 @@ func (s *StoreTestSuite) TestARowWithoutAnIDIsRejected() {
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetGatewayByID, "gw-1", storeDeploymentID).
 		Return([]map[string]interface{}{{"name": "production"}}, nil).Once()
 
-	_, err := s.store.GetByID(context.Background(), "gw-1")
+	_, err := s.store.GetByID(scoped(), "gw-1")
 
 	s.Require().Error(err)
+}
+
+// The deployment is read from each request, not fixed when the store is built: a server that serves
+// several organizations puts each request's deployment on its context, and every organization then
+// sees only its own gateways.
+func (s *StoreTestSuite) TestEachRequestIsScopedToItsOwnDeployment() {
+	s.expectDBClient()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryListGateways, "org-a").
+		Return([]map[string]interface{}{{"id": "gw-a", "name": "a", "base_url": "https://a.test"}}, nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryListGateways, "org-b").
+		Return([]map[string]interface{}{{"id": "gw-b", "name": "b", "base_url": "https://b.test"}}, nil).Once()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteGateway, "gw-a", "org-b").
+		Return(int64(0), nil).Once()
+
+	a, err := s.store.List(deployment.WithID(context.Background(), "org-a"))
+	s.Require().NoError(err)
+	b, err := s.store.List(deployment.WithID(context.Background(), "org-b"))
+	s.Require().NoError(err)
+	s.Require().NoError(s.store.Delete(deployment.WithID(context.Background(), "org-b"), "gw-a"))
+
+	s.Require().Len(a, 1)
+	s.Equal("gw-a", a[0].ID)
+	s.Require().Len(b, 1)
+	s.Equal("gw-b", b[0].ID)
 }
