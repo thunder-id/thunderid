@@ -1,7 +1,7 @@
 # Extension Executor Specification
 
 - **Status:** Draft
-- **Version:** 0.7
+- **Version:** 0.8
 - **Related documents:**
   - Discovery issue #5555 (ThunderID Extensibility: extension model and authentication)
   - Design discussion #5659 (Extension executor: architecture, response contract and custom authentication)
@@ -614,7 +614,7 @@ Extension
 
 | Key | Level | Default | Meaning |
 |---|---|---|---|
-| `http_connection.store` | deployment | the global declarative mode | `mutable`, `declarative` or `composite` storage for HTTP connections, as for other connection types |
+| `http_connection.store` | deployment | `composite` | `mutable`, `declarative` or `composite` storage for HTTP connections, as for other connection types. `composite` matches the default of the other resource types, so HTTP connection files load alongside identity provider files |
 
 The connection's timeout bounds and the 64 KiB cap are constants, not configuration.
 
@@ -758,3 +758,4 @@ The connection's timeout bounds and the 64 KiB cap are constants, not configurat
 | 0.5 | 2026-10-13 | Connection authentication reuses the shared outbound authentication model (`none` and `basic` today; bearer token and API key follow in a separate feature), with its secret-retention rule and the URL origin as the credential target. Plain headers refuse credential-carrying and HTTP-managed names (AC2.8). URL host and port are validated and the URL stored canonicalized. A separate error for an invalid description. The URL and its query string are documented as not secret. An omitted secret is kept under the shared rule; `******` is not treated as a kept value. |
 | 0.6 | 2026-10-14 | Aligned with the HTTP endpoint connection implementation: `PROPERTIES` stores the shared model's authentication property array, not a separate `secrets` array; connection errors are named by their `httpconnection.Error*` constants, and an unsupported authentication type returns the existing `connection.ErrorInvalidAuthenticationType`; the create wizard includes authentication; the primary key is `(DEPLOYMENT_ID, ID)`, as in the other configuration tables. |
 | 0.7 | 2026-10-15 | Aligned with the extension executor implementation: `groups` and `password` are reserved, while profile attributes stay storable; a credential failure returns ThunderID's own `ErrInvalidCredentials` with no params (AC7.2); a connection that exists but cannot be resolved is `ErrExtensionCallFailed` with `errorKind` `internal`; the audit event carries `failureReason` but never `failureDescription`; a flow whose extension step has no connection is refused at save (AC1.2); property types for `inputKeys`, `runtimeDataKeys` and `responseKeys`; an `INCOMPLETE` without `onIncomplete` ends the flow with an internal server error; a redirect is treated as `ERROR` until custom authentication is delivered; the embedded engine has no connection resolver; the never-sent and engine-key lists add the linking, ownership and OU keys the executor classifies. |
+| 0.8 | 2026-10-15 | `http_connection.store` defaults to `composite`, as the other resource types do, instead of following the global declarative mode. |
