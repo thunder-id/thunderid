@@ -16,10 +16,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
-	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
-
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
@@ -269,15 +265,9 @@ func (s *runtimeCryptoService) GetPublicKeys(
 	keys := make([]providers.PublicKeyInfo, 0, len(allCerts))
 	for id, cert := range allCerts {
 		pub := cert.PublicKey
-		if _, isStdMLDSA := pub.(*mldsa.PublicKey); pub == nil || isStdMLDSA {
-			// ML-DSA: signing uses cloudflare/circl, while the standard library parses the
-			// certificate's public key as a crypto/mldsa key, so derive the circl public key
-			// from the configured private key.
-			derived, ok := s.derivePublicKey(ctx, id)
-			if !ok {
-				continue
-			}
-			pub = derived
+		if pub == nil {
+			s.logger.Debug(ctx, "Certificate carries no public key; skipping", log.String("keyID", id))
+			continue
 		}
 
 		var alg cryptolib.Algorithm
@@ -300,14 +290,9 @@ func (s *runtimeCryptoService) GetPublicKeys(
 			}
 		case ed25519.PublicKey:
 			alg = cryptolib.AlgorithmEdDSA
-		case *mldsa44.PublicKey, *mldsa65.PublicKey, *mldsa87.PublicKey:
+		case *mldsa.PublicKey:
 			// ML-DSA (RFC 9964).
-			mldsaAlg, ok := cryptolib.MLDSAAlgForPublicKey(p)
-			if !ok {
-				s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
-				continue
-			}
-			alg = mldsaAlg
+			alg = cryptolib.Algorithm(p.Parameters().String())
 		default:
 			s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
 			continue
@@ -334,23 +319,6 @@ func (s *runtimeCryptoService) GetPublicKeys(
 	}
 
 	return keys, nil
-}
-
-// derivePublicKey returns the public key derived from the configured private key
-// for the given key ID. It is used for ML-DSA keys, whose certificate public key
-// the standard library cannot parse.
-func (s *runtimeCryptoService) derivePublicKey(ctx context.Context, id string) (crypto.PublicKey, bool) {
-	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, id)
-	if svcErr != nil {
-		s.logger.Debug(ctx, "No public key available; skipping", log.String("keyID", id))
-		return nil, false
-	}
-	signer, ok := privKey.(crypto.Signer)
-	if !ok {
-		s.logger.Debug(ctx, "Unsupported private key type; skipping", log.String("keyID", id))
-		return nil, false
-	}
-	return signer.Public(), true
 }
 
 func (s *runtimeCryptoService) GetTLSMaterial(
@@ -509,7 +477,18 @@ func jwkToAKPPublicKey(jwk map[string]interface{}) (crypto.PublicKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode AKP pub: %w", err)
 	}
-	pub, err := cryptolib.MLDSAPublicKeyFromBytes(cryptolib.Algorithm(alg), pubBytes)
+	var params mldsa.Parameters
+	switch cryptolib.Algorithm(alg) {
+	case cryptolib.AlgorithmMLDSA44:
+		params = mldsa.MLDSA44()
+	case cryptolib.AlgorithmMLDSA65:
+		params = mldsa.MLDSA65()
+	case cryptolib.AlgorithmMLDSA87:
+		params = mldsa.MLDSA87()
+	default:
+		return nil, fmt.Errorf("unsupported AKP alg: %s", alg)
+	}
+	pub, err := mldsa.NewPublicKey(params, pubBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse AKP public key: %w", err)
 	}
