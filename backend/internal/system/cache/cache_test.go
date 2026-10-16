@@ -79,7 +79,7 @@ func (suite *CacheTestSuite) TestSet() {
 	key := CacheKey{Key: "testKey"}
 
 	// Set up expectation for Set
-	mockCache.EXPECT().Set(context.Background(), key, testValue).Return(nil)
+	mockCache.EXPECT().Set(context.Background(), held(key), testValue).Return(nil)
 
 	// Call Set and verify
 	err := cache.Set(context.Background(), key, testValue)
@@ -110,7 +110,7 @@ func (suite *CacheTestSuite) TestSetWithError() {
 	key := CacheKey{Key: "testKey"}
 
 	// Set up expectation for Set to return error
-	mockCache.EXPECT().Set(context.Background(), key, testValue).Return(fmt.Errorf("set error"))
+	mockCache.EXPECT().Set(context.Background(), held(key), testValue).Return(fmt.Errorf("set error"))
 
 	// Even with error, Set should not return error (logged instead)
 	err := cache.Set(context.Background(), key, testValue)
@@ -131,7 +131,7 @@ func (suite *CacheTestSuite) TestGet() {
 
 	key := CacheKey{Key: "testKey"}
 
-	mockCache1.EXPECT().Get(context.Background(), key).Return(testValue, true)
+	mockCache1.EXPECT().Get(context.Background(), held(key)).Return(testValue, true)
 	value, found := cache1.Get(context.Background(), key)
 	assert.True(t, found)
 	assert.Equal(t, testValue, value)
@@ -145,7 +145,7 @@ func (suite *CacheTestSuite) TestGet() {
 		cacheImpl: mockCache2,
 	}
 
-	mockCache2.EXPECT().Get(context.Background(), key).Return("", false)
+	mockCache2.EXPECT().Get(context.Background(), held(key)).Return("", false)
 	value2, found2 := cache2.Get(context.Background(), key)
 	assert.False(t, found2)
 	assert.Equal(t, "", value2)
@@ -177,7 +177,7 @@ func (suite *CacheTestSuite) TestDelete() {
 	key := CacheKey{Key: "testKey"}
 
 	// Set up expectation for Delete
-	mockCache.EXPECT().Delete(context.Background(), key).Return(nil)
+	mockCache.EXPECT().Delete(context.Background(), held(key)).Return(nil)
 
 	// Call Delete and verify
 	err := cache.Delete(context.Background(), key)
@@ -208,7 +208,7 @@ func (suite *CacheTestSuite) TestDeleteWithError() {
 	key := CacheKey{Key: "testKey"}
 
 	// Set up expectation for Delete to return error
-	mockCache.EXPECT().Delete(context.Background(), key).Return(fmt.Errorf("delete error"))
+	mockCache.EXPECT().Delete(context.Background(), held(key)).Return(fmt.Errorf("delete error"))
 
 	// Even with error, Delete should not return error (logged instead)
 	err := cache.Delete(context.Background(), key)
@@ -548,7 +548,7 @@ func (suite *CacheTestSuite) TestCacheWithFailingOperations() {
 	key := CacheKey{Key: "testKey"}
 
 	// Configure mock to return error on Set
-	mockCache.EXPECT().Set(context.Background(), key, testValue).Return(fmt.Errorf("set error"))
+	mockCache.EXPECT().Set(context.Background(), held(key), testValue).Return(fmt.Errorf("set error"))
 
 	// Set should not return the error but log it
 	err := cache.Set(context.Background(), key, testValue)
@@ -556,7 +556,7 @@ func (suite *CacheTestSuite) TestCacheWithFailingOperations() {
 
 	// Test Delete with error
 	// Configure mock to return error on Delete
-	mockCache.EXPECT().Delete(context.Background(), key).Return(fmt.Errorf("delete error"))
+	mockCache.EXPECT().Delete(context.Background(), held(key)).Return(fmt.Errorf("delete error"))
 
 	// Delete should not return the error but log it
 	err = cache.Delete(context.Background(), key)
@@ -699,15 +699,15 @@ func (suite *CacheTestSuite) TestMultipleValues() {
 
 	// Test Set operations
 	for i := range keys {
-		mockCache.EXPECT().Set(context.Background(), keys[i], values[i]).Return(nil)
+		mockCache.EXPECT().Set(context.Background(), held(keys[i]), values[i]).Return(nil)
 		err := cache.Set(context.Background(), keys[i], values[i])
 		assert.NoError(t, err)
 	}
 
 	// Test Get operations with different outcomes
-	mockCache.EXPECT().Get(context.Background(), keys[0]).Return(values[0], true)
-	mockCache.EXPECT().Get(context.Background(), keys[1]).Return("", false)
-	mockCache.EXPECT().Get(context.Background(), keys[2]).Return(values[2], true)
+	mockCache.EXPECT().Get(context.Background(), held(keys[0])).Return(values[0], true)
+	mockCache.EXPECT().Get(context.Background(), held(keys[1])).Return("", false)
+	mockCache.EXPECT().Get(context.Background(), held(keys[2])).Return(values[2], true)
 
 	val1, found1 := cache.Get(context.Background(), keys[0])
 	assert.True(t, found1)
@@ -818,18 +818,23 @@ func (suite *CacheTestSuite) TestCacheWithEmptyKeyOperations() {
 	emptyKey := CacheKey{Key: ""}
 
 	// Set should work with empty key
-	mockCache.EXPECT().Set(context.Background(), emptyKey, testValue).Return(nil)
+	mockCache.EXPECT().Set(context.Background(), held(emptyKey), testValue).Return(nil)
 	err := cache.Set(context.Background(), emptyKey, testValue)
 	assert.NoError(t, err)
 
 	// Get should work with empty key
-	mockCache.EXPECT().Get(context.Background(), emptyKey).Return(testValue, true)
+	mockCache.EXPECT().Get(context.Background(), held(emptyKey)).Return(testValue, true)
 	val, found := cache.Get(context.Background(), emptyKey)
 	assert.True(t, found)
 	assert.Equal(t, testValue, val)
 
 	// Delete should work with empty key
-	mockCache.EXPECT().Delete(context.Background(), emptyKey).Return(nil)
+	mockCache.EXPECT().Delete(context.Background(), held(emptyKey)).Return(nil)
 	err = cache.Delete(context.Background(), emptyKey)
 	assert.NoError(t, err)
+}
+
+// held is the key the cache passes to its implementation for a key set outside any request.
+func held(key CacheKey) CacheKey {
+	return scoped(context.Background(), key)
 }

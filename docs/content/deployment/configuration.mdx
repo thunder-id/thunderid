@@ -414,6 +414,13 @@ That means you can override only the fields you need. <ProductName /> continues 
 When `cache.type` is `redis`, per-cache `ttl` and `disabled` remain useful. Per-cache `size` and `eviction_policy` do not affect Redis behavior because Redis manages memory and eviction independently.
 :::
 
+### Deployment-Scoped Entries
+
+Every cache entry belongs to the deployment the request acts for, the same deployment the stores read and write rows for. Two deployments served by one <ProductName /> process, or sharing one Redis server, never read or remove each other's entries, even when they hold entries under the same key.
+
+- Work that runs outside a request, such as a background task, acts for the deployment in `server.identifier`.
+- Clearing an in-memory cache removes its entries for every deployment. A Redis cache is not cleared; its entries expire after their time-to-live.
+
 ### Redis Cache Configuration
 
 Set `cache.type` to `redis` and configure `cache.redis.address` to enable Redis-backed cache storage.
