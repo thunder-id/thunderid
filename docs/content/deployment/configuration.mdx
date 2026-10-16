@@ -835,7 +835,47 @@ Signing keys are configured as an array. Each key has the following properties:
   key_file: "config/certs/signing.key"
 ```
 
-The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`; ML-DSA-44, ML-DSA-65, and ML-DSA-87 keys advertise `ML-DSA-44`, `ML-DSA-65`, and `ML-DSA-87`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+
+#### Sign Tokens with ML-DSA
+
+To sign tokens with ML-DSA, add an ML-DSA key pair to `crypto.keys`:
+
+```yaml
+crypto:
+  keys:
+    - id: "default-key"
+      cert_file: "config/certs/signing.cert"
+      key_file: "config/certs/signing.key"
+    - id: "mldsa-key"
+      cert_file: "config/certs/mldsa-signing.cert"
+      key_file: "config/certs/mldsa-signing.key"
+```
+
+Then choose how tokens use the key:
+
+- To sign all tokens with ML-DSA, set [`jwt.preferred_key_id`](#jwt-configuration) to the ML-DSA key ID, for example `mldsa-key`.
+- To let individual clients opt in, keep the existing preferred key. A client selects the ML-DSA algorithm, for example `ML-DSA-65`, with `id_token_signed_response_alg` or `userinfo_signed_response_alg`. Access tokens always use the preferred key. See [Token Formats](../../guides/protocols/oauth-oidc/token-formats) for details.
+
+Clients and resource servers that verify these tokens must support ML-DSA. <ProductName /> publishes ML-DSA public keys at the [JWKS](../../guides/protocols/oauth-oidc/jwks) endpoint as `AKP` keys, as defined in RFC 9964.
+
+#### ML-DSA Key Format
+
+<ProductName /> accepts ML-DSA private keys only in the seed-only PKCS#8 format defined in RFC 9881. The server fails to start if an ML-DSA key in `crypto.keys` uses the expanded-key-only format or the format that holds both the seed and the expanded key. OpenSSL uses the format with both by default.
+
+To generate a seed-only ML-DSA key with OpenSSL 3.5 or later, run:
+
+```bash
+openssl genpkey -algorithm ML-DSA-65 -provparam ml-dsa.output_formats=seed-only -out signing.key
+```
+
+To convert an existing key that holds both the seed and the expanded key, run the following command. The key pair does not change, so the existing certificate and issued tokens stay valid.
+
+```bash
+openssl pkey -in signing.key -provparam ml-dsa.output_formats=seed-only -out signing.key
+```
+
+You cannot convert an expanded-key-only key because it does not contain the seed. Generate a new seed-only key pair and rotate to it instead.
 
 ## Attribute Cache Configuration
 

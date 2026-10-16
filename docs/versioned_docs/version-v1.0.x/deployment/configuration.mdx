@@ -785,7 +785,29 @@ Signing keys are configured as an array. Each key has the following properties:
   key_file: "config/certs/signing.key"
 ```
 
-The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`; ML-DSA-44, ML-DSA-65, and ML-DSA-87 keys advertise `ML-DSA-44`, `ML-DSA-65`, and `ML-DSA-87`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+
+#### Sign Tokens with ML-DSA
+
+To sign tokens with ML-DSA, add an ML-DSA key pair to `crypto.keys` and set [`jwt.preferred_key_id`](#jwt-configuration) to its ID:
+
+```yaml
+crypto:
+  keys:
+    - id: "mldsa-key"
+      cert_file: "config/certs/mldsa-signing.cert"
+      key_file: "config/certs/mldsa-signing.key"
+jwt:
+  preferred_key_id: "mldsa-key"
+```
+
+<ProductName /> signs tokens with the key that `jwt.preferred_key_id` selects. The ML-DSA private key must be a PKCS#8 key as defined in RFC 9881, in any of its three formats: seed-only, expanded-key-only, or both. To generate an ML-DSA-65 key with OpenSSL 3.5 or later, run:
+
+```bash
+openssl genpkey -algorithm ML-DSA-65 -out mldsa-signing.key
+```
+
+Clients and resource servers that verify these tokens must support ML-DSA. <ProductName /> publishes ML-DSA public keys at the [JWKS](../../guides/protocols/oauth-oidc/jwks) endpoint as `AKP` keys, as defined in RFC 9964.
 
 ## Attribute Cache Configuration
 
