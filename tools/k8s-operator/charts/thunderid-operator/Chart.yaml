@@ -1,0 +1,14 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: thunderid-operator
+description: A Kubernetes operator that deploys and configures ThunderID via CRDs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/thunder-id/thunderid/tree/main/tools/k8s-operator
+keywords:
+  - thunderid
+  - iam
+  - operator
