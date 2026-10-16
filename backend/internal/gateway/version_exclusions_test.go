@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -274,32 +273,6 @@ func TestAResourceTooLongToKeepCannotBeLeftOut(t *testing.T) {
 	assert.Equal(t, []string{keyA}, f.excludedKeys(t))
 }
 
-// Applies to one gateway run one at a time, so the choice one keeps is never interleaved with
-// another's import.
-func TestAppliesToOneGatewayRunOneAtATime(t *testing.T) {
-	var locks gatewayLocks
-	unlock := locks.lock("gw-1")
-	otherDone := make(chan struct{})
-	go func() {
-		locks.lock("gw-2")()
-		close(otherDone)
-	}()
-	<-otherDone
-
-	acquired := make(chan struct{})
-	go func() {
-		locks.lock("gw-1")()
-		close(acquired)
-	}()
-	select {
-	case <-acquired:
-		t.Fatal("a second apply to the gateway ran while the first held it")
-	case <-time.After(50 * time.Millisecond):
-	}
-	unlock()
-	<-acquired
-}
-
 // Once the import wrote the gateway, the choice it sent stays even if recording the version fails:
 // putting it back would leave alone a resource the gateway was just sent, and a later version that
 // drops it would never remove it.
@@ -341,29 +314,6 @@ func TestAResourceIsMeasuredInCharacters(t *testing.T) {
 		Name: name}))
 	assert.False(t, keepable(Change{Key: "organization_unit/ou-1", ResourceType: "organization_unit", ID: "ou-1",
 		Name: name + "é"}))
-}
-
-// A gateway's lock is kept only while an apply holds it or waits for it.
-func TestAGatewaysLockIsDroppedOnceNoApplyNeedsIt(t *testing.T) {
-	var locks gatewayLocks
-	unlock := locks.lock("gw-1")
-	waited := make(chan struct{})
-	go func() {
-		locks.lock("gw-1")()
-		close(waited)
-	}()
-	require.Eventually(t, func() bool {
-		locks.mu.Lock()
-		defer locks.mu.Unlock()
-		return locks.locks["gw-1"].users == 2
-	}, time.Second, time.Millisecond)
-
-	unlock()
-	<-waited
-
-	locks.mu.Lock()
-	defer locks.mu.Unlock()
-	assert.Empty(t, locks.locks)
 }
 
 // A dry run says what each missing value is for only among the resources it applies: one left alone

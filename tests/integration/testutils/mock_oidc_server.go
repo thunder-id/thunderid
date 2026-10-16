@@ -112,6 +112,7 @@ type MockOIDCServer struct {
 	tokenPath     string
 	userInfoPath  string
 	jwksPath      string
+	usersPath     string
 }
 
 // NewMockOIDCServer creates a new mock OIDC server
@@ -137,6 +138,7 @@ func NewMockOIDCServer(port int, clientID, clientSecret string) (*MockOIDCServer
 		tokenPath:     "/token",
 		userInfoPath:  "/userinfo",
 		jwksPath:      "/jwks",
+		usersPath:     "/users",
 	}, nil
 }
 
@@ -149,6 +151,7 @@ func (m *MockOIDCServer) Start() error {
 	mux.HandleFunc(m.tokenPath, m.handleToken)
 	mux.HandleFunc(m.userInfoPath, m.handleUserInfo)
 	mux.HandleFunc(m.jwksPath, m.handleJWKS)
+	mux.HandleFunc(m.usersPath+"/", m.handleUser)
 
 	m.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", m.port),
@@ -459,15 +462,21 @@ func (m *MockOIDCServer) handleToken(w http.ResponseWriter, r *http.Request) {
 	clientSecret := r.FormValue("client_secret")
 	redirectURI := r.FormValue("redirect_uri")
 
-	// Validate grant type
-	if grantType != "authorization_code" {
-		writeOIDCTokenError(w, "unsupported_grant_type", "Grant type not supported")
-		return
-	}
-
 	// Validate client credentials
 	if clientID != m.clientID || clientSecret != m.clientSecret {
 		writeOIDCTokenError(w, "invalid_client", "Invalid client credentials")
+		return
+	}
+
+	// A client credentials grant is the client's own token, with the scopes it asked for and no user.
+	if grantType == "client_credentials" {
+		m.issueClientToken(w, strings.Fields(r.FormValue("scope")))
+		return
+	}
+
+	// Validate grant type
+	if grantType != "authorization_code" {
+		writeOIDCTokenError(w, "unsupported_grant_type", "Grant type not supported")
 		return
 	}
 
@@ -791,4 +800,58 @@ func containsOIDC(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// issueClientToken answers a client credentials grant with an access token the client may present to
+// the user endpoint.
+func (m *MockOIDCServer) issueClientToken(w http.ResponseWriter, scopes []string) {
+	accessToken := generateOIDCRandomString(32)
+	m.mutex.Lock()
+	m.accessTokens[accessToken] = &OIDCTokenData{
+		AccessToken: accessToken,
+		Scopes:      scopes,
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}
+	m.mutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"access_token": accessToken,
+		"token_type":   "Bearer",
+		"expires_in":   3600,
+		"scope":        strings.Join(scopes, " "),
+	})
+}
+
+// handleUser answers GET /users/{id} the way the ThunderID users API does, for a bearer token this
+// server issued: the user's id and attributes, with the username among them.
+func (m *MockOIDCServer) handleUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	parts := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+	m.mutex.RLock()
+	tokenData, exists := m.accessTokens[parts[1]]
+	user, known := m.users[strings.TrimPrefix(r.URL.Path, m.usersPath+"/")]
+	m.mutex.RUnlock()
+	if !exists || time.Now().After(tokenData.ExpiresAt) {
+		http.Error(w, "Invalid access token", http.StatusUnauthorized)
+		return
+	}
+	if !known {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":         user.Sub,
+		"attributes": map[string]interface{}{"username": user.Name, "email": user.Email},
+	})
 }

@@ -126,10 +126,13 @@ Capture follows these rules:
   default gateway, nothing is captured. Set a value on any other gateway yourself.
 - **HTTPS only.** The control plane sends a value, and the gateway's management key, only to a
   gateway whose `baseUrl` starts with `https://`. A gateway on plain HTTP receives nothing.
-- **Never blocks the write.** A capture that fails is logged by name, never by value, and the write
-  that triggered it still succeeds. A capture waits at most 10 seconds for the gateway. A value that
-  did not arrive is reported as missing when you try to apply a version that needs it, and you can
-  set it on the gateway then.
+- **Never blocks the write.** The values are worked out as the resource is written, and sent to the
+  gateway in the background, so a slow or unreachable gateway does not slow the write. A send that
+  fails is tried again, waiting longer each time up to a minute, ten times in all, and each failure
+  is logged by name, never by value. A newer value for the same name replaces one still on its way.
+  A value that never arrived is reported as missing when you try to apply a version that needs it,
+  and you can set it on the gateway then. A version applied right after a write may find the value
+  not there yet; the apply reports it missing, and the next one finds it.
 - **Replaces what is there.** A value is set whether or not the gateway already holds that name, so
   writing a resource again replaces the value the gateway held under its name.
 - **Values, never references.** A value that is itself a reference, or a list holding one among its

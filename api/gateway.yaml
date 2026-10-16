@@ -315,6 +315,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplyResult'
+        "202":
+          description: |
+            Another apply to the gateway is running, and this one asked for `latest` with nothing
+            selected and nothing confirmed, so it was queued rather than done: the latest version at
+            that time is applied once the running apply finishes, for the user who asked. A version
+            named by its hash, or a confirmed apply, waits instead. A burst of applies queues at most
+            one. An apply the queued run would refuse for its removals is refused now with `409`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
         "400":
           description: The request was malformed, or the selection names a resource the diff does not report
           content:
@@ -346,7 +357,16 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/MissingValues'
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the apply would
+            remove more resources than `gateway.removal_confirmation_threshold` and was not confirmed
+            (`GTW-1030`); another apply or revert to the gateway was still running after this one had
+            waited as long as an import may take (`GTW-1029`); a capture removed the version before
+            the apply could record it (`GTW-1018`); or another apply finished first (`GTW-1019`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "502":
           description: The gateway could not be reached, or refused the request.
   /gateways/{id}/revert:
@@ -386,7 +406,15 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/MissingValues'
+          description: |
+            The gateway does not hold every value the version refers to (`GTW-1017`); the revert
+            would remove more resources than `gateway.removal_confirmation_threshold` and was not
+            confirmed (`GTW-1030`); or another apply or revert to the gateway was still running
+            after this one had waited as long as an import may take (`GTW-1029`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "502":
           description: The gateway could not be reached, or refused the request.
   /gateways/{id}/variables:
@@ -859,6 +887,27 @@ components:
         appliedAt:
           type: string
           format: date-time
+        appliedBy:
+          description: The user who applied the version, or reverted the gateway to it. Left out when the user's name cannot be read.
+          allOf:
+            - $ref: '#/components/schemas/Actor'
+    Actor:
+      type: object
+      description: |
+        A user, by id and name. Given out only when the control plane is configured to look names up at
+        its trusted issuer (`server.security.trusted_issuer.user_lookup`) and the issuer knows the user;
+        otherwise the field holding the user is left out, since the id alone is an identifier of the
+        issuer's that says nothing to a viewer. The id is recorded either way.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The token's `sub` claim, or the claim `server.security.trusted_issuer.user_id_claim` names.
+        name:
+          type: string
+          description: The user's name as the trusted issuer's user API reports it, read when the record is read and never stored.
     ApplyRequest:
       type: object
       properties:
@@ -868,6 +917,12 @@ components:
         dryRun:
           type: boolean
           description: Send the import as a dry run and record nothing.
+        confirmRemovals:
+          type: boolean
+          description: |
+            Lets the apply remove more resources from the gateway than `gateway.removal_confirmation_threshold`
+            allows unconfirmed. Without it such an apply is refused with `409` (`GTW-1030`); a dry run
+            shows the removals first.
         selection:
           type: array
           items:
@@ -883,6 +938,9 @@ components:
     RevertRequest:
       type: object
       properties:
+        confirmRemovals:
+          type: boolean
+          description: As on an apply. A revert to a much smaller version is the usual case.
         dryRun:
           type: boolean
     Change:
@@ -985,6 +1043,35 @@ components:
               description: Where the version refers to each missing value.
               items:
                 $ref: '#/components/schemas/ValueReference'
+        changed:
+          type: object
+          description: |
+            The variables and secrets the version refers to whose values were set on the gateway
+            after the version it holds was applied, so a value changed outside any version is seen
+            as it takes effect. Names only, never values. Omitted when none changed or the gateway
+            holds no version yet.
+          properties:
+            variables:
+              type: array
+              items:
+                type: string
+            secrets:
+              type: array
+              items:
+                type: string
+            references:
+              type: array
+              description: Where the version refers to each changed value.
+              items:
+                $ref: '#/components/schemas/ValueReference'
+        queued:
+          type: boolean
+          description: |
+            Only with `202`: another apply to the gateway was running, so the latest version was not
+            applied now and will be applied once it finishes, by whichever node finishes it.
+        queuedVersion:
+          type: string
+          description: With `queued`, the version that will be applied.
     ValueReference:
       type: object
       description: |

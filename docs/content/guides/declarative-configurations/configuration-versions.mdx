@@ -43,6 +43,22 @@ shares also names it, and so does `latest`.
 - **A version holds references, not values.** A client secret or a user's password appears as a
   [value reference](./value-references.mdx) such as `sec:APPLICATION_ORDERS_CLIENT_SECRET`. The gateway
   fills it in from its own store when the version is applied.
+- **The current version is kept up to date in place.** A control plane captures the configuration on
+  its own shortly after each change to it: it waits about two seconds after the last of a run of
+  changes, then captures them together, and tries again later if that capture fails. Until that
+  capture has run, `latest` is still the version before the change, so check that `latest` has the
+  hash you expect before applying it. That capture replaces the current version instead of adding one,
+  until it is applied to a gateway. From the moment an apply sends it that version is kept, and it stays the
+  current one until the next change, which starts a new current version. A listing marks the current
+  version `current`. A capture with `"current": true` in the body does the same on request; one without
+  it always adds a version.
+- **A version names who it was captured for.** `createdBy` holds the user's `id`, from the token's
+  `sub` claim or the claim `server.security.trusted_issuer.user_id_claim` names, and their `name`, read
+  from the trusted issuer's user API when the version is read and never stored. It is given out only
+  when `server.security.trusted_issuer.user_lookup` is configured and the issuer knows the user: the id
+  alone is an identifier of the issuer's that says nothing to a viewer, so otherwise the field is left
+  out. The id is recorded either way, so a lookup configured later names the versions already captured.
+  A capture after a change names the user who made the last change before it.
 - **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
   holds or can revert to. Those are kept even when that leaves more versions than the number. See
   [Configuration](../../deployment/configuration.mdx).
@@ -85,7 +101,8 @@ resource's document compared line by line. The documents hold references, so a d
 secret value.
 
 `GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
-it to.
+it to, with when it was applied and who applied it (`appliedAt`, `appliedBy`, the latter under the same
+rule as `createdBy`).
 
 ## Apply a Version
 
@@ -109,6 +126,21 @@ removes something it did not apply.
   apply sends the version whole again.
 - **A removal the gateway did not complete leaves the version unrecorded.** `recorded` is then `false`,
   and the next apply works from the version held before and sends the removal again.
+- **Many removals need confirming.** An apply or revert that would remove more resources than
+  `gateway.removal_confirmation_threshold` (five unless configured) is refused with `409` (`GTW-1030`).
+  Run it as a dry run to see the removals, then send it again with `"confirmRemovals": true`.
+- **A value changed since the last apply is reported.** `changed` names the variables and secrets the
+  version refers to that were set on the gateway after the version it holds was applied, with where
+  the version refers to each, as `missing` does. Values are never shown. Such a value takes effect with
+  this apply although no version carries it.
+- **One apply at a time per gateway, and the latest version is never lost.** Applies and reverts to the
+  same gateway run one at a time across every control plane node. While one runs, an apply that asks
+  for `latest` with nothing selected and nothing confirmed is not run or refused but queued: the answer
+  is `202` with `queued` and `queuedVersion`, and once the running apply finishes the latest version at
+  that moment is applied, for the user who asked, so a burst of changes costs one more apply. What
+  that later apply would refuse for its removals is refused now instead. An apply of a version named
+  by its hash, a confirmed one, or a revert waits for the running apply, and is refused with `409`
+  (`GTW-1029`) if it is still running after as long as an import may take.
 
 ### Missing Values
 
@@ -159,8 +191,8 @@ selection includes it again.
 - **An apply that may have reached the gateway keeps its choice.** When the gateway answers with a
   `5xx`, or the connection times out or drops after the request was sent, the gateway may hold what it
   was sent, so the choice stays. Apply again to bring the gateway in line.
-- **One apply at a time per gateway.** Applies and reverts to the same gateway wait for each other on a
-  control plane node, so one apply's choice and import never interleave with another's.
+- **One apply at a time per gateway.** Applies and reverts to the same gateway run one at a time across
+  every control plane node, so one apply's choice and import never interleave with another's.
 - **Removing a gateway forgets its choices.**
 
 ## Revert a Gateway

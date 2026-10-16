@@ -29,8 +29,12 @@ import (
 // default gateway has to hold, while a plane exporting template placeholders carries the values
 // itself and has nothing to put anywhere.
 // The exporters it was built from are what show a gateway's applied resources as their own reads do.
+//
+// changes is bound here when given, so the configuration is captured as the current version after
+// each change. Only a control plane gives one: it is where the configuration is authored.
 func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
-	capture *ValueCapture, exporters []declarativeresource.ResourceExporter) (ServiceInterface, error) {
+	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
+	changes *ChangeCapture) (ServiceInterface, error) {
 	var (
 		gatewayStore storeInterface
 		fileStore    *gatewayFileStore
@@ -48,12 +52,15 @@ func Initialize(mux *http.ServeMux, exporter export.ExportServiceInterface,
 	}
 
 	service := newService(gatewayStore)
-	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient())
+	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(), newActorNames())
 	h := newHandler(service)
 	h.afterDelete = versions.Forget
 	stores := newStoreService(gatewayStore, newGatewayClient())
 	if capture != nil {
 		capture.bind(exporter, gatewayStore, stores)
+	}
+	if changes != nil {
+		changes.bind(versions)
 	}
 	registerRoutes(mux, h)
 	registerVersionRoutes(mux, newVersionHandler(versions))

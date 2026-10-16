@@ -8,7 +8,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,6 +29,7 @@ type captureFixture struct {
 	// refuse makes the default gateway refuse each call; hangUp makes it drop each connection unanswered.
 	refuse bool
 	hangUp bool
+	mu     sync.Mutex
 }
 
 // newCaptureFixture builds a bound capture over two gateways served over TLS, gw-2 being the
@@ -47,14 +50,17 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	record := func(into *[]storeCall) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
+			f.mu.Lock()
 			*into = append(*into, storeCall{method: r.Method, path: r.URL.EscapedPath(),
 				key: r.Header.Get(constants.APIKeyHeaderName), body: string(raw)})
+			hangUp, refuse := f.hangUp, f.refuse
+			f.mu.Unlock()
 			switch {
-			case f.hangUp:
+			case hangUp:
 				conn, _, err := w.(http.Hijacker).Hijack()
 				require.NoError(t, err)
 				_ = conn.Close()
-			case f.refuse:
+			case refuse:
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"code":"VAR-1001"}`))
 			default:
@@ -70,14 +76,32 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	f.gateways = &fakeStore{gateways: []Gateway{*other, *dev}}
 
 	f.capture = NewValueCapture()
+	// Written in the background, a value's write is tried once and soon, so a test sees the outcome
+	// of one write; a test of the retries sets its own.
+	f.capture.retryDelay = 5 * time.Millisecond
+	f.capture.attempts = 1
 	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()))
 	return f
 }
 
+// settle waits for every value on its way to have arrived or been given up on.
+func (f *captureFixture) settle(t *testing.T) {
+	t.Helper()
+	require.Eventually(t, f.capture.idle, 5*time.Second, 5*time.Millisecond, "a value is still on its way")
+}
+
+// calls and others are appended by the gateways' handlers, so they are read under the fixture's lock.
+func (f *captureFixture) received() ([]storeCall, []storeCall) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]storeCall(nil), f.calls...), append([]storeCall(nil), f.others...)
+}
+
 // paths returns the paths the default gateway's store was called at, in order.
 func (f *captureFixture) paths() []string {
-	paths := make([]string, 0, len(f.calls))
-	for _, call := range f.calls {
+	calls, _ := f.received()
+	paths := make([]string, 0, len(calls))
+	for _, call := range calls {
 		paths = append(paths, call.path)
 	}
 	return paths
@@ -92,18 +116,20 @@ func TestACaptureWritesVariablesAndSecretsToTheDefaultGateway(t *testing.T) {
 	resource := struct{ Name string }{Name: "My App"}
 
 	f.capture.CaptureValues(context.Background(), "application", resource)
+	f.settle(t)
 
 	require.Len(t, f.exporter.valuesOf, 1)
 	assert.Equal(t, "application", f.exporter.valuesOf[0].resourceType)
 	assert.Equal(t, resource, f.exporter.valuesOf[0].resource)
 
-	assert.Equal(t, []storeCall{
+	calls, others := f.received()
+	assert.ElementsMatch(t, []storeCall{
 		{method: http.MethodPut, path: "/variables/APPLICATION_MY_APP_CLIENT_ID", key: "the-key",
 			body: `{"value":"the-id"}`},
 		{method: http.MethodPut, path: "/secrets/APPLICATION_MY_APP_CLIENT_SECRET", key: "the-key",
 			body: `{"value":"the-secret"}`},
-	}, f.calls)
-	assert.Empty(t, f.others, "a value was written to a gateway that is not the default")
+	}, calls)
+	assert.Empty(t, others, "a value was written to a gateway that is not the default")
 }
 
 // A name is escaped into the path, so it addresses one value however it is spelled.
@@ -112,6 +138,7 @@ func TestACaptureEscapesTheName(t *testing.T) {
 	f.exporter.variables = map[string]string{"A/B C": "value"}
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A%2FB%20C"}, f.paths())
 }
@@ -123,6 +150,7 @@ func TestACaptureWithoutADefaultGatewayWritesNothing(t *testing.T) {
 	f.exporter.secrets = map[string]string{"APPLICATION_MY_APP_CLIENT_SECRET": "the-secret"}
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
 	assert.Empty(t, f.calls)
 }
@@ -136,8 +164,9 @@ func TestACaptureToAnUnreachableGatewayCarriesOn(t *testing.T) {
 	f.exporter.secrets = map[string]string{"C": "3"}
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
-	assert.Equal(t, []string{"/variables/A", "/variables/B", "/secrets/C"}, f.paths())
+	assert.ElementsMatch(t, []string{"/variables/A", "/variables/B", "/secrets/C"}, f.paths())
 }
 
 // A value the gateway refuses does not stop the rest.
@@ -147,8 +176,9 @@ func TestACaptureTheGatewayRefusesCarriesOn(t *testing.T) {
 	f.exporter.variables = map[string]string{"A": "1", "B": "2"}
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
-	assert.Equal(t, []string{"/variables/A", "/variables/B"}, f.paths())
+	assert.ElementsMatch(t, []string{"/variables/A", "/variables/B"}, f.paths())
 }
 
 // A resource whose export refers to no value asks nothing of the gateways.
@@ -157,6 +187,7 @@ func TestACaptureWithNoValuesLooksUpNoGateway(t *testing.T) {
 	f.gateways.err = errors.New("the database is down")
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
 	assert.Empty(t, f.calls)
 }
@@ -168,6 +199,7 @@ func TestACaptureWhoseValuesFailWritesNothing(t *testing.T) {
 	f.exporter.valuesErr = errors.New("no exporter")
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
 	assert.Empty(t, f.calls)
 }
@@ -180,6 +212,7 @@ func TestACaptureWhoseGatewayLookupFailsWritesNothing(t *testing.T) {
 	f.gateways.gateways = nil
 
 	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
 
 	assert.Empty(t, f.calls)
 }
@@ -202,7 +235,46 @@ func TestACaptureOutlivesACanceledRequest(t *testing.T) {
 	cancel()
 
 	f.capture.CaptureValues(canceled, "application", struct{}{})
+	f.settle(t)
 
 	assert.False(t, f.exporter.valuesCtxDone, "the values were worked out on the canceled request context")
-	assert.Len(t, f.calls, 1)
+	assert.Len(t, f.paths(), 1)
+}
+
+// A write the gateway did not answer is tried again, with a growing delay, until it succeeds, and a
+// newer value given meanwhile is what arrives.
+func TestACaptureIsTriedAgainUntilTheGatewayAnswers(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 4
+	f.hangUp = true
+	f.exporter.variables = map[string]string{"A": "1"}
+
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	require.Eventually(t, func() bool { return len(f.paths()) >= 1 }, time.Second, time.Millisecond)
+	f.exporter.variables = map[string]string{"A": "2"}
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.mu.Lock()
+	f.hangUp = false
+	f.mu.Unlock()
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.NotEmpty(t, calls)
+	assert.Equal(t, `{"value":"2"}`, calls[len(calls)-1].body, "the newer value did not arrive last")
+	assert.Equal(t, 2*f.capture.retryDelay, f.capture.pushDelay(2))
+	assert.Equal(t, pushRetryDelayMax, f.capture.pushDelay(40))
+}
+
+// A write the gateway did not answer as many times as it is tried is given up on, and the caller is
+// never told: the apply that needs the value reports it missing.
+func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.attempts = 2
+	f.hangUp = true
+	f.exporter.variables = map[string]string{"A": "1"}
+
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
+
+	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
 }

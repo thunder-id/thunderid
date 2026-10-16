@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -23,10 +24,13 @@ type capturingGateway struct {
 	server *httptest.Server
 	mu     sync.Mutex
 	values map[string]string
+	// refuseFirst makes the first write of each value fail, as a store that is briefly down would.
+	refuseFirst bool
+	attempts    map[string]int
 }
 
 func newCapturingGateway() *capturingGateway {
-	g := &capturingGateway{values: map[string]string{}}
+	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -45,13 +49,50 @@ func newCapturingGateway() *capturingGateway {
 			return
 		}
 		g.mu.Lock()
-		g.values[parts[0]+"/"+parts[1]] = body.Value
+		key := parts[0] + "/" + parts[1]
+		g.attempts[key]++
+		if g.refuseFirst && g.attempts[key] == 1 {
+			g.mu.Unlock()
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		g.values[key] = body.Value
 		g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"name":"` + parts[1] + `"}`))
 	}))
 	return g
+}
+
+// heldSoon waits for a value to be set under a name in a collection, since the control plane writes
+// captured values in the background, and returns it and whether one arrived.
+func (g *capturingGateway) heldSoon(collection, name string) (string, bool) {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if value, ok := g.held(collection, name); ok || time.Now().After(deadline) {
+			return value, ok
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// holdsValueSoon waits for any name in a collection to hold the value.
+func (g *capturingGateway) holdsValueSoon(collection, value string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if g.holdsValue(collection, value) || time.Now().After(deadline) {
+			return g.holdsValue(collection, value)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// attemptsAt counts the writes a value received, failed ones included.
+func (g *capturingGateway) attemptsAt(collection, name string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.attempts[collection+"/"+name]
 }
 
 // held returns the value set under a name in a collection, and whether one was.
@@ -121,15 +162,40 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsValuesReachTheDefaultGa
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
-	held, ok := g.held("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
 	ts.True(ok, "the client ID was not captured")
 	ts.Equal(clientID, held)
-	held, ok = g.held("secrets", variableName("APPLICATION", name, "CLIENT_SECRET"))
+	held, ok = g.heldSoon("secrets", variableName("APPLICATION", name, "CLIENT_SECRET"))
 	ts.True(ok, "the client secret was not captured")
 	ts.Equal(clientSecret, held)
-	held, ok = g.held("variables", variableName("APPLICATION", name, "REDIRECT_URIS"))
+	held, ok = g.heldSoon("variables", variableName("APPLICATION", name, "REDIRECT_URIS"))
 	ts.True(ok, "the redirect URIs were not captured")
 	ts.JSONEq(`["https://cp-capture.example.com/callback"]`, held)
+}
+
+// A value the gateway's store refuses is written again a little later, so a store that is briefly
+// down loses nothing.
+func (ts *ControlPlaneTestSuite) TestACapturedValueRefusedOnceIsWrittenAgain() {
+	g := ts.withDefaultGateway()
+	g.refuseFirst = true
+	name := unique("CP Retry App")
+	clientID := unique("cp-retry-client")
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:         ts.ouID,
+		Name:         name,
+		ClientID:     clientID,
+		ClientSecret: unique("cp-retry-secret"),
+		RedirectURIs: []string{"https://cp-retry.example.com/callback"},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	ts.True(ok, "the client ID was not captured after the store refused it once")
+	ts.Equal(clientID, held)
+	ts.GreaterOrEqual(g.attemptsAt("variables", variableName("APPLICATION", name, "CLIENT_ID")), 2,
+		"the refused write was not tried again")
 }
 
 // An application that signs no user in has no redirect URIs. Its export leaves the empty list as it
@@ -156,7 +222,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplicationWithoutRedirectURIsAsksNoGatew
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
-	held, ok := g.held("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
 	ts.True(ok, "the client ID was not captured")
 	ts.Equal(clientID, held)
 	_, ok = g.held("variables", variableName("APPLICATION", name, "REDIRECT_URIS"))
@@ -195,7 +261,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenUsersPasswordReachesTheDefaultGatew
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteUser(userID) }()
 
-	ts.True(g.holdsValue("secrets", password), "the password was not captured as a secret")
+	ts.True(g.holdsValueSoon("secrets", password), "the password was not captured as a secret")
 	ts.False(g.holdsValue("variables", password), "the password was captured as a variable")
 }
 
@@ -219,7 +285,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenConnectionsSecretReachesTheDefaultG
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteIDP(idpID) }()
 
-	ts.True(g.holdsValue("secrets", clientSecret), "the connection's client secret was not captured")
+	ts.True(g.holdsValueSoon("secrets", clientSecret), "the connection's client secret was not captured")
 }
 
 // An agent written with client credentials leaves them in the default gateway's store, under the
@@ -262,10 +328,10 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteAgent(agentID) }()
 
-	held, ok := g.held("variables", variableName("AGENT", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("AGENT", name, "CLIENT_ID"))
 	ts.True(ok, "the agent's client ID was not captured")
 	ts.Equal(clientID, held)
-	held, ok = g.held("secrets", variableName("AGENT", name, "CLIENT_SECRET"))
+	held, ok = g.heldSoon("secrets", variableName("AGENT", name, "CLIENT_SECRET"))
 	ts.True(ok, "the agent's client secret was not captured")
 	ts.Equal(clientSecret, held)
 }
@@ -297,7 +363,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenResourceServersIdentifierReachesThe
 
 	rsID := ts.createResourceServer(name, identifier)
 
-	held, ok := g.held("variables", variable)
+	held, ok := g.heldSoon("variables", variable)
 	ts.True(ok, "the identifier was not captured")
 	ts.Equal(identifier, held)
 
@@ -317,6 +383,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenResourceServersIdentifierReachesThe
 		"ouId":       ts.ouID,
 	}, nil)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.True(g.holdsValueSoon("variables", changed), "the changed identifier did not replace the captured one")
 	held, _ = g.held("variables", variable)
-	ts.Equal(changed, held, "the changed identifier did not replace the captured one")
+	ts.Equal(changed, held, "the changed identifier was captured under another name")
 }

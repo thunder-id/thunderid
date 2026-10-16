@@ -27,6 +27,33 @@ server:
           value: {{ .value | quote }}
         {{- end }}
       {{- end }}
+      {{- if .trustedIssuer.userIdClaim }}
+      user_id_claim: {{ .trustedIssuer.userIdClaim | quote }}
+      {{- end }}
+      {{- with .trustedIssuer.userLookup }}
+      {{- if not (dig "clientSecretRef" "name" "" .) }}
+      {{- fail "configuration.server.security.trustedIssuer.userLookup.clientSecretRef.name is required: the client secret is read from a Kubernetes Secret, never from the chart values" }}
+      {{- end }}
+      user_lookup:
+        url: {{ .url | quote }}
+        token_url: {{ .tokenUrl | quote }}
+        client_id: {{ .clientId | quote }}
+        # The Secret clientSecretRef names is mounted under config/secrets/user-lookup; the server reads
+        # the file at load time, so the secret is in neither this ConfigMap nor the release values.
+        client_secret: "file://config/secrets/user-lookup/client_secret"
+        {{- if .scopes }}
+        scopes:
+          {{- range .scopes }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+        {{- if .nameAttribute }}
+        name_attribute: {{ .nameAttribute | quote }}
+        {{- end }}
+        {{- if .cacheTtl }}
+        cache_ttl: {{ .cacheTtl }}
+        {{- end }}
+      {{- end }}
     {{- end }}
     {{- /* hasKey, not truthiness: an empty `rest:`/`mcp:` block is falsy, and skipping it would
            silently leave the audience unenforced for an operator who asked for it. */}}

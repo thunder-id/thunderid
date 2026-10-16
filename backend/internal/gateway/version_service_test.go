@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -28,11 +30,90 @@ type fakeVersionStore struct {
 	applied  map[string]*AppliedVersion
 	pruned   int
 	err      error
-	// setErr fails recording what a gateway holds.
-	setErr error
+	// setErr fails recording what a gateway holds; replaceErr fails replacing the current version.
+	setErr     error
+	replaceErr error
+	settleErr  error
+	// onReplace runs as a replacement fails, and onSettle as a version is settled, standing for what
+	// another capture does at the same moment.
+	onReplace func(version Version)
+	onSettle  func()
+	// settled are the versions an apply sent, which stay current but are not replaced in place.
+	settled map[int]bool
 	// excluded is what each gateway is set to leave alone; excludeErr fails keeping it.
 	excluded   map[string]map[string]excludedResource
 	excludeErr error
+	// leases are the gateways' apply leases; leaseErr fails every lease call.
+	leases   map[string]*applyLease
+	leaseErr error
+	// onSetApplied runs once a version is recorded as applied, with its number.
+	onSetApplied func(applied int)
+}
+
+func (f *fakeVersionStore) GetLease(_ context.Context, gatewayID string) (*applyLease, error) {
+	if f.leaseErr != nil {
+		return nil, f.leaseErr
+	}
+	if lease, ok := f.leases[gatewayID]; ok {
+		copied := *lease
+		return &copied, nil
+	}
+	return nil, nil
+}
+
+func (f *fakeVersionStore) ClaimLease(_ context.Context, gatewayID, token string) (bool, error) {
+	if f.leaseErr != nil {
+		return false, f.leaseErr
+	}
+	if f.leases == nil {
+		f.leases = map[string]*applyLease{}
+	}
+	lease, ok := f.leases[gatewayID]
+	if !ok {
+		lease = &applyLease{}
+		f.leases[gatewayID] = lease
+	}
+	if lease.Token != "" && time.Since(lease.Since) <= leaseTimeout {
+		return false, nil
+	}
+	lease.Token, lease.Since = token, time.Now()
+	return true, nil
+}
+
+func (f *fakeVersionStore) HoldsLease(_ context.Context, gatewayID, token string) (bool, error) {
+	lease, ok := f.leases[gatewayID]
+	return ok && lease.Token == token, nil
+}
+
+func (f *fakeVersionStore) ReleaseLease(_ context.Context, gatewayID, token string) error {
+	if lease, ok := f.leases[gatewayID]; ok && lease.Token == token {
+		lease.Token, lease.Since = "", time.Time{}
+	}
+	return nil
+}
+
+func (f *fakeVersionStore) MarkPendingLatest(_ context.Context, gatewayID string, by *Actor) (bool, error) {
+	lease, ok := f.leases[gatewayID]
+	if !ok || lease.Token == "" {
+		return false, nil
+	}
+	lease.PendingLatest, lease.PendingBy = true, by
+	return true, nil
+}
+
+func (f *fakeVersionStore) TakePendingLatest(_ context.Context, gatewayID string) (*Actor, bool, error) {
+	lease, ok := f.leases[gatewayID]
+	if !ok || !lease.PendingLatest {
+		return nil, false, nil
+	}
+	by := lease.PendingBy
+	lease.PendingLatest, lease.PendingBy = false, nil
+	return by, true, nil
+}
+
+func (f *fakeVersionStore) DeleteLease(_ context.Context, gatewayID string) error {
+	delete(f.leases, gatewayID)
+	return nil
 }
 
 func (f *fakeVersionStore) Add(_ context.Context, version Version) (*Version, error) {
@@ -51,6 +132,55 @@ func (f *fakeVersionStore) Add(_ context.Context, version Version) (*Version, er
 	answer := v
 	answer.variables = ""
 	return &answer, nil
+}
+
+// ReplaceCurrent replaces the newest version when it was captured as current and no gateway holds
+// it or could be reverted to it, as the store's statement does.
+func (f *fakeVersionStore) ReplaceCurrent(_ context.Context, version Version) (*Version, error) {
+	if f.replaceErr != nil {
+		if f.onReplace != nil {
+			f.onReplace(version)
+		}
+		return nil, f.replaceErr
+	}
+	if len(f.versions) == 0 {
+		return nil, nil
+	}
+	newest := &f.versions[len(f.versions)-1]
+	if !newest.Current || f.settled[newest.Seq] {
+		return nil, nil
+	}
+	for _, held := range f.applied {
+		if held.AppliedVersion == newest.Seq || held.PreviousVersion == newest.Seq {
+			return nil, nil
+		}
+	}
+	newest.Hash, newest.Name, newest.Note = version.Hash, version.Name, version.Note
+	newest.Resources, newest.variables = version.Resources, version.variables
+	newest.CreatedBy = version.CreatedBy
+	answer := *newest
+	answer.variables = ""
+	return &answer, nil
+}
+
+// Settle keeps the version with the number and hash, when there is one, as it is from now on.
+func (f *fakeVersionStore) Settle(_ context.Context, seq int, hash string) (bool, error) {
+	if f.onSettle != nil {
+		f.onSettle()
+	}
+	if f.settleErr != nil {
+		return false, f.settleErr
+	}
+	for i := range f.versions {
+		if f.versions[i].Seq == seq && f.versions[i].Hash == hash {
+			if f.settled == nil {
+				f.settled = make(map[int]bool)
+			}
+			f.settled[seq] = true
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (f *fakeVersionStore) Find(_ context.Context, prefix string) ([]int, error) {
@@ -83,7 +213,7 @@ func (f *fakeVersionStore) List(context.Context) ([]Version, error) {
 	listed := make([]Version, 0, len(f.versions))
 	for i := len(f.versions) - 1; i >= 0; i-- {
 		listed = append(listed, Version{Seq: f.versions[i].Seq, Hash: f.versions[i].Hash, Name: f.versions[i].Name,
-			Note: f.versions[i].Note})
+			Note: f.versions[i].Note, Current: f.versions[i].Current, CreatedBy: f.versions[i].CreatedBy})
 	}
 	return listed, nil
 }
@@ -113,6 +243,26 @@ func (f *fakeVersionStore) Prune(_ context.Context, through int) error {
 	return nil
 }
 
+func (f *fakeVersionStore) Unsettle(_ context.Context, seq int, hash string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	if len(f.versions) == 0 || !f.settled[seq] {
+		return false, nil
+	}
+	newest := f.versions[len(f.versions)-1]
+	if newest.Seq != seq || newest.Hash != hash {
+		return false, nil
+	}
+	for _, held := range f.applied {
+		if held.AppliedVersion == seq || held.PreviousVersion == seq {
+			return false, nil
+		}
+	}
+	delete(f.settled, seq)
+	return true, nil
+}
+
 func (f *fakeVersionStore) GetApplied(_ context.Context, gatewayID string) (*AppliedVersion, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -125,15 +275,26 @@ func (f *fakeVersionStore) GetApplied(_ context.Context, gatewayID string) (*App
 	return nil, nil
 }
 
-func (f *fakeVersionStore) SetApplied(_ context.Context, gatewayID string, applied, previous, _ int) error {
+func (f *fakeVersionStore) SetApplied(_ context.Context, gatewayID string, applied int, hash string,
+	previous, _ int, by *Actor, token string) error {
 	if f.setErr != nil {
 		return f.setErr
+	}
+	if f.hashAt(applied) != hash {
+		return errVersionRemoved
+	}
+	if lease, ok := f.leases[gatewayID]; !ok || lease.Token != token {
+		return errAppliedChanged
 	}
 	if f.applied == nil {
 		f.applied = map[string]*AppliedVersion{}
 	}
+	now := time.Now()
 	f.applied[gatewayID] = &AppliedVersion{GatewayID: gatewayID, AppliedVersion: applied,
-		PreviousVersion: previous}
+		PreviousVersion: previous, AppliedAt: &now, AppliedBy: by}
+	if f.onSetApplied != nil {
+		f.onSetApplied(applied)
+	}
 	return nil
 }
 
@@ -214,25 +375,43 @@ type fakeGatewayClient struct {
 	sent []gatewayImportRequest
 	keys []string
 	err  error
-	// held are the values the gateway's store holds, by name; heldErr fails reading them.
-	held    map[string]bool
-	heldErr error
+	// held are the values the gateway's store holds, by name; heldSince is when each was set, for
+	// those that say; heldErr fails reading them.
+	held      map[string]bool
+	heldSince map[string]time.Time
+	heldErr   error
 	// imported is the gateway's account of an import; unset, it refused nothing.
 	imported json.RawMessage
+	// onImport runs while an import is in flight, for what may change at that moment.
+	onImport func()
 }
 
-func (f *fakeGatewayClient) UnsetValues(_ context.Context, _ *Gateway, _ string,
-	variables, secrets []string) (*MissingValues, error) {
+func (f *fakeGatewayClient) HeldValues(_ context.Context, _ *Gateway, _ string,
+	variables, secrets []string) (*HeldValues, error) {
 	if f.heldErr != nil {
 		return nil, f.heldErr
 	}
-	return &MissingValues{Variables: unheld(variables, f.held), Secrets: unheld(secrets, f.held)}, nil
+	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
+	for _, name := range variables {
+		if f.held[name] {
+			held.Variables[name] = f.heldSince[name]
+		}
+	}
+	for _, name := range secrets {
+		if f.held[name] {
+			held.Secrets[name] = f.heldSince[name]
+		}
+	}
+	return held, nil
 }
 
 func (f *fakeGatewayClient) Import(_ context.Context, _ *Gateway, key string,
 	req gatewayImportRequest) (json.RawMessage, error) {
 	f.sent = append(f.sent, req)
 	f.keys = append(f.keys, key)
+	if f.onImport != nil && !req.DryRun {
+		f.onImport()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -283,7 +462,8 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		client:   &fakeGatewayClient{},
 	}
 	gateways := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client)
+	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client,
+		&fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}})
 	return f
 }
 
@@ -331,6 +511,43 @@ func TestACaptureSealsTheValuesItCarries(t *testing.T) {
 	assert.Empty(t, v.variables, "a capture answer carried the values")
 }
 
+// signedIn is a request's context for a user signed in with the given claims.
+// fakeActorNames names the users a lookup at the issuer would, from a fixed map.
+type fakeActorNames struct{ names map[string]string }
+
+func (f *fakeActorNames) fill(_ context.Context, actors ...*Actor) {
+	for _, actor := range actors {
+		if actor != nil && actor.Name == "" {
+			actor.Name = f.names[actor.ID]
+		}
+	}
+}
+
+func signedIn(id string, claims map[string]interface{}) context.Context {
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(id, "", "", nil, claims))
+}
+
+// A capture is kept for the user who asked for it, and a current version replaced in place for the
+// user whose change replaced it.
+func TestACaptureIsKeptForWhoAskedForIt(t *testing.T) {
+	f := newVersionFixture(t)
+
+	v, svcErr := f.svc.Capture(signedIn("u-1", map[string]interface{}{"username": "alice"}),
+		CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, &Actor{ID: "u-1", Name: "alice"}, v.CreatedBy)
+
+	f.exporter.response = exportOf("", "ou-b")
+	replaced, svcErr := f.svc.Capture(withActor(context.Background(), &Actor{ID: "u-2", Name: "bob"}),
+		CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, 1, replaced.Seq)
+	assert.Equal(t, &Actor{ID: "u-2", Name: "bob"}, replaced.CreatedBy)
+	listed, _ := f.svc.ListVersions(context.Background())
+	assert.Equal(t, &Actor{ID: "u-2", Name: "bob"}, listed[0].CreatedBy)
+}
+
 // A capture keeps only the configured number of versions.
 func TestACaptureRemovesVersionsBeyondTheBound(t *testing.T) {
 	f := newVersionFixture(t)
@@ -338,6 +555,167 @@ func TestACaptureRemovesVersionsBeyondTheBound(t *testing.T) {
 		f.capture(t, id)
 	}
 	assert.Equal(t, 3-maxVersions(), f.versions.pruned)
+}
+
+// A capture asked to keep the configuration current replaces the current version until a gateway
+// holds it, then adds a new current version; only the newest is listed as current.
+func TestACurrentCaptureKeepsOneVersionUntilAGatewayHoldsIt(t *testing.T) {
+	f := newVersionFixture(t)
+	current := func(ids ...string) *Version {
+		t.Helper()
+		f.exporter.response = exportOf("", ids...)
+		v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+		require.Nil(t, svcErr)
+		return v
+	}
+
+	first := current("ou-a")
+	second := current("ou-b")
+	assert.Equal(t, 1, first.Seq)
+	assert.Equal(t, 1, second.Seq, "a change made a new version rather than updating the current one")
+	assert.True(t, second.Current)
+	assert.Len(t, f.versions.versions, 1)
+	assert.Contains(t, f.versions.versions[0].Resources, "ou-b")
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: second.Hash})
+	require.Nil(t, svcErr)
+	third := current("ou-c")
+	assert.Equal(t, 2, third.Seq, "the version a gateway holds was replaced")
+	assert.Contains(t, f.versions.versions[0].Resources, "ou-b")
+
+	listed, svcErr := f.svc.ListVersions(context.Background())
+	require.Nil(t, svcErr)
+	require.Len(t, listed, 2)
+	assert.True(t, listed[0].Current)
+	assert.False(t, listed[1].Current, "a version a gateway held was still listed as current")
+}
+
+// A capture that is not asked to keep the configuration current adds a version even after a current
+// one, and a later current capture does not replace it.
+func TestAPlainCaptureIsAlwaysKept(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+
+	kept := f.capture(t, "ou-b")
+	f.exporter.response = exportOf("", "ou-c")
+	next, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+
+	assert.Equal(t, 2, kept.Seq)
+	assert.Equal(t, 3, next.Seq)
+	assert.Len(t, f.versions.versions, 3)
+}
+
+// A current capture that cannot replace the current version fails rather than adding one.
+func TestACurrentCaptureReportsAFailureToReplace(t *testing.T) {
+	f := newVersionFixture(t)
+	f.versions.replaceErr = errors.New("database is down")
+
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	assert.Empty(t, f.versions.versions)
+}
+
+// A current capture that collides with the same configuration captured by another at the same moment
+// answers with the version the other kept.
+func TestACurrentCaptureCollidingWithAnotherAnswersWithItsVersion(t *testing.T) {
+	f := newVersionFixture(t)
+	f.versions.replaceErr = errors.New("duplicate key value violates unique constraint")
+	f.versions.onReplace = func(version Version) {
+		f.versions.versions = append(f.versions.versions, Version{Seq: 1, Hash: version.Hash, Current: true})
+	}
+
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, 1, v.Seq)
+	assert.Len(t, f.versions.versions, 1)
+}
+
+// A change captured while a gateway imports the current version adds a version rather than rewriting
+// the one the gateway is receiving, so the apply is recorded as what the gateway was sent.
+func TestAChangeCapturedDuringAnApplyAddsAVersion(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	f.client.onImport = func() {
+		f.exporter.response = exportOf("", "ou-b")
+		_, captureErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+		require.Nil(t, captureErr)
+	}
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: v.Hash})
+
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded)
+	require.Len(t, f.versions.versions, 2)
+	assert.Equal(t, v.Hash, f.versions.versions[0].Hash, "the version being applied was rewritten")
+	assert.Equal(t, 1, f.versions.applied["gw-1"].AppliedVersion)
+	listed, svcErr := f.svc.ListVersions(context.Background())
+	require.Nil(t, svcErr)
+	require.Len(t, listed, 2)
+	assert.True(t, listed[0].Current)
+	assert.False(t, listed[1].Current)
+}
+
+// The version an apply sent stays the current one until the next change, and that change adds a
+// version rather than replacing it.
+func TestAnAppliedCurrentVersionStaysCurrentUntilTheNextChange(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: v.Hash})
+	require.Nil(t, svcErr)
+
+	listed, svcErr := f.svc.ListVersions(context.Background())
+	require.Nil(t, svcErr)
+	require.Len(t, listed, 1)
+	assert.True(t, listed[0].Current, "the version a gateway runs stopped being current before any change")
+}
+
+// An apply of a version replaced or removed after it was read is refused before anything is sent,
+// and one whose version cannot be settled fails the same way.
+func TestAnApplyOfAVersionThatCannotBeSettledSendsNothing(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	f.versions.onSettle = func() { f.versions.versions[0].Hash = "replaced" }
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: v.Hash})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorVersionRemoved.Code, svcErr.Code)
+	assert.Empty(t, f.client.sent)
+
+	f.versions.onSettle = nil
+	f.versions.versions[0].Hash = v.Hash
+	f.versions.settleErr = errors.New("database is down")
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: v.Hash})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	assert.Empty(t, f.client.sent)
+}
+
+// An apply is not recorded when its version was replaced as the current one while it was written.
+func TestAnApplyOfAReplacedVersionIsNotRecorded(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	f.client.onImport = func() { f.versions.versions[0].Hash = "replaced" }
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: v.Hash})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorVersionRemoved.Code, svcErr.Code)
 }
 
 // A version is named by the SHA-256 of what it captured, and capturing the same configuration again
@@ -459,6 +837,25 @@ func TestApplySendsTheVersionAndRecordsIt(t *testing.T) {
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
 	assert.Equal(t, 1, held.AppliedVersion)
 	assert.Zero(t, held.PreviousVersion)
+}
+
+// An apply and a revert record who made them.
+func TestAnApplyRecordsWhoMadeIt(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.capture(t, "ou-b")
+
+	alice := signedIn("u-1", map[string]interface{}{"username": "alice", "email": "alice@example.com"})
+	_, svcErr := f.svc.Apply(alice, "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Equal(t, &Actor{ID: "u-1", Name: "alice"}, held.AppliedBy)
+
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	_, svcErr = f.svc.Revert(signedIn("u-3", nil), "gw-1", RevertRequest{})
+	require.Nil(t, svcErr)
+	held, _ = f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Nil(t, held.AppliedBy, "a user the issuer does not name was given out by id")
 }
 
 // A later version that no longer has a resource removes it from the gateway, and the version it held
@@ -652,7 +1049,7 @@ func TestApplySendsTheVersionsValues(t *testing.T) {
 func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
 	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
-	svc := newVersionService(declared, f.versions, f.exporter, f.client)
+	svc := newVersionService(declared, f.versions, f.exporter, f.client, &fakeActorNames{})
 	f.capture(t, "ou-a")
 
 	_, svcErr := svc.Apply(context.Background(), "gw-d", ApplyRequest{})
@@ -838,4 +1235,274 @@ func TestTheCurrentConfigurationReportsAFailedExport(t *testing.T) {
 
 	require.NotNil(t, svcErr)
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// An apply settles the current version before anything is sent; when the gateway received nothing,
+// the version is current again, so the next capture after a change replaces it rather than adding one.
+func TestAnApplyThatWroteNothingLeavesTheVersionCurrent(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	f.client.err = errImportNotWritten
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+
+	f.exporter.response = exportOf("", "ou-a", "ou-b")
+	replaced, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, 1, replaced.Seq, "a version was added beside one no gateway received")
+	assert.Len(t, f.versions.versions, 1)
+}
+
+// A version a gateway did receive stays settled, whatever a later apply of it does.
+func TestAVersionAGatewayRunsStaysSettled(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = exportOf("", "ou-a")
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.client.err = errImportNotWritten
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorGatewayUnreachable.Code, svcErr.Code, "the apply did not reach the import")
+
+	f.exporter.response = exportOf("", "ou-a", "ou-b")
+	added, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, 2, added.Seq)
+}
+
+// An apply refused for a value the gateway lacks sent nothing either, so the version is current again.
+func TestAnApplyRefusedForMissingValuesLeavesTheVersionCurrent(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{
+		{Content: "resource_type: application\nid: app-1\nname: app\nclient_id: var:APP_CLIENT_ID\n"},
+	}}
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorMissingValues.Code, svcErr.Code)
+
+	f.exporter.response = &export.ExportResponse{Files: []export.ExportFile{
+		{Content: "resource_type: application\nid: app-1\nname: renamed\nclient_id: var:APP_CLIENT_ID\n"},
+	}}
+	replaced, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Current: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, 1, replaced.Seq, "a version was added beside one no gateway received")
+}
+
+// shortLeaseWait makes an apply waiting for a gateway's lease give up quickly, for a test.
+func shortLeaseWait(t *testing.T) {
+	t.Helper()
+	poll, wait := leasePoll, leaseWait
+	leasePoll, leaseWait = time.Millisecond, 30*time.Millisecond
+	t.Cleanup(func() { leasePoll, leaseWait = poll, wait })
+}
+
+// An apply holds the gateway's lease from before it settles the version until it has recorded what
+// the gateway holds, and gives it back after, whatever the outcome.
+func TestAnApplyHoldsTheGatewaysLeaseWhileItRuns(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.client.onImport = func() {
+		lease, _ := f.versions.GetLease(context.Background(), "gw-1")
+		require.NotNil(t, lease)
+		assert.NotEmpty(t, lease.Token, "the import ran without the lease")
+	}
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	lease, _ := f.versions.GetLease(context.Background(), "gw-1")
+	assert.Empty(t, lease.Token, "the lease was not given back")
+
+	f.client.err = errors.New("down")
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+	lease, _ = f.versions.GetLease(context.Background(), "gw-1")
+	assert.Empty(t, lease.Token, "the lease was not given back after a failed apply")
+
+	f.svc.Forget(context.Background(), "gw-1")
+	lease, _ = f.versions.GetLease(context.Background(), "gw-1")
+	assert.Nil(t, lease, "a removed gateway's lease was kept")
+}
+
+// While an apply runs, an apply of the latest version is queued behind it rather than run or refused,
+// and once the running one finishes the latest version is applied once more, for whoever asked.
+func TestAnApplyOfTheLatestVersionIsQueuedBehindARunningOne(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	var queued *ApplyResult
+	var queuedErr *tidcommon.ServiceError
+	f.client.onImport = func() {
+		if queued == nil && queuedErr == nil {
+			// A change captured while the first apply runs, then an apply of what is now latest.
+			f.capture(t, "ou-a", "ou-b")
+			queued, queuedErr = f.svc.Apply(signedIn("u-2", map[string]interface{}{"username": "bob"}),
+				"gw-1", ApplyRequest{})
+		}
+	}
+
+	// The queued apply runs on its own goroutine; its record is the signal to read the fakes after.
+	recorded := make(chan struct{}, 2)
+	f.versions.onSetApplied = func(applied int) {
+		if applied == 2 {
+			recorded <- struct{}{}
+		}
+	}
+
+	first, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, f.hash(1), first.Diff.ToVersion)
+	require.Nil(t, queuedErr)
+	require.NotNil(t, queued)
+	assert.True(t, queued.Queued)
+	assert.Equal(t, f.hash(2), queued.QueuedVersion)
+	select {
+	case <-recorded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the latest version was not applied after the running apply")
+	}
+	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
+	require.NotNil(t, held.AppliedBy)
+	assert.Equal(t, "u-2", held.AppliedBy.ID, "the queued apply was not kept for who asked")
+	assert.Len(t, f.client.sent, 2, "the queued apply was sent more than once")
+}
+
+// An apply of an older version, or a revert, is a choice of its own: it waits for the running apply
+// as long as an import may take, and is refused if the gateway is still held then.
+func TestAnApplyOfAnOlderVersionWaitsForTheLeaseAndIsRefusedWhenHeld(t *testing.T) {
+	shortLeaseWait(t)
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.capture(t, "ou-a", "ou-b")
+	f.versions.leases = map[string]*applyLease{"gw-1": {Token: "other", Since: time.Now()}}
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code)
+	assert.Empty(t, f.client.sent, "the import was sent while another apply held the gateway")
+
+	// A lease older than any apply can run was never given back, and is taken over.
+	f.versions.leases["gw-1"].Since = time.Now().Add(-2 * leaseTimeout)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+	assert.Len(t, f.client.sent, 1)
+}
+
+// An apply that would remove more resources than the threshold is refused until it is confirmed; a
+// dry run shows the removals without being refused.
+func TestAnApplyRemovingManyResourcesNeedsConfirmation(t *testing.T) {
+	f := newVersionFixture(t)
+	units := []string{"ou-a", "ou-b", "ou-c", "ou-d", "ou-e", "ou-f", "ou-g"}
+	f.capture(t, units...)
+	f.capture(t, "ou-a")
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorRemovalsNeedConfirmation.Code, svcErr.Code)
+	assert.Len(t, f.client.sent, 1, "the import was sent without confirmation")
+
+	preview, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), DryRun: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, 6, preview.Diff.Summary.Deleted)
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), ConfirmRemovals: true})
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded)
+	assert.Len(t, f.client.last().Deletions, 6)
+
+	_, svcErr = f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
+	require.Nil(t, svcErr, "a revert adding resources needs no confirmation")
+	_, svcErr = f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorRemovalsNeedConfirmation.Code, svcErr.Code, "a revert removing many was not refused")
+}
+
+// An apply reports the values the version refers to that were set on the gateway after the version
+// it holds was applied, by name, so a value changed outside any version is seen as it takes effect.
+func TestAnApplyReportsValuesSetSinceTheLastApply(t *testing.T) {
+	f := newVersionFixture(t)
+	f.captureReferring(t)
+	f.client.held = map[string]bool{"APP_CLIENT_ID": true, "APP_SECRET": true}
+	before, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	assert.Nil(t, before.Changed, "a first apply has nothing to compare with")
+
+	f.client.heldSince = map[string]time.Time{"APP_SECRET": time.Now().Add(time.Hour)}
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{DryRun: true})
+
+	require.Nil(t, svcErr)
+	require.NotNil(t, result.Changed)
+	assert.Empty(t, result.Changed.Variables)
+	assert.Equal(t, []string{"APP_SECRET"}, result.Changed.Secrets)
+	require.Len(t, result.Changed.References, 1)
+	assert.Equal(t, "app-1", result.Changed.References[0].ResourceID)
+}
+
+// An apply that outlived its lease sends nothing more and records nothing: a lease taken over, on a
+// node that stalled, fences the import and the record alike.
+func TestAnApplyWhoseLeaseWasTakenOverWritesNothing(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.versions.onSettle = func() { f.versions.leases["gw-1"].Token = "another-node" }
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorAppliedChanged.Code, svcErr.Code)
+	assert.Empty(t, f.client.sent, "the import was sent after the lease was lost")
+
+	f.versions.onSettle = nil
+	f.versions.leases["gw-1"].Token = ""
+	f.client.onImport = func() { f.versions.leases["gw-1"].Token = "another-node" }
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorAppliedChanged.Code, svcErr.Code)
+	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Equal(t, 0, held.AppliedVersion, "an apply that lost its lease during the import was recorded")
+}
+
+// Only an apply that asks for "latest" with nothing chosen and nothing confirmed is queued behind a
+// running one; a version named by its hash, or a confirmation, is a choice the queued run could not
+// keep, so it waits instead. What the queued run would refuse for its removals is refused at once.
+func TestOnlyAPlainApplyOfLatestIsQueued(t *testing.T) {
+	shortLeaseWait(t)
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.versions.leases = map[string]*applyLease{"gw-1": {Token: "other", Since: time.Now()}}
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code, "a version named by its hash was queued")
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{ConfirmRemovals: true})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorApplyInProgress.Code, svcErr.Code, "a confirmed apply was queued")
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: "latest"})
+	require.Nil(t, svcErr)
+	assert.True(t, result.Queued)
+	// What was queued is answered by TestAnApplyOfTheLatestVersionIsQueuedBehindARunningOne; here the
+	// ask is taken away, so the next release runs nothing in the background while the fakes change.
+	f.versions.leases["gw-1"].PendingLatest = false
+
+	f.versions.leases["gw-1"].Token = ""
+	units := []string{"ou-a", "ou-b", "ou-c", "ou-d", "ou-e", "ou-f", "ou-g"}
+	f.capture(t, units...)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	require.Nil(t, svcErr)
+	f.capture(t, "ou-z")
+	f.versions.leases["gw-1"].Token = "other"
+	f.versions.leases["gw-1"].Since = time.Now()
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorRemovalsNeedConfirmation.Code, svcErr.Code, "an apply bound to be refused was queued")
 }

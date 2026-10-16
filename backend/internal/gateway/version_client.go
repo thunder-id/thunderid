@@ -55,9 +55,37 @@ var errImportNotWritten = errors.New("the gateway wrote nothing of the import")
 type gatewayClientInterface interface {
 	// Import posts to the gateway's /import presenting its key, and returns the answer as it came.
 	Import(ctx context.Context, gw *Gateway, key string, req gatewayImportRequest) (json.RawMessage, error)
-	// UnsetValues returns which of the named variables and secrets the gateway's store holds no value
-	// for.
-	UnsetValues(ctx context.Context, gw *Gateway, key string, variables, secrets []string) (*MissingValues, error)
+	// HeldValues reports which of the named variables and secrets the gateway's store holds a value
+	// for, and when each was last set.
+	HeldValues(ctx context.Context, gw *Gateway, key string, variables, secrets []string) (*HeldValues, error)
+}
+
+// HeldValues are the values a gateway's store holds, by name, each with when it was last set, zero
+// when the store did not say.
+type HeldValues struct {
+	Variables map[string]time.Time
+	Secrets   map[string]time.Time
+}
+
+// missing returns the names among those asked for that the store does not hold.
+func (h *HeldValues) missing(variables, secrets []string) *MissingValues {
+	return &MissingValues{Variables: unheld(variables, h.Variables), Secrets: unheld(secrets, h.Secrets)}
+}
+
+// changedSince returns the names among those asked for whose value was set after the given time.
+func (h *HeldValues) changedSince(variables, secrets []string, since time.Time) *ChangedValues {
+	changed := &ChangedValues{}
+	for _, name := range variables {
+		if set, ok := h.Variables[name]; ok && !set.IsZero() && set.After(since) {
+			changed.Variables = append(changed.Variables, name)
+		}
+	}
+	for _, name := range secrets {
+		if set, ok := h.Secrets[name]; ok && !set.IsZero() && set.After(since) {
+			changed.Secrets = append(changed.Secrets, name)
+		}
+	}
+	return changed
 }
 
 // gatewayClient reaches a gateway over HTTPS.

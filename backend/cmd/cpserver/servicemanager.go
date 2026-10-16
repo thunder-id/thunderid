@@ -82,6 +82,10 @@ import (
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
 var observabilitySvc observability.ObservabilityServiceInterface
 
+// changeCapture captures the configuration as the current version after each change to it, and is
+// wrapped around the routes by createHTTPServer.
+var changeCapture = gateway.NewChangeCapture()
+
 // registerServices registers the Control Plane management services with the provided HTTP
 // multiplexer. It also returns the import service so the bootstrap subcommand can create default
 // resources in-process through the same service instances.
@@ -339,7 +343,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, exportService, valueCapture, exporters)
+	gatewayService, err := gateway.Initialize(mux, exportService, valueCapture, exporters, changeCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

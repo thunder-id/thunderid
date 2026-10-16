@@ -454,7 +454,8 @@ CREATE UNIQUE INDEX idx_gateway_default_deployment
 
 -- A captured state of this deployment's configuration, named by a hash of what it captured and
 -- ordered per deployment. It is what is applied to a gateway. Its values, when the export carried
--- any, are held encrypted as one secret.
+-- any, are held encrypted as one secret. CREATED_BY_ID is the id of the user it was
+-- captured for; their name is read from the trusted issuer when shown, never stored.
 CREATE TABLE "CONFIGURATION_VERSION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) PRIMARY KEY,
@@ -464,20 +465,37 @@ CREATE TABLE "CONFIGURATION_VERSION" (
     RESOURCES TEXT NOT NULL,
     VARIABLES TEXT,
     NOTE TEXT,
+    IS_CURRENT CHAR(1) NOT NULL DEFAULT '0',
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
+    CREATED_BY_ID VARCHAR(255),
     UNIQUE (DEPLOYMENT_ID, SEQ),
     UNIQUE (DEPLOYMENT_ID, HASH)
 );
 
 -- The configuration version each gateway holds, and the one it held before, which is what a revert
--- returns it to. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+-- returns it to, with who applied it. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
 CREATE TABLE "GATEWAY_APPLIED_VERSION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     GATEWAY_ID VARCHAR(36) NOT NULL,
     APPLIED_SEQ INTEGER NOT NULL,
     PREVIOUS_SEQ INTEGER,
     APPLIED_AT TIMESTAMPTZ DEFAULT NOW(),
+    APPLIED_BY_ID VARCHAR(255),
     PRIMARY KEY (GATEWAY_ID, DEPLOYMENT_ID)
+);
+
+-- One apply or revert at a time per gateway, across every node of this plane: an apply claims the
+-- row with a token of its own before it sends anything and clears it when done, and a claim older
+-- than an import may take is taken over. PENDING_LATEST records that the latest version is to be
+-- applied again once the running apply finishes, for whoever asked while it ran.
+CREATE TABLE "GATEWAY_APPLY_LEASE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    GATEWAY_ID VARCHAR(36) NOT NULL,
+    TOKEN VARCHAR(36),
+    APPLYING_SINCE TIMESTAMPTZ,
+    PENDING_LATEST BOOLEAN NOT NULL DEFAULT FALSE,
+    PENDING_BY_ID VARCHAR(255),
+    PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID)
 );
 
 -- The resources each gateway is set to leave alone: an apply neither writes nor removes them there,

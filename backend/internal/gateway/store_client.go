@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/variablestore"
@@ -174,22 +175,20 @@ func (c *gatewayClient) DeleteSecret(ctx context.Context, gw *Gateway, key, name
 	return err
 }
 
-// UnsetValues asks the gateway's store for the named variables and secrets, in batches it answers
-// for, and returns those it holds no value for.
-func (c *gatewayClient) UnsetValues(ctx context.Context, gw *Gateway, key string,
-	variables, secrets []string) (*MissingValues, error) {
-	missing := &MissingValues{}
+// HeldValues asks the gateway's store for the named variables and secrets, in batches it answers
+// for, and returns those it holds with when each was last set.
+func (c *gatewayClient) HeldValues(ctx context.Context, gw *Gateway, key string,
+	variables, secrets []string) (*HeldValues, error) {
+	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
 	for start := 0; start < len(variables); start += maxNamesPerLookup {
 		batch := variables[start:min(start+maxNamesPerLookup, len(variables))]
 		listing, err := c.ListVariables(ctx, gw, key, lookupOf(batch))
 		if err != nil {
 			return nil, err
 		}
-		held := map[string]bool{}
 		for _, variable := range listing.Variables {
-			held[variable.Name] = true
+			held.Variables[variable.Name] = asTime(variable.UpdatedAt)
 		}
-		missing.Variables = append(missing.Variables, unheld(batch, held)...)
 	}
 	for start := 0; start < len(secrets); start += maxNamesPerLookup {
 		batch := secrets[start:min(start+maxNamesPerLookup, len(secrets))]
@@ -197,23 +196,21 @@ func (c *gatewayClient) UnsetValues(ctx context.Context, gw *Gateway, key string
 		if err != nil {
 			return nil, err
 		}
-		held := map[string]bool{}
 		for _, secret := range listing.Secrets {
-			held[secret.Name] = true
+			held.Secrets[secret.Name] = asTime(secret.UpdatedAt)
 		}
-		missing.Secrets = append(missing.Secrets, unheld(batch, held)...)
 	}
-	return missing, nil
+	return held, nil
 }
 
 func lookupOf(names []string) StoreListQuery {
 	return StoreListQuery{Names: strings.Join(names, ","), Limit: fmt.Sprint(maxNamesPerLookup)}
 }
 
-func unheld(names []string, held map[string]bool) []string {
+func unheld(names []string, held map[string]time.Time) []string {
 	var out []string
 	for _, name := range names {
-		if !held[name] {
+		if _, ok := held[name]; !ok {
 			out = append(out, name)
 		}
 	}

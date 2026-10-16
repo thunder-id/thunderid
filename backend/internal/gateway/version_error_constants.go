@@ -60,20 +60,21 @@ var (
 			DefaultValue: "This gateway holds no earlier version to revert to",
 		},
 	}
-	// ErrorVersionRemoved is returned when the version being applied was removed by a capture before
-	// the apply could record it. The gateway received it, so applying a kept version records the
-	// gateway's state again.
+	// ErrorVersionRemoved is returned when the version being applied was removed, or replaced as the
+	// current version, by a capture. Found before the import, when the version cannot be kept as it
+	// is, nothing was sent to the gateway. Found after it, when the apply records it, the gateway
+	// received it, so applying a kept version records the gateway's state again.
 	ErrorVersionRemoved = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1018",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.gatewayservice.version_removed",
-			DefaultValue: "The version was removed while it was applied",
+			DefaultValue: "The version was removed or replaced while it was applied",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.gatewayservice.version_removed.description",
-			DefaultValue: "Only the newest versions are kept, and this one was removed by a capture. " +
-				"Apply a version that is still kept.",
+			DefaultValue: "Only the newest versions are kept, and a capture removed this one or replaced it " +
+				"as the current version. Apply a version that is still kept.",
 		},
 	}
 	// ErrorAppliedChanged is returned when another apply to the same gateway finished between this one
@@ -103,6 +104,35 @@ var (
 			Key: "error.gatewayservice.missing_values.description",
 			DefaultValue: "Set the missing variables and secrets on the gateway, then apply again. " +
 				"A dry run lists them.",
+		},
+	}
+	// ErrorApplyInProgress is returned when another apply or revert to the gateway was still running
+	// after this one had waited as long as an import may take.
+	ErrorApplyInProgress = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.apply_in_progress",
+			DefaultValue: "Another apply to this gateway is still running",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.apply_in_progress.description",
+			DefaultValue: "Wait for it to finish, then apply again.",
+		},
+	}
+	// ErrorRemovalsNeedConfirmation is returned when an apply would remove more resources from the
+	// gateway than the deployment's threshold and was not confirmed.
+	ErrorRemovalsNeedConfirmation = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.removals_need_confirmation",
+			DefaultValue: "This apply would remove many resources from the gateway",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.removals_need_confirmation.description",
+			DefaultValue: "Review the removals with a dry run, then apply again with confirmRemovals set " +
+				"to go ahead.",
 		},
 	}
 	// ErrorInvalidSelection is returned when an apply's selection names a resource the diff does not

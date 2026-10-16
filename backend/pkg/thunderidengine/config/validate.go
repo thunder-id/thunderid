@@ -11,6 +11,7 @@ import (
 )
 
 const schemeHTTPS = "https"
+const schemeHTTP = "http"
 const localhost = "localhost"
 
 // Validate checks the security configuration for correctness, including any nested
@@ -196,6 +197,11 @@ func (c *TrustedIssuerConfig) IsConfigured() bool {
 // JWKS URL must use HTTPS to prevent MITM attacks on public key retrieval.
 // HTTP is allowed only for localhost/127.0.0.1 to support local development and tests.
 func (c *TrustedIssuerConfig) Validate() error {
+	// The lookup is checked whether or not the issuer is set: a lookup half set up would fail every
+	// read of who did what, with nothing at start-up to say why.
+	if err := c.UserLookup.Validate(); err != nil {
+		return err
+	}
 	if !c.IsConfigured() {
 		return nil
 	}
@@ -213,7 +219,7 @@ func (c *TrustedIssuerConfig) Validate() error {
 	switch parsed.Scheme {
 	case schemeHTTPS:
 		return nil
-	case "http":
+	case schemeHTTP:
 		host := parsed.Hostname()
 		if host == localhost || host == "127.0.0.1" || host == "::1" {
 			return nil
@@ -282,4 +288,34 @@ func GetServerURL(server *ServerConfig) string {
 		scheme = "http"
 	}
 	return fmt.Sprintf("%s://%s:%d", scheme, server.Hostname, server.Port)
+}
+
+// Validate checks the user lookup: when its URL is set, it must carry {id} and be an http(s) URL, and the
+// token endpoint and the client that asks it must be set.
+func (c *UserLookupConfig) Validate() error {
+	if !c.Enabled() {
+		return nil
+	}
+	var problem string
+	switch {
+	case !strings.Contains(c.URL, "{id}"):
+		problem = "url must carry {id} where the user's id goes"
+	case !isHTTPURL(c.URL):
+		problem = "url is not an http(s) URL"
+	case !isHTTPURL(c.TokenURL):
+		problem = "token_url is not an http(s) URL"
+	case strings.TrimSpace(c.ClientID) == "" || strings.TrimSpace(c.ClientSecret) == "":
+		problem = "client_id and client_secret must be set when url is set"
+	case c.CacheTTL < 0:
+		problem = "cache_ttl must not be negative"
+	default:
+		return nil
+	}
+	return fmt.Errorf("trusted_issuer.user_lookup.%s", problem)
+}
+
+// isHTTPURL reports whether raw is an absolute http or https URL.
+func isHTTPURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && (parsed.Scheme == schemeHTTPS || parsed.Scheme == schemeHTTP) && parsed.Host != ""
 }
