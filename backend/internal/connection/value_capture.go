@@ -28,7 +28,7 @@ func (s *service) captureIDPValues(ctx context.Context, dto *providers.IDPDTO) {
 	if err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
 			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
+			log.String("connectionID", dto.ID), log.Error(err))
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)
@@ -44,7 +44,7 @@ func (s *service) captureSenderValues(ctx context.Context, dto *ncommon.Notifica
 	if err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
 			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
+			log.String("connectionID", dto.ID), log.Error(err))
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)

@@ -50,10 +50,9 @@ func registerRoutes(mux *http.ServeMux, userInfoHandler *userInfoHandler) {
 		MaxAge:           600,
 	}
 
-	mux.HandleFunc(middleware.WithCORS("GET "+constants.OAuth2UserInfoEndpoint,
-		userInfoHandler.HandleUserInfo, opts))
-	mux.HandleFunc(middleware.WithCORS("POST "+constants.OAuth2UserInfoEndpoint,
-		userInfoHandler.HandleUserInfo, opts))
+	userInfo := middleware.CorrelationIDMiddleware(http.HandlerFunc(userInfoHandler.HandleUserInfo)).ServeHTTP
+	mux.HandleFunc(middleware.WithCORS("GET "+constants.OAuth2UserInfoEndpoint, userInfo, opts))
+	mux.HandleFunc(middleware.WithCORS("POST "+constants.OAuth2UserInfoEndpoint, userInfo, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+constants.OAuth2UserInfoEndpoint,
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

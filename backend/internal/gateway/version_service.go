@@ -154,7 +154,7 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 	}
 	for _, failed := range skipped {
 		s.logger.Warn(ctx, "A resource the export could not write is left out of the version",
-			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceId", failed.ResourceID),
+			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceID", failed.ResourceID),
 			log.String("error", failed.Error))
 	}
 
@@ -471,7 +471,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	}
 	answer, err := s.client.Import(ctx, gw, key, request)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
 		if kept && errors.Is(err, errImportNotWritten) {
 			s.restoreExclusions(ctx, gw.ID, before, exclude, include)
@@ -495,7 +495,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if len(request.Deletions) > 0 {
 		if failed, ok := failedDeletions(answer); !ok || failed > 0 {
 			s.logger.Warn(ctx, "The gateway did not complete the removals, so the version is not recorded as applied",
-				log.String("gatewayId", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
+				log.String("gatewayID", gw.ID), log.Int("version", target.Seq), log.Int("failed", failed))
 			return result, nil
 		}
 	}
@@ -511,11 +511,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if err := s.versions.SetApplied(ctx, gw.ID, target.Seq, previous, held); err != nil {
 		if errors.Is(err, errVersionRemoved) {
 			s.logger.Warn(ctx, "A version was removed while it was applied to a gateway",
-				log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
+				log.String("gatewayID", gw.ID), log.Int("version", target.Seq))
 			return nil, &ErrorVersionRemoved
 		}
 		if errors.Is(err, errAppliedChanged) {
-			s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayId", gw.ID),
+			s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayID", gw.ID),
 				log.Int("version", target.Seq))
 			return nil, &ErrorAppliedChanged
 		}
@@ -523,7 +523,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		return nil, &tidcommon.InternalServerError
 	}
 	result.Recorded = true
-	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayId", gw.ID),
+	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayID", gw.ID),
 		log.Int("version", target.Seq))
 	return result, nil
 }
@@ -546,7 +546,7 @@ func (s *versionService) restoreExclusions(ctx context.Context, gatewayID string
 	}
 	if err := s.versions.SetExcluded(ctx, gatewayID, reexclude, offerAgain); err != nil {
 		s.logger.Error(ctx, "Failed to put back what the gateway leaves alone after a failed apply",
-			log.String("gatewayId", gatewayID), log.Error(err))
+			log.String("gatewayID", gatewayID), log.Error(err))
 	}
 }
 
@@ -557,7 +557,7 @@ func (s *versionService) missingValues(ctx context.Context, gw *Gateway, key str
 	variables, secrets := referencesIn(content)
 	missing, err := s.client.UnsetValues(ctx, gw, key, variables, secrets)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayID", gw.ID),
 			log.Error(err))
 		return nil, &ErrorGatewayUnreachable
 	}
@@ -588,7 +588,7 @@ func (s *versionService) plan(ctx context.Context, gatewayID string, target *Ver
 		// is always there. Were it not, the deletions could not be worked out, and applying without
 		// them would leave behind what the new version dropped.
 		if heldVersion == nil {
-			s.logger.Error(ctx, "The version a gateway holds is not kept", log.String("gatewayId", gatewayID),
+			s.logger.Error(ctx, "The version a gateway holds is not kept", log.String("gatewayID", gatewayID),
 				log.Int("version", applied.AppliedVersion))
 			return nil, nil, &tidcommon.InternalServerError
 		}

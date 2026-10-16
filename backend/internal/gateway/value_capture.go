@@ -149,13 +149,13 @@ func (c *ValueCapture) write(ctx context.Context, gatewayID, collection string, 
 		refusal, svcErr := set(name, values[name])
 		if svcErr != nil {
 			c.logger.Warn(ctx, "Failed to capture a value in the default gateway's store",
-				log.String("gatewayId", gatewayID), log.String("collection", collection),
+				log.String("gatewayID", gatewayID), log.String("collection", collection),
 				log.String("name", name), log.String("error", svcErr.Error.DefaultValue))
 			continue
 		}
 		if refusal != nil {
 			c.logger.Warn(ctx, "The default gateway's store refused a captured value",
-				log.String("gatewayId", gatewayID), log.String("collection", collection),
+				log.String("gatewayID", gatewayID), log.String("collection", collection),
 				log.String("name", name), log.Int("status", refusal.Status))
 		}
 	}

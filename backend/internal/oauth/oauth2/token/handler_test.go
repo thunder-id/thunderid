@@ -18,10 +18,14 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 )
 
 type TokenHandlerTestSuite struct {
@@ -368,4 +372,20 @@ func (s *OUScopedGrantTestSuite) TestTheBareEndpointStillServesEveryGrant() {
 	recorder, _ := s.serve(string(providers.GrantTypeAuthorizationCode), "")
 
 	s.Equal(http.StatusOK, recorder.Code)
+}
+
+func (suite *TokenHandlerTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mockDiscovery := discoverymock.NewDiscoveryServiceInterfaceMock(suite.T())
+	mockDiscovery.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
+		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://example.com"})
+	mux := http.NewServeMux()
+	registerRoutes(mux, suite.newHandler(), nil, nil, nil, mockDiscovery, nil, nil, false,
+		engineconfig.ClientAssertionConfig{}, 0)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/token", nil)
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
 }

@@ -311,7 +311,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Issue a new refresh token if renew_on_grant is enabled; otherwise reuse the existing one.
 	// The new refresh token carries the same single resource server audience.
 	if renewRefreshToken {
-		logger.Debug(ctx, "Renewing refresh token", log.String("client_id", tokenRequest.ClientID))
+		logger.Debug(ctx, "Renewing refresh token", log.String("clientID", tokenRequest.ClientID))
 		errResp := h.IssueRefreshToken(ctx, tokenResponse, oauthApp,
 			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,
@@ -498,7 +498,7 @@ func (h *refreshTokenGrantHandler) verifyCredentialsUnchanged(ctx context.Contex
 	if oauthApp == nil || oauthApp.ID == "" || oauthApp.ID == claims.Sub {
 		return subjectEntity, nil
 	}
-	clientEntity, svcErr := h.actorProvider.GetActor(oauthApp.ID)
+	clientEntity, svcErr := h.actorProvider.GetActor(ctx, oauthApp.ID)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to resolve the refresh token client",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -551,7 +551,7 @@ func (h *refreshTokenGrantHandler) resolveSubjectEntity(ctx context.Context, sub
 		return nil, nil
 	}
 
-	entity, svcErr := h.actorProvider.GetActor(subject)
+	entity, svcErr := h.actorProvider.GetActor(ctx, subject)
 	if svcErr == nil {
 		return entity, nil
 	}
@@ -645,7 +645,7 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	subject := subjectEntity.ID
 
 	// Roles reach a subject directly and through their groups, so both are evaluated together.
-	groups, groupErr := h.actorProvider.GetActorGroups(subject)
+	groups, groupErr := h.actorProvider.GetActorGroups(ctx, subject)
 	if groupErr != nil {
 		logger.Error(ctx, "Failed to resolve group memberships for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),

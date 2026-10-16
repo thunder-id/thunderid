@@ -70,7 +70,8 @@ func Initialize(
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
-	mux.HandleFunc(middleware.WithCORS("POST /oauth2/auth/callback", d.handleFlowCallback, corsOpts))
+	mux.HandleFunc(middleware.WithCORS("POST /oauth2/auth/callback",
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(d.handleFlowCallback)).ServeHTTP, corsOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/auth/callback",
 		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, corsOpts))
 }

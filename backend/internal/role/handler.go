@@ -106,7 +106,7 @@ func (rh *roleHandler) HandleRolePostRequest(w http.ResponseWriter, r *http.Requ
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdRole)
 
-	logger.Debug(ctx, "Successfully created role", log.String("roleId", createdRole.ID))
+	logger.Debug(ctx, "Successfully created role", log.String("roleID", createdRole.ID))
 }
 
 // HandleRoleGetRequest handles the get role by id request.

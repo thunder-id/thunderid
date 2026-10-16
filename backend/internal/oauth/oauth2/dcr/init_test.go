@@ -5,6 +5,7 @@ package dcr
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
@@ -74,6 +76,31 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		})
 		assert.Contains(suite.T(), pattern, "/oauth2/dcr/register/{client_id}",
 			"expected %s route for the client configuration endpoint", method)
+	}
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_SetsCorrelationID() {
+	mux := http.NewServeMux()
+	registerRoutes(mux, newDCRHandler(NewDCRServiceInterfaceMock(suite.T()), testhelpers.OAuthConfig()))
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/oauth2/dcr/register"},
+		{http.MethodGet, "/oauth2/dcr/register/client-abcd"},
+		{http.MethodPut, "/oauth2/dcr/register/client-abcd"},
+		{http.MethodDelete, "/oauth2/dcr/register/client-abcd"},
+	}
+	for _, route := range routes {
+		suite.T().Run(route.method, func(t *testing.T) {
+			req := httptest.NewRequest(route.method, route.path, nil)
+			req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			assert.Equal(t, "trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
+		})
 	}
 }
 

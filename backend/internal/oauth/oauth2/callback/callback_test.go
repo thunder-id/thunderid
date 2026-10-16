@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
@@ -63,6 +64,18 @@ func (suite *CallbackDispatcherTestSuite) postCallback(body string) *httptest.Re
 }
 
 // --- handleFlowCallback: empty / malformed body ---
+
+func (suite *CallbackDispatcherTestSuite) TestInitialize_SetsCorrelationID() {
+	mux := http.NewServeMux()
+	Initialize(mux, suite.mockAuthZ, suite.mockCIBA, testhelpers.OAuthConfig())
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", strings.NewReader(""))
+	req.Header.Set(serverconst.CorrelationIDHeaderName, "trace-abcd")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	suite.Equal("trace-abcd", rec.Header().Get(serverconst.CorrelationIDHeaderName))
+}
 
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_EmptyBody_ReturnsBadRequest() {
 	w := suite.postCallback("")
