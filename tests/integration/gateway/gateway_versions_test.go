@@ -118,14 +118,16 @@ func (ts *GatewayVersionsTestSuite) TestApplyAddsAndRemovesWhatTheVersionsDiffer
 	ts.Equal(appliedVersion{AppliedVersion: withoutUnit.Version, PreviousVersion: withUnit.Version},
 		ts.applied())
 
-	// A revert returns to the version held before, and keeps the one reverted from to return to.
+	// A revert returns to the version held before, one step only: a second revert is refused.
 	var reverted applyResult
 	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/revert",
 		map[string]any{}, &reverted))
 	ts.True(reverted.Recorded, "the revert was not recorded: %s", reverted.Import)
 	ts.Equal(http.StatusOK, ts.unitStatus(ouID), "the revert did not bring the unit back")
-	ts.Equal(appliedVersion{AppliedVersion: withUnit.Version, PreviousVersion: withoutUnit.Version},
-		ts.applied())
+	ts.Equal(appliedVersion{AppliedVersion: withUnit.Version}, ts.applied())
+	ts.Equal(http.StatusBadRequest, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/revert",
+		map[string]any{}, nil), "a revert was reverted")
+	ts.Equal(http.StatusOK, ts.unitStatus(ouID), "a refused revert changed the gateway")
 }
 
 // A change left out of an apply is left alone on the gateway, and stays left alone in later applies

@@ -166,8 +166,9 @@ selection includes it again.
 ## Revert a Gateway
 
 `POST /gateways/{id}/revert` applies the version the gateway held before the one it holds now, and
-removes what that version does not have. The version reverted from becomes the new revert target, so a
-revert can itself be undone.
+removes what that version does not have. A revert goes back one step only: afterwards the gateway has
+no earlier version to revert to, and a second revert is refused with `400` (`GTW-1016`) until a later
+apply. To return to the version reverted from, apply it.
 
 A revert takes `dryRun` and follows the same rules as an apply. It leaves the resources you chose to
 leave alone, and it is refused with `409` while the gateway lacks a value that version refers to. A

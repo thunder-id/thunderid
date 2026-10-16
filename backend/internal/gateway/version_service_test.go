@@ -494,7 +494,8 @@ func TestReapplyingTheHeldVersionKeepsTheRevertTarget(t *testing.T) {
 	assert.Equal(t, 1, held.PreviousVersion)
 }
 
-// A revert applies the version held before, and keeps the one reverted from so it can be undone.
+// A revert applies the version held before and goes back one step only: a second revert is refused,
+// since it would return to the version just reverted from, until a later apply.
 func TestRevertReturnsToThePreviousVersion(t *testing.T) {
 	f := newVersionFixture(t)
 	_, svcErr := f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
@@ -512,7 +513,17 @@ func TestRevertReturnsToThePreviousVersion(t *testing.T) {
 	assert.Contains(t, f.client.last().Content, "ou-a")
 	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-b"}}, f.client.last().Deletions)
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
-	assert.Equal(t, [2]int{1, 2}, [2]int{held.AppliedVersion, held.PreviousVersion})
+	assert.Equal(t, [2]int{1, 0}, [2]int{held.AppliedVersion, held.PreviousVersion})
+
+	_, svcErr = f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
+	assert.Equal(t, ErrorNothingToRevert.Code, svcErr.Code, "a revert was reverted")
+	_, svcErr = f.svc.Revert(context.Background(), "gw-1", RevertRequest{DryRun: true})
+	assert.Equal(t, ErrorNothingToRevert.Code, svcErr.Code, "a second revert was offered")
+
+	// A later apply gives the gateway a version to revert to again.
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	held, _ = f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Equal(t, [2]int{2, 1}, [2]int{held.AppliedVersion, held.PreviousVersion})
 }
 
 // A removal the gateway refused would never be sent again once the version moved on, so the apply is

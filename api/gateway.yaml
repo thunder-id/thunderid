@@ -357,9 +357,9 @@ paths:
       summary: Revert a gateway to the version it held before
       description: |
         Applies the version the gateway held before the one it holds now, removing what that version
-        does not have. The version reverted from takes its place as the revert target, so a revert can
-        itself be undone. Like an apply, it is refused while the gateway lacks a value that version
-        refers to.
+        does not have. It goes back one step only: afterwards the gateway has no earlier version to
+        revert to, and another revert is refused (`GTW-1016`) until a later apply. Like an apply, it is
+        refused while the gateway lacks a value that version refers to.
       requestBody:
         required: false
         content:
@@ -855,7 +855,9 @@ components:
           description: The hash of the version the gateway holds. Omitted when nothing was applied.
         previousVersion:
           type: string
-          description: The hash of the version a revert returns it to. Omitted when there is none.
+          description: |
+            The hash of the version a revert returns it to. Omitted when there is none: before a second
+            apply, and after a revert.
         appliedAt:
           type: string
           format: date-time

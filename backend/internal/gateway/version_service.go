@@ -395,7 +395,7 @@ func (s *versionService) Forget(ctx context.Context, gatewayID string) {
 // write applies a version to a gateway and, unless it is a dry run, records that the gateway holds it.
 //
 // After an apply, the version the gateway held becomes the one a revert returns to. After a revert,
-// the version reverted from takes that place, so a revert can itself be undone.
+// the gateway has no revert target until a later apply.
 //
 // A selection, when given, replaces the gateway's standing choice for the changes it was offered,
 // and an apply that is not a dry run keeps it for the next. Either way the resources left out are
@@ -504,8 +504,13 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if applied != nil {
 		held, previous = applied.AppliedVersion, applied.PreviousVersion
 	}
-	// Re-applying the version a gateway already holds leaves its revert target where it was.
-	if isRevert || held != target.Seq {
+	// Re-applying the version a gateway already holds leaves its revert target where it was. A revert
+	// leaves none: reverting again would return to the version just reverted from, which is not an
+	// earlier one, so the gateway goes back one step only until a later apply.
+	switch {
+	case isRevert:
+		previous = 0
+	case held != target.Seq:
 		previous = held
 	}
 	if err := s.versions.SetApplied(ctx, gw.ID, target.Seq, previous, held); err != nil {
