@@ -1163,6 +1163,14 @@ Enabling a trusted issuer is additive and non-breaking. <ProductName /> still ac
 | `server.security.trusted_issuer.issuer` | `""` | Expected value of the token's `iss` claim. Must match the external authorization server's issuer URL exactly |
 | `server.security.trusted_issuer.jwks_url` | `""` | URL of the external authorization server's JWKS endpoint used to fetch signing keys. Must use HTTPS (HTTP allowed only for `localhost`) |
 | `server.security.trusted_issuer.audience` | `""` | Expected value of the token's `aud` claim. This should be this server's own identifier (typically its public URL) |
+| `server.security.trusted_issuer.user_id_claim` | `sub` | The claim a caller's id is read from where a control plane records who acted, such as who captured a configuration version or applied one to a gateway (`createdBy`, `appliedBy`) |
+| `server.security.trusted_issuer.user_lookup.url` | `""` | The issuer's endpoint for one user, with `{id}` where the user's id goes, such as `https://cloud.example.com/users/{id}`. When set, who captured a version or applied one (`createdBy`, `appliedBy`) is given out with id and name, the name read from this endpoint when the record is read and never stored. Unset, those fields are left out; the ids are still recorded, so setting it later names the history |
+| `server.security.trusted_issuer.user_lookup.token_url` | `""` | The issuer's token endpoint, asked for a client credentials token for the lookups. Required when `url` is set |
+| `server.security.trusted_issuer.user_lookup.client_id` | `""` | The machine-to-machine application registered at the issuer for the lookups. Required when `url` is set |
+| `server.security.trusted_issuer.user_lookup.client_secret` | `""` | That application's secret. Required when `url` is set |
+| `server.security.trusted_issuer.user_lookup.scopes` | `[]` | The scopes the token is asked for, as the user endpoint requires |
+| `server.security.trusted_issuer.user_lookup.name_attribute` | `username` | The attribute of the user the name is read from |
+| `server.security.trusted_issuer.user_lookup.cache_ttl` | `300` | How long a name once read is kept, in seconds. The token is kept until shortly before it expires |
 | `server.security.trusted_issuer.required_claims` | `[]` | List of claims that every accepted token must contain. Each entry has a `claim` name and an expected `value`. If any required claim is missing or does not match, the token is rejected |
 
 **Example:**
@@ -1176,6 +1184,12 @@ server:
       required_claims:
         - claim: "ouId"
           value: "tenant-123"
+      user_lookup:
+        url: "https://cloud.example.com/users/{id}"
+        token_url: "https://cloud.example.com/oauth2/token"
+        client_id: "control-plane-lookup"
+        client_secret: "<the application's secret>"
+        scopes: ["internal_user_mgt_view"]
 ```
 
 :::note

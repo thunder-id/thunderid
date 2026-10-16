@@ -25,8 +25,10 @@ const selfManagementKey = "integration-management-api-key"
 
 type version struct {
 	Version   string `json:"version"`
+	Number    int    `json:"number"`
 	Name      string `json:"name"`
 	Unchanged bool   `json:"unchanged"`
+	Current   bool   `json:"current"`
 	Note      string `json:"note"`
 	Resources string `json:"resources"`
 }
@@ -126,6 +128,32 @@ func (ts *GatewayVersionsTestSuite) TestApplyAddsAndRemovesWhatTheVersionsDiffer
 	ts.Equal(http.StatusOK, ts.unitStatus(ouID), "the revert did not bring the unit back")
 	ts.Equal(appliedVersion{AppliedVersion: withUnit.Version, PreviousVersion: withoutUnit.Version},
 		ts.applied())
+}
+
+// Without a user lookup at a trusted issuer, a version names no one and neither does the gateway that
+// holds it: the caller's id alone is not given out, though it is recorded.
+func (ts *GatewayVersionsTestSuite) TestWithoutALookupNoUserIsNamed() {
+	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: fmt.Sprintf("actor-%d", time.Now().UnixNano()), Name: "actor",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(id) }()
+
+	var captured struct {
+		Version   string          `json:"version"`
+		CreatedBy json.RawMessage `json:"createdBy"`
+	}
+	ts.Require().Contains([]int{http.StatusCreated, http.StatusOK},
+		ts.call(http.MethodPost, "/configuration-versions", map[string]any{"note": "who"}, &captured))
+	ts.Nil(captured.CreatedBy, "the version gave out a user with no name to show")
+
+	ts.True(ts.apply(captured.Version, false).Recorded)
+	var held struct {
+		AppliedBy json.RawMessage `json:"appliedBy"`
+	}
+	ts.Require().Equal(http.StatusOK,
+		ts.call(http.MethodGet, "/gateways/"+ts.gatewayID+"/applied-version", nil, &held))
+	ts.Nil(held.AppliedBy, "the gateway gave out a user with no name to show")
 }
 
 // A change left out of an apply is left alone on the gateway, and stays left alone in later applies
@@ -434,4 +462,40 @@ func (ts *GatewayVersionsTestSuite) call(method, path string, body any, out any)
 		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(out))
 	}
 	return resp.StatusCode
+}
+
+// An apply settles the version it sends, so a capture meanwhile adds a version rather than rewriting
+// one under the apply. When no gateway received it, the version is current again, and the next
+// capture after a change replaces it in place; a version a gateway did receive stays as it is.
+func (ts *GatewayVersionsTestSuite) TestAnApplyThatReachedNoGatewayLeavesTheVersionCurrent() {
+	var unreachable gateway
+	ts.Require().Equal(http.StatusCreated, ts.call(http.MethodPost, "/gateways", map[string]any{
+		"name":    fmt.Sprintf("unreachable-%d", time.Now().UnixNano()),
+		"baseUrl": "https://127.0.0.1:1",
+	}, &unreachable))
+	defer ts.call(http.MethodDelete, "/gateways/"+unreachable.ID, nil, nil)
+	ts.unit("Settled")
+	current := ts.captureCurrent()
+
+	status := ts.call(http.MethodPost, "/gateways/"+unreachable.ID+"/apply",
+		map[string]any{"version": current.Version}, nil)
+	ts.Require().Equal(http.StatusBadGateway, status)
+
+	listed := ts.listVersions()
+	ts.Require().NotEmpty(listed)
+	ts.Equal(listedVersion{Version: current.Version, Current: true}, listed[0],
+		"the version an apply never delivered is no longer current")
+	ts.unit("Settled again")
+	replaced := ts.captureCurrent()
+	ts.Equal(current.Number, replaced.Number, "a change after the failed apply added a version instead of replacing")
+	ts.NotEqual(current.Version, replaced.Version)
+
+	// Delivered to a gateway, the version is kept as it is from then on, whatever a later apply does.
+	ts.apply(replaced.Version, false)
+	status = ts.call(http.MethodPost, "/gateways/"+unreachable.ID+"/apply",
+		map[string]any{"version": replaced.Version}, nil)
+	ts.Require().Equal(http.StatusBadGateway, status)
+	ts.unit("Settled once more")
+	added := ts.captureCurrent()
+	ts.Equal(replaced.Number+1, added.Number, "a version a gateway runs was replaced in place")
 }

@@ -166,8 +166,8 @@ func parseFlags() {
 }
 
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
-// one carrying the system scope for every test client, and one without it for the test that it is
-// refused.
+// one carrying the system scope for every test client, one without it for the test that it is
+// refused, and one for a user the issuer's user endpoint does not know.
 func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
@@ -180,7 +180,15 @@ func useTrustedIssuerTokens(issuer *testutils.MockOIDCServer) error {
 	if err != nil {
 		return err
 	}
-	return os.Setenv(testutils.UnscopedTokenEnv, unscoped)
+	if err := os.Setenv(testutils.UnscopedTokenEnv, unscoped); err != nil {
+		return err
+	}
+	stranger, err := testutils.IssueManagementTokenFor(issuer, testutils.TrustedIssuerStrangerSubject, "system",
+		managementTokenLifetime)
+	if err != nil {
+		return err
+	}
+	return os.Setenv(testutils.StrangerTokenEnv, stranger)
 }
 
 func initTests() {

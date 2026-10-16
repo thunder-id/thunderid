@@ -196,6 +196,12 @@ spec:
             - name: deployment-yaml-volume
               mountPath: /opt/thunderid/deployment.yaml
               subPath: deployment.yaml
+            {{- if (dig "server" "security" "trustedIssuer" "userLookup" "clientSecretRef" "name" "" .Values.configuration) }}
+            # The trusted issuer's user lookup client secret, from the Secret the values name.
+            - name: user-lookup-client-secret
+              mountPath: /opt/thunderid/config/secrets/user-lookup
+              readOnly: true
+            {{- end }}
             {{- /* Validate bootstrap configuration - patterns are mutually exclusive */ -}}
             {{- if and .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
             {{- fail "\n\n❌ ERROR: Invalid bootstrap configuration detected!\n\nYou cannot use both 'bootstrap.scripts' and 'bootstrap.configMap' at the same time." }}
@@ -258,6 +264,16 @@ spec:
         - name: deployment-yaml-volume
           configMap:
             name: {{ include "thunderid.fullname" . }}-setup-config-map
+        {{- with (dig "server" "security" "trustedIssuer" "userLookup" "clientSecretRef" (dict) .Values.configuration) }}
+        {{- if .name }}
+        - name: user-lookup-client-secret
+          secret:
+            secretName: {{ .name | quote }}
+            items:
+              - key: {{ .key | default "client-secret" | quote }}
+                path: client_secret
+        {{- end }}
+        {{- end }}
         {{- if or .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
         - name: bootstrap-scripts
           configMap:

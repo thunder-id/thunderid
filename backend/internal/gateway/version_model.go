@@ -16,15 +16,19 @@ import (
 // version, and it never changes once captured: applying one to a gateway is a deliberate choice and an
 // earlier one stays available to apply again.
 type Version struct {
-	// Seq orders a deployment's versions. It is kept for ordering, retention and what a gateway holds,
-	// and is not shown: a version is named by its hash.
-	Seq int `json:"-"`
+	// Seq orders a deployment's versions, from 1, and is kept for retention and what a gateway holds. It
+	// is shown as the version's number, which stays the same as older versions are removed; a version
+	// is named by its hash.
+	Seq int `json:"number"`
 	// Hash is the SHA-256 of the captured configuration, in hex. A shorter prefix also names it.
 	Hash string `json:"version"`
 	// Name is what the version is called; Note says more about it.
 	Name      string    `json:"name,omitempty"`
 	Note      string    `json:"note,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+	// CreatedBy is the user the version was captured for: who captured it, or whose change a capture
+	// after a change followed. A current version replaced in place names the latest change's user.
+	CreatedBy *Actor `json:"createdBy,omitempty"`
 	// Resources is the exported configuration, one document per resource. A listing leaves it out.
 	Resources string `json:"resources,omitempty"`
 	// Skipped names the resources the export could not write, each with why, as an export reports
@@ -36,6 +40,10 @@ type Version struct {
 	// References lists each place the version refers to a variable or a secret. Only a read of one
 	// version carries it.
 	References []ValueReference `json:"references,omitempty"`
+	// Current marks the newest version when it was captured as the current one: a capture asked to
+	// keep the configuration current replaces it until a gateway holds it. A listing sets it on the
+	// newest version alone.
+	Current bool `json:"current,omitempty"`
 	// variables are the values the export carried beside the documents, sealed as one secret. A
 	// reference-style export carries none. They are never returned by a read.
 	variables string
@@ -68,6 +76,12 @@ type ValueReference struct {
 type CaptureRequest struct {
 	Name string `json:"name,omitempty"`
 	Note string `json:"note,omitempty"`
+	// Current keeps the configuration as the current version rather than adding one: the newest
+	// version is replaced when it was captured as current and no gateway holds it or could be
+	// reverted to it. Once a gateway holds it, it stays, and the next such capture adds a new current
+	// version. A console that captures on its own sets this, so it keeps one version up to date
+	// rather than one for every change.
+	Current bool `json:"current,omitempty"`
 }
 
 // AppliedVersion is what a gateway holds: the version last applied to it, and the one before, which
@@ -81,6 +95,8 @@ type AppliedVersion struct {
 	Applied         string     `json:"appliedVersion,omitempty"`
 	Previous        string     `json:"previousVersion,omitempty"`
 	AppliedAt       *time.Time `json:"appliedAt,omitempty"`
+	// AppliedBy is the user who applied the version, or reverted the gateway to it.
+	AppliedBy *Actor `json:"appliedBy,omitempty"`
 }
 
 // ApplyRequest is the body of an apply. Version is a version's hash, a prefix of at least seven of its

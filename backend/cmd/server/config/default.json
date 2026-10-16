@@ -10,7 +10,17 @@
         "issuer": "",
         "jwks_url": "",
         "audience": "",
-        "required_claims": []
+        "required_claims": [],
+        "user_id_claim": "sub",
+        "user_lookup": {
+          "url": "",
+          "token_url": "",
+          "client_id": "",
+          "client_secret": "",
+          "scopes": [],
+          "name_attribute": "username",
+          "cache_ttl": 300
+        }
       },
       "token_revocation": {
         "enabled": true,
