@@ -6755,3 +6755,43 @@ displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
   body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+---
+resource_type: notification_template
+channel: email
+handle: account-locked
+ouHandle: default
+displayName: Account Temporarily Locked Email
+description: Sent when repeated failed sign-ins lock a sign-in method for a limited time.
+content:
+  subject: "Sign-in was temporarily locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in temporarily locked</h2>
+      <p>{{ctx(lockedSignIn)}} has been temporarily locked due to multiple failed attempts.</p>
+      <p><strong>It will be available again in {{ctx(lockDuration)}}, on {{ctx(unlockTime)}}.</strong></p>
+      <p>To regain access sooner, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't attempt to sign in?</strong> We recommend reviewing your account security and updating your credentials once you regain access.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-locked-permanent
+ouHandle: default
+displayName: Account Locked Email
+description: Sent when repeated failed sign-ins lock a sign-in method until it is released.
+content:
+  subject: "Sign-in was locked on your account"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Sign-in locked</h2>
+      <p>{{ctx(lockedSignIn)}} has been locked due to multiple failed attempts.</p>
+      <p><strong>This lock does not expire automatically.</strong></p>
+      <p>To regain access, complete account recovery or contact your administrator.</p>
+      <p><strong>Didn't attempt to sign in?</strong> We recommend reviewing your account security and updating your credentials once you regain access.</p>
+    </body>
+    </html>

@@ -23,9 +23,9 @@ const (
 	failClosedClientSecret = "introspect_fail_closed_secret"
 	failClosedResourceID   = "https://introspect-fail-closed.example.com"
 
-	// unreadableDenyListPath points database.runtime_persistent at a SQLite file that does not exist
-	// yet. The driver creates it on connect, so the server boots normally, but the file carries none
-	// of the runtime-persistent schema: every deny-list read fails at query time. Pointing at a
+	// unreadableDenyListPath points database.runtime_persistent at a SQLite file holding only the
+	// account runtime table (ENTITY_RUNTIME_DATA), which client authentication reads, so it works while
+	// every deny-list read fails at query time. Pointing at a
 	// genuinely unopenable target instead is not usable here, because the SSO session service aborts
 	// startup when it cannot get a runtime-persistent transactioner. The path has no directory
 	// component so it resolves against the server home, which exists under every database profile.
@@ -39,7 +39,7 @@ const (
 // revocation status is unknown). It has to surface a server error instead.
 //
 // The fail-closed test deliberately breaks the shared deployment: it repoints
-// database.runtime_persistent at a database with no schema and restarts the server. While that
+// database.runtime_persistent at a database without the revocation tables and restarts the server. While that
 // config is in place /oauth2/revoke, the refresh and token-exchange grants, and /oauth2/userinfo are
 // broken too, so the test restores the original database section, restarts, and re-obtains the admin
 // token from a deferred block that runs even if an assertion aborts the test.
@@ -134,6 +134,8 @@ func (ts *IntrospectFailClosedTestSuite) breakRuntimePersistentDB() {
 	for key, value := range originalMap {
 		broken[key] = value
 	}
+	ts.Require().NoError(testutils.CreateEntityRuntimeOnlyDB(unreadableDenyListPath),
+		"failed to create the database without a deny list")
 	broken["runtime_persistent"] = map[string]interface{}{
 		"type": "sqlite",
 		"sqlite": map[string]interface{}{

@@ -197,6 +197,45 @@ packages:
       pkgname: entity
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/identitygovernance:
+    interfaces:
+      EntityStateProvider:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      accountAccessSourceInterface:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      lockNotifierInterface:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      policyResolverInterface:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      notificationTemplateRenderer:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+      defaultEmailSenderSource:
+        config:
+          dir: internal/identitygovernance
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernance
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/user:
     config:
       all: true

@@ -18,6 +18,8 @@ const (
 	ConfigNameFlow ConfigName = "flow"
 	// ConfigNameCSP is the configuration key for the deny-first Content-Security-Policy baseline.
 	ConfigNameCSP ConfigName = "csp"
+	// ConfigNameAccountAccess is the configuration key for the automatic account-lockout policy.
+	ConfigNameAccountAccess ConfigName = "accountAccess"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -27,6 +29,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameSession,
 	ConfigNameFlow,
 	ConfigNameCSP,
+	ConfigNameAccountAccess,
 }
 
 // IsValid reports whether the config name is one of the supported values.

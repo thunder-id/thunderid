@@ -699,6 +699,38 @@ type OAuthProfile struct {
 	AcrValues                          []string            `json:"acrValues,omitempty"`
 }
 
+// AccessLockedScope is one live automatic lock. Scope is the authentication method it holds, or the
+// entity key when it holds every method. ExpiresAt is when it lifts on its own, empty when it does
+// not. An entity can hold several at once.
+type AccessLockedScope struct {
+	Scope     string `json:"scope"               yaml:"-"`
+	ExpiresAt string `json:"expiresAt,omitempty" yaml:"-"`
+}
+
+// AccessStatusDetails describes a status on a management read. Every field is optional. Since is
+// when a suspension was placed. OperatorNote is never disclosed on a refusal. LockedScopes lists the
+// live automatic locks in registry order, and is empty unless the status is LOCKED.
+type AccessStatusDetails struct {
+	Reason       AccessHoldReason    `json:"reason,omitempty"       yaml:"-"`
+	Since        string              `json:"since,omitempty"        yaml:"-"`
+	OperatorNote string              `json:"operatorNote,omitempty" yaml:"-"`
+	LockedScopes []AccessLockedScope `json:"lockedScopes,omitempty" yaml:"-"`
+}
+
+// AccessStatusReport is the access status a management read returns: the effective value
+// (SUSPENDED, LOCKED or ACTIVE) and its details, nil when there is nothing to add.
+type AccessStatusReport struct {
+	Value   AccessStatus         `json:"value"             yaml:"-"`
+	Details *AccessStatusDetails `json:"details,omitempty" yaml:"-"`
+}
+
+// AccessDecision is the result of an access check. A refusal's Reason names the hold; a refusal that
+// names none answers as a wrong credential.
+type AccessDecision struct {
+	Admitted bool
+	Reason   AccessRefusalReason
+}
+
 // User represents a user in the system.
 type User struct {
 	ID         string          `json:"id,omitempty"`
@@ -770,16 +802,18 @@ type LoginConsentConfig struct {
 }
 
 // Entity represents a unified identity principal returned by the entity provider.
+// RuntimeAttributes is the entity's runtime data, never serialized or cached with the profile.
 type Entity struct {
-	ID               string          `json:"id,omitempty"`
-	Category         EntityCategory  `json:"category,omitempty"`
-	Type             string          `json:"type,omitempty"`
-	State            EntityState     `json:"state,omitempty"`
-	OUID             string          `json:"ouId,omitempty"`
-	OUHandle         string          `json:"ouHandle,omitempty"`
-	Attributes       json.RawMessage `json:"attributes,omitempty"`
-	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
-	IsReadOnly       bool            `json:"isReadOnly"`
+	ID                string          `json:"id,omitempty"`
+	Category          EntityCategory  `json:"category,omitempty"`
+	Type              string          `json:"type,omitempty"`
+	State             EntityState     `json:"state,omitempty"`
+	OUID              string          `json:"ouId,omitempty"`
+	OUHandle          string          `json:"ouHandle,omitempty"`
+	Attributes        json.RawMessage `json:"attributes,omitempty"`
+	SystemAttributes  json.RawMessage `json:"systemAttributes,omitempty"`
+	RuntimeAttributes json.RawMessage `json:"-"`
+	IsReadOnly        bool            `json:"isReadOnly"`
 	// Display is the value of the entity type's display attribute, falling back to the entity ID.
 	// It is populated only by callers that resolve it, such as the actor provider for agents.
 	Display string `json:"display,omitempty"`

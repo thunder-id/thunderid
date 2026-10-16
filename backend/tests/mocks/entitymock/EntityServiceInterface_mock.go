@@ -7,9 +7,11 @@ package entitymock
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -197,6 +199,225 @@ func (_c *EntityServiceInterfaceMock_AuthenticateEntityByID_Call) RunAndReturn(r
 	return _c
 }
 
+// ClearAccessState provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ClearAccessState(ctx context.Context, entityID string, scopes []providers.AccessScope) error {
+	ret := _mock.Called(ctx, entityID, scopes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearAccessState")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []providers.AccessScope) error); ok {
+		r0 = returnFunc(ctx, entityID, scopes)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_ClearAccessState_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearAccessState'
+type EntityServiceInterfaceMock_ClearAccessState_Call struct {
+	*mock.Call
+}
+
+// ClearAccessState is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - scopes []providers.AccessScope
+func (_e *EntityServiceInterfaceMock_Expecter) ClearAccessState(ctx any, entityID any, scopes any) *EntityServiceInterfaceMock_ClearAccessState_Call {
+	return &EntityServiceInterfaceMock_ClearAccessState_Call{Call: _e.mock.On("ClearAccessState", ctx, entityID, scopes)}
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessState_Call) Run(run func(ctx context.Context, entityID string, scopes []providers.AccessScope)) *EntityServiceInterfaceMock_ClearAccessState_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []providers.AccessScope
+		if args[2] != nil {
+			arg2 = args[2].([]providers.AccessScope)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessState_Call) Return(err error) *EntityServiceInterfaceMock_ClearAccessState_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessState_Call) RunAndReturn(run func(ctx context.Context, entityID string, scopes []providers.AccessScope) error) *EntityServiceInterfaceMock_ClearAccessState_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClearAccessStateIfUnchanged provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ClearAccessStateIfUnchanged(ctx context.Context, entityID string, scope providers.AccessScope, revision int64) (bool, error) {
+	ret := _mock.Called(ctx, entityID, scope, revision)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearAccessStateIfUnchanged")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, int64) (bool, error)); ok {
+		return returnFunc(ctx, entityID, scope, revision)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, int64) bool); ok {
+		r0 = returnFunc(ctx, entityID, scope, revision)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.AccessScope, int64) error); ok {
+		r1 = returnFunc(ctx, entityID, scope, revision)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearAccessStateIfUnchanged'
+type EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call struct {
+	*mock.Call
+}
+
+// ClearAccessStateIfUnchanged is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - scope providers.AccessScope
+//   - revision int64
+func (_e *EntityServiceInterfaceMock_Expecter) ClearAccessStateIfUnchanged(ctx any, entityID any, scope any, revision any) *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call {
+	return &EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call{Call: _e.mock.On("ClearAccessStateIfUnchanged", ctx, entityID, scope, revision)}
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call) Run(run func(ctx context.Context, entityID string, scope providers.AccessScope, revision int64)) *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.AccessScope
+		if args[2] != nil {
+			arg2 = args[2].(providers.AccessScope)
+		}
+		var arg3 int64
+		if args[3] != nil {
+			arg3 = args[3].(int64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call) Return(b bool, err error) *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call) RunAndReturn(run func(ctx context.Context, entityID string, scope providers.AccessScope, revision int64) (bool, error)) *EntityServiceInterfaceMock_ClearAccessStateIfUnchanged_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClearSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string) (bool, error) {
+	ret := _mock.Called(ctx, entityID, hold, suspendedAt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.EntityHold, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID, hold, suspendedAt)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *identitygovernance.EntityHold, string) bool); ok {
+		r0 = returnFunc(ctx, entityID, hold, suspendedAt)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *identitygovernance.EntityHold, string) error); ok {
+		r1 = returnFunc(ctx, entityID, hold, suspendedAt)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_ClearSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearSuspension'
+type EntityServiceInterfaceMock_ClearSuspension_Call struct {
+	*mock.Call
+}
+
+// ClearSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - hold *identitygovernance.EntityHold
+//   - suspendedAt string
+func (_e *EntityServiceInterfaceMock_Expecter) ClearSuspension(ctx any, entityID any, hold any, suspendedAt any) *EntityServiceInterfaceMock_ClearSuspension_Call {
+	return &EntityServiceInterfaceMock_ClearSuspension_Call{Call: _e.mock.On("ClearSuspension", ctx, entityID, hold, suspendedAt)}
+}
+
+func (_c *EntityServiceInterfaceMock_ClearSuspension_Call) Run(run func(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string)) *EntityServiceInterfaceMock_ClearSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *identitygovernance.EntityHold
+		if args[2] != nil {
+			arg2 = args[2].(*identitygovernance.EntityHold)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_ClearSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ClearSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, hold *identitygovernance.EntityHold, suspendedAt string) (bool, error)) *EntityServiceInterfaceMock_ClearSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateEntity provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) CreateEntity(ctx context.Context, entity1 *providers.Entity, systemCredentials json.RawMessage, link *providers.LinkedAccount) (*providers.Entity, error) {
 	ret := _mock.Called(ctx, entity1, systemCredentials, link)
@@ -330,6 +551,96 @@ func (_c *EntityServiceInterfaceMock_DeleteEntity_Call) Return(err error) *Entit
 }
 
 func (_c *EntityServiceInterfaceMock_DeleteEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) error) *EntityServiceInterfaceMock_DeleteEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FormLock provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) FormLock(ctx context.Context, entityID string, scope providers.AccessScope, observed identitygovernance.ScopeLock, episode identitygovernance.LockEpisode, now time.Time) (bool, error) {
+	ret := _mock.Called(ctx, entityID, scope, observed, episode, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FormLock")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, identitygovernance.ScopeLock, identitygovernance.LockEpisode, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, entityID, scope, observed, episode, now)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, identitygovernance.ScopeLock, identitygovernance.LockEpisode, time.Time) bool); ok {
+		r0 = returnFunc(ctx, entityID, scope, observed, episode, now)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.AccessScope, identitygovernance.ScopeLock, identitygovernance.LockEpisode, time.Time) error); ok {
+		r1 = returnFunc(ctx, entityID, scope, observed, episode, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_FormLock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FormLock'
+type EntityServiceInterfaceMock_FormLock_Call struct {
+	*mock.Call
+}
+
+// FormLock is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - scope providers.AccessScope
+//   - observed identitygovernance.ScopeLock
+//   - episode identitygovernance.LockEpisode
+//   - now time.Time
+func (_e *EntityServiceInterfaceMock_Expecter) FormLock(ctx any, entityID any, scope any, observed any, episode any, now any) *EntityServiceInterfaceMock_FormLock_Call {
+	return &EntityServiceInterfaceMock_FormLock_Call{Call: _e.mock.On("FormLock", ctx, entityID, scope, observed, episode, now)}
+}
+
+func (_c *EntityServiceInterfaceMock_FormLock_Call) Run(run func(ctx context.Context, entityID string, scope providers.AccessScope, observed identitygovernance.ScopeLock, episode identitygovernance.LockEpisode, now time.Time)) *EntityServiceInterfaceMock_FormLock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.AccessScope
+		if args[2] != nil {
+			arg2 = args[2].(providers.AccessScope)
+		}
+		var arg3 identitygovernance.ScopeLock
+		if args[3] != nil {
+			arg3 = args[3].(identitygovernance.ScopeLock)
+		}
+		var arg4 identitygovernance.LockEpisode
+		if args[4] != nil {
+			arg4 = args[4].(identitygovernance.LockEpisode)
+		}
+		var arg5 time.Time
+		if args[5] != nil {
+			arg5 = args[5].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_FormLock_Call) Return(b bool, err error) *EntityServiceInterfaceMock_FormLock_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_FormLock_Call) RunAndReturn(run func(ctx context.Context, entityID string, scope providers.AccessScope, observed identitygovernance.ScopeLock, episode identitygovernance.LockEpisode, now time.Time) (bool, error)) *EntityServiceInterfaceMock_FormLock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -952,6 +1263,140 @@ func (_c *EntityServiceInterfaceMock_GetEntityListCountByOUIDs_Call) RunAndRetur
 	return _c
 }
 
+// GetEntityProfile provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) GetEntityProfile(ctx context.Context, entityID string) (*providers.Entity, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityProfile")
+	}
+
+	var r0 *providers.Entity
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.Entity, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.Entity); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_GetEntityProfile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityProfile'
+type EntityServiceInterfaceMock_GetEntityProfile_Call struct {
+	*mock.Call
+}
+
+// GetEntityProfile is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *EntityServiceInterfaceMock_Expecter) GetEntityProfile(ctx any, entityID any) *EntityServiceInterfaceMock_GetEntityProfile_Call {
+	return &EntityServiceInterfaceMock_GetEntityProfile_Call{Call: _e.mock.On("GetEntityProfile", ctx, entityID)}
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityProfile_Call) Run(run func(ctx context.Context, entityID string)) *EntityServiceInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityProfile_Call) Return(entity1 *providers.Entity, err error) *EntityServiceInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(entity1, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityProfile_Call) RunAndReturn(run func(ctx context.Context, entityID string) (*providers.Entity, error)) *EntityServiceInterfaceMock_GetEntityProfile_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetGovernedEntity provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) GetGovernedEntity(ctx context.Context, entityID string) (identitygovernance.GovernedEntity, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGovernedEntity")
+	}
+
+	var r0 identitygovernance.GovernedEntity
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (identitygovernance.GovernedEntity, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) identitygovernance.GovernedEntity); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(identitygovernance.GovernedEntity)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_GetGovernedEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGovernedEntity'
+type EntityServiceInterfaceMock_GetGovernedEntity_Call struct {
+	*mock.Call
+}
+
+// GetGovernedEntity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *EntityServiceInterfaceMock_Expecter) GetGovernedEntity(ctx any, entityID any) *EntityServiceInterfaceMock_GetGovernedEntity_Call {
+	return &EntityServiceInterfaceMock_GetGovernedEntity_Call{Call: _e.mock.On("GetGovernedEntity", ctx, entityID)}
+}
+
+func (_c *EntityServiceInterfaceMock_GetGovernedEntity_Call) Run(run func(ctx context.Context, entityID string)) *EntityServiceInterfaceMock_GetGovernedEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetGovernedEntity_Call) Return(governedEntity identitygovernance.GovernedEntity, err error) *EntityServiceInterfaceMock_GetGovernedEntity_Call {
+	_c.Call.Return(governedEntity, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetGovernedEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) (identitygovernance.GovernedEntity, error)) *EntityServiceInterfaceMock_GetGovernedEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroupCountForEntity provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) GetGroupCountForEntity(ctx context.Context, entityID string) (int, error) {
 	ret := _mock.Called(ctx, entityID)
@@ -1296,6 +1741,96 @@ func (_c *EntityServiceInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(
 	return _c
 }
 
+// IncrementFailure provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) IncrementFailure(ctx context.Context, entityID string, scope providers.AccessScope, now time.Time, windowStart time.Time) (identitygovernance.ScopeLock, bool, error) {
+	ret := _mock.Called(ctx, entityID, scope, now, windowStart)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IncrementFailure")
+	}
+
+	var r0 identitygovernance.ScopeLock
+	var r1 bool
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, time.Time, time.Time) (identitygovernance.ScopeLock, bool, error)); ok {
+		return returnFunc(ctx, entityID, scope, now, windowStart)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AccessScope, time.Time, time.Time) identitygovernance.ScopeLock); ok {
+		r0 = returnFunc(ctx, entityID, scope, now, windowStart)
+	} else {
+		r0 = ret.Get(0).(identitygovernance.ScopeLock)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.AccessScope, time.Time, time.Time) bool); ok {
+		r1 = returnFunc(ctx, entityID, scope, now, windowStart)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, providers.AccessScope, time.Time, time.Time) error); ok {
+		r2 = returnFunc(ctx, entityID, scope, now, windowStart)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// EntityServiceInterfaceMock_IncrementFailure_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IncrementFailure'
+type EntityServiceInterfaceMock_IncrementFailure_Call struct {
+	*mock.Call
+}
+
+// IncrementFailure is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - scope providers.AccessScope
+//   - now time.Time
+//   - windowStart time.Time
+func (_e *EntityServiceInterfaceMock_Expecter) IncrementFailure(ctx any, entityID any, scope any, now any, windowStart any) *EntityServiceInterfaceMock_IncrementFailure_Call {
+	return &EntityServiceInterfaceMock_IncrementFailure_Call{Call: _e.mock.On("IncrementFailure", ctx, entityID, scope, now, windowStart)}
+}
+
+func (_c *EntityServiceInterfaceMock_IncrementFailure_Call) Run(run func(ctx context.Context, entityID string, scope providers.AccessScope, now time.Time, windowStart time.Time)) *EntityServiceInterfaceMock_IncrementFailure_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.AccessScope
+		if args[2] != nil {
+			arg2 = args[2].(providers.AccessScope)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		var arg4 time.Time
+		if args[4] != nil {
+			arg4 = args[4].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_IncrementFailure_Call) Return(scopeLock identitygovernance.ScopeLock, b bool, err error) *EntityServiceInterfaceMock_IncrementFailure_Call {
+	_c.Call.Return(scopeLock, b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_IncrementFailure_Call) RunAndReturn(run func(ctx context.Context, entityID string, scope providers.AccessScope, now time.Time, windowStart time.Time) (identitygovernance.ScopeLock, bool, error)) *EntityServiceInterfaceMock_IncrementFailure_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsEntityDeclarative provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) IsEntityDeclarative(ctx context.Context, entityID string) (bool, error) {
 	ret := _mock.Called(ctx, entityID)
@@ -1533,6 +2068,75 @@ func (_c *EntityServiceInterfaceMock_LoadIndexedAttributes_Call) RunAndReturn(ru
 	return _c
 }
 
+// RecordLogin provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) RecordLogin(ctx context.Context, entityID string, at time.Time, notBefore time.Time) error {
+	ret := _mock.Called(ctx, entityID, at, notBefore)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordLogin")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time) error); ok {
+		r0 = returnFunc(ctx, entityID, at, notBefore)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_RecordLogin_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordLogin'
+type EntityServiceInterfaceMock_RecordLogin_Call struct {
+	*mock.Call
+}
+
+// RecordLogin is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+//   - notBefore time.Time
+func (_e *EntityServiceInterfaceMock_Expecter) RecordLogin(ctx any, entityID any, at any, notBefore any) *EntityServiceInterfaceMock_RecordLogin_Call {
+	return &EntityServiceInterfaceMock_RecordLogin_Call{Call: _e.mock.On("RecordLogin", ctx, entityID, at, notBefore)}
+}
+
+func (_c *EntityServiceInterfaceMock_RecordLogin_Call) Run(run func(ctx context.Context, entityID string, at time.Time, notBefore time.Time)) *EntityServiceInterfaceMock_RecordLogin_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RecordLogin_Call) Return(err error) *EntityServiceInterfaceMock_RecordLogin_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_RecordLogin_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time, notBefore time.Time) error) *EntityServiceInterfaceMock_RecordLogin_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveLinkedAccounts provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) ResolveLinkedAccounts(ctx context.Context, idpID string, sub string) ([]string, error) {
 	ret := _mock.Called(ctx, idpID, sub)
@@ -1712,6 +2316,84 @@ func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) Return() *
 
 func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) RunAndReturn(run func(provider entity.GroupMembershipProvider)) *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
 	_c.Run(run)
+	return _c
+}
+
+// SetSuspension provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error) {
+	ret := _mock.Called(ctx, entityID, at, operatorNote)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID, at, operatorNote)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, string) bool); ok {
+		r0 = returnFunc(ctx, entityID, at, operatorNote)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time, string) error); ok {
+		r1 = returnFunc(ctx, entityID, at, operatorNote)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_SetSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSuspension'
+type EntityServiceInterfaceMock_SetSuspension_Call struct {
+	*mock.Call
+}
+
+// SetSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+//   - operatorNote string
+func (_e *EntityServiceInterfaceMock_Expecter) SetSuspension(ctx any, entityID any, at any, operatorNote any) *EntityServiceInterfaceMock_SetSuspension_Call {
+	return &EntityServiceInterfaceMock_SetSuspension_Call{Call: _e.mock.On("SetSuspension", ctx, entityID, at, operatorNote)}
+}
+
+func (_c *EntityServiceInterfaceMock_SetSuspension_Call) Run(run func(ctx context.Context, entityID string, at time.Time, operatorNote string)) *EntityServiceInterfaceMock_SetSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetSuspension_Call) Return(b bool, err error) *EntityServiceInterfaceMock_SetSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)) *EntityServiceInterfaceMock_SetSuspension_Call {
+	_c.Call.Return(run)
 	return _c
 }
 
