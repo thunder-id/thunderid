@@ -224,7 +224,8 @@ A **TASK EXECUTION** node runs a named executor, a discrete unit of server-side 
 |---|---|---|
 | `executor` | Yes | Name of the executor to run. |
 | `mode` | No | Operational mode passed to the executor. Use when an executor supports multiple steps or variants (e.g. `send`, `verify`). |
-| `inputs` | No | Override the executor's default inputs for this node. When omitted, the executor's own default inputs are used. |
+| `inputs` | No | Override the executor's default inputs for this node. When omitted, the executor's own default inputs are used. All declared inputs must be supplied. |
+| `identifierInputs` | No | Mutually exclusive identifier inputs, exactly one of which must be supplied. Use when a node is reachable from several prompts that each collect a different kind of identifier. Supplements `inputs`, which the node should still declare for its remaining fields. |
 | `onSuccess` | No | ID of the node to advance to when the executor completes successfully. |
 | `onFailure` | No | ID of the node to forward to when the executor reports a failure. The failure reason is stored in runtime data so the target node (typically a PROMPT) can display it. |
 | `onIncomplete` | No | ID of the PROMPT node to forward to when the executor needs additional user input. |
@@ -504,9 +505,30 @@ Verifies a provided identifier and a password against stored values. This is the
 }
 ```
 
+**Accepting more than one kind of identifier:** when a node is reachable from several prompts that each collect a different identifier (for example a national ID, a phone number, or an email address), declare them under `identifierInputs` instead of `inputs`. Exactly one must be supplied; the executor passes it to the authentication provider under its own name, so the provider can tell which kind of identifier the user used.
+
+```json
+{
+  "id": "credentials_auth",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "CredentialsAuthExecutor",
+    "identifierInputs": [
+      { "identifier": "uin", "type": "TEXT_INPUT" },
+      { "identifier": "phone", "type": "PHONE_INPUT" },
+      { "identifier": "email", "type": "EMAIL_INPUT" }
+    ],
+    "inputs": [
+      { "identifier": "password", "type": "PASSWORD", "required": true }
+    ]
+  }
+}
+```
+
 **Failure conditions:**
 - Invalid credentials
 - User not found
+- More than one `identifierInputs` entry supplied
 - Authentication service error
 
 </details>
