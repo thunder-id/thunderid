@@ -309,5 +309,18 @@ func newMockFlowFactory(t interface {
 		ChallengeTokenInterceptor, providers.InterceptorModePostRequest,
 		providers.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(postUnit).Maybe()
 
+	localeUnit := coremock.NewInterceptorUnitInterfaceMock(t)
+	localeUnit.On("GetName").Return(LocaleInterceptor).Maybe()
+	localeUnit.On("GetMode").Return(providers.InterceptorModePreRequest).Maybe()
+	localeUnit.On("Clone").Return(localeUnit).Maybe()
+	localeUnit.On("GetInterceptor").Return(nil).Maybe()
+	localeUnit.On("GetScope").Return(providers.InterceptorScope("")).Maybe()
+	localeUnit.On("GetApplyTo").Return([]string(nil)).Maybe()
+	localeUnit.On("SetInterceptor", mock.Anything).Return().Maybe()
+
+	factoryMock.On("CreateInterceptorUnit",
+		LocaleInterceptor, providers.InterceptorModePreRequest,
+		providers.InterceptorScope(""), []string(nil), map[string]interface{}(nil)).Return(localeUnit).Maybe()
+
 	return factoryMock
 }

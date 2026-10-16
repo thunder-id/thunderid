@@ -112,8 +112,9 @@ func (s *interceptorRunner) executeInterceptors(
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, execCtx.ExecutionID))
 
 	resp := &common.InterceptorResponse{
-		Status:        common.InterceptorStatusComplete,
-		EngineOutputs: make(map[string]string),
+		Status:               common.InterceptorStatusComplete,
+		EngineOutputs:        make(map[string]string),
+		SharedRuntimeOutputs: make(map[string]string),
 	}
 	for _, b := range applicable {
 		ic := b.GetInterceptor()
@@ -199,6 +200,9 @@ func (s *interceptorRunner) executeInterceptor(
 func (s *interceptorRunner) mergeInterceptorResponse(dst, src *common.InterceptorResponse) {
 	for k, v := range src.EngineOutputs {
 		dst.EngineOutputs[k] = v
+	}
+	for k, v := range src.SharedRuntimeOutputs {
+		dst.SharedRuntimeOutputs[k] = v
 	}
 	dst.FieldErrors = src.FieldErrors
 	dst.ChallengeToken = src.ChallengeToken

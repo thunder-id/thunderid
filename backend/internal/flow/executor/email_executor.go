@@ -132,9 +132,10 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 
 	templateData := e.resolveTemplateData(ctx)
 
-	// Locale omitted (renderer falls back to system language); flow-injected locale is future work.
+	// Render in the flow locale the client supplied; empty falls back to the system language.
 	rendered, svcErr := e.templateRenderer.Resolve(ctx.Context, notificationtemplate.ChannelTypeEmail, handle,
 		notificationtemplate.RenderInput{
+			Locale:  ctx.SharedRuntimeData[common.RuntimeKeyEffectiveLocale],
 			Data:    templateData,
 			ThemeID: ctx.Application.ThemeID,
 		})

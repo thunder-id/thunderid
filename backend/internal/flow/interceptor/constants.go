@@ -17,6 +17,8 @@ const (
 	ChallengeTokenInterceptor = "ChallengeTokenInterceptor"
 	// CaptchaInterceptor is the registered name of the captcha interceptor.
 	CaptchaInterceptor = "CaptchaInterceptor"
+	// LocaleInterceptor is the registered name of the locale interceptor.
+	LocaleInterceptor = "LocaleInterceptor"
 )
 
 // Interceptor user input identifier constants.

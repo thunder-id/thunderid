@@ -416,7 +416,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			CriteriaRevoker:       revocationSvc,
 			ResourceMgtService:    resourceService,
 		},
-		interceptor.InterceptorDependencies{},
+		interceptor.InterceptorDependencies{I18nService: i18nService},
 		flowConfig,
 	)
 
