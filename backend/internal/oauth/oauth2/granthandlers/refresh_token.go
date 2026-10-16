@@ -273,10 +273,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
 		logger.Error(ctx, "Failed to generate access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate access token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate access token")
 	}
 
 	// Prepare the token response
@@ -288,20 +285,19 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Generate ID token if 'openid' scope is present
 	if slices.Contains(newTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        refreshTokenClaims.Sub,
-			Audience:       tokenRequest.ClientID,
-			Scopes:         newTokenScopes,
-			UserAttributes: attrs,
-			OAuthApp:       oauthApp,
-			ClaimsRequest:  refreshTokenClaims.ClaimsRequest,
-			SessionID:      refreshTokenClaims.SessionID,
+			Subject:         refreshTokenClaims.Sub,
+			Audience:        tokenRequest.ClientID,
+			Scopes:          newTokenScopes,
+			UserAttributes:  attrs,
+			OAuthApp:        oauthApp,
+			ClaimsRequest:   refreshTokenClaims.ClaimsRequest,
+			SessionID:       refreshTokenClaims.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
+			SubjectCategory: accessToken.SubjectCategory,
 		})
 		if idErr != nil {
 			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
@@ -410,6 +406,8 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		DPoPJkt:              dpopJktForRefresh(ctx, oauthApp),
 		TokenFamilyID:        tokenFamilyID,
 		SessionID:            tokenResponse.SessionID,
+		SubjectEntityID:      tokenResponse.AccessToken.SubjectID,
+		SubjectCategory:      tokenResponse.AccessToken.SubjectCategory,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID
@@ -418,10 +416,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	// Build refresh token using token builder
 	refreshToken, err := h.tokenBuilder.BuildRefreshToken(ctx, tokenCtx)
 	if err != nil {
-		return &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate refresh token",
-		}
+		return tokenBuildErrorResponse(err, "Failed to generate refresh token")
 	}
 
 	tokenResponse.RefreshToken = *refreshToken

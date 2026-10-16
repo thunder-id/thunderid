@@ -700,23 +700,25 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 
 	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
 	// issuer's jti and token family id have no meaning in this server's deny list.
-	var jti, tokenFamilyID string
+	var jti, tokenFamilyID, attributeCacheID string
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")
 		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
+		attributeCacheID, _ = extractStringClaim(claims, "aci")
 	}
 
 	return &SubjectTokenClaims{
-		Sub:            sub,
-		Iss:            iss,
-		Aud:            auds,
-		Scopes:         scopes,
-		UserAttributes: userAttributes,
-		NestedAct:      nestedAct,
-		CnfJkt:         cnfJkt,
-		JTI:            jti,
-		TokenFamilyID:  tokenFamilyID,
-		Authorization:  authorization,
+		Sub:              sub,
+		Iss:              iss,
+		Aud:              auds,
+		Scopes:           scopes,
+		UserAttributes:   userAttributes,
+		NestedAct:        nestedAct,
+		CnfJkt:           cnfJkt,
+		JTI:              jti,
+		TokenFamilyID:    tokenFamilyID,
+		Authorization:    authorization,
+		AttributeCacheID: attributeCacheID,
 	}, nil
 }
 

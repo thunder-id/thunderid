@@ -36,6 +36,9 @@ const (
 	// CategoryFlows groups all flow orchestration events for tracing end-to-end flows.
 	CategoryFlows EventCategory = "observability.flows"
 
+	// CategoryAdministration groups administrative changes to identities, such as agent lifespans.
+	CategoryAdministration EventCategory = "observability.administration"
+
 	// CategoryAll is a special category that matches all events.
 	// Subscribers to this category receive all events regardless of type.
 	CategoryAll EventCategory = "observability.all"
@@ -73,6 +76,13 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeFlowUserInputRequired:      CategoryFlows,
 	EventTypeFlowCompleted:              CategoryFlows,
 	EventTypeFlowFailed:                 CategoryFlows,
+
+	// Administration events
+	EventTypeAgentLifespanSet:          CategoryAdministration,
+	EventTypeAgentLifespanExtended:     CategoryAdministration,
+	EventTypeAgentLifespanReduced:      CategoryAdministration,
+	EventTypeAgentReactivated:          CategoryAdministration,
+	EventTypeAgentLifespanUpdateFailed: CategoryAdministration,
 }
 
 // GetCategory returns the category for a given event type.
@@ -92,6 +102,7 @@ func GetAllCategories() []EventCategory {
 		CategoryAuthentication,
 		CategoryAuthorization,
 		CategoryFlows,
+		CategoryAdministration,
 	}
 }
 

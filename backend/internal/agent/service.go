@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -26,6 +28,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -64,6 +67,10 @@ type agentService struct {
 	roleService          role.RoleServiceInterface
 	valueCapturer        declarativeresource.ValueCapturer
 	entityTypeService    entitytype.EntityTypeServiceInterface
+	// transactioner spans the entity database, so an update's entity write and its lifespan change
+	// commit together.
+	transactioner    providers.Transactioner
+	observabilitySvc observability.ObservabilityServiceInterface
 }
 
 func newAgentService(
@@ -74,6 +81,8 @@ func newAgentService(
 	roleService role.RoleServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	transactioner providers.Transactioner,
+	observabilitySvc observability.ObservabilityServiceInterface,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
@@ -84,6 +93,8 @@ func newAgentService(
 		roleService:          roleService,
 		valueCapturer:        valueCapturer,
 		entityTypeService:    entityTypeService,
+		transactioner:        transactioner,
+		observabilitySvc:     observabilitySvc,
 	}
 }
 
@@ -98,6 +109,12 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	// ValidateAgent resolves ouHandle to an OU ID, so the authz check runs after it to evaluate
 	// against the resolved target OU.
 	clientID, clientSecret, _, svcErr := s.ValidateAgent(ctx, agent, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	now := time.Now()
+	validUntil, svcErr := resolveRequestedValidUntil(agent.ValidUntil, now, isLifespanRestore(ctx))
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -125,7 +142,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	}
 
 	e, sysCredsJSON, buildErr := buildAgentEntity(agentID, agent.Type, agent.OUID, agent.Attributes,
-		agent.Description, owner, clientID, clientSecret)
+		agent.Description, owner, clientID, clientSecret, validUntil.String())
 	if buildErr != nil {
 		s.logger.Error(ctx, "Failed to build agent entity", log.Error(buildErr))
 		return nil, &tidcommon.InternalServerError
@@ -169,8 +186,10 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
 		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = agent.OUID
+	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp)
+	s.publishLifespanSet(ctx, agentID, validUntil)
 	return resp, nil
 }
 
@@ -314,13 +333,26 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	if existing.Category != providers.EntityCategoryAgent {
 		return nil, &ErrorAgentNotFound
 	}
+
+	now := time.Now()
+	lifespan := newLifespanUpdate(existing.SystemAttributes, req.ValidUntil)
+
 	if existing.IsReadOnly {
+		s.refuseLifespanUpdate(ctx, agentID, lifespan, lifespanFailureReadOnly)
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
 	// Check authz using the existing agent's OU ID.
 	if svcErr := s.checkAgentAccess(
 		ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+		if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+			s.refuseLifespanUpdate(ctx, agentID, lifespan, lifespanFailureNotAuthorized)
+		}
+		return nil, svcErr
+	}
+
+	// The lifespan is checked before anything is written, so a refused change applies no field.
+	if svcErr := s.checkLifespanUpdate(ctx, agentID, lifespan, now); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -384,20 +416,22 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		OUID:       ouID,
 		Attributes: req.Attributes,
 	}
-	sysAttrsJSON, marshalErr := buildSystemAttributesJSON(req.Description, owner, clientID)
+	sysAttrsJSON, marshalErr := buildSystemAttributesJSON(req.Description, owner, clientID, "")
 	if marshalErr != nil {
 		s.logger.Error(ctx, "Failed to build system attributes for update", log.Error(marshalErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	updatedEntity.SystemAttributes = sysAttrsJSON
 
-	if _, err := s.entityService.UpdateEntity(ctx, agentID, updatedEntity); err != nil {
+	if err := s.writeAgentUpdate(ctx, agentID, updatedEntity, lifespan); err != nil {
+		s.refuseLifespanUpdate(ctx, agentID, lifespan, lifespanFailureOperationFailed)
 		if mapped := mapEntityError(err); mapped != nil {
 			return nil, mapped
 		}
 		s.logger.Error(ctx, "Failed to update agent entity", log.String("agentID", agentID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	currentValidUntil := s.completeLifespanUpdate(ctx, agentID, lifespan, now)
 
 	if clientSecret != "" {
 		sysCredsJSON, credErr := buildSystemCredentialsJSON(clientSecret)
@@ -428,6 +462,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = ouID
+	resp.ValidUntil, resp.Lifespan = lifespanView(currentValidUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp)
 	return resp, nil
@@ -1098,6 +1133,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 		ClientID:    clientID,
 		Attributes:  e.Attributes,
 	}
+	resp.ValidUntil, resp.Lifespan = lifespanView(storedLifespanEnd(e.SystemAttributes), time.Now())
 
 	inbound, err := s.inboundClientService.GetInboundClientByEntityID(ctx, e.ID)
 	if err != nil {
@@ -1154,9 +1190,11 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 	totalCount, limit, offset int, includeDisplay bool) *model.AgentListResponse {
 	logoByID := s.agentLogoMap(ctx, entities)
 	agents := make([]model.BasicAgentResponse, 0, len(entities))
+	now := time.Now()
 	for i := range entities {
 		e := &entities[i]
 		description, owner, clientID := readSystemAttributes(e.SystemAttributes)
+		validUntil, lifespan := lifespanView(storedLifespanEnd(e.SystemAttributes), now)
 		agents = append(agents, model.BasicAgentResponse{
 			ID:          e.ID,
 			OUID:        e.OUID,
@@ -1167,6 +1205,8 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 			ClientID:    clientID,
 			Owner:       owner,
 			Attributes:  e.Attributes,
+			ValidUntil:  validUntil,
+			Lifespan:    lifespan,
 			IsReadOnly:  e.IsReadOnly,
 		})
 	}
@@ -1365,9 +1405,10 @@ func requiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 }
 
 // buildAgentEntity constructs the entity row and system credentials JSON for a new or updated agent.
+// validUntil is the stored lifespan end; empty leaves it out, for writes that carry the stored value.
 func buildAgentEntity(agentID, agentType, ouID string, attributes json.RawMessage,
-	description, owner, clientID, clientSecret string) (*providers.Entity, json.RawMessage, error) {
-	sysAttrsJSON, err := buildSystemAttributesJSON(description, owner, clientID)
+	description, owner, clientID, clientSecret, validUntil string) (*providers.Entity, json.RawMessage, error) {
+	sysAttrsJSON, err := buildSystemAttributesJSON(description, owner, clientID, validUntil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build agent system attributes: %w", err)
 	}
@@ -1389,8 +1430,9 @@ func buildAgentEntity(agentID, agentType, ouID string, attributes json.RawMessag
 	return e, sysCredsJSON, nil
 }
 
-// buildSystemAttributesJSON serializes agent description, owner, and clientID into the systemAttributes blob.
-func buildSystemAttributesJSON(description, owner, clientID string) (json.RawMessage, error) {
+// buildSystemAttributesJSON serializes agent description, owner, clientID, and validUntil into the
+// systemAttributes blob.
+func buildSystemAttributesJSON(description, owner, clientID, validUntil string) (json.RawMessage, error) {
 	attrs := map[string]interface{}{}
 	if description != "" {
 		attrs[fieldDescription] = description
@@ -1400,6 +1442,9 @@ func buildSystemAttributesJSON(description, owner, clientID string) (json.RawMes
 	}
 	if clientID != "" {
 		attrs[fieldClientID] = clientID
+	}
+	if validUntil != "" {
+		attrs[authnprovidercm.SystemAttrValidUntil] = validUntil
 	}
 	if len(attrs) == 0 {
 		return nil, nil

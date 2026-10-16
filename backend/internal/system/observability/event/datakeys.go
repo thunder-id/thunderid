@@ -17,6 +17,7 @@ var DataKey = struct {
 	Username string
 	ClientID string
 	EntityID string
+	AgentID  string
 
 	// Principal & Delegation Keys.
 	// The subject and actor axes are named after the token claims they mirror, so one vocabulary
@@ -49,6 +50,11 @@ var DataKey = struct {
 	RevocationReason string
 	AccessingOUID    string
 
+	// Lifespan Keys
+	ValidUntil         string
+	PreviousValidUntil string
+	FailureClass       string
+
 	// Session & Delivery Keys
 	SessionID  string
 	HTTPStatus string
@@ -69,6 +75,7 @@ var DataKey = struct {
 	Username: "username",
 	ClientID: "client_id",
 	EntityID: "app_id",
+	AgentID:  "agent_id",
 
 	// Principal & Delegation Keys
 	ActorType:   "act_type",
@@ -97,6 +104,11 @@ var DataKey = struct {
 	JTI:              "jti",
 	RevocationReason: "revocation_reason",
 	AccessingOUID:    "accessing_ou_id",
+
+	// Lifespan Keys
+	ValidUntil:         "valid_until",
+	PreviousValidUntil: "previous_valid_until",
+	FailureClass:       "failure_class",
 
 	// Session & Delivery Keys
 	SessionID:  "session_id",

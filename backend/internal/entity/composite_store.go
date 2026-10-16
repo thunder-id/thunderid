@@ -82,6 +82,12 @@ func (c *entityCompositeStore) UpdateAttributes(
 }
 
 // UpdateSystemAttributes updates system attributes in the database store only.
+// InvalidateEntityCache drops the database store's cached copy of the entity. Declarative entities are
+// held in memory and never cached.
+func (c *entityCompositeStore) InvalidateEntityCache(ctx context.Context, id string) {
+	c.dbStore.InvalidateEntityCache(ctx, id)
+}
+
 func (c *entityCompositeStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	return c.dbStore.UpdateSystemAttributes(ctx, entityID, attrs)

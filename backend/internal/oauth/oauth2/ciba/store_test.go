@@ -89,13 +89,16 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_TransitionsAndRecordsClaims()
 	s.Require().NoError(s.store.Add(s.ctx, req))
 
 	authTime := time.Now().Truncate(time.Second)
-	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "cache-1", "urn:acr", "sess-1", authTime)
+	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "entity-1", "user", "openid", "cache-1",
+		"urn:acr", "sess-1", authTime)
 	s.NoError(err)
 
 	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
 	s.Require().NoError(err)
 	s.Equal(CIBAStateAuthenticated, got.State)
 	s.Equal("user-1", got.UserID)
+	s.Equal("entity-1", got.SubjectID)
+	s.Equal("user", got.SubjectCategory)
 	s.Equal("openid", got.AuthorizedScopes)
 	s.Equal("cache-1", got.AttributeCacheID)
 	s.Equal("urn:acr", got.CompletedACR)
@@ -109,8 +112,8 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsWhenTheRequestWasAutho
 	sessionAuthTime := time.Now().Add(-time.Hour)
 
 	before := time.Now()
-	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "", "", "",
-		sessionAuthTime))
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "", "", "openid", "", "",
+		"", sessionAuthTime))
 	after := time.Now()
 
 	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
@@ -120,7 +123,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsWhenTheRequestWasAutho
 }
 
 func (s *CIBAStoreTestSuite) TestMarkAuthenticated_Missing_ReturnsNotFound() {
-	err := s.store.MarkAuthenticated(s.ctx, "no-such-req", "u", "", "", "", "", time.Now())
+	err := s.store.MarkAuthenticated(s.ctx, "no-such-req", "u", "", "", "", "", "", "", time.Now())
 	s.ErrorIs(err, ErrCIBARequestNotFound)
 }
 
@@ -129,7 +132,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_NotPending_ReturnsError() {
 	s.Require().NoError(s.store.Add(s.ctx, req))
 	s.Require().NoError(s.store.UpdateState(s.ctx, req.AuthReqID, CIBAStateConsumed))
 
-	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now())
+	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", "", "", time.Now())
 	s.Error(err)
 }
 
@@ -146,8 +149,8 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_ConcurrentCallbacks() {
 	for i := 0; i < workers; i++ {
 		go func(i int) {
 			defer wg.Done()
-			results[i] = s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "cache-1",
-				"urn:acr", "", time.Now())
+			results[i] = s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "entity-1", "user", "openid",
+				"cache-1", "urn:acr", "", time.Now())
 		}(i)
 	}
 	wg.Wait()
@@ -164,7 +167,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_ConcurrentCallbacks() {
 func (s *CIBAStoreTestSuite) TestMarkConsumed_OnceThenFalse() {
 	req := s.sampleRequest()
 	s.Require().NoError(s.store.Add(s.ctx, req))
-	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now()))
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", "", "", time.Now()))
 
 	consumed, err := s.store.MarkConsumed(s.ctx, req.AuthReqID)
 	s.NoError(err)
@@ -198,7 +201,7 @@ func (s *CIBAStoreTestSuite) TestMarkConsumed_Missing_ReturnsFalseNoError() {
 func (s *CIBAStoreTestSuite) TestMarkConsumed_ConcurrentPolls() {
 	req := s.sampleRequest()
 	s.Require().NoError(s.store.Add(s.ctx, req))
-	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now()))
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", "", "", time.Now()))
 
 	const workers = 10
 	var wg sync.WaitGroup

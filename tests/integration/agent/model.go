@@ -18,6 +18,8 @@ type Agent struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	IsReadOnly  bool            `json:"isReadOnly"`
+	ValidUntil  *string         `json:"validUntil,omitempty"`
+	Lifespan    *AgentLifespan  `json:"lifespan,omitempty"`
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
@@ -26,6 +28,11 @@ type Agent struct {
 	LayoutID                  string              `json:"layoutId,omitempty"`
 	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"`
 	InboundAuthConfig         []InboundAuthConfig `json:"inboundAuthConfig,omitempty"`
+}
+
+// AgentLifespan is the lifespan phase reported on agent reads.
+type AgentLifespan struct {
+	Phase string `json:"phase"`
 }
 
 // agentAttrs builds the attributes payload of an agent. The agent name is the schema attribute "name", so

@@ -320,6 +320,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
+                invalid-lifespan:
+                  summary: validUntil is not an RFC 3339 date and time
+                  value:
+                    code: "AGT-1043"
+                    message:
+                      key: "error.agentservice.invalid_lifespan"
+                      defaultValue: "Invalid lifespan"
+                    description:
+                      key: "error.agentservice.invalid_lifespan_description"
+                      defaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire"
+                lifespan-not-in-future:
+                  summary: validUntil is not later than the current time
+                  value:
+                    code: "AGT-1044"
+                    message:
+                      key: "error.agentservice.lifespan_not_in_future"
+                      defaultValue: "Lifespan must end in the future"
+                    description:
+                      key: "error.agentservice.lifespan_not_in_future_description"
+                      defaultValue: "validUntil must be later than the current time"
                 invalid-request-format:
                   summary: Malformed request body
                   value:
@@ -878,6 +898,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
+                invalid-lifespan:
+                  summary: validUntil is not an RFC 3339 date and time
+                  value:
+                    code: "AGT-1043"
+                    message:
+                      key: "error.agentservice.invalid_lifespan"
+                      defaultValue: "Invalid lifespan"
+                    description:
+                      key: "error.agentservice.invalid_lifespan_description"
+                      defaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire"
+                lifespan-not-in-future:
+                  summary: validUntil is not later than the current time
+                  value:
+                    code: "AGT-1044"
+                    message:
+                      key: "error.agentservice.lifespan_not_in_future"
+                      defaultValue: "Lifespan must end in the future"
+                    description:
+                      key: "error.agentservice.lifespan_not_in_future_description"
+                      defaultValue: "validUntil must be later than the current time"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -1095,14 +1135,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AGT-1027"
-                message:
-                  key: "error.agentservice.cannot_modify_declarative_resource"
-                  defaultValue: "Cannot modify declarative resource"
-                description:
-                  key: "error.agentservice.cannot_modify_declarative_resource_description"
-                  defaultValue: "Declaratively managed agents cannot be modified via the API"
+              examples:
+                declarative-agent:
+                  summary: Declaratively managed agent
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+                own-lifespan:
+                  summary: Agent changing its own lifespan
+                  value:
+                    code: "AGT-1045"
+                    message:
+                      key: "error.agentservice.cannot_change_own_lifespan"
+                      defaultValue: "Cannot change own lifespan"
+                    description:
+                      key: "error.agentservice.cannot_change_own_lifespan_description"
+                      defaultValue: "An agent cannot change its own lifespan"
         "404":
           description: Agent not found
           content:
@@ -1869,6 +1922,14 @@ components:
             ID of the entity that owns this agent. Defaults to the authenticated principal at
             creation time. Can be transferred by an administrator.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -1949,6 +2010,15 @@ components:
             Optional ID of the entity that should own this agent. Defaults to the authenticated
             principal creating the agent.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC 3339 instant at which the agent's lifespan ends. It must be later than the current
+            time. Omit it, or send `null`, to register an agent that does not expire. From this
+            instant the agent obtains no new tokens, and no token issued to or for it outlives it.
+          example: "2027-03-31T00:00:00Z"
         attributes:
           type: object
           additionalProperties: true
@@ -2044,6 +2114,16 @@ components:
           format: uuid
           description: Admins can transfer ownership by setting this to a different entity ID.
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC 3339 instant at which the agent's lifespan ends. Unlike the other fields, omitting
+            it leaves the stored lifespan unchanged; send `null` to remove the expiry. A value that
+            differs from the stored one must be later than the current time. An agent cannot change
+            its own lifespan, as the subject or the actor of the caller's token.
+          example: "2027-03-31T00:00:00Z"
         attributes:
           type: object
           additionalProperties: true
@@ -2121,6 +2201,14 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -2209,6 +2297,14 @@ components:
           type: string
           format: uuid
           example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/Lifespan'
         attributes:
           type: object
           additionalProperties: true
@@ -2958,6 +3054,19 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+
+    Lifespan:
+      type: object
+      readOnly: true
+      description: Where the agent stands in its lifespan, derived from `validUntil` on every read.
+      properties:
+        phase:
+          type: string
+          enum: [UNBOUNDED, ACTIVE, EXPIRED]
+          description: |
+            `UNBOUNDED` when the agent does not expire, `ACTIVE` while `validUntil` is ahead, and
+            `EXPIRED` from `validUntil` onward.
+          example: "ACTIVE"
 
     Link:
       type: object

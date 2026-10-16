@@ -221,8 +221,12 @@ func (ts *tokenService) ProcessTokenRequest(
 			0,
 		)
 		if refreshTokenError != nil && refreshTokenError.Error != "" {
+			code := 400
+			if refreshTokenError.Error == constants.ErrorServerError {
+				code = 500
+			}
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
-				500, refreshTokenError.ErrorDescription, startTime)
+				code, refreshTokenError.ErrorDescription, startTime)
 			if refreshTokenError.Error == constants.ErrorServerError {
 				refreshTokenError.ErrorDescription = "Failed to process token request"
 			}

@@ -175,6 +175,30 @@ func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	s.Equal(expected, entity)
 }
 
+func (s *ActorProviderTestSuite) TestGetActor_MapsEntityProviderErrors() {
+	for name, tc := range map[string]struct {
+		code entityprovider.ErrorCode
+		want string
+	}{
+		"not found": {code: entityprovider.ErrorCodeEntityNotFound, want: ErrorEntityNotFound.Code},
+		"not implemented": {
+			code: entityprovider.ErrorCodeNotImplemented, want: providers.ErrorActorLookupNotSupported.Code,
+		},
+		"system error": {code: entityprovider.ErrorCodeSystemError, want: tidcommon.InternalServerError.Code},
+	} {
+		s.Run(name, func() {
+			s.mockEntity.On("GetEntity", "app-1").
+				Return((*providers.Entity)(nil), entityprovider.NewEntityProviderError(tc.code, "", "")).Once()
+
+			entity, err := s.provider.GetActor("app-1")
+
+			s.Nil(entity)
+			s.Require().NotNil(err)
+			s.Equal(tc.want, err.Code)
+		})
+	}
+}
+
 func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAttribute() {
 	for name, tc := range map[string]struct {
 		displayPath string

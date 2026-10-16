@@ -977,6 +977,9 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 		Owner:       nodeCtx.RuntimeData[ownerIDKey],
 		Attributes:  attributesJSON,
 	}
+	if validUntil := collectedValue(nodeCtx, validUntilKey); validUntil != "" {
+		agent.ValidUntil = &validUntil
+	}
 	// Redirect URIs are the only OAuth value a caller may supply, and are attached only when
 	// collected so the provider applies its default otherwise.
 	if uris := splitTrimmed(collectedValue(nodeCtx, redirectURIsKey)); len(uris) > 0 {

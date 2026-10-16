@@ -157,10 +157,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		DPoPJkt:           dpop.GetJkt(ctx),
 	})
 	if err != nil {
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{

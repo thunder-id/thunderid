@@ -4,7 +4,12 @@
 // Package common defines shared constants for authentication providers.
 package common
 
-import "strings"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
 
 const (
 	// UserAttributeUserID is the attribute key used to identify the user ID.
@@ -42,6 +47,44 @@ const SystemAttrCredentialUpdatedAt = "credentialUpdatedAt" // #nosec G101 -- at
 //
 //	{"linkedIds": {"<idpId>": {"<sub>": {}}}}
 const SystemAttrLinkedIDs = "linkedIds"
+
+// SystemAttrValidUntil is the server-owned entity system-attribute key holding the instant the
+// entity's lifespan ends, as a UTC RFC 3339 timestamp. Only the service that owns the
+// entity type writes it.
+const SystemAttrValidUntil = "validUntil"
+
+// UnboundedValidUntil is the stored value of a lifespan that never ends.
+const UnboundedValidUntil = "9999-12-31T23:59:59Z"
+
+// ValidUntilOf returns the instant the lifespan held in the given system attributes ends. bounded
+// is false when the lifespan never ends: the key is absent, or holds the unbounded sentinel. A
+// stored value that does not parse is an error rather than an unbounded lifespan, so a corrupt value
+// never lifts the bound.
+func ValidUntilOf(systemAttributes json.RawMessage) (validUntil time.Time, bounded bool, err error) {
+	if len(systemAttributes) == 0 {
+		return time.Time{}, false, nil
+	}
+	var attrs map[string]json.RawMessage
+	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to unmarshal system attributes: %w", err)
+	}
+	raw, ok := attrs[SystemAttrValidUntil]
+	if !ok {
+		return time.Time{}, false, nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return time.Time{}, false, fmt.Errorf("invalid %s system attribute: %w", SystemAttrValidUntil, err)
+	}
+	if value == UnboundedValidUntil {
+		return time.Time{}, false, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("invalid %s system attribute: %w", SystemAttrValidUntil, err)
+	}
+	return parsed.UTC(), true, nil
+}
 
 // MaxAccountLinkingFilters bounds the lookup filters one federated sign-in's account linking may
 // build, and so the provider lookups it runs. Each linking attribute multiplies the count by the

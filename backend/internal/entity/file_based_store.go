@@ -93,6 +93,9 @@ func (f *entityFileBasedStore) UpdateAttributes(
 	return errors.New("UpdateAttributes is not supported in file-based store")
 }
 
+// InvalidateEntityCache implements entityStoreInterface. The file-based store holds no cache.
+func (f *entityFileBasedStore) InvalidateEntityCache(_ context.Context, _ string) {}
+
 // UpdateSystemAttributes is not supported in file-based store.
 func (f *entityFileBasedStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {

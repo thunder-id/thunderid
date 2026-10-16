@@ -13,8 +13,10 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
@@ -31,9 +33,15 @@ func Initialize(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	dbProvider dbprovider.DBProviderInterface,
+	observabilitySvc observability.ObservabilityServiceInterface,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
+	transactioner, err := dbProvider.GetEntityDBTransactioner()
+	if err != nil {
+		return nil, nil, err
+	}
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		valueCapturer, entityTypeService)
+		valueCapturer, entityTypeService, transactioner, observabilitySvc)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

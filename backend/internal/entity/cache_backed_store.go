@@ -144,6 +144,12 @@ func (s *cacheBackedEntityStore) DeleteEntity(ctx context.Context, id string) er
 	return nil
 }
 
+// InvalidateEntityCache drops the cached copies of the entity, so the next read loads it from the
+// store.
+func (s *cacheBackedEntityStore) InvalidateEntityCache(ctx context.Context, id string) {
+	s.invalidateEntityByID(ctx, id)
+}
+
 // LockEntity passes through to the wrapped store and does not cache the entity it returns. The
 // caller reads under the lock to modify the entity, so a cached copy, which a concurrent reader can
 // fill with a pre-commit value, would let that write drop another writer's change.
