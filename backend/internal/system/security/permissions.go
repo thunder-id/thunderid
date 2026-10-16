@@ -71,6 +71,10 @@ const (
 	ResourceTypeAgentType ResourceType = "agenttype"
 	// ResourceTypeNotificationTemplate identifies a notification template resource.
 	ResourceTypeNotificationTemplate ResourceType = "notificationtemplate"
+	// ResourceTypeGateway identifies a gateway this deployment administers.
+	ResourceTypeGateway ResourceType = "gateway"
+	// ResourceTypeDeploy identifies the configuration versions and their delivery to gateways.
+	ResourceTypeDeploy ResourceType = "deploy"
 )
 
 // ---- Actions ----
@@ -179,6 +183,14 @@ type SystemPermissions struct {
 	AgentTypeView            string
 	NotificationTemplate     string
 	NotificationTemplateView string
+	// Gateway covers the gateway registry: registering, changing and removing gateways; GatewayView
+	// covers reading it. Deploy covers configuration versions and their delivery: capturing,
+	// applying and reverting, and writing a gateway's values; DeployView covers reading versions,
+	// diffs, what a gateway holds, and listing its values.
+	Gateway     string
+	GatewayView string
+	Deploy      string
+	DeployView  string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -216,6 +228,10 @@ func InitSystemPermissions(handle string) {
 		AgentTypeView:            buildPermission(handle, "system", "agenttype", "view"),
 		NotificationTemplate:     buildPermission(handle, "system", "notificationtemplate"),
 		NotificationTemplateView: buildPermission(handle, "system", "notificationtemplate", "view"),
+		Gateway:                  buildPermission(handle, "system", "gateway"),
+		GatewayView:              buildPermission(handle, "system", "gateway", "view"),
+		Deploy:                   buildPermission(handle, "system", "deploy"),
+		DeployView:               buildPermission(handle, "system", "deploy", "view"),
 	}
 	sysPerms = p
 
@@ -341,6 +357,37 @@ func InitSystemPermissions(handle string) {
 		{"GET /user-types/**", p.UserTypeView},
 		{"PUT /user-types/**", p.UserType},
 		{"DELETE /user-types/**", p.UserType},
+
+		// Gateway APIs: the registry, then what is delivered to a gateway. Exact sub-resources before
+		// the gateway wildcard, so an apply needs the deploy permission rather than the registry's.
+		{"GET /gateways/*/applied-version", p.DeployView},
+		{"GET /gateways/*/applied-configuration", p.DeployView},
+		{"GET /gateways/*/applied-configuration/**", p.DeployView},
+		{"GET /gateways/*/diff", p.DeployView},
+		{"POST /gateways/*/apply", p.Deploy},
+		{"POST /gateways/*/revert", p.Deploy},
+		{"GET /gateways/*/variables", p.DeployView},
+		{"GET /gateways/*/variables/**", p.DeployView},
+		{"POST /gateways/*/variables", p.Deploy},
+		{"PUT /gateways/*/variables/**", p.Deploy},
+		{"DELETE /gateways/*/variables/**", p.Deploy},
+		{"GET /gateways/*/secrets", p.DeployView},
+		{"GET /gateways/*/secrets/**", p.DeployView},
+		{"POST /gateways/*/secrets", p.Deploy},
+		{"PUT /gateways/*/secrets/**", p.Deploy},
+		{"DELETE /gateways/*/secrets/**", p.Deploy},
+		{"GET /gateways", p.GatewayView},
+		{"POST /gateways", p.Gateway},
+		{"GET /gateways/**", p.GatewayView},
+		{"PUT /gateways/**", p.Gateway},
+		{"DELETE /gateways/**", p.Gateway},
+
+		// Configuration version APIs.
+		{"GET /configuration-versions", p.DeployView},
+		{"POST /configuration-versions", p.Deploy},
+		{"GET /configuration-versions/**", p.DeployView},
+		{"PUT /configuration-versions/**", p.Deploy},
+		{"DELETE /configuration-versions/**", p.Deploy},
 
 		// Agent schema APIs.
 		{"GET /agent-types", p.AgentTypeView},
