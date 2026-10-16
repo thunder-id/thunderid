@@ -1888,6 +1888,7 @@ const translations = {
     'vendor.sms-gateway.description': 'Route SMS through your own HTTP gateway.',
     'vendor.authzen-pdp.description': 'Delegate authorization decisions to an AuthZEN-compatible PDP.',
     'vendor.smtp.description': 'Deliver email through your own SMTP server.',
+    'vendor.http.description': 'Call an HTTP service from a flow, such as a risk engine or a custom check.',
     'vendor.trustedIdp.description': 'Trusted token issuer for token exchange and ID-JAG.',
 
     // Add custom connection wizard
@@ -1918,6 +1919,9 @@ const translations = {
     'wizard.type.smtp.label': 'Email Provider (SMTP)',
     'wizard.type.smtp.description': 'Deliver email through your own SMTP server.',
     'wizard.type.smtp.tag': 'Message sender · Email',
+    'wizard.type.http.label': 'Service Endpoint',
+    'wizard.type.http.description': 'Call an HTTP service from a flow, such as a risk engine or a custom check.',
+    'wizard.type.http.tag': 'Extension · HTTP',
     'wizard.type.trustedIdp.label': 'Trusted Token Issuer',
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
@@ -1964,6 +1968,8 @@ const translations = {
       'Configure how ThunderID authenticates requests sent to this policy decision point.',
     'detail.authentication.gatewayDescription':
       'Configure how ThunderID authenticates requests sent to this SMS gateway.',
+    'detail.authentication.originChanged':
+      'The URL origin changed. Enter the credentials again under Authentication before saving.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
@@ -2061,6 +2067,18 @@ const translations = {
     'form.fields.authzenBatchEndpoint.label': 'AuthZEN batch evaluation endpoint',
     'form.fields.timeoutMs.label': 'Timeout in milliseconds',
     'form.fields.timeoutMs.hint': 'Maximum time ThunderID waits for one PDP request.',
+    'form.fields.httpEndpointDescription.label': 'Description',
+    'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
+    'form.fields.httpEndpointUrl.label': 'Endpoint URL',
+    'form.fields.httpEndpointUrl.hint':
+      'The http or https URL ThunderID sends requests to. Setting an authentication method requires https.',
+    'form.fields.httpEndpointTimeoutMs.label': 'Timeout in milliseconds',
+    'form.fields.httpEndpointTimeoutMs.hint':
+      'Maximum time ThunderID waits for a response, from 1 to 20000 milliseconds.',
+    'form.fields.httpEndpointHeaders.label': 'HTTP headers',
+    'form.fields.httpEndpointHeaders.hint':
+      'Headers sent with every request. Set credentials under Authentication instead.',
+    'form.fields.httpEndpointHeaders.add': 'Add header',
     'form.fields.retryCount.label': 'Retry count',
     'form.fields.retryCount.hint': 'Number of retries for transient PDP or network failures.',
     'subjectMapping.attributes.title': 'Subject attribute mapping',
@@ -2268,6 +2286,16 @@ const translations = {
     'validation.positiveInteger': 'Enter a positive integer.',
     'validation.nonNegativeInteger': 'Enter zero or a positive integer.',
     'validation.keyValuePair': 'Enter both a name and value for every header.',
+    'validation.httpEndpointTimeoutRange': 'Enter a whole number from 1 to 20000.',
+    'validation.httpEndpointNameLength': 'Enter a name of at most 255 characters.',
+    'validation.httpEndpointDescriptionLength': 'Enter a description of at most 500 characters.',
+    'validation.httpEndpointUrlUserInfo':
+      'Remove the user name and password from the URL. Set credentials under Authentication.',
+    'validation.httpEndpointHeaderReserved':
+      'Remove reserved headers such as Authorization, Cookie, Host or Content-Type.',
+    'validation.httpEndpointHeaderDuplicate': 'Use each header name only once. Names are not case-sensitive.',
+    'validation.httpsRequiredWithAuthentication':
+      'Use an https URL when an authentication method is set, or set the method to None.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
     'validation.emailAddress': 'Enter a valid email address.',
     'validation.tlsRequiredForAuthentication':
@@ -2278,7 +2306,19 @@ const translations = {
     'errors.CON-1002': 'The limit parameter must be a positive integer.',
     'errors.CON-1003': 'The offset parameter must be a non-negative integer.',
     'errors.CON-1005': 'The selected authentication method is not supported by this deployment.',
+    'errors.CON-1012': 'The selected authentication method is not supported.',
     'errors.CON-1014': 'The PDP endpoint changed. Enter fresh credentials before saving.',
+    'errors.CON-1015': 'The service endpoint connection was not found. It may have been deleted.',
+    'errors.CON-1016': 'A service endpoint connection with this name already exists.',
+    'errors.CON-1017': 'Enter a connection name of 1 to 255 characters.',
+    'errors.CON-1018':
+      'The URL must be an absolute http or https URL without a user name or password, and must use https when authentication is set.',
+    'errors.CON-1019': 'The timeout must be a whole number from 1 to 20000 milliseconds.',
+    'errors.CON-1020':
+      'The headers are not valid. Use each name once, do not use reserved names such as Authorization, Cookie, Host or Content-Type, and keep values on one line.',
+    'errors.CON-1021':
+      'The authentication settings are not valid. Check the method and enter every required credential. After changing the URL origin, enter the password again.',
+    'errors.CON-1022': 'Enter a description of at most 500 characters.',
     'errors.IDP-1001': 'This identity provider no longer exists. It may have already been deleted.',
     'errors.IDP-1002': 'The identity provider ID is invalid or missing.',
     'errors.IDP-1003': 'The identity provider name is invalid or missing.',

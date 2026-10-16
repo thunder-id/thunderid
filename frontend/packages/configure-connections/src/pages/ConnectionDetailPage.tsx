@@ -38,6 +38,7 @@ import type {
   AuthorizationRuleMapping,
   ConnectionRequest,
   ConnectionType,
+  OutboundAuthField,
   OutboundAuthMethod,
   SubjectMappingValues,
 } from '../models/connection';
@@ -45,11 +46,14 @@ import {ConnectionTypes} from '../models/connection';
 import {
   AUTH_TYPE_FIELD,
   AUTH_TYPE_NONE,
+  authPropertyField,
   type ConnectionFormValues,
   formValuesToRequest,
+  HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
   MASKED_SECRET,
   outboundAuthenticationFromFormValues,
   responseToFormValues,
+  urlOriginChanged,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
@@ -234,6 +238,29 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const hasStoredOutboundCredential: boolean =
     (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE) === data?.authentication?.type &&
     Object.values(data?.authentication?.properties ?? {}).includes(MASKED_SECRET);
+  const reentersCredentialsOnOriginChange: boolean = meta?.reentersCredentialsOnOriginChange ?? false;
+  // The stored credentials must not follow the URL to another origin, so they are entered again.
+  const credentialsMustBeReentered: boolean =
+    reentersCredentialsOnOriginChange &&
+    hasStoredOutboundCredential &&
+    urlOriginChanged(baseline['url'] ?? '', values['url'] ?? '');
+  const selectedOutboundFields: OutboundAuthField[] =
+    authenticationMethods.find((method) => method.type === (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE))?.fields ?? [];
+  const outboundFieldValue = (field: OutboundAuthField): string => (values[authPropertyField(field.key)] ?? '').trim();
+  // A credential typed while the origin gate was engaged stays visible if the URL is changed back.
+  const outboundSecretReplacing: boolean =
+    secretReplacing ||
+    (reentersCredentialsOnOriginChange &&
+      (credentialsMustBeReentered ||
+        selectedOutboundFields.some((field) => field.credential && outboundFieldValue(field) !== '')));
+  const outboundAuthenticationIncomplete: boolean =
+    reentersCredentialsOnOriginChange &&
+    selectedOutboundFields.some(
+      (field) =>
+        field.required &&
+        outboundFieldValue(field) === '' &&
+        (!field.credential || credentialsMustBeReentered || !hasStoredOutboundCredential),
+    );
   const hasStoredHTTPHeaders =
     selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
     selectedAuthenticationScheme === persistedAuthenticationScheme &&
@@ -279,8 +306,10 @@ export default function ConnectionDetailPage(): JSX.Element | null {
         : selectedAuthenticationScheme === AuthenticationMethods.API_KEY
           ? (values['httpHeaders'] ?? '').trim() !== ''
           : false;
+  const fieldErrors: Record<string, string> = validateConnectionForm(values, fields, 'edit');
   const valid: boolean =
-    Object.keys(validateConnectionForm(values, fields, 'edit')).length === 0 &&
+    Object.keys(fieldErrors).length === 0 &&
+    !outboundAuthenticationIncomplete &&
     attrValid &&
     authzMappingsValid &&
     directMappingsValid &&
@@ -558,6 +587,14 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   onFieldChange={handleFieldChange}
                   onSecretReplacingChange={setSecretReplacing}
                 />
+                {credentialsMustBeReentered && (
+                  <Alert severity="warning" sx={{mt: 2}}>
+                    {t(
+                      'detail.authentication.originChanged',
+                      'The URL origin changed. Enter the credentials again under Authentication before saving.',
+                    )}
+                  </Alert>
+                )}
               </SettingsCard>
 
               {hasGenericAuthenticationSection && isConnectionMetaError && (
@@ -574,12 +611,20 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     methods={authenticationMethods}
                     values={values}
                     mode="edit"
-                    secretReplacing={secretReplacing}
-                    hasStoredSecret={hasStoredOutboundCredential}
+                    secretReplacing={outboundSecretReplacing}
+                    hasStoredSecret={hasStoredOutboundCredential && !credentialsMustBeReentered}
                     showHeading={false}
                     onFieldChange={handleFieldChange}
                     onSecretReplacingChange={setSecretReplacing}
                   />
+                  {fieldErrors['url'] === HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR && (
+                    <Alert severity="error" sx={{mt: 2}}>
+                      {t(
+                        HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
+                        'Use an https URL when an authentication method is set, or set the method to None.',
+                      )}
+                    </Alert>
+                  )}
                 </SettingsCard>
               )}
             </Stack>

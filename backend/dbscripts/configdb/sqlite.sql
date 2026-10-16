@@ -185,6 +185,22 @@ CREATE TABLE "AUTHORIZATION_PDP_CONNECTION" (
 CREATE UNIQUE INDEX idx_authorization_pdp_connection_type_name_deployment
 	ON "AUTHORIZATION_PDP_CONNECTION" (DEPLOYMENT_ID, TYPE, NAME);
 
+-- Table to store outbound HTTP endpoint connections. Secret values in PROPERTIES are encrypted.
+CREATE TABLE "HTTP_CONNECTION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID            VARCHAR(36) NOT NULL,
+    NAME          VARCHAR(255) NOT NULL,
+    DESCRIPTION   VARCHAR(500),
+    PROPERTIES    TEXT NOT NULL,
+    CREATED_AT    TEXT DEFAULT (datetime('now')),
+    UPDATED_AT    TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
+);
+
+-- Unique constraint: HTTP connection names must be unique per deployment.
+CREATE UNIQUE INDEX idx_http_connection_name_deployment
+    ON "HTTP_CONNECTION" (DEPLOYMENT_ID, NAME);
+
 -- Table to store certificates associated with various entities.
 CREATE TABLE "CERTIFICATE" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

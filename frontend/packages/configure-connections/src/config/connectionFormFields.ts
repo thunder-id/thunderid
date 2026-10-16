@@ -3,6 +3,7 @@
 
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {type ConnectionType, ConnectionTypes} from '../models/connection';
+import type {KeyValueFormat} from '../utils/keyValuePairs';
 
 export type ConnectionFieldKind =
   | 'text'
@@ -40,6 +41,12 @@ export interface ConnectionFieldDef {
   options?: ConnectionFieldOption[];
   /** i18n key for the add-row button of a 'key-value' field. */
   addLabelKey?: string;
+  /** Wire format of a 'key-value' field: "Key: value, ..." text (default), or an array of {name, value}. */
+  keyValueFormat?: KeyValueFormat;
+  /** Names a 'key-value' field rejects, compared ignoring case. */
+  reservedNames?: readonly string[];
+  /** Rejects a 'key-value' field holding the same name twice, compared ignoring case. */
+  uniqueNames?: boolean;
   /** Value prefilled on create (and used when the API returns none). */
   defaultValue?: string;
   /** Format the value must match (checked only when non-empty). Mirrors backend validation. */
@@ -56,6 +63,10 @@ export interface ConnectionFieldDef {
   requiredWhenValue?: {field: string; value: string};
   /** Requires HTTPS, except for loopback HTTP, when outbound authentication is configured. */
   requiresHttpsWhenAuthenticated?: boolean;
+  /** With {@link requiresHttpsWhenAuthenticated}, rejects loopback HTTP too. */
+  rejectsLoopbackHttp?: boolean;
+  /** Rejects a 'url' field carrying a user name or password. */
+  rejectsUserInfo?: boolean;
   /** Shows validation errors before the user interacts with the field. */
   showErrorImmediately?: boolean;
   /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
@@ -70,6 +81,23 @@ const NAME_FIELD = (placeholder: string): ConnectionFieldDef => ({
   required: true,
   placeholder,
 });
+
+/** Headers an HTTP endpoint connection cannot set, because the HTTP client or authentication owns them. */
+const HTTP_ENDPOINT_RESERVED_HEADERS: readonly string[] = [
+  'Authorization',
+  'Proxy-Authorization',
+  'Cookie',
+  'Host',
+  'Content-Length',
+  'Content-Type',
+  'Transfer-Encoding',
+  'Connection',
+  'TE',
+  'Trailer',
+  'Upgrade',
+  'Keep-Alive',
+  'Expect',
+];
 
 const PROMPT_FIELD: ConnectionFieldDef = {
   name: 'prompt',
@@ -470,6 +498,58 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       patternErrorKey: 'connections:validation.nonNegativeInteger',
     },
     ...HTTP_AUTHENTICATION_FIELDS,
+  ],
+  [ConnectionTypes.HTTP]: [
+    {
+      ...NAME_FIELD('Risk Engine'),
+      pattern: /^[\s\S]{1,255}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointNameLength',
+    },
+    {
+      name: 'description',
+      labelKey: 'connections:form.fields.httpEndpointDescription.label',
+      hintKey: 'connections:form.fields.httpEndpointDescription.hint',
+      kind: 'text',
+      visibility: 'edit',
+      pattern: /^[\s\S]{0,500}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointDescriptionLength',
+    },
+    {
+      name: 'url',
+      labelKey: 'connections:form.fields.httpEndpointUrl.label',
+      hintKey: 'connections:form.fields.httpEndpointUrl.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://risk.example.com/evaluate',
+      requiresHttpsWhenAuthenticated: true,
+      rejectsLoopbackHttp: true,
+      rejectsUserInfo: true,
+      showErrorImmediately: true,
+    },
+    {
+      name: 'timeoutMs',
+      labelKey: 'connections:form.fields.httpEndpointTimeoutMs.label',
+      hintKey: 'connections:form.fields.httpEndpointTimeoutMs.hint',
+      kind: 'number',
+      visibility: 'edit',
+      defaultValue: '10000',
+      placeholder: '10000',
+      pattern: /^([1-9]\d{0,3}|1\d{4}|20000)$/,
+      patternErrorKey: 'connections:validation.httpEndpointTimeoutRange',
+    },
+    {
+      name: 'headers',
+      labelKey: 'connections:form.fields.httpEndpointHeaders.label',
+      hintKey: 'connections:form.fields.httpEndpointHeaders.hint',
+      kind: 'key-value',
+      keyValueFormat: 'pairs',
+      reservedNames: HTTP_ENDPOINT_RESERVED_HEADERS,
+      uniqueNames: true,
+      visibility: 'edit',
+      placeholder: 'X-Tenant',
+      addLabelKey: 'connections:form.fields.httpEndpointHeaders.add',
+      showErrorImmediately: true,
+    },
   ],
   [ConnectionTypes.SMTP]: [
     NAME_FIELD('Corp SMTP'),

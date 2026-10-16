@@ -16,6 +16,7 @@ export const ConnectionTypes = {
   SMS_GATEWAY: 'sms-gateway',
   AUTHZEN_PDP: 'authzen-pdp',
   SMTP: 'email-smtp',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -45,6 +46,7 @@ export const ConnectionInstanceCategories = {
   SMS_PROVIDER: 'sms-provider',
   AUTHORIZATION_PDP: 'authorization-pdp',
   EMAIL_PROVIDER: 'email-provider',
+  HTTP: 'http',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -373,6 +375,27 @@ export interface AuthZENPDPConnectionRequest {
 export type OutboundAuthentication = OutboundAuthConfig;
 export type OutboundAuthenticationResponse = OutboundAuthConfig;
 
+/**
+ * Request payload for an HTTP endpoint connection, a service that flow steps call.
+ */
+export interface HTTPConnectionRequest {
+  name: string;
+  description?: string;
+  /** Must be https when authentication is set. */
+  url: string;
+  /** 1 to 20000. Omit for the 10000 default. */
+  timeoutMs?: number;
+  /** Plain headers sent with every request. A PUT replaces the whole list. */
+  headers?: HTTPHeader[];
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthConfig;
+}
+
+export interface HTTPHeader {
+  name: string;
+  value: string;
+}
+
 export interface AuthZENPDPSubjectAttributeMapping {
   entityType: string;
   attributes: AuthZENPDPSubjectAttribute[];
@@ -395,7 +418,8 @@ export type ConnectionRequest =
   | VonageConnectionRequest
   | SMSGatewayConnectionRequest
   | AuthZENPDPConnectionRequest
-  | SMTPConnectionRequest;
+  | SMTPConnectionRequest
+  | HTTPConnectionRequest;
 
 /**
  * Vendor response — secrets are never returned. A superset carrying every vendor's
@@ -430,6 +454,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   fromAddress?: string;
   fromName?: string;
   tls?: string;
+  /** HTTP endpoint plain headers. The URL and timeout share the fields above. */
+  headers?: HTTPHeader[] | null;
   /** Outbound authentication returned with credential values masked. */
   authentication?: OutboundAuthenticationResponse;
 }
@@ -462,6 +488,8 @@ export interface ConnectionVendorMeta {
   supportsAttributeMapping?: boolean;
   /** Whether this connection exposes outbound service authentication settings. */
   supportsAuthentication?: boolean;
+  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  reentersCredentialsOnOriginChange?: boolean;
   /** Whether this connection exposes subject attribute mappings for authorization requests. */
   supportsSubjectMapping?: boolean;
   /** Copy variant for the General tab settings card. */

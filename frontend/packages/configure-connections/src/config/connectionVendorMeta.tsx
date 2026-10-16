@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
-import {Mail, MessageSquare, Send, ServerCog} from '@wso2/oxygen-ui-icons-react';
+import {Mail, MessageSquare, Send, ServerCog, Webhook} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import ConnectionConstants from '../constants/connection-constants';
 import {
@@ -136,6 +136,17 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Mail size={28} />} />,
     categories: ['email'],
     presentation: 'custom',
+    generalSettingsCardCopy: 'configuration',
+  },
+  {
+    key: 'http',
+    backendType: ConnectionTypes.HTTP,
+    displayName: 'Service Endpoint',
+    descriptionKey: 'connections:vendor.http.description',
+    logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Webhook size={28} />} />,
+    categories: ['custom'],
+    presentation: 'custom',
+    reentersCredentialsOnOriginChange: true,
     generalSettingsCardCopy: 'configuration',
   },
 ];

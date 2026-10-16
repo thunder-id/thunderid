@@ -5,6 +5,7 @@ package mcp
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -443,4 +444,112 @@ func (ts *MCPTestSuite) runApplicationDeletionFlow(appID string) {
 	body, _ := io.ReadAll(resp.Body)
 	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "deletion flow failed: %s", string(body))
 	ts.Require().Containsf(string(body), `"COMPLETE"`, "deletion flow must complete: %s", string(body))
+}
+
+// mcpToolResult is the part of a tools/call response the HTTP connection tool test reads.
+type mcpToolResult struct {
+	Result struct {
+		IsError           bool           `json:"isError"`
+		StructuredContent map[string]any `json:"structuredContent"`
+	} `json:"result"`
+}
+
+// callMCPTool sends a stateless 2026-07-28 tools/call request and returns the decoded result with
+// the raw response body, which an SSE response carries on its data line.
+func (ts *MCPTestSuite) callMCPTool(token, name string, args map[string]any) (mcpToolResult, string) {
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{
+			"name": name, "arguments": args,
+			"_meta": map[string]any{
+				"io.modelcontextprotocol/protocolVersion":    mcpProtocolVersion20260728,
+				"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+				"io.modelcontextprotocol/clientInfo": map[string]any{
+					"name": "thunderid-integration-test", "version": "1.0.0"},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion20260728)
+	req.Header.Set("Mcp-Method", "tools/call")
+	req.Header.Set("Mcp-Name", name)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "%s failed: %s", name, string(body))
+
+	message := string(body)
+	for _, line := range strings.Split(message, "\n") {
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			message = data
+		}
+	}
+	var result mcpToolResult
+	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &result), "%s returned: %s", name, string(body))
+	return result, string(body)
+}
+
+// The HTTP connection tools run the /connections/http path end to end: the password is never
+// returned, is kept on an update that omits it while the URL origin is unchanged, and is required
+// again once the origin changes.
+func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskAndRetainPassword() {
+	const password = "mcp-http-connection-secret"
+	token := ts.mcpScopedAdminToken()
+
+	created, raw := ts.callMCPTool(token, "thunderid_create_http_connection", map[string]any{
+		"name": "MCP Tools HTTP Connection", "url": "https://risk.example.com/evaluate",
+		"authentication": map[string]any{"type": "basic",
+			"properties": map[string]any{"username": "svc-user", "password": password}},
+	})
+	ts.Require().Falsef(created.Result.IsError, "create failed: %s", raw)
+	ts.NotContains(raw, password)
+	id, _ := created.Result.StructuredContent["id"].(string)
+	ts.Require().NotEmpty(id)
+	ts.T().Cleanup(func() { ts.deleteHTTPConnection(id) })
+
+	got, raw := ts.callMCPTool(token, "thunderid_get_http_connection_by_id", map[string]any{"id": id})
+	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
+	ts.NotContains(raw, password)
+	ts.Contains(raw, `"password":"******"`)
+
+	listed, raw := ts.callMCPTool(token, "thunderid_list_http_connections", map[string]any{})
+	ts.Require().Falsef(listed.Result.IsError, "list failed: %s", raw)
+	ts.Contains(raw, id)
+	ts.NotContains(raw, password)
+
+	sameOrigin, raw := ts.callMCPTool(token, "thunderid_update_http_connection", map[string]any{
+		"id": id, "name": "MCP Tools HTTP Connection", "url": "https://risk.example.com/v2/evaluate",
+		"authentication": map[string]any{"type": "basic", "properties": map[string]any{"username": "svc-user"}},
+	})
+	ts.Falsef(sameOrigin.Result.IsError, "an update keeping the origin must keep the stored password: %s", raw)
+	ts.NotContains(raw, password)
+
+	otherOrigin, raw := ts.callMCPTool(token, "thunderid_update_http_connection", map[string]any{
+		"id": id, "name": "MCP Tools HTTP Connection", "url": "https://elsewhere.example.net/evaluate",
+		"authentication": map[string]any{"type": "basic", "properties": map[string]any{"username": "svc-user"}},
+	})
+	ts.Truef(otherOrigin.Result.IsError, "an update moving the origin must require the password again: %s", raw)
+	ts.Contains(raw, "failed to update HTTP connection")
+	ts.Contains(raw, "must give every field its method requires")
+}
+
+func (ts *MCPTestSuite) deleteHTTPConnection(id string) {
+	adminToken, err := testutils.GetAccessToken()
+	ts.Require().NoError(err, "failed to obtain the admin token")
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/connections/http/"+id, nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Equal(http.StatusNoContent, resp.StatusCode)
 }
