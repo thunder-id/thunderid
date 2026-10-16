@@ -60,20 +60,21 @@ var (
 			DefaultValue: "This gateway holds no earlier version to revert to",
 		},
 	}
-	// ErrorVersionRemoved is returned when the version being applied was removed by a capture before
-	// the apply could record it. The gateway received it, so applying a kept version records the
-	// gateway's state again.
+	// ErrorVersionRemoved is returned when the version being applied was removed, or replaced as the
+	// current version, by a capture. Found before the import, when the version cannot be kept as it
+	// is, nothing was sent to the gateway. Found after it, when the apply records it, the gateway
+	// received it, so applying a kept version records the gateway's state again.
 	ErrorVersionRemoved = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1018",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.gatewayservice.version_removed",
-			DefaultValue: "The version was removed while it was applied",
+			DefaultValue: "The version was removed or replaced while it was applied",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.gatewayservice.version_removed.description",
-			DefaultValue: "Only the newest versions are kept, and this one was removed by a capture. " +
-				"Apply a version that is still kept.",
+			DefaultValue: "Only the newest versions are kept, and a capture removed this one or replaced it " +
+				"as the current version. Apply a version that is still kept.",
 		},
 	}
 	// ErrorAppliedChanged is returned when another apply to the same gateway finished between this one

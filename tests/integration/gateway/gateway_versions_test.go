@@ -25,8 +25,10 @@ const selfManagementKey = "integration-management-api-key"
 
 type version struct {
 	Version   string `json:"version"`
+	Number    int    `json:"number"`
 	Name      string `json:"name"`
 	Unchanged bool   `json:"unchanged"`
+	Current   bool   `json:"current"`
 	Note      string `json:"note"`
 	Resources string `json:"resources"`
 }
@@ -434,4 +436,40 @@ func (ts *GatewayVersionsTestSuite) call(method, path string, body any, out any)
 		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(out))
 	}
 	return resp.StatusCode
+}
+
+// An apply settles the version it sends, so a capture meanwhile adds a version rather than rewriting
+// one under the apply. When no gateway received it, the version is current again, and the next
+// capture after a change replaces it in place; a version a gateway did receive stays as it is.
+func (ts *GatewayVersionsTestSuite) TestAnApplyThatReachedNoGatewayLeavesTheVersionCurrent() {
+	var unreachable gateway
+	ts.Require().Equal(http.StatusCreated, ts.call(http.MethodPost, "/gateways", map[string]any{
+		"name":    fmt.Sprintf("unreachable-%d", time.Now().UnixNano()),
+		"baseUrl": "https://127.0.0.1:1",
+	}, &unreachable))
+	defer ts.call(http.MethodDelete, "/gateways/"+unreachable.ID, nil, nil)
+	ts.unit("Settled")
+	current := ts.captureCurrent()
+
+	status := ts.call(http.MethodPost, "/gateways/"+unreachable.ID+"/apply",
+		map[string]any{"version": current.Version}, nil)
+	ts.Require().Equal(http.StatusBadGateway, status)
+
+	listed := ts.listVersions()
+	ts.Require().NotEmpty(listed)
+	ts.Equal(listedVersion{Version: current.Version, Current: true}, listed[0],
+		"the version an apply never delivered is no longer current")
+	ts.unit("Settled again")
+	replaced := ts.captureCurrent()
+	ts.Equal(current.Number, replaced.Number, "a change after the failed apply added a version instead of replacing")
+	ts.NotEqual(current.Version, replaced.Version)
+
+	// Delivered to a gateway, the version is kept as it is from then on, whatever a later apply does.
+	ts.apply(replaced.Version, false)
+	status = ts.call(http.MethodPost, "/gateways/"+unreachable.ID+"/apply",
+		map[string]any{"version": replaced.Version}, nil)
+	ts.Require().Equal(http.StatusBadGateway, status)
+	ts.unit("Settled once more")
+	added := ts.captureCurrent()
+	ts.Equal(replaced.Number+1, added.Number, "a version a gateway runs was replaced in place")
 }

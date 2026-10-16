@@ -253,7 +253,10 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
 	// The Console frontend path is always excluded from the access log to keep it
 	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
-	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
+	// A successful change to the configuration is captured as the current version, once the request
+	// is through the security middleware and answered.
+	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths),
+		changeCapture.Middleware(securityMiddleware))
 	handler = middleware.SecurityHeadersMiddleware()(handler)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
@@ -330,6 +333,10 @@ func gracefulShutdown(
 	} else {
 		logger.Debug(ctx, "HTTP server shutdown completed")
 	}
+
+	// A change made just before the stop is still waiting for its capture; capture it while the
+	// stores are still open.
+	changeCapture.Flush(ctx)
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()

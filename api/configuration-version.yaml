@@ -201,6 +201,11 @@ components:
     Version:
       type: object
       properties:
+        number:
+          type: integer
+          description: |
+            The version's place in order, from 1. It stays the same as older versions are removed, so
+            the console shows it as the version's number.
         version:
           type: string
           description: |
@@ -215,6 +220,12 @@ components:
         unchanged:
           type: boolean
           description: Only in a capture's answer, when the configuration matched this version already captured.
+        current:
+          type: boolean
+          description: |
+            Set on the newest version when it was captured as the current one: a capture with `current`
+            replaces it in place until it is applied to a gateway. Once an apply sends it, it is kept and
+            stays current until the next capture.
         createdAt:
           type: string
           format: date-time
@@ -251,6 +262,13 @@ components:
         note:
           type: string
           description: A note to remember the version by.
+        current:
+          type: boolean
+          description: |
+            Keeps the configuration as the current version rather than adding one. The newest version is
+            replaced in place when it was captured as current and has not been applied to a gateway;
+            otherwise a new current version is added. A control plane captures this way on its own
+            after each change to the configuration.
     ValueReference:
       type: object
       description: |

@@ -177,8 +177,30 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 		return kept, svcErr
 	}
 
-	version, err := s.versions.Add(ctx, Version{Hash: hash, Name: strings.TrimSpace(req.Name),
-		Note: strings.TrimSpace(req.Note), Resources: content, variables: sealed})
+	captured := Version{Hash: hash, Name: strings.TrimSpace(req.Name), Note: strings.TrimSpace(req.Note),
+		Resources: content, variables: sealed, Current: req.Current}
+	if req.Current {
+		// The current version is kept up to date in place until a gateway holds it, so a console that
+		// captures on every change leaves one version for them rather than one each.
+		replaced, err := s.versions.ReplaceCurrent(ctx, captured)
+		if err != nil {
+			// A capture of the same configuration at the same moment collides on its hash; the one
+			// refused answers with the version the other kept.
+			if kept, svcErr := s.versionWithHash(ctx, hash); svcErr == nil && kept != nil {
+				return kept, nil
+			}
+			s.logger.Error(ctx, "Failed to replace the current version", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if replaced != nil {
+			s.logger.Info(ctx, "Replaced the current configuration version", log.String("version", replaced.Hash),
+				log.Int("skipped", len(skipped)))
+			replaced.Skipped = skipped
+			return replaced, nil
+		}
+	}
+
+	version, err := s.versions.Add(ctx, captured)
 	if err != nil {
 		// Two captures of the same configuration at once collide on its hash; the one refused answers
 		// with the version the other kept.
@@ -228,6 +250,11 @@ func (s *versionService) ListVersions(ctx context.Context) ([]Version, *tidcommo
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list the versions", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	// Only the newest version can be the current one; an older one captured as current was kept once
+	// a gateway held it, and is a version like any other now.
+	for i := 1; i < len(versions); i++ {
+		versions[i].Current = false
 	}
 	return versions, nil
 }
@@ -402,8 +429,24 @@ func (s *versionService) Forget(ctx context.Context, gatewayID string) {
 // neither written nor removed.
 func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version,
 	dryRun, isRevert bool, selection *[]string) (*ApplyResult, *tidcommon.ServiceError) {
+	// Settled before anything is sent, the version is given back its place as the current one on
+	// every way out on which the gateway received nothing: a value it lacks, a store it could not
+	// answer for, or an import that never reached it.
+	delivered := false
 	if !dryRun {
 		defer s.applying.lock(gw.ID)()
+		if svcErr := s.settle(ctx, target); svcErr != nil {
+			return nil, svcErr
+		}
+		defer func() {
+			if !delivered {
+				// On a context of its own: the request's may be gone by now, and the version would
+				// otherwise stay settled with nothing holding it.
+				restore, cancel := context.WithTimeout(context.WithoutCancel(ctx), storeTimeout)
+				defer cancel()
+				s.unsettle(restore, target)
+			}
+		}()
 	}
 	excluded, svcErr := s.excluded(ctx, gw.ID)
 	if svcErr != nil {
@@ -430,14 +473,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	// A version names values the gateway holds rather than carrying them, so one the gateway lacks
-	// would leave a resource unusable once applied. A dry run reports them; an apply is refused.
-	missing, svcErr := s.missingValues(ctx, gw, key, content)
+	missing, svcErr := s.requiredValues(ctx, gw, key, content, dryRun)
 	if svcErr != nil {
 		return nil, svcErr
-	}
-	if !missing.empty() && !dryRun {
-		return nil, &ErrorMissingValues
 	}
 	variables := map[string]interface{}{}
 	if target.variables != "" {
@@ -470,6 +508,8 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		Deletions: deletionsOf(diff.Changes),
 	}
 	answer, err := s.client.Import(ctx, gw, key, request)
+	// Once the gateway may have written any of it, the version is kept as it is.
+	delivered = mayHaveWritten(err)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayId", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
@@ -508,9 +548,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if isRevert || held != target.Seq {
 		previous = held
 	}
-	if err := s.versions.SetApplied(ctx, gw.ID, target.Seq, previous, held); err != nil {
+	if err := s.versions.SetApplied(ctx, gw.ID, target.Seq, target.Hash, previous, held); err != nil {
 		if errors.Is(err, errVersionRemoved) {
-			s.logger.Warn(ctx, "A version was removed while it was applied to a gateway",
+			s.logger.Warn(ctx, "A version was removed or replaced while it was applied to a gateway",
 				log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
 			return nil, &ErrorVersionRemoved
 		}
@@ -526,6 +566,61 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayId", gw.ID),
 		log.Int("version", target.Seq))
 	return result, nil
+}
+
+// settle keeps the version an apply sends as it is from now on, before anything is sent, so a change
+// captured while the gateway imports it adds a version rather than rewriting this one under the
+// apply. A version replaced or removed since it was read is refused here, before the gateway
+// receives it.
+func (s *versionService) settle(ctx context.Context, target *Version) *tidcommon.ServiceError {
+	settled, err := s.versions.Settle(ctx, target.Seq, target.Hash)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to settle the version to apply", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if !settled {
+		s.logger.Warn(ctx, "A version was removed or replaced before it was applied",
+			log.Int("version", target.Seq))
+		return &ErrorVersionRemoved
+	}
+	return nil
+}
+
+// requiredValues reads the values the content refers to that the gateway lacks. A version names
+// values the gateway holds rather than carrying them, so one the gateway lacks would leave a resource
+// unusable once applied: a dry run reports them, and an apply is refused while there are any.
+func (s *versionService) requiredValues(ctx context.Context, gw *Gateway, key, content string,
+	dryRun bool) (*MissingValues, *tidcommon.ServiceError) {
+	missing, svcErr := s.missingValues(ctx, gw, key, content)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !missing.empty() && !dryRun {
+		return nil, &ErrorMissingValues
+	}
+	return missing, nil
+}
+
+// mayHaveWritten reports whether an import's outcome leaves open that the gateway wrote some of it.
+func mayHaveWritten(err error) bool {
+	return err == nil || !errors.Is(err, errImportNotWritten)
+}
+
+// unsettle gives a version back its place as the current one when the apply that settled it sent
+// nothing to the gateway, so the next capture after a change replaces it in place again rather than
+// adding a version beside one no gateway ever received. The store restores it only while it is still
+// the newest and no gateway runs or reverted from it.
+func (s *versionService) unsettle(ctx context.Context, target *Version) {
+	restored, err := s.versions.Unsettle(ctx, target.Seq, target.Hash)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to make the version current again after an apply wrote nothing",
+			log.Int("version", target.Seq), log.Error(err))
+		return
+	}
+	if !restored {
+		s.logger.Debug(ctx, "The version stays settled after an apply wrote nothing",
+			log.Int("version", target.Seq))
+	}
 }
 
 // restoreExclusions undoes a kept choice when its import wrote nothing: what it began leaving alone is
