@@ -173,6 +173,20 @@
   {
     "resourceType": "ELEMENT",
     "category": "FIELD",
+    "type": "USER_SELECT",
+    "display": {
+      "label": "User Select",
+      "description": "Pick one of the system's users, loaded page by page",
+      "image": "assets/images/icons/user.svg"
+    },
+    "hint": "",
+    "label": "User",
+    "required": true,
+    "placeholder": "Select a user"
+  },
+  {
+    "resourceType": "ELEMENT",
+    "category": "FIELD",
     "type": "DROPDOWN",
     "display": {
       "label": "Choice",

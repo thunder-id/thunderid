@@ -4,7 +4,7 @@
 import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box, Button} from '@wso2/oxygen-ui';
-import type {JSX} from 'react';
+import {Fragment, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxAdapter from './CheckboxAdapter';
 import DividerAdapter from './DividerAdapter';
@@ -13,8 +13,9 @@ import PasswordInputAdapter from './PasswordInputAdapter';
 import RichTextAdapter from './RichTextAdapter';
 import SelectAdapter from './SelectAdapter';
 import StackContainer from './StackContainer';
+import SubmitButtonAdapter from './SubmitButtonAdapter';
 import TextInputAdapter from './TextInputAdapter';
-import type {FlowComponent, FlowFieldProps} from '../../../models/flow';
+import type {FlowComponent, FlowFieldProps, RenderFlowField} from '../../../models/flow';
 import getIntegrationIcon from '../../../utils/getIntegrationIcon';
 
 interface BlockContext {
@@ -35,42 +36,10 @@ interface BlockContext {
   hasMultipleSubmits?: boolean;
   /** ID of the primary submit action that stays as type="submit" */
   primarySubmitId?: string;
-}
-
-interface SubmitButtonAdapterProps {
-  component: FlowComponent;
-  isLoading: boolean;
-  resolve: (template: string | undefined) => string | undefined;
-  /** When provided, the button fires its own action via onClick instead of form submit */
-  onClick?: () => void;
-}
-
-function SubmitButtonAdapter({
-  component,
-  isLoading,
-  resolve,
-  onClick = undefined,
-}: SubmitButtonAdapterProps): JSX.Element {
-  const {t} = useTranslation();
-
-  return (
-    <Button
-      id={component.id}
-      type={onClick ? 'button' : 'submit'}
-      fullWidth
-      className={cn(
-        'Flow--submitButton',
-        'Button--root',
-        component.variant === 'PRIMARY' ? 'Button--primary' : 'Button--outlined',
-      )}
-      variant={component.variant === 'PRIMARY' ? 'contained' : 'outlined'}
-      disabled={isLoading}
-      onClick={onClick}
-      sx={{mt: 2}}
-    >
-      {t(resolve(component.label)!)}
-    </Button>
-  );
+  /** Renders field types the shared adapters do not cover. Returning `undefined` leaves the field to them. */
+  renderField?: RenderFlowField;
+  /** Disables the submit buttons and the Enter key without disabling the inputs */
+  isSubmitDisabled?: boolean;
 }
 
 interface ResendButtonAdapterProps {
@@ -191,6 +160,12 @@ function renderFormSubComponent(
     additionalData: ctx.additionalData,
   };
 
+  const customField = ctx.renderField?.(sub, fieldProps);
+
+  if (customField !== undefined) {
+    return <Fragment key={sub.id ?? compIndex}>{customField}</Fragment>;
+  }
+
   if (
     (sub.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.TextInput ||
     sub.type === 'TEXT_INPUT' ||
@@ -246,7 +221,7 @@ function renderFormSubComponent(
       <SubmitButtonAdapter
         key={sub.id ?? compIndex}
         component={sub}
-        isLoading={ctx.isLoading}
+        disabled={ctx.isLoading || ctx.isSubmitDisabled === true}
         resolve={ctx.resolve}
         onClick={
           ctx.hasMultipleSubmits && sub.id !== ctx.primarySubmitId
@@ -320,6 +295,7 @@ function FormBlockAdapter({component, index, ...ctx}: FormBlockAdapterProps): JS
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (ctx.isSubmitDisabled) return;
     if (ctx.onValidate && !ctx.onValidate(blockComponents)) return;
     if (primarySubmit) ctx.onSubmit(primarySubmit, ctx.values);
   };

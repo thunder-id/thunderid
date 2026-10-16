@@ -34,7 +34,15 @@ vi.mock('../../utils/generateIdsForResources', () => ({
 
 // Mock componentMutations
 vi.mock('../../utils/componentMutations', () => ({
-  INPUT_ELEMENT_TYPES: new Set(['TEXT_INPUT', 'PASSWORD_INPUT', 'EMAIL_INPUT', 'OTP_INPUT', 'CHECKBOX', 'SELECT']),
+  INPUT_ELEMENT_TYPES: new Set([
+    'TEXT_INPUT',
+    'PASSWORD_INPUT',
+    'EMAIL_INPUT',
+    'OTP_INPUT',
+    'CHECKBOX',
+    'SELECT',
+    'USER_SELECT',
+  ]),
   mutateComponents: (components: Element[]) => components,
 }));
 
@@ -256,7 +264,10 @@ describe('useElementAddition', () => {
       expect(form.components[0].id).toBe('generated-text-input-1');
     });
 
-    it('should add select element to existing form in view', () => {
+    it.each([
+      {name: 'select', id: 'select-1', type: ElementTypes.Select},
+      {name: 'user select', id: 'user-select-1', type: ElementTypes.UserSelect},
+    ])('should add $name element to existing form in view', ({id, type}) => {
       const existingForm = createMockElement({
         id: 'form-1',
         type: BlockTypes.Form,
@@ -280,10 +291,10 @@ describe('useElementAddition', () => {
         }),
       );
 
-      const selectElement = createMockElement({id: 'select-1', type: ElementTypes.Select});
+      const element = createMockElement({id, type});
 
       act(() => {
-        result.current.handleAddElementToView(selectElement, 'view-1');
+        result.current.handleAddElementToView(element, 'view-1');
       });
 
       expect(capturedNodes.length).toBe(1);
@@ -292,7 +303,7 @@ describe('useElementAddition', () => {
       ) as Element & {components: Element[]};
       expect(form).toBeDefined();
       expect(form.components).toHaveLength(1);
-      expect(form.components[0].id).toBe('generated-select-1');
+      expect(form.components[0].id).toBe(`generated-${id}`);
     });
 
     it('should create new form when adding input element to view without form', () => {

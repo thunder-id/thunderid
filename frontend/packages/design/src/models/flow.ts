@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {EmbeddedFlowComponent} from '@thunderid/react';
+import type {JSX} from 'react';
 
 /**
  * Represents a normalized embedded flow component with all optional properties
@@ -52,6 +53,8 @@ export type FlowComponent = EmbeddedFlowComponent & {
   image?: string;
   /** Data source key for dynamic components (e.g., COPYABLE_TEXT). References a key in additionalData. */
   source?: string;
+  /** Hides the value behind a reveal control (e.g., COPYABLE_TEXT holding a secret). */
+  masked?: boolean;
 };
 
 /**
@@ -80,6 +83,12 @@ export interface FlowFieldProps {
   /** Additional step data from the flow response */
   additionalData?: Record<string, unknown>;
 }
+
+/**
+ * Renders a field type the shared adapters do not cover, such as one that needs a signed-in session.
+ * Return `undefined` to leave the component to the shared adapters.
+ */
+export type RenderFlowField = (component: FlowComponent, fieldProps: FlowFieldProps) => JSX.Element | null | undefined;
 
 /**
  * Props for the top-level FlowComponentRenderer factory.
@@ -122,4 +131,8 @@ export interface FlowComponentRendererProps {
   maxImageSize?: number;
   /** Additional step data from the flow response */
   additionalData?: Record<string, unknown>;
+  /** Renders field types the shared adapters do not cover. Called for each component in a form block. */
+  renderField?: RenderFlowField;
+  /** Disables the submit buttons and the Enter key, but not the inputs, for a step that cannot be submitted yet. */
+  isSubmitDisabled?: boolean;
 }

@@ -3,8 +3,7 @@
 
 import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {ElementCategories, ElementTypes} from '../../../models/elements';
-import type {Element} from '../../../models/elements';
+import {ElementCategories, ElementTypes, type Element} from '../../../models/elements';
 import type {Resource} from '../../../models/resources';
 import {StepCategories, StepTypes} from '../../../models/steps';
 import ResourceProperties from '../ResourceProperties';
@@ -51,6 +50,10 @@ vi.mock('../extended-properties/FieldExtendedProperties', () => ({
       Field Extended Properties
     </div>
   ),
+}));
+
+vi.mock('../extended-properties/UserSelectExtendedProperties', () => ({
+  default: () => <div data-testid="user-select-extended">User Select Extended Properties</div>,
 }));
 
 vi.mock('../extended-properties/ButtonExtendedProperties', () => ({
@@ -159,6 +162,40 @@ describe('ResourceProperties', () => {
 
       expect(screen.getByTestId('resource-property-factory-label')).toBeInTheDocument();
       expect(screen.getByTestId('resource-property-factory-placeholder')).toBeInTheDocument();
+    });
+  });
+
+  describe('User Select', () => {
+    it('should render the read-only data source and submit value for a USER_SELECT field', () => {
+      const resource = createMockResource({category: ElementCategories.Field, type: ElementTypes.UserSelect});
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{label: 'Owner', placeholder: 'Select a user'}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('user-select-extended')).toBeInTheDocument();
+      expect(screen.getByTestId('field-extended-properties')).toBeInTheDocument();
+      expect(screen.getByTestId('resource-property-factory-label')).toBeInTheDocument();
+    });
+
+    it('should not render the data source or submit value for a SELECT field', () => {
+      const resource = createMockResource({category: ElementCategories.Field, type: ElementTypes.Select});
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{label: 'Country'}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.queryByTestId('user-select-extended')).not.toBeInTheDocument();
     });
   });
 

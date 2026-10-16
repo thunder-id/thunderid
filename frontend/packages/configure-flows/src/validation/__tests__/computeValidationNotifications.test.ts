@@ -262,6 +262,40 @@ describe('computeValidationNotifications', () => {
       expect(result.has('input-1_REQUIRED_FIELD_ERROR')).toBe(true);
     });
 
+    it('should require a label and a ref on a user select', () => {
+      const nodes = [
+        createElementNode('step-1', [
+          {id: 'user-select-1', type: 'USER_SELECT', category: 'FIELD', config: {field: {}, styles: {}}},
+        ]),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      const notification = result.get('user-select-1_REQUIRED_FIELD_ERROR')!;
+      expect(notification.getType()).toBe(NotificationType.ERROR);
+      expect(notification.hasResourceFieldNotification('user-select-1_label')).toBe(true);
+      expect(notification.hasResourceFieldNotification('user-select-1_ref')).toBe(true);
+    });
+
+    it('should not report a user select that has a label and a ref', () => {
+      const nodes = [
+        createElementNode('step-1', [
+          {
+            id: 'user-select-1',
+            type: 'USER_SELECT',
+            category: 'FIELD',
+            config: {field: {}, styles: {}},
+            label: 'Owner',
+            ref: 'owner',
+          },
+        ]),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('user-select-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
     it('should validate button with missing variant', () => {
       const nodes = [
         createElementNode('step-1', [

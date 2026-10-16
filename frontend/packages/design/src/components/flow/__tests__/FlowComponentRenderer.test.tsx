@@ -5,6 +5,7 @@
 import {screen, cleanup, fireEvent} from '@testing-library/react';
 import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {describe, it, expect, afterEach, vi} from 'vitest';
+import type {RenderFlowField} from '../../../models/flow';
 import renderWithProviders from '../../../test/renderWithProviders';
 import FlowComponentRenderer from '../FlowComponentRenderer';
 
@@ -570,5 +571,84 @@ describe('FlowComponentRenderer — standalone RESEND routing', () => {
     );
 
     expect((document.getElementById('action_resend') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('FlowComponentRenderer: extension points', () => {
+  const pickerBlock = {
+    id: 'block_1',
+    type: 'BLOCK',
+    components: [
+      {id: 'input_picker', type: 'CUSTOM_PICKER', ref: 'picker', label: 'Picker'},
+      {id: 'action_1', type: 'ACTION', eventType: 'SUBMIT', variant: 'PRIMARY', label: 'Continue'},
+    ],
+  } as unknown as EmbeddedFlowComponent;
+
+  const renderField: RenderFlowField = (component) =>
+    (component as {type: string}).type === 'CUSTOM_PICKER' ? <p>custom picker</p> : undefined;
+
+  const renderRoot = (component: EmbeddedFlowComponent, extra: {isSubmitDisabled?: boolean} = {}) =>
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={component}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+        renderField={renderField}
+        {...extra}
+      />,
+    );
+
+  it('passes renderField to the fields of a block', () => {
+    renderRoot(pickerBlock);
+
+    expect(screen.getByText('custom picker')).toBeTruthy();
+  });
+
+  it('passes renderField through a stack to a block inside it', () => {
+    renderRoot({id: 'stack_1', type: 'STACK', components: [pickerBlock]} as unknown as EmbeddedFlowComponent);
+
+    expect(screen.getByText('custom picker')).toBeTruthy();
+  });
+
+  it('passes renderField to a block that carries a consent prompt', () => {
+    renderWithProviders(
+      <FlowComponentRenderer
+        component={pickerBlock}
+        index={0}
+        values={{}}
+        isLoading={false}
+        resolve={identity}
+        onInputChange={noop}
+        onSubmit={noop}
+        renderField={renderField}
+        additionalData={{consentPrompt: {purposes: []}}}
+      />,
+    );
+
+    expect(screen.getByText('custom picker')).toBeTruthy();
+  });
+
+  it('disables the submit buttons of a block when isSubmitDisabled is set', () => {
+    renderRoot(pickerBlock, {isSubmitDisabled: true});
+
+    expect(screen.getByRole('button', {name: 'Continue'}).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('disables the submit buttons of a block inside a stack when isSubmitDisabled is set', () => {
+    renderRoot({id: 'stack_1', type: 'STACK', components: [pickerBlock]} as unknown as EmbeddedFlowComponent, {
+      isSubmitDisabled: true,
+    });
+
+    expect(screen.getByRole('button', {name: 'Continue'}).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('leaves the submit buttons enabled by default', () => {
+    renderRoot(pickerBlock);
+
+    expect(screen.getByRole('button', {name: 'Continue'}).hasAttribute('disabled')).toBe(false);
   });
 });

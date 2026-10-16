@@ -4,10 +4,8 @@
 import type {Node, Edge} from '@xyflow/react';
 import {describe, it, expect, vi} from 'vitest';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
-import {ElementTypes, ElementCategories, ActionEventTypes, ButtonTypes} from '../../models/elements';
-import type {Element} from '../../models/elements';
-import type {StepData} from '../../models/steps';
-import {StepTypes, StaticStepTypes} from '../../models/steps';
+import {ElementTypes, ElementCategories, ActionEventTypes, ButtonTypes, type Element} from '../../models/elements';
+import {StepTypes, StaticStepTypes, type StepData} from '../../models/steps';
 import {
   transformReactFlow,
   validateFlowGraph,
@@ -1303,7 +1301,10 @@ describe('reactFlowTransformer', () => {
         expect(actionButton?.['eventType']).toBe(ActionEventTypes.Submit);
       });
 
-      it('should serialize a SELECT field as an input and promote the single button to SUBMIT', () => {
+      it.each([
+        {label: 'SELECT', id: 'select-1', type: ElementTypes.Select, name: 'country'},
+        {label: 'USER_SELECT', id: 'user-select-1', type: ElementTypes.UserSelect, name: 'owner'},
+      ])('should serialize a $label field as an input and promote the single button to SUBMIT', ({id, name, type}) => {
         const components: Element[] = [
           {
             id: 'block-1',
@@ -1311,10 +1312,10 @@ describe('reactFlowTransformer', () => {
             category: ElementCategories.Block,
             components: [
               {
-                id: 'select-1',
-                type: ElementTypes.Select,
+                id,
+                type,
                 category: ElementCategories.Field,
-                name: 'country',
+                name,
                 required: true,
               },
               {
@@ -1337,16 +1338,16 @@ describe('reactFlowTransformer', () => {
 
         expect(result.nodes[0].prompts?.[0].inputs).toEqual([
           {
-            ref: 'select-1',
-            type: ElementTypes.Select,
-            identifier: 'country',
+            ref: id,
+            type,
+            identifier: name,
             required: true,
           },
         ]);
 
         const block = result.nodes[0].meta?.components?.[0] ?? {};
         const blockChildren = block['components'] as Record<string, unknown>[];
-        expect(blockChildren.find((c) => c['type'] === ElementTypes.Select)?.['ref']).toBe('country');
+        expect(blockChildren.find((c) => c['type'] === type)?.['ref']).toBe(name);
         expect(blockChildren.find((c) => c['type'] === ElementTypes.Action)?.['eventType']).toBe(
           ActionEventTypes.Submit,
         );
