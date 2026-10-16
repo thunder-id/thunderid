@@ -1129,6 +1129,8 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Cross-OU provisioning:** When `allowCrossOUProvisioning` is set and the user exists in a different OU, the executor creates the user in the target OU instead of failing.
 
+**Seeding from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, `seedGroupsFromMapping` and `seedRolesFromMapping` assign whatever groups and roles that mapping resolves for the asserted attributes, as ordinary direct assignments at account-creation time, alongside anything named in `assignGroup`/`assignRole`. This is a one-time snapshot: it does not keep the account in sync with the provider afterward the way the mapping does on every subsequent sign-in, and it has nothing to resolve when the executor runs outside a federated context.
+
 **Executor properties:**
 
 | Property | UI Label | Required | Default | Description |
@@ -1139,6 +1141,8 @@ Creates a new user record in the user store. This executor persists the user's i
 | `includeOptional` | - | No | `false` | Whether to prompt for optional (non-credential) schema attributes |
 | `includeOptionalCredentials` | Include Optional Credentials | No | `false` | Whether to prompt for optional credential attributes |
 | `maxPerPrompt` | - | No | `0` (all at once) | Maximum number of missing inputs to forward per prompt cycle |
+| `seedGroupsFromMapping` | Seed Groups From Authorization Mapping | No | `false` | Assign groups the connection's authorization mapping resolved for this subject |
+| `seedRolesFromMapping` | Seed Roles From Authorization Mapping | No | `false` | Assign roles the connection's authorization mapping resolved for this subject |
 
 **Input Configuration:** Required user attributes are dynamically determined from the user type schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. See [Input Types](#input-types) for valid types.
 

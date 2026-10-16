@@ -284,6 +284,83 @@ func CreateUser(user User) (string, error) {
 	return userID, nil
 }
 
+// ListUserTypes returns every user type visible to the caller, each with its schema.
+//
+// The listing endpoint omits the schema, so each type is fetched individually. Seeding reads every user
+// type in the deployment, so tests asserting seeded defaults use this to check the precondition their
+// expectation depends on rather than assuming no other suite left a type behind.
+func ListUserTypes() ([]UserType, error) {
+	body, err := getJSON(TestServerURL + "/user-types?limit=100")
+	if err != nil {
+		return nil, err
+	}
+
+	var listing struct {
+		TotalResults int `json:"totalResults"`
+		Types        []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"types"`
+	}
+	if err := json.Unmarshal(body, &listing); err != nil {
+		return nil, fmt.Errorf("failed to parse user type listing: %w. Response: %s", err, string(body))
+	}
+	// Callers use this as a deployment-wide precondition, so a truncated page must not read as the whole
+	// deployment.
+	if listing.TotalResults > len(listing.Types) {
+		return nil, fmt.Errorf("user type listing is truncated: %d of %d returned; raise the limit",
+			len(listing.Types), listing.TotalResults)
+	}
+
+	userTypes := make([]UserType, 0, len(listing.Types))
+	for _, item := range listing.Types {
+		detail, err := getJSON(fmt.Sprintf("%s/user-types/%s", TestServerURL, item.ID))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read user type %q: %w", item.Name, err)
+		}
+		var userType UserType
+		if err := json.Unmarshal(detail, &userType); err != nil {
+			return nil, fmt.Errorf("failed to parse user type %q: %w. Response: %s", item.Name, err, string(detail))
+		}
+		userTypes = append(userTypes, userType)
+	}
+	return userTypes, nil
+}
+
+// IsAttributeUnique reports whether the named schema attribute is declared unique on this user type.
+func (u UserType) IsAttributeUnique(attribute string) bool {
+	definition, ok := u.Schema[attribute].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	unique, _ := definition["unique"].(bool)
+	return unique
+}
+
+// getJSON performs an authenticated GET and returns the raw body, failing on any non-200 status.
+func getJSON(url string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
 // DeleteUserType deletes a user type by ID
 func DeleteUserType(schemaID string) error {
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/user-types/%s", TestServerURL, schemaID), nil)
@@ -681,6 +758,9 @@ func idpToConnectionBody(idp IDP) map[string]interface{} {
 			}
 		}
 	}
+	if idp.AttributeConfiguration != nil {
+		body["attributeConfiguration"] = idp.AttributeConfiguration
+	}
 	return body
 }
 
@@ -710,6 +790,16 @@ func connectionBodyToIDP(idpType string, resp map[string]interface{}) *IDP {
 			}
 		}
 		idp.Properties = append(idp.Properties, IDPProperty{Name: "scopes", Value: strings.Join(parts, ",")})
+	}
+	// Round-tripped through JSON because the response arrives as a generic map. A malformed section is
+	// left nil rather than failing the conversion, so callers assert on it instead of on a parse error.
+	if raw, ok := resp["attributeConfiguration"]; ok && raw != nil {
+		if encoded, err := json.Marshal(raw); err == nil {
+			var config AttributeConfiguration
+			if err := json.Unmarshal(encoded, &config); err == nil {
+				idp.AttributeConfiguration = &config
+			}
+		}
 	}
 	return idp
 }

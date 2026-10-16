@@ -6,3 +6,21 @@ type: google
 clientId: test-client-id
 clientSecret: test-client-secret
 redirectUri: https://localhost:8095/callback
+# The nested keys below are snake_case while the outer key and accountLinking are camelCase. That
+# inconsistency is the implementation's, not a choice here: providers.AttributeConfiguration tags
+# user_type_resolution and user_type_attribute_mappings snake_case while tagging accountLinking, and
+# UserTypeResolution's own externalAttribute/valueMapping, camelCase. Recorded as G13; camelCase keys
+# here would silently fail to parse. Update this fixture when G13 is fixed.
+attributeConfiguration:
+  user_type_resolution:
+    default: "Declarative Test Schema"
+  user_type_attribute_mappings:
+    - user_type: "Declarative Test Schema"
+      attributes:
+        - external_attribute: given_name
+          local_attribute: username
+        - external_attribute: email
+          local_attribute: email
+  accountLinking:
+    attributes:
+      - email

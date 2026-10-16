@@ -7,7 +7,6 @@ import {
   Autocomplete,
   Box,
   Button,
-  Divider,
   FormControl,
   FormHelperText,
   FormLabel,
@@ -48,11 +47,6 @@ interface KeyedValue {
 }
 
 const EMPTY_VALUE_MAPPING: KeyedValue[] = [];
-
-interface KeyedLink {
-  key: number;
-  value: string;
-}
 
 interface AttributeMappingSectionProps {
   initialConfig?: AttributeConfiguration;
@@ -267,8 +261,6 @@ export default function AttributeMappingSection({
             }))
           : [{key: nk(), userType: '', rows: [{key: nk(), externalAttribute: '', localAttribute: ''}]}],
       groupsWasEmpty: state.groups.length === 0,
-      linking: state.linking.length > 0 ? state.linking.map((value) => ({key: nk(), value})) : [{key: nk(), value: ''}],
-      linkingWasEmpty: state.linking.length === 0,
       seq,
     };
   });
@@ -284,7 +276,6 @@ export default function AttributeMappingSection({
   const [valueMappingEnabled, setValueMappingEnabled] = useState<boolean>(initialKeyed.valueMapping.length > 0);
   const [valueMapping, setValueMapping] = useState<KeyedValue[]>(initialKeyed.valueMapping);
   const [groups, setGroups] = useState<KeyedGroup[]>(initialKeyed.groups);
-  const [linking, setLinking] = useState<KeyedLink[]>(initialKeyed.linking);
 
   const userTypesQuery = useGetUserTypes();
   const userTypeList = useMemo(() => userTypesQuery.data?.types ?? [], [userTypesQuery.data]);
@@ -303,10 +294,7 @@ export default function AttributeMappingSection({
   // render (React's documented pattern for reacting to a changed value) rather than via an effect, to
   // avoid the extra render pass a setState-in-effect would cost.
   const wasUnconfigured: boolean =
-    initialKeyed.defaultUserType === '' &&
-    initialKeyed.groupsWasEmpty &&
-    initialKeyed.linkingWasEmpty &&
-    !initialKeyed.resolveDynamic;
+    initialKeyed.defaultUserType === '' && initialKeyed.groupsWasEmpty && !initialKeyed.resolveDynamic;
   // Sentinel `null` (rather than the initial userTypeList) so the check below still evaluates on the
   // very first render — e.g. when the list is already available synchronously from a warm query cache.
   const [seenUserTypeList, setSeenUserTypeList] = useState<typeof userTypeList | null>(null);
@@ -346,8 +334,7 @@ export default function AttributeMappingSection({
   });
 
   useEffect(() => {
-    const hasContent: boolean =
-      anyGroupHasContent || effectiveResolveDynamic || linking.some((entry) => entry.value.trim() !== '');
+    const hasContent: boolean = anyGroupHasContent || effectiveResolveDynamic;
     // On a fresh connection with a single user type the default is auto-derived and its field hidden,
     // so don't persist a default-only config the admin never configured (which would dirty the form
     // just by opening it). Only suppress for truly unconfigured connections — an existing default-only
@@ -362,7 +349,6 @@ export default function AttributeMappingSection({
         userType: group.userType,
         rows: group.rows.map((row) => ({externalAttribute: row.externalAttribute, localAttribute: row.localAttribute})),
       })),
-      linking: linking.map((entry) => entry.value),
     });
     onChangeRef.current(config, valid);
   }, [
@@ -371,7 +357,6 @@ export default function AttributeMappingSection({
     externalAttribute,
     effectiveValueMapping,
     groups,
-    linking,
     valid,
     anyGroupHasContent,
     userTypeList,
@@ -391,7 +376,6 @@ export default function AttributeMappingSection({
     valueMapping.length > 0 && valueMapping[valueMapping.length - 1].value.trim() === '';
   const showAddValue: boolean = userTypeList.length > 1;
   const showAddUserType: boolean = hasUnusedUserType(groups.map((group) => group.userType));
-  const lastLinkIsEmpty: boolean = linking.length > 0 && linking[linking.length - 1].value.trim() === '';
 
   // Value-mapping handlers.
   const addValue = (): void =>
@@ -440,12 +424,6 @@ export default function AttributeMappingSection({
           : group,
       ),
     );
-
-  // Account-linking handlers.
-  const addLink = (): void => setLinking((prev) => [...prev, {key: nextKey(), value: ''}]);
-  const removeLink = (key: number): void => setLinking((prev) => prev.filter((entry) => entry.key !== key));
-  const updateLink = (key: number, value: string): void =>
-    setLinking((prev) => prev.map((entry) => (entry.key === key ? {...entry, value} : entry)));
 
   const iconBox = (icon: JSX.Element): JSX.Element => (
     <Box
@@ -662,63 +640,6 @@ export default function AttributeMappingSection({
               </Button>
             </Box>
           )}
-        </Stack>
-      </SettingsCard>
-
-      {/* Section 3 — account linking */}
-      <SettingsCard title={t('attributeMapping.linking.title')} description={t('attributeMapping.linking.description')}>
-        <Stack direction="column" spacing={1.5}>
-          <Typography variant="body2" color="text.secondary" fontWeight={600}>
-            {linking.length > 1 ? t('attributeMapping.linking.labelCombo') : t('attributeMapping.linking.label')}
-          </Typography>
-          {linking.map((entry, index) => {
-            const canDeleteLink = entry.value.trim() !== '' || linking.length > 1;
-            return (
-              <Stack key={entry.key} direction="column" spacing={1.5}>
-                {index > 0 && (
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="caption" color="primary.main" fontWeight={700}>
-                      {t('attributeMapping.linking.and')}
-                    </Typography>
-                    <Divider sx={{flex: 1}} />
-                  </Stack>
-                )}
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <TextField
-                    fullWidth
-                    placeholder={t('attributeMapping.linking.placeholder')}
-                    value={entry.value}
-                    onChange={(e) => updateLink(entry.key, e.target.value)}
-                    inputProps={{'aria-label': t('attributeMapping.linking.label')}}
-                  />
-                  {canDeleteLink ? (
-                    <IconButton
-                      onClick={() => removeLink(entry.key)}
-                      aria-label="remove account linking attribute"
-                      data-testid={`attribute-mapping-link-remove-${entry.key}`}
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  ) : (
-                    <Box sx={{width: 40}} />
-                  )}
-                </Stack>
-              </Stack>
-            );
-          })}
-          <Box>
-            <Button
-              variant="text"
-              color="primary"
-              size="small"
-              startIcon={<Plus size={16} />}
-              onClick={addLink}
-              disabled={lastLinkIsEmpty}
-              data-testid="attribute-mapping-link-add"
-            >
-              {t('attributeMapping.linking.addAttribute')}
-            </Button>
-          </Box>
         </Stack>
       </SettingsCard>
     </Stack>

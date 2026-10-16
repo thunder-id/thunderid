@@ -22,11 +22,13 @@ type AuthorizationEngine interface {
 	) (*AccessEvaluationsResponse, error)
 }
 
-// Subject identifies the principal for an access evaluation.
+// Subject identifies the principal for an access evaluation. ID is optional: a subject with no
+// local record is described by GroupIDs and RoleIDs alone.
 type Subject struct {
 	Type       string
 	ID         string
 	GroupIDs   []string
+	RoleIDs    []string
 	Properties map[string]interface{}
 }
 

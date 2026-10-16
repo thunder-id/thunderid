@@ -18,6 +18,7 @@ export {default as useGetResourceActions} from './api/useGetResourceActions';
 export {default as useCreateAction} from './api/useCreateAction';
 export {default as useUpdateAction} from './api/useUpdateAction';
 export {default as useDeleteAction} from './api/useDeleteAction';
+export {default as useSubtreePermissions} from './api/useSubtreePermissions';
 
 // Components
 export {default as PermissionCatalog} from './components/permission-catalog/PermissionCatalog';

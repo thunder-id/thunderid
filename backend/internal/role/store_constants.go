@@ -173,27 +173,59 @@ var (
 	}
 )
 
+// buildGetRolesByNamesQuery constructs a query to fetch roles by a list of names, regardless of
+// organization unit. A name may match more than one role, unlike an ID.
+func buildGetRolesByNamesQuery(names []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
+	if len(names) == 0 {
+		return dbmodel.DBQuery{}, nil, fmt.Errorf("names list cannot be empty")
+	}
+
+	args := make([]interface{}, len(names)+1)
+	postgresPlaceholders := make([]string, len(names))
+	sqlitePlaceholders := make([]string, len(names))
+
+	for i, name := range names {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		sqlitePlaceholders[i] = "?"
+		args[i] = name
+	}
+	args[len(names)] = deploymentID
+
+	deploymentPlaceholder := fmt.Sprintf("$%d", len(names)+1)
+	baseQuery := `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" WHERE NAME IN (%s) AND DEPLOYMENT_ID = %s`
+	postgresQuery := fmt.Sprintf(baseQuery, strings.Join(postgresPlaceholders, ","), deploymentPlaceholder)
+	sqliteQuery := fmt.Sprintf(baseQuery, strings.Join(sqlitePlaceholders, ","), "?")
+
+	return dbmodel.DBQuery{
+		ID:            "RLQ-ROLE_MGT-29",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args, nil
+}
+
 // buildAuthorizedPermissionsQuery constructs a database-specific query to retrieve authorized permissions
 // for an entity and/or groups from their assigned roles.
 // It builds separate queries for PostgreSQL and SQLite to handle array parameters correctly.
 func buildAuthorizedPermissionsQuery(
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestedPermissions []string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
-	// Base query structure
+	// Base query structure. LEFT JOIN, not INNER JOIN: a role named directly in roleIDs (an
+	// externally derived role, holding no stored assignment) must still surface its permissions.
 	baseQuery := `SELECT DISTINCT rp.PERMISSION
 		FROM "ROLE_PERMISSION" rp
-		INNER JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
+		LEFT JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
 		WHERE rp.DEPLOYMENT_ID = $1 AND `
 
 	var postgresWhere []string
 	var sqliteWhere []string
 
 	// Pre-allocate args slice with estimated capacity
-	argsCapacity := 1 + len(groupIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
+	argsCapacity := 1 + len(groupIDs) + len(roleIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
 	if entityID != "" {
 		argsCapacity++
 	}
@@ -232,6 +264,25 @@ func buildAuthorizedPermissionsQuery(
 			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
 				strings.Join(groupPlaceholdersSqlite, ",")))
 		paramIndex += len(groupIDs)
+	}
+
+	// Build the role condition if roleIDs are provided. Matched directly against rp.ROLE_ID, not
+	// through ra, so it needs no assignment row at all.
+	if len(roleIDs) > 0 {
+		rolePlaceholdersPostgres := make([]string, len(roleIDs))
+		rolePlaceholdersSqlite := make([]string, len(roleIDs))
+
+		for i, roleID := range roleIDs {
+			rolePlaceholdersPostgres[i] = fmt.Sprintf("$%d", paramIndex+i)
+			rolePlaceholdersSqlite[i] = "?"
+			args = append(args, roleID)
+		}
+
+		postgresWhere = append(postgresWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersPostgres, ",")))
+		sqliteWhere = append(sqliteWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersSqlite, ",")))
+		paramIndex += len(roleIDs)
 	}
 
 	var postgresScopeWhere []string

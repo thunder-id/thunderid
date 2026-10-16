@@ -425,6 +425,36 @@ func (suite *CompositeGroupStoreEdgeCaseTestSuite) TestGetGroupsByIDs_DBError() 
 	assert.Equal(suite.T(), dbErr, err)
 }
 
+// Test GetGroupsByNames queries both stores in full, even when the name is found in one already —
+// unlike GetGroupsByIDs, a name is not unique across organization units, so a match in one store
+// cannot rule out a match in the other.
+func (suite *CompositeGroupStoreEdgeCaseTestSuite) TestGetGroupsByNames_QueriesBothStoresInFull() {
+	names := []string{"engineering"}
+	dbGroups := []GroupBasicDAO{{ID: "grp-db", Name: "engineering", OUID: "ou1"}}
+	fileGroups := []GroupBasicDAO{{ID: "grp-file", Name: "engineering", OUID: "ou2", IsReadOnly: true}}
+
+	suite.mockDBStore.On("GetGroupsByNames", suite.ctx, names).Return(dbGroups, nil)
+	suite.mockFileStore.On("GetGroupsByNames", suite.ctx, names).Return(fileGroups, nil)
+
+	result, err := suite.store.GetGroupsByNames(suite.ctx, names)
+
+	assert.NoError(suite.T(), err)
+	assert.Len(suite.T(), result, 2)
+	suite.mockFileStore.AssertExpectations(suite.T())
+}
+
+// Test GetGroupsByNames propagates a DB error without querying the file store.
+func (suite *CompositeGroupStoreEdgeCaseTestSuite) TestGetGroupsByNames_DBError() {
+	dbErr := errors.New("db error")
+	suite.mockDBStore.On("GetGroupsByNames", suite.ctx, []string{"engineering"}).Return(nil, dbErr)
+
+	_, err := suite.store.GetGroupsByNames(suite.ctx, []string{"engineering"})
+
+	assert.Error(suite.T(), err)
+	assert.Equal(suite.T(), dbErr, err)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetGroupsByNames")
+}
+
 // Test IsGroupDeclarative delegates to file store.
 func (suite *CompositeGroupStoreEdgeCaseTestSuite) TestIsGroupDeclarative_ChecksFileStore() {
 	suite.mockFileStore.On("IsGroupDeclarative", suite.ctx, "grp1").Return(true, nil)

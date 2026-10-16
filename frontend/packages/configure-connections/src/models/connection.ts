@@ -122,10 +122,9 @@ export interface AttributeMapping {
 
 /**
  * Resolves which local user type a federated identity maps to (selecting its attribute-mapping
- * profile). `default` is the fixed fallback type. When `externalAttribute` and `valueMapping` are
- * set, the type is derived from the
- * value of that external attribute (`valueMapping` maps an external value to a local user type),
- * falling back to `default`.
+ * profile). `default` is the fixed fallback type. When `externalAttribute` and `valueMapping` are set,
+ * the type is derived from the value of that external attribute (`valueMapping` maps an external value
+ * to a local user type), falling back to `default`.
  */
 export interface UserTypeResolution {
   default: string;
@@ -151,12 +150,96 @@ export interface AccountLinking {
 }
 
 /**
+ * A local role, group, or permission an authorization mapping value confers. For `role` and `group`,
+ * `id` identifies the target directly. For `permission`, `resourceServerId` and `permission` together
+ * identify it, since a permission only means something on a resource server.
+ */
+export type AuthorizationTargetType = 'role' | 'group' | 'permission';
+
+export interface AuthorizationTarget {
+  type: AuthorizationTargetType;
+  id?: string;
+  resourceServerId?: string;
+  permission?: string;
+}
+
+/**
+ * How an authorization rule compares the claim's resolved value against its configured `value`.
+ * `equals`/`not_equals` are valid for a single-valued claim (a `string` mapping with no delimiter,
+ * `number`, or `boolean`). The ordering operators (`greater_than`/`less_than`/`greater_than_or_equal`/
+ * `less_than_or_equal`) are only valid when the mapping's `valueType` is `number`. `includes`/
+ * `not_includes` are valid only for a multi-valued claim (`array`, or `string` with a delimiter set).
+ */
+export type AuthorizationOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'greater_than'
+  | 'less_than'
+  | 'greater_than_or_equal'
+  | 'less_than_or_equal'
+  | 'includes'
+  | 'not_includes';
+
+/** The declared type of a claim's value, used to decide which operators are valid and how the
+ * configured rule value is compared. Defaults to `string` when omitted. */
+export type AuthorizationValueType = 'string' | 'number' | 'boolean' | 'array';
+
+/**
+ * A single rule within an authorization mapping: if any one of the claim's resolved values satisfies
+ * `operator` against `value`, the rule's `targets` are granted.
+ */
+export interface AuthorizationRule {
+  operator: AuthorizationOperator;
+  value: string;
+  targets: AuthorizationTarget[];
+}
+
+/**
+ * Maps values of a single external claim to local roles, groups, or permissions. `claim` is the
+ * source claim, which may be a dot-notation path into a nested claim. A claim value that is a list
+ * contributes each element; a string value splits on `delimiter` when one is configured, otherwise it
+ * is a single value. A rule matches when any one of the claim's resolved values satisfies it; every
+ * matched rule contributes to the union of what it maps to, and an unmatched value confers nothing.
+ * `delimiter` is only meaningful when `valueType` is `string` (or unset).
+ */
+export interface AuthorizationRuleMapping {
+  claim: string;
+  valueType?: AuthorizationValueType;
+  delimiter?: string;
+  values: AuthorizationRule[];
+}
+
+/**
+ * Feeds every value of a single external claim directly onto local roles, groups, or permissions of
+ * `targetType`, using each value as the name (or permission string) to look up, rather than an
+ * explicit per-value rule table. A value with no unambiguous match (none, or more than one, since role
+ * and group names are only unique within an organization unit) confers nothing. `resourceServerId` is
+ * required when `targetType` is `permission`, and not allowed otherwise.
+ */
+export interface AuthorizationDirectMapping {
+  claim: string;
+  delimiter?: string;
+  targetType: AuthorizationTargetType;
+  resourceServerId?: string;
+}
+
+/**
+ * A connection's authorization mapping configuration: explicit value-to-target rules, direct
+ * name-based lookups, or both together, in which case their resolved targets union.
+ */
+export interface AuthorizationMapping {
+  rules?: AuthorizationRuleMapping[];
+  direct?: AuthorizationDirectMapping[];
+}
+
+/**
  * External-to-local attribute mapping configuration for an authentication provider.
  */
 export interface AttributeConfiguration {
   userTypeResolution: UserTypeResolution;
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
   accountLinking?: AccountLinking;
+  authorizationMapping?: AuthorizationMapping;
 }
 
 /**

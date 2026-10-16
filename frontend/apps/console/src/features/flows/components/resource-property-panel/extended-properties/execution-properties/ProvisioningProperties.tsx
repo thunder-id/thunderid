@@ -130,6 +130,30 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
           size="small"
         />
       </div>
+
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={!!properties['seedGroupsFromMapping']}
+            onChange={(e) => handleBooleanPropertyChange('seedGroupsFromMapping', e.target.checked)}
+            size="small"
+          />
+        }
+        label={t('flows:core.executions.provisioning.seedGroupsFromMapping.label')}
+      />
+      <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
+
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={!!properties['seedRolesFromMapping']}
+            onChange={(e) => handleBooleanPropertyChange('seedRolesFromMapping', e.target.checked)}
+            size="small"
+          />
+        }
+        label={t('flows:core.executions.provisioning.seedRolesFromMapping.label')}
+      />
+      <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
     </Stack>
   );
 }

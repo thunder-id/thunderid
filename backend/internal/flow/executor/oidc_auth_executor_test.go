@@ -196,6 +196,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_Au
 			"exp": 1234567890, "iat": 1234567800,
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
@@ -232,6 +233,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidIDToken
 			"iss": "https://provider.com", "aud": "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -266,6 +268,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoLocalUser_
 	// that did not resolve to an existing local user.
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, newOIDCAuthenticatedUser())
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -299,6 +302,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_LocalUser_En
 	// A resolved EntityReference models account linking matching an existing local user.
 	expectEntityReferenceResolved(suite.mockAuthnProvider, newOIDCAuthenticatedUser())
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -374,6 +378,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidNonce()
 			"nonce": "matching_nonce_123",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -540,6 +545,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_Registration
 		}, (*tidcommon.ServiceError)(nil))
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -571,6 +577,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AuthFlow_Use
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -603,6 +610,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_UserAlreadyE
 			"sub": "existing-user-sub",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -662,6 +670,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_FiltersNonUs
 			"at_hash": "hash_value", "nonce": "nonce_value",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -705,6 +714,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDTok
 			"iss": "https://provider.com", "aud": "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -740,6 +750,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoEmailInIDT
 			"iss": "https://provider.com", "aud": "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -777,6 +788,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmptyEmailIn
 			"aud":   "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -814,6 +826,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_Registration
 		}, (*tidcommon.ServiceError)(nil))
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -853,6 +866,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailFromUse
 			"aud":   "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -890,6 +904,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDTok
 			"aud":   "client-id",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -934,6 +949,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWit
 		}, (*tidcommon.ServiceError)(nil))
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -967,6 +983,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthW
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
 	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -1004,6 +1021,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistr
 			"aud":   "client-123",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
@@ -1040,6 +1058,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegis
 			"sub": "existing-user-sub",
 		}, (*tidcommon.ServiceError)(nil))
 
+	expectIdentityProviderResolved(suite.mockIDPService)
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)

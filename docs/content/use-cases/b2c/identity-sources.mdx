@@ -25,6 +25,8 @@ Federation requires a few specific decisions:
 
 Each of these is configurable independently.
 
+Federation can also drive authorization, not just sign-in. An administrator can map attribute values a provider asserts, such as group membership, to local roles, groups, or permissions, so a user's access follows their standing at the provider without being administered a second time inside <ProductName />. This also covers users with no local record at all, seeding a new hire's starting access at account creation, and delegating the decision to an external policy engine when your organization already has one. See [Federated Attribute Mapping](../../../key-concepts/authorization#federated-attribute-mapping) for the full pattern.
+
 ## User Stores
 
 Where consumer identities live affects sign-in performance, recovery options, federation behavior, and migration paths. Most consumer apps run a directly-managed user directory inside the identity product. The other option is no local record at all, relying entirely on federation for identity.

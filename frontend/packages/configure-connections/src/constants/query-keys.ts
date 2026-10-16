@@ -39,6 +39,16 @@ const ConnectionQueryKeys = {
    * Key for a single trusted issuer (GET /connections/oidc/{id})
    */
   TRUSTED_ISSUER: 'trustedIssuer',
+
+  /**
+   * Key for the roles list used by the Authorization Mapping picker (GET /roles)
+   */
+  MAPPING_ROLES: 'mapping-roles',
+
+  /**
+   * Key for the groups list used by the Authorization Mapping picker (GET /groups)
+   */
+  MAPPING_GROUPS: 'mapping-groups',
 } as const;
 
 export default ConnectionQueryKeys;

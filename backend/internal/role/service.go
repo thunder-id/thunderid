@@ -32,12 +32,14 @@ type RoleServiceInterface interface {
 	CreateRole(ctx context.Context, role RoleCreationDetail) (
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
+	GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	GetAuthorizedPermissionsByResourceServer(
-		ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
+		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+		requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
 	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
@@ -286,6 +288,40 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 	return &role, nil
 }
 
+// GetRolesByNames retrieves roles by a list of names, keyed by name. A name may resolve to more than
+// one role across organization units; the caller decides how to handle that ambiguity.
+func (rs *roleService) GetRolesByNames(
+	ctx context.Context, names []string,
+) (map[string][]*Role, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if len(names) == 0 {
+		return map[string][]*Role{}, nil
+	}
+
+	seen := make(map[string]struct{}, len(names))
+	uniqueNames := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
+			uniqueNames = append(uniqueNames, name)
+		}
+	}
+
+	roles, err := rs.roleStore.GetRolesByNames(ctx, uniqueNames)
+	if err != nil {
+		logger.Error(ctx, "Failed to get roles by names", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	result := make(map[string][]*Role, len(roles))
+	for i := range roles {
+		result[roles[i].Name] = append(result[roles[i].Name], &roles[i])
+	}
+
+	return result, nil
+}
+
 // UpdateRole updates an existing role.
 func (rs *roleService) UpdateRoleWithPermissions(
 	ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *tidcommon.ServiceError) {
@@ -418,21 +454,29 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 // GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
 // based on roles, scoped to a resource server when provided.
 func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
-	ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
+	ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+	requestedPermissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Authorizing permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID),
 		log.Int("groupCount", len(groups)),
+		log.Int("roleCount", len(roleIDs)),
 		log.String("resourceServerID", resourceServerID))
 
-	// Handle nil groups slice
+	// Handle nil groups/roleIDs slices
 	if groups == nil {
 		groups = []string{}
 	}
+	if roleIDs == nil {
+		roleIDs = []string{}
+	}
 
-	// Validate that at least entityID or groups is provided
-	if entityID == "" && len(groups) == 0 {
+	// Validate that at least an entity, a group, or a role is provided. Role IDs stand in for the
+	// entity/group assignment a locally managed subject would otherwise need: a federated subject
+	// mapped directly to roles has neither an entity nor groups, but still has something to
+	// evaluate.
+	if entityID == "" && len(groups) == 0 && len(roleIDs) == 0 {
 		return nil, &ErrorMissingEntityOrGroups
 	}
 
@@ -443,7 +487,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 
 	// Get authorized permissions from store
 	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groups, resourceServerID, requestedPermissions)
+		ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),

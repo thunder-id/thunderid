@@ -56,6 +56,8 @@ Each refresh re-evaluates the subject's authorization rather than replaying the 
 
 OIDC scopes such as `openid`, `profile`, and `email` are not permission scopes, so authorization changes never remove them.
 
+Re-evaluation checks the subject's current roles and group memberships only; it never re-consults a connection's Authorization Mapping. A permission scope that a mapping granted, rather than a role or group actually assigned to the subject, has nothing for this check to find and is dropped on the *first* refresh, not only after something changes as the table above describes. Neither token exchange nor the jwt-bearer grant issues a refresh token in the first place, so this only matters for a mapping-derived scope that reached an access token through some other path, such as a session established via [Authorization Code](../authorization-code) after a federated sign-in.
+
 Access tokens issued earlier are unaffected and remain valid until they expire. Clients must handle a refreshed access token that carries fewer scopes than the previous one, and an `invalid_grant` response that requires the user to sign in again.
 
 <details>

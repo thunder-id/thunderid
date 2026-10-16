@@ -83,6 +83,7 @@ func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest
 				Type:       evaluation.Subject.Type,
 				ID:         evaluation.Subject.ID,
 				GroupIDs:   evaluation.Subject.GroupIDs,
+				RoleIDs:    evaluation.Subject.RoleIDs,
 				Properties: evaluation.Subject.Properties,
 			},
 			ResourceServer: engine.ResourceServer{

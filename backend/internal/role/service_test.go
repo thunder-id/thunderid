@@ -695,6 +695,40 @@ func (suite *RoleServiceTestSuite) TestGetRole_StoreError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+// TestGetRolesByNames_DedupesInputAndGroupsAmbiguousMatches confirms duplicate input names are
+// deduped before the store call, and that more than one role sharing a name are both returned under
+// that name rather than one silently overwriting the other.
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_DedupesInputAndGroupsAmbiguousMatches() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return([]Role{
+			{ID: "role-1", Name: "admins", OUID: "ou-1"},
+			{ID: "role-2", Name: "admins", OUID: "ou-2"},
+		}, nil)
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins", "admins"})
+
+	suite.Nil(err)
+	suite.Len(result["admins"], 2)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_EmptyInputReturnsEmptyMap() {
+	result, err := suite.service.GetRolesByNames(context.Background(), nil)
+
+	suite.Nil(err)
+	suite.Empty(result)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByNames_StoreError() {
+	suite.mockStore.On("GetRolesByNames", mock.Anything, []string{"admins"}).
+		Return(nil, errors.New("database error"))
+
+	result, err := suite.service.GetRolesByNames(context.Background(), []string{"admins"})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 // UpdateRole Tests
 func (suite *RoleServiceTestSuite) TestUpdateRole_MissingRoleID() {
 	request := RoleUpdateDetail{
@@ -1392,13 +1426,13 @@ func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions() {
 					normalizedGroups = []string{}
 				}
 				suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
-					tc.userID, normalizedGroups, "",
+					tc.userID, normalizedGroups, []string{}, "",
 					tc.requestedPermissions).
 					Return(tc.mockReturn, tc.mockError).Once()
 			}
 
 			result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
-				context.Background(), tc.userID, tc.groups, "",
+				context.Background(), tc.userID, tc.groups, nil, "",
 				tc.requestedPermissions)
 
 			if tc.expectedError != nil {

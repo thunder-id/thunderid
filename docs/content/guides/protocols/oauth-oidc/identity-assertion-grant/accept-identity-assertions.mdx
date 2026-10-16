@@ -75,7 +75,7 @@ The external identity provider's ID-JAG must satisfy these requirements for <Pro
 | `client_id` | Equal to the authenticated client's id |
 | `sub` | Present |
 | `exp`, `iat`, `jti` | Present. See [Limitations](#limitations) for the `jti` replay caveat. |
-| `scope` | Optional. When present, the issued access token's scope is the intersection of this claim and the request's `scope` parameter. |
+| `scope` | Optional. Bounds what can be granted. When the request also carries a `scope` parameter, the issued scope is the intersection of the two. When the request omits `scope`, this claim is the candidate in full, narrowed further only by the connection's Authorization Mapping when one is configured — see below. |
 | `resource` | Optional. When present, the request's `resource` parameter must be a subset of this claim. When absent, any valid resource is accepted. |
 
 The client then presents the assertion to <ProductName />'s token endpoint using the `jwt-bearer` grant:
@@ -123,13 +123,18 @@ Requests missing the `assertion` parameter fail with `invalid_request` - `Missin
 
 ## The Tokens <ProductName /> Issues
 
-The issued access token's `sub` claim is the assertion's subject verbatim, an external identifier rather than a local user id. An `idp` claim carries the assertion's issuer. <ProductName /> does not link this subject to a local account or apply attribute mapping, and no refresh token is issued. The token is DPoP-bound when the request includes a DPoP proof. A `scope` parameter in the request narrows the assertion's `scope` claim by intersection, and a `resource` parameter must be a subset of the assertion's `resource` claim, selecting one resource server when the assertion authorizes several.
+The issued access token's `sub` claim is the assertion's subject verbatim, an external identifier rather than a local user id. An `idp` claim carries the assertion's issuer. <ProductName /> does not link this subject to a local account or run just-in-time provisioning for it, and no refresh token is issued.
+
+It does apply the connection's [Authorization Mapping](../../../../identity-providers/add-oidc-provider#authorization-mapping) when one is configured, resolving roles, groups, and permissions from the assertion's own claims into the granted scope, the same mapping and the same group-ancestor expansion a sign-in or a token exchange through that connection would use. A `scope` parameter in the request narrows the candidate scope by intersection; omitting it does not empty the grant, it leaves the assertion's `scope` claim as the candidate in full, which mapping then narrows to whatever it actually authorizes. If mapping is configured but fails to resolve, the request fails outright rather than falling back to no mapping, since there is no already-issued session to fall back to the way a sign-in has.
+
+The token is DPoP-bound when the request includes a DPoP proof. A `resource` parameter must be a subset of the assertion's `resource` claim, selecting one resource server when the assertion authorizes several.
 
 ## Limitations
 
 - There is no replay cache. <ProductName /> checks that `jti` is present but does not track previously seen values, so keep assertion expiry short.
-- No local user mapping occurs. The token's `sub` is the external identifier as-is.
+- No local account mapping occurs, regardless of Authorization Mapping. The token's `sub` is the external identifier as-is; nothing links it to a local user record.
 - <ProductName /> does not advertise ID-JAG or Enterprise-Managed Authorization discovery metadata in its well-known documents.
+- The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted Token Issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
 
 :::note
 This page covers accepting assertions for token issuance. The [Secure <ProductName /> Using a Third-Party Identity Provider](../../../../trusted-issuer) guide is a different feature: it validates external tokens directly against <ProductName />'s own APIs without issuing a new token.

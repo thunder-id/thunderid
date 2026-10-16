@@ -1355,6 +1355,9 @@ importers:
       '@thunderid/components':
         specifier: workspace:^
         version: link:../components
+      '@thunderid/configure-resource-servers':
+        specifier: workspace:^
+        version: link:../configure-resource-servers
       '@thunderid/configure-user-types':
         specifier: workspace:^
         version: link:../configure-user-types

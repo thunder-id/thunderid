@@ -68,6 +68,7 @@ type ActorProvider interface {
 	GetActor(actorID string) (*Entity, *common.ServiceError)
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
 	GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError)
+	GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError)
 }
 
 // I18nProvider defines the interface for the i18n provider.
@@ -128,6 +129,9 @@ type IDPProvider interface {
 	GetIdentityProvidersByProperty(ctx context.Context, propertyKey,
 		propertyValue string) ([]IDPDTO, *common.ServiceError)
 	GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, *common.ServiceError)
+	GetDirectAuthorizationTargets(
+		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
+	) ([]AuthorizationTarget, *common.ServiceError)
 }
 
 // ConsentProvider provides functionality to resolve consent requirements and

@@ -20,6 +20,14 @@ const ATTR_CONFIG = {
   ],
 };
 
+const AUTHZ_MAPPINGS = [
+  {claim: 'groups', values: [{operator: 'equals', value: 'engineering', targets: [{type: 'role', id: 'role-1'}]}]},
+];
+
+const DIRECT_MAPPINGS = [{claim: 'role_name', targetType: 'role'}];
+
+const LINKING = {attributes: ['email']};
+
 const CONNECTION = {
   id: 'g1',
   type: 'google',
@@ -28,7 +36,11 @@ const CONNECTION = {
   clientSecret: '******',
   redirectUri: 'https://id.acme.io/oauth/callback/google',
   scopes: ['openid'],
-  attributeConfiguration: ATTR_CONFIG,
+  attributeConfiguration: {
+    ...ATTR_CONFIG,
+    authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
+    accountLinking: LINKING,
+  },
 };
 
 const TWILIO_CONNECTION = {
@@ -119,6 +131,50 @@ vi.mock('../../components/AttributeMappingSection', () => ({
   },
 }));
 
+// Fires onChange only on an explicit click, so tests that never click it leave the section untouched
+// (editedAuthzMappings/editedLinking stay null, falling back to the baseline), matching how a real user
+// who never opens the section behaves.
+vi.mock('../../components/AuthorizationMappingSection', () => ({
+  default: function StubAuthorizationMappingSection({
+    onRuleChange,
+    onDirectChange,
+  }: {
+    onRuleChange: (c: unknown, v: boolean) => void;
+    onDirectChange: (c: unknown, v: boolean) => void;
+  }) {
+    return (
+      <>
+        <button type="button" data-testid="clear-authz-mappings" onClick={() => onRuleChange(undefined, true)}>
+          clear authorization mappings
+        </button>
+        <button type="button" data-testid="clear-direct-mappings" onClick={() => onDirectChange(undefined, true)}>
+          clear direct mappings
+        </button>
+        {/* Simulates an attempted-but-incomplete row: the serialized value is unchanged from baseline
+            (nothing to diff), but the section reports itself invalid, the same way an incomplete
+            AuthorizationMappingSection row does. */}
+        <button
+          type="button"
+          data-testid="report-incomplete-authz-row"
+          onClick={() => onRuleChange(AUTHZ_MAPPINGS, false)}
+        >
+          report incomplete row
+        </button>
+      </>
+    );
+  },
+}));
+
+vi.mock('../../components/AccountLinkingSection', () => ({
+  default: function StubAccountLinkingSection({onChange}: {onChange: (c: unknown) => void}) {
+    return (
+      <button type="button" data-testid="clear-linking" onClick={() => onChange(undefined)}>
+        clear account linking
+      </button>
+    );
+  },
+}));
+
 describe('ConnectionDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -166,11 +222,63 @@ describe('ConnectionDetailPage', () => {
     expect(updateMock).toHaveBeenCalledTimes(1);
     const payload = updateMock.mock.calls[0][0] as {name: string; clientId: string; attributeConfiguration?: unknown};
     expect(payload).toMatchObject({name: 'Google', clientId: 'changed'});
-    // General-tab-only edit must not wipe the stored attribute configuration.
-    expect(payload.attributeConfiguration).toEqual(ATTR_CONFIG);
+    // General-tab-only edit must not wipe the stored attribute configuration, including both halves
+    // of the nested authorization mapping (rule-based and direct) and account linking, none of which
+    // this edit touched.
+    expect(payload.attributeConfiguration).toEqual({
+      ...ATTR_CONFIG,
+      authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
+      accountLinking: LINKING,
+    });
 
     await waitFor(() => expect(refetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument());
+  });
+
+  it('omits authorization mappings and account linking from the save payload once cleared, instead of reverting to the stored value', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('clear-authz-mappings'));
+    fireEvent.click(screen.getByTestId('clear-direct-mappings'));
+    fireEvent.click(screen.getByTestId('clear-linking'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {
+      attributeConfiguration?: {
+        authorizationMapping?: unknown;
+        accountLinking?: unknown;
+      };
+    };
+    expect(payload.attributeConfiguration?.authorizationMapping).toBeUndefined();
+    expect(payload.attributeConfiguration?.accountLinking).toBeUndefined();
+  });
+
+  it('clearing only the rule-based half keeps the stored direct mappings nested alongside it', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('clear-authz-mappings'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {
+      attributeConfiguration?: {authorizationMapping?: {rules?: unknown; direct?: unknown}};
+    };
+    expect(payload.attributeConfiguration?.authorizationMapping).toEqual({direct: DIRECT_MAPPINGS});
+  });
+
+  it('shows the save bar for an attempted-but-incomplete authorization mapping row, and still blocks the save', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('report-incomplete-authz-row'));
+
+    // Nothing in the serialized payload changed (the incomplete row contributes nothing to it), so
+    // this only shows up as an invalid section, not a diff - the save bar must still appear for it.
+    expect(screen.getByTestId('save-bar')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('save-bar'));
+    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it('shows an inline name error on a 409 update conflict, and clears it when the name is edited', async () => {

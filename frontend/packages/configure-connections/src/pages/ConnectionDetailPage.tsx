@@ -13,14 +13,22 @@ import useConnection from '../api/useConnection';
 import useConnectionInstances from '../api/useConnectionInstances';
 import useDeleteConnection from '../api/useDeleteConnection';
 import useUpdateConnection from '../api/useUpdateConnection';
+import AccountLinkingSection from '../components/AccountLinkingSection';
 import AttributeMappingSection from '../components/AttributeMappingSection';
+import AuthorizationMappingSection from '../components/AuthorizationMappingSection';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
 import ConnectionForm from '../components/ConnectionForm';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import type {AttributeConfiguration, ConnectionType} from '../models/connection';
+import type {
+  AccountLinking,
+  AttributeConfiguration,
+  AuthorizationRuleMapping,
+  AuthorizationDirectMapping,
+  ConnectionType,
+} from '../models/connection';
 import {
   type ConnectionFormValues,
   formValuesToRequest,
@@ -60,7 +68,6 @@ function canonicalAttr(config: AttributeConfiguration | undefined): string {
     externalAttribute: resolution?.externalAttribute ?? '',
     valueMapping,
     groups,
-    linking: [...(config?.accountLinking?.attributes ?? [])].sort(),
   });
 }
 
@@ -87,6 +94,13 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const [editedAttr, setEditedAttr] = useState<AttributeConfiguration | undefined | null>(null);
   const [attrValid, setAttrValid] = useState(true);
   const [attrsKey, setAttrsKey] = useState(0);
+  const [editedAuthzMappings, setEditedAuthzMappings] = useState<AuthorizationRuleMapping[] | undefined | null>(null);
+  const [authzMappingsValid, setAuthzMappingsValid] = useState(true);
+  const [editedDirectMappings, setEditedDirectMappings] = useState<AuthorizationDirectMapping[] | undefined | null>(
+    null,
+  );
+  const [directMappingsValid, setDirectMappingsValid] = useState(true);
+  const [editedLinking, setEditedLinking] = useState<AccountLinking | undefined | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -110,6 +124,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     [data, fields, redirectUri],
   );
   const baselineAttr: AttributeConfiguration | undefined = data?.attributeConfiguration;
+  const baselineAuthzMappings: AuthorizationRuleMapping[] | undefined =
+    data?.attributeConfiguration?.authorizationMapping?.rules;
+  const baselineDirectMappings: AuthorizationDirectMapping[] | undefined =
+    data?.attributeConfiguration?.authorizationMapping?.direct;
+  const baselineLinking: AccountLinking | undefined = data?.attributeConfiguration?.accountLinking;
 
   if (!meta) {
     return null;
@@ -126,14 +145,43 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     setEditedAttr(null);
     setAttrValid(true);
     setAttrsKey((k) => k + 1);
+    setEditedAuthzMappings(null);
+    setAuthzMappingsValid(true);
+    setEditedDirectMappings(null);
+    setDirectMappingsValid(true);
+    setEditedLinking(null);
     setNameError(null);
     setGeneralError(null);
   };
 
   const formDirty: boolean = JSON.stringify(values) !== JSON.stringify(baseline) || secretReplacing;
   const attrDirty: boolean = editedAttr !== null && canonicalAttr(editedAttr) !== canonicalAttr(baselineAttr);
-  const dirty: boolean = formDirty || attrDirty;
-  const valid: boolean = Object.keys(validateConnectionForm(values, fields, 'edit')).length === 0 && attrValid;
+  const authzMappingsDirty: boolean =
+    editedAuthzMappings !== null &&
+    JSON.stringify(editedAuthzMappings ?? []) !== JSON.stringify(baselineAuthzMappings ?? []);
+  const directMappingsDirty: boolean =
+    editedDirectMappings !== null &&
+    JSON.stringify(editedDirectMappings ?? []) !== JSON.stringify(baselineDirectMappings ?? []);
+  const linkingDirty: boolean =
+    editedLinking !== null &&
+    JSON.stringify(editedLinking?.attributes ?? []) !== JSON.stringify(baselineLinking?.attributes ?? []);
+  // An attempted-but-incomplete authorization mapping row (e.g. a target type picked with no claim
+  // named yet) is dropped from the serialized payload, so it never shows up in authzMappingsDirty or
+  // directMappingsDirty above - only authzMappingsValid/directMappingsValid flip false for it. Without
+  // this, the save bar (and the block on saving it enforces) would simply never appear.
+  const dirty: boolean =
+    formDirty ||
+    attrDirty ||
+    authzMappingsDirty ||
+    directMappingsDirty ||
+    linkingDirty ||
+    !authzMappingsValid ||
+    !directMappingsValid;
+  const valid: boolean =
+    Object.keys(validateConnectionForm(values, fields, 'edit')).length === 0 &&
+    attrValid &&
+    authzMappingsValid &&
+    directMappingsValid;
 
   // A save failure is stale once the user edits any field. Only reset the mutation once it has
   // actually failed: resetting while it's still pending would flip isPending back to false and
@@ -152,9 +200,37 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     }
     setNameError(null);
     setGeneralError(null);
+    // null means untouched (fall back to the server's last-fetched value); undefined means the user
+    // explicitly cleared the section, which must be respected rather than falling back too — `??`
+    // cannot tell those apart, since it treats undefined the same as null.
+    const effectiveAttr = editedAttr !== null ? editedAttr : baselineAttr;
+    const effectiveAuthzMappings = editedAuthzMappings !== null ? editedAuthzMappings : baselineAuthzMappings;
+    const effectiveDirectMappings = editedDirectMappings !== null ? editedDirectMappings : baselineDirectMappings;
+    const effectiveLinking = editedLinking !== null ? editedLinking : baselineLinking;
+    const hasAuthzMappings = Boolean(effectiveAuthzMappings && effectiveAuthzMappings.length > 0);
+    const hasDirectMappings = Boolean(effectiveDirectMappings && effectiveDirectMappings.length > 0);
+    const hasLinking = Boolean(effectiveLinking && effectiveLinking.attributes.length > 0);
+    // userTypeResolution is required by the wire type, but a connection may carry only authorization
+    // mappings or only account linking (e.g. a token-exchange-only connection with no attribute mapping
+    // configured at all). The empty default is inert: GetMappedUserType treats it identically to no
+    // userTypeResolution. authorizationMapping/accountLinking are set explicitly (not spread
+    // conditionally) so clearing either drops it from the payload instead of leaking effectiveAttr's
+    // stale value (baselineAttr, when unedited, still carries whatever the server last returned).
+    const mergedAttributeConfiguration: AttributeConfiguration | undefined =
+      effectiveAttr || hasAuthzMappings || hasDirectMappings || hasLinking
+        ? {
+            userTypeResolution: {default: ''},
+            ...effectiveAttr,
+            authorizationMapping:
+              hasAuthzMappings || hasDirectMappings
+                ? {rules: effectiveAuthzMappings, direct: effectiveDirectMappings}
+                : undefined,
+            accountLinking: hasLinking ? effectiveLinking : undefined,
+          }
+        : undefined;
     const payload = {
       ...formValuesToRequest(values, fields, {mode: 'edit', secretReplaced: secretReplacing}),
-      ...(supportsAttributes ? {attributeConfiguration: editedAttr ?? baselineAttr} : {}),
+      ...(supportsAttributes ? {attributeConfiguration: mergedAttributeConfiguration} : {}),
     };
     updateMutation
       .mutateAsync(payload)
@@ -308,14 +384,34 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
           {supportsAttributes && (
             <TabPanel value={activeTab} index={1}>
-              <AttributeMappingSection
-                key={`attrs-${resolvedId}-${attrsKey}`}
-                initialConfig={baselineAttr}
-                onChange={(config, isValid) => {
-                  setEditedAttr(config);
-                  setAttrValid(isValid);
-                }}
-              />
+              <Stack direction="column" spacing={4}>
+                <AttributeMappingSection
+                  key={`attrs-${resolvedId}-${attrsKey}`}
+                  initialConfig={baselineAttr}
+                  onChange={(config, isValid) => {
+                    setEditedAttr(config);
+                    setAttrValid(isValid);
+                  }}
+                />
+                <AuthorizationMappingSection
+                  key={`authz-${resolvedId}-${attrsKey}`}
+                  initialRuleConfig={baselineAuthzMappings}
+                  initialDirectConfig={baselineDirectMappings}
+                  onRuleChange={(mappings, isValid) => {
+                    setEditedAuthzMappings(mappings);
+                    setAuthzMappingsValid(isValid);
+                  }}
+                  onDirectChange={(mappings, isValid) => {
+                    setEditedDirectMappings(mappings);
+                    setDirectMappingsValid(isValid);
+                  }}
+                />
+                <AccountLinkingSection
+                  key={`linking-${resolvedId}-${attrsKey}`}
+                  initialConfig={baselineLinking}
+                  onChange={(linking) => setEditedLinking(linking)}
+                />
+              </Stack>
             </TabPanel>
           )}
 
