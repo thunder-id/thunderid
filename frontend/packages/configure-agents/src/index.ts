@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // API Hooks
+export {default as useCreateAgent} from './api/useCreateAgent';
 export {default as useDeleteAgent} from './api/useDeleteAgent';
 export {default as useGetAgent} from './api/useGetAgent';
 export {default as useGetAgentGroups} from './api/useGetAgentGroups';
@@ -36,7 +37,11 @@ export {default as AgentQueryKeys} from './constants/agent-query-keys';
 
 // Pages
 export {default as AgentEditPage} from './pages/AgentEditPage';
-export {default as AgentOnboardPage} from './pages/AgentOnboardPage';
+// AgentOnboardPage picks by administration mode: a form when creation runs natively, and the
+// onboarding flow otherwise.
+export {default as AgentOnboardPage} from './pages/AgentAddRoute';
+export {default as AgentOnboardFlowPage} from './pages/AgentOnboardPage';
+export {default as AgentAddFormPage} from './pages/AgentAddFormPage';
 export {default as AgentsListPage} from './pages/AgentsListPage';
 
 // Routes
