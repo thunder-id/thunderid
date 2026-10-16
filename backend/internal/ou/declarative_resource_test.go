@@ -459,13 +459,41 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDs_MultipleRootsWithCh
 			OrganizationUnits: []OrganizationUnitBasic{},
 		}, (*tidcommon.ServiceError)(nil))
 
+	// The same OUs export in the same order every time, each parent before its children.
+	for i := 0; i < 20; i++ {
+		ids, err := s.exporter.GetAllResourceIDs(context.Background())
+		assert.Nil(s.T(), err)
+		assert.Equal(s.T(), []string{"root-1", "child-1", "root-2", "child-2"}, ids)
+	}
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDs_ListsAnOUFoundTwiceOnce() {
+	// The list can hold an OU that is also found beneath another; it is exported once, where the
+	// list first names it.
+	root := OrganizationUnitBasic{ID: "root-1", Handle: "root1", Name: "Root 1"}
+	child := OrganizationUnitBasic{ID: "child-1", Handle: "child1", Name: "Child 1"}
+
+	s.mockService.EXPECT().
+		GetOrganizationUnitList(mock.Anything, 100, 0, mock.Anything).
+		Return(&OrganizationUnitListResponse{
+			OrganizationUnits: []OrganizationUnitBasic{root, child},
+		}, (*tidcommon.ServiceError)(nil))
+	s.mockService.EXPECT().IsOrganizationUnitDeclarative(mock.Anything, "root-1").Return(false)
+	s.mockService.EXPECT().IsOrganizationUnitDeclarative(mock.Anything, "child-1").Return(false)
+	s.mockService.EXPECT().
+		GetOrganizationUnitChildren(mock.Anything, "root-1", 100, 0, mock.Anything).
+		Return(&OrganizationUnitListResponse{
+			OrganizationUnits: []OrganizationUnitBasic{child},
+		}, (*tidcommon.ServiceError)(nil))
+	s.mockService.EXPECT().
+		GetOrganizationUnitChildren(mock.Anything, "child-1", 100, 0, mock.Anything).
+		Return(&OrganizationUnitListResponse{
+			OrganizationUnits: []OrganizationUnitBasic{},
+		}, (*tidcommon.ServiceError)(nil))
+
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 	assert.Nil(s.T(), err)
-	assert.Len(s.T(), ids, 4)
-	assert.Contains(s.T(), ids, "root-1")
-	assert.Contains(s.T(), ids, "root-2")
-	assert.Contains(s.T(), ids, "child-1")
-	assert.Contains(s.T(), ids, "child-2")
+	assert.Equal(s.T(), []string{"root-1", "child-1"}, ids)
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDs_ErrorGettingList() {

@@ -71,22 +71,26 @@ func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommo
 		}
 	}
 
-	// Also get all child OUs recursively (only mutable ones)
-	allIDs := make(map[string]bool)
+	// Also get all child OUs recursively (only mutable ones). The IDs keep the order they are found
+	// in, each parent before its children, so the same OUs always export in the same order; an
+	// export named by its content, as a configuration version is, changes only when they do.
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(ids))
+	add := func(id string) {
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
 	for _, id := range ids {
-		allIDs[id] = true
+		add(id)
 		childIDs, err := e.getAllChildIDs(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		for _, childID := range childIDs {
-			allIDs[childID] = true
+			add(childID)
 		}
-	}
-
-	result := make([]string, 0, len(allIDs))
-	for id := range allIDs {
-		result = append(result, id)
 	}
 
 	return result, nil

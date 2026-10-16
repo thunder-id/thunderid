@@ -13,6 +13,7 @@ type ExportRequest struct {
 	UserTypes                []string `json:"userTypes,omitempty"`
 	AgentTypes               []string `json:"agentTypes,omitempty"`
 	Translations             []string `json:"translations,omitempty"`
+	OrganizationUnits        []string `json:"organizationUnits,omitempty"`
 }
 
 // ExportResponse represents the response structure for exporting resources.

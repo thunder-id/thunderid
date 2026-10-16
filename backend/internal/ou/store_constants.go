@@ -135,7 +135,9 @@ func buildRootOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interfac
 		filterArgs = append(filterArgs, args...)
 	}
 
-	query += " ORDER BY NAME LIMIT $1 OFFSET $2"
+	// OU_ID breaks a tie between siblings sharing a name, so a listing, and an export built from one,
+	// comes back in the same order every time.
+	query += " ORDER BY NAME, OU_ID LIMIT $1 OFFSET $2"
 	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-02", Query: query}, filterArgs, nil
 }
 
@@ -173,7 +175,8 @@ func buildChildrenOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []inte
 		filterArgs = append(filterArgs, args...)
 	}
 
-	query += " ORDER BY NAME LIMIT $2 OFFSET $3"
+	// OU_ID breaks a tie between siblings sharing a name, as the root listing does.
+	query += " ORDER BY NAME, OU_ID LIMIT $2 OFFSET $3"
 	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-11", Query: query}, filterArgs, nil
 }
 

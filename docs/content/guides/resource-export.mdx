@@ -31,6 +31,10 @@ Field behavior:
 
 If the export has no template variables, `environment_variables` is an empty string.
 
+Organization units come out in the same order every time: each unit before the units under it, units
+under the same parent by name, and each unit once however it is reached. Exporting units that have not
+changed therefore gives the same text.
+
 ## Template Variable Names
 
 Each parameterized field becomes a template variable named after the resource type, the resource name
