@@ -145,6 +145,27 @@ resource left out is neither written nor removed.
   allowed. Leaving out a resource whose key is longer than 512 characters, or whose id or name is
   longer than 255, is also refused.
 
+### Skip a Change Once
+
+`skip` lists changes to leave alone in one apply without saving that as the gateway's choice. A
+skipped change is neither written nor removed, and the version is recorded as applied all the same. The
+change stays owed to the gateway: the next diff offers it again with `"skipped": true`, as `updated`
+while the version carries the resource and as `deleted` once no version names it, until an apply writes
+or removes it or a selection leaves it alone for good. A choice the gateway already has for it stays.
+This suits applying what another gateway runs: what that gateway left out is its own choice, not this
+one's.
+
+```bash
+curl -X POST https://localhost:8090/gateways/<gateway_id>/apply \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "latest", "skip": ["application/<application_id>"]}'
+```
+
+A selection decides the changes that are not skipped. A key the diff does not report, or one that is
+both selected and skipped, is refused with `400` (`GTW-1025`). Skipping a change the diff reports as
+`unchanged` does nothing.
+
 ### How a Choice Is Kept
 
 The choice is saved per gateway. Applies and reverts leave a resource you left out alone until a later

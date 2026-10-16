@@ -25,16 +25,37 @@ const (
 
 func selecting(keys ...string) *[]string { return &keys }
 
-// excludedKeys reads the keys a gateway is set to leave alone.
+// excludedKeys reads the keys a gateway is set to leave alone for good.
 func (f *versionFixture) excludedKeys(t *testing.T) []string {
+	return f.exclusionKeys(t, false)
+}
+
+// owedKeys reads the keys a skipped apply left owed to a gateway.
+func (f *versionFixture) owedKeys(t *testing.T) []string {
+	return f.exclusionKeys(t, true)
+}
+
+func (f *versionFixture) exclusionKeys(t *testing.T, once bool) []string {
 	t.Helper()
 	excluded, err := f.versions.GetExcluded(context.Background(), "gw-1")
 	require.NoError(t, err)
 	keys := make([]string, 0, len(excluded))
 	for _, resource := range excluded {
-		keys = append(keys, resource.Key)
+		if resource.Once == once {
+			keys = append(keys, resource.Key)
+		}
 	}
 	return keys
+}
+
+// changeByKey finds a change in a diff.
+func changeByKey(changes []Change, key string) *Change {
+	for i := range changes {
+		if changes[i].Key == key {
+			return &changes[i]
+		}
+	}
+	return nil
 }
 
 // A selection decides only for the changes on offer: an unchanged resource not left alone keeps
@@ -386,4 +407,149 @@ func TestADryRunReportsReferencesOnlyForWhatItApplies(t *testing.T) {
 	require.Len(t, result.Missing.References, 1)
 	assert.Equal(t, "APP_ONE_CLIENT_ID", result.Missing.References[0].Name)
 	assert.Equal(t, "app-1", result.Missing.References[0].ResourceID)
+}
+
+// A skipped change is left out of that apply alone: it is neither written nor kept as the gateway's
+// choice, but owed to it, so the next diff offers it again and the next apply writes it.
+func TestASkippedChangeIsLeftAloneThisOnce(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+	f.capture(t, "ou-a", "ou-b", "ou-c")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Skip: []string{keyC}})
+
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded, "an apply with a skip was not recorded")
+	assert.Contains(t, f.client.last().Content, "ou-b")
+	assert.NotContains(t, f.client.last().Content, "ou-c", "a skipped resource was written")
+	assert.Equal(t, DiffSummary{Added: 1, Unchanged: 1}, result.Diff.Summary)
+	assert.Empty(t, f.excludedKeys(t), "a skip was kept as the gateway's choice")
+	assert.Equal(t, []string{keyC}, f.owedKeys(t), "a skip was not kept as owed to the gateway")
+
+	offered, svcErr := f.svc.Diff(context.Background(), "gw-1", f.hash(2))
+	require.Nil(t, svcErr)
+	assert.Equal(t, DiffSummary{Updated: 1, Unchanged: 2}, offered.Summary, "the skipped change was not offered again")
+	skipped := changeByKey(offered.Changes, keyC)
+	require.NotNil(t, skipped)
+	assert.Equal(t, ChangeUpdated, skipped.Change)
+	assert.True(t, skipped.Skipped, "the change offered again does not say it was skipped")
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	require.Nil(t, svcErr)
+	assert.Contains(t, f.client.last().Content, "ou-c", "the next apply did not write what was skipped")
+	assert.Empty(t, f.owedKeys(t), "what the next apply wrote stayed owed")
+}
+
+// A skipped removal is owed too. The version is recorded, so the versions alone would never show the
+// removal again; the diff offers it until an apply removes the resource.
+func TestASkippedRemovalIsOfferedUntilAnApplyRemovesIt(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a", "ou-b")
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	f.capture(t, "ou-a")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Skip: []string{keyB}})
+
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded)
+	assert.Empty(t, f.client.last().Deletions, "a skipped removal was sent")
+
+	offered, svcErr := f.svc.Diff(context.Background(), "gw-1", f.hash(2))
+	require.Nil(t, svcErr)
+	assert.Equal(t, DiffSummary{Deleted: 1, Unchanged: 1}, offered.Summary, "the skipped removal was not offered again")
+	skipped := changeByKey(offered.Changes, keyB)
+	require.NotNil(t, skipped)
+	assert.Equal(t, ChangeDeleted, skipped.Change)
+	assert.True(t, skipped.Skipped)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), DryRun: true})
+	require.Nil(t, svcErr)
+	assert.Equal(t, []string{keyB}, f.owedKeys(t), "a dry run cleared what the gateway is owed")
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	require.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-b"}}, f.client.last().Deletions,
+		"the next apply did not remove what was skipped")
+	assert.Empty(t, f.owedKeys(t))
+}
+
+// Skipping a change that changes nothing skips nothing, and a dry run owes the gateway nothing.
+func TestASkipOfAnUnchangedResourceOrInADryRunOwesNothing(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	f.capture(t, "ou-a", "ou-b")
+
+	dry, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), DryRun: true, Skip: []string{keyB}})
+	require.Nil(t, svcErr)
+	assert.True(t, changeByKey(dry.Diff.Changes, keyB).Excluded, "a dry run did not report the skip")
+	assert.Empty(t, f.owedKeys(t), "a dry run owed the gateway a change")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Skip: []string{keyA}})
+	require.Nil(t, svcErr)
+	assert.Contains(t, f.client.last().Content, "ou-a", "an unchanged resource named in a skip was left out")
+	assert.False(t, changeByKey(result.Diff.Changes, keyA).Excluded)
+	assert.Empty(t, f.owedKeys(t), "an unchanged resource was owed")
+}
+
+// A selection that leaves out a change owed from a skip makes it the gateway's standing choice.
+func TestASelectionTurnsAnOwedChangeIntoAStandingChoice(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	f.capture(t, "ou-a", "ou-b")
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Skip: []string{keyB}})
+	require.Nil(t, svcErr)
+	require.Equal(t, []string{keyB}, f.owedKeys(t))
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Selection: selecting()})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []string{keyB}, f.excludedKeys(t), "the deselected change is not the gateway's choice")
+	assert.Empty(t, f.owedKeys(t), "the deselected change is still owed")
+}
+
+// Skipping a change the gateway already leaves alone keeps that choice, and a selection decides the
+// changes that are not skipped.
+func TestASkipKeepsTheStandingChoiceAndASelectionDecidesTheRest(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	f.capture(t, "ou-a", "ou-b", "ou-c")
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), Selection: selecting(keyB)})
+	require.Nil(t, svcErr)
+	require.Equal(t, []string{keyC}, f.excludedKeys(t))
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), Skip: []string{keyC}, Selection: selecting()})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []string{keyC}, f.excludedKeys(t), "a skip cleared the gateway's choice")
+}
+
+// A skip names only changes the diff reports, and never one the selection also names.
+func TestAnInvalidSkipStopsTheApply(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	_, _ = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	f.capture(t, "ou-a", "ou-b")
+	sent := len(f.client.sent)
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), Skip: []string{"organization_unit/ou-z"}})
+	assert.Equal(t, ErrorInvalidSelection.Code, svcErr.Code, "a skip naming nothing was taken")
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), Skip: []string{keyB}, Selection: selecting(keyB)})
+	assert.Equal(t, ErrorInvalidSelection.Code, svcErr.Code, "a change both skipped and selected was taken")
+
+	long := strings.Repeat("x", maxResourceField+1)
+	f.capture(t, "ou-a", long)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(3), Skip: []string{"organization_unit/" + long}})
+	assert.Equal(t, ErrorInvalidSelection.Code, svcErr.Code, "a resource too long to keep was skipped")
+	assert.Len(t, f.client.sent, sent, "an invalid skip reached the gateway")
 }

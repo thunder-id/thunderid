@@ -492,6 +492,9 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     RESOURCE_TYPE VARCHAR(255) NOT NULL,
     RESOURCE_ID VARCHAR(255),
     RESOURCE_NAME VARCHAR(255),
+    -- A resource skipped for one apply is owed to the gateway until an apply writes or removes it,
+    -- rather than left alone for good.
+    ONCE BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
 );
 

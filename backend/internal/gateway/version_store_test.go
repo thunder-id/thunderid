@@ -146,9 +146,10 @@ func (s *VersionStoreTestSuite) TestExclusionsAreReadWrittenInOneTransactionAndF
 	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetExcluded, "gw-1", storeDeploymentID).
 		Return([]map[string]interface{}{{"resource_key": "organization_unit/ou-a",
-			"resource_type": "organization_unit", "resource_id": "ou-a", "resource_name": nil}}, nil).Once()
+			"resource_type": "organization_unit", "resource_id": "ou-a", "resource_name": nil, "once": false}},
+			nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryExclude, "gw-1", "organization_unit/ou-b",
-		"organization_unit", "ou-b", nil, storeDeploymentID).Return(int64(1), nil).Once()
+		"organization_unit", "ou-b", nil, storeDeploymentID, true).Return(int64(1), nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryInclude, "gw-1", "organization_unit/ou-a",
 		storeDeploymentID).Return(int64(1), nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteExcluded, "gw-1", storeDeploymentID).
@@ -158,7 +159,7 @@ func (s *VersionStoreTestSuite) TestExclusionsAreReadWrittenInOneTransactionAndF
 	s.Require().NoError(err)
 	s.Equal([]excludedResource{{Key: "organization_unit/ou-a", Type: "organization_unit", ID: "ou-a"}}, excluded)
 	s.Require().NoError(s.store.SetExcluded(context.Background(), "gw-1",
-		[]excludedResource{{Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b"}},
+		[]excludedResource{{Key: "organization_unit/ou-b", Type: "organization_unit", ID: "ou-b", Once: true}},
 		[]string{"organization_unit/ou-a"}))
 	s.True(tx.ran)
 	s.False(tx.rolledBack)
@@ -170,7 +171,7 @@ func (s *VersionStoreTestSuite) TestAnExclusionWriteCutShortRollsBack() {
 	tx := &recordingTransactioner{}
 	s.providerMock.On("GetConfigDBTransactioner").Return(tx, nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryExclude, "gw-1", "organization_unit/ou-b",
-		"organization_unit", "ou-b", "b", storeDeploymentID).Return(int64(1), nil).Once()
+		"organization_unit", "ou-b", "b", storeDeploymentID, false).Return(int64(1), nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryInclude, "gw-1", "organization_unit/ou-a",
 		storeDeploymentID).Return(int64(0), errors.New("database is down")).Once()
 

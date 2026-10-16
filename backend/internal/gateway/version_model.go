@@ -89,10 +89,17 @@ type AppliedVersion struct {
 // Selection names, by key, the changes to apply. Every other change the diff reports is left alone,
 // and the gateway goes on leaving it alone in later applies until one selects it again. Without a
 // selection, the gateway's standing choices apply; an empty one leaves every change alone.
+//
+// Skip names, by key, changes to leave alone in this apply only: they are neither written nor
+// removed, and the gateway's standing choice for them is kept as it is. A skipped change stays owed to
+// the gateway, so the next diff offers it again, until an apply writes or removes it or a selection
+// leaves it alone for good. A caller that applies what another gateway runs skips what that gateway
+// left out, which is not this gateway's choice to keep. A selection decides the other changes.
 type ApplyRequest struct {
 	Version   string    `json:"version,omitempty"`
 	DryRun    bool      `json:"dryRun,omitempty"`
 	Selection *[]string `json:"selection,omitempty"`
+	Skip      []string  `json:"skip,omitempty"`
 }
 
 // RevertRequest is the body of a revert.
@@ -115,7 +122,8 @@ const (
 )
 
 // Change is one resource's difference. Key names the resource for a selection. Excluded marks a
-// change the gateway is set to leave alone, which an apply neither writes nor removes.
+// change the gateway is set to leave alone, which an apply neither writes nor removes. Skipped marks a
+// change an earlier apply skipped, offered again until an apply takes it.
 type Change struct {
 	Key          string     `json:"key"`
 	ResourceType string     `json:"resourceType"`
@@ -123,6 +131,7 @@ type Change struct {
 	Name         string     `json:"name,omitempty"`
 	Change       ChangeKind `json:"change"`
 	Excluded     bool       `json:"excluded,omitempty"`
+	Skipped      bool       `json:"skipped,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`

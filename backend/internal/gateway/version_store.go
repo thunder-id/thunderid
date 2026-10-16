@@ -97,18 +97,21 @@ var (
 		ID:    "GTV_MGT-08",
 		Query: `DELETE FROM "GATEWAY_APPLIED_VERSION" WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
-	// queryGetExcluded reads the resources a gateway is set to leave alone.
+	// queryGetExcluded reads the resources a gateway is set to leave alone, and those owed to it from a
+	// skipped apply.
 	queryGetExcluded = dbmodel.DBQuery{
 		ID: "GTV_MGT-09",
-		Query: `SELECT RESOURCE_KEY, RESOURCE_TYPE, RESOURCE_ID, RESOURCE_NAME FROM "GATEWAY_EXCLUDED_RESOURCE" ` +
-			`WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY RESOURCE_KEY`,
+		Query: `SELECT RESOURCE_KEY, RESOURCE_TYPE, RESOURCE_ID, RESOURCE_NAME, ONCE ` +
+			`FROM "GATEWAY_EXCLUDED_RESOURCE" WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY RESOURCE_KEY`,
 	}
-	// queryExclude sets a gateway to leave a resource alone. Excluding one already excluded is a no-op.
+	// queryExclude sets a gateway to leave a resource alone, for good or for one apply. A standing
+	// choice is never turned into a one-time one: a resource both skipped and left alone stays left alone.
 	queryExclude = dbmodel.DBQuery{
 		ID: "GTV_MGT-10",
 		Query: `INSERT INTO "GATEWAY_EXCLUDED_RESOURCE" (GATEWAY_ID, RESOURCE_KEY, RESOURCE_TYPE, RESOURCE_ID, ` +
-			`RESOURCE_NAME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6) ` +
-			`ON CONFLICT (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY) DO NOTHING`,
+			`RESOURCE_NAME, DEPLOYMENT_ID, ONCE) VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
+			`ON CONFLICT (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY) ` +
+			`DO UPDATE SET ONCE = ("GATEWAY_EXCLUDED_RESOURCE".ONCE AND excluded.ONCE)`,
 	}
 	// queryInclude lets an apply write a resource to a gateway again.
 	queryInclude = dbmodel.DBQuery{
@@ -143,7 +146,8 @@ type versionStoreInterface interface {
 	// worked out its deletions from (0 for none).
 	SetApplied(ctx context.Context, gatewayID string, applied, previous, held int) error
 	DeleteApplied(ctx context.Context, gatewayID string) error
-	// GetExcluded reads the resources a gateway is set to leave alone, sorted by key.
+	// GetExcluded reads the resources a gateway is set to leave alone, and those a skipped apply left
+	// owed to it, sorted by key.
 	GetExcluded(ctx context.Context, gatewayID string) ([]excludedResource, error)
 	// SetExcluded sets a gateway to leave the exclude resources alone and to take the include keys
 	// again.
@@ -336,7 +340,8 @@ func (s *versionStore) GetExcluded(ctx context.Context, gatewayID string) ([]exc
 		resourceType, _ := row["resource_type"].(string)
 		id, _ := row["resource_id"].(string)
 		name, _ := row["resource_name"].(string)
-		excluded = append(excluded, excludedResource{Key: key, Type: resourceType, ID: id, Name: name})
+		excluded = append(excluded, excludedResource{Key: key, Type: resourceType, ID: id, Name: name,
+			Once: asBool(row["once"])})
 	}
 	return excluded, nil
 }
@@ -351,7 +356,7 @@ func (s *versionStore) SetExcluded(ctx context.Context, gatewayID string, exclud
 	return transactioner.Transact(ctx, func(txCtx context.Context) error {
 		for _, resource := range exclude {
 			if err := s.execute(txCtx, queryExclude, gatewayID, resource.Key, resource.Type,
-				nullable(resource.ID), nullable(resource.Name), s.deploymentID); err != nil {
+				nullable(resource.ID), nullable(resource.Name), s.deploymentID, resource.Once); err != nil {
 				return fmt.Errorf("failed to set the gateway to leave a resource alone: %w", err)
 			}
 		}

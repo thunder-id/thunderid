@@ -880,6 +880,17 @@ components:
             apply; empty, every change on offer is left alone. A key that names no resource in the
             diff is refused with `400` (`GTW-1025`), as is leaving out a resource whose key is longer
             than 512 characters or whose id or name is longer than 255.
+        skip:
+          type: array
+          items:
+            type: string
+          description: |
+            The keys of changes to leave alone in this apply only: neither written nor removed, and
+            the gateway's standing choice for them kept as it is. A skipped change stays owed to the
+            gateway: the next diff offers it again, marked `skipped`, as `updated` or `deleted`, until an
+            apply writes or removes it or a selection leaves it alone for good. A selection decides the
+            other changes. A key that names no change in the diff, or one the selection also names, is
+            refused with `400` (`GTW-1025`); one naming a change that changes nothing skips nothing.
     RevertRequest:
       type: object
       properties:
@@ -897,6 +908,12 @@ components:
             The gateway is set to leave this resource alone. Such a change stays on offer, whatever the
             versions say of it, until a selection includes it again: one whose removal was held back is
             offered as `deleted` once no version names it.
+        skipped:
+          type: boolean
+          description: |
+            An earlier apply skipped this change, so it is offered again whatever the versions say of
+            it: as `updated` while the version carries the resource, since what the gateway holds of it
+            is not known, and as `deleted` once no version names it. Cleared by the apply that takes it.
         resourceType:
           type: string
         id:
