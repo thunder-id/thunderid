@@ -37,6 +37,7 @@ import {
   UserRoundCog,
   UsersRound,
   Wallet,
+  Rocket,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
@@ -397,6 +398,16 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           </Header.Brand>
           <Header.Spacer />
           <Header.Actions>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Rocket size={16} />}
+              onClick={() => void navigate(RouteConfig.deploy.list())}
+              sx={{borderRadius: 100, mr: 1}}
+              data-testid="header-deploy"
+            >
+              {t('deploy:header.title', 'Deploy')}
+            </Button>
             <ColorSchemeToggle />
             <Divider orientation="vertical" flexItem sx={{mx: 1, display: {xs: 'none', sm: 'block'}}} />
             <User>
