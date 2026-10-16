@@ -1594,6 +1594,125 @@ const translations = {
   },
 
   // ============================================================================
+  // Resource Sharing namespace - Organization Access of every shareable resource
+  // ============================================================================
+  resourceSharing: {
+    'changeScope.action': 'Change scope',
+    'changeScope.description':
+      'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child units and other trees. Once you save, it can\'t be set again here.',
+    'changeScope.question': 'Need to grant only some units?',
+    'childUnits.choices.all.description': 'Every unit under {{owner}}, now and later.',
+    'childUnits.choices.all.title': 'All child units',
+    'childUnits.choices.none.description': 'No child unit has access.',
+    'childUnits.choices.none.title': 'None',
+    'childUnits.choices.selected.description': 'Pick units and how far below each one access reaches.',
+    'childUnits.choices.selected.title': 'Selected child units',
+    'childUnits.empty': 'No child units selected yet. Use Grant access to pick them.',
+    'childUnits.grant': 'Grant access',
+    'childUnits.sectionDescription': "Units in {{owner}}'s own hierarchy.",
+    'childUnits.sectionTitle': 'Child organization units of {{owner}}',
+    'dialogs.childUnits.description':
+      'Only units directly under {{owner}} can be picked. Units deeper down are reached through their parent.',
+    'dialogs.childUnits.title': 'Grant access to child units',
+    'dialogs.exceptions.anyDescription':
+      "Choose any unit, at any depth, that shouldn't get access. Everything below it is excluded too.",
+    'dialogs.exceptions.childDescription':
+      "Choose child units of {{owner}} that shouldn't get access. Everything below an excluded unit is excluded too.",
+    'dialogs.exceptions.confirm': 'Apply exceptions',
+    'dialogs.exceptions.rootDescription': "Choose top units that shouldn't get access.",
+    'dialogs.exceptions.title': 'Add exceptions',
+    'dialogs.trees.description':
+      'Pick the top unit of each tree. Units below it get access only if it passes access on.',
+    'dialogs.trees.title': 'Grant access to other trees',
+    'everyUnit.summary':
+      'Every organization unit in every tree, at any depth. Units and trees created later get access automatically.',
+    'exceptions.add': 'Add exception',
+    'exceptions.anyHint': 'Any unit in any tree. Excluding a unit also excludes everything below it.',
+    'exceptions.childHint': 'Direct child units only. Excluding a unit also excludes everything below it.',
+    'exceptions.empty': 'No exceptions.',
+    'exceptions.remove': 'Remove {{name}} from exceptions',
+    'exceptions.rootHint': 'Top units only.',
+    'exceptions.title': 'Except',
+    'loadError.message': 'Something went wrong while loading who can use this resource.',
+    'loadError.title': 'Failed to load organization access',
+    'lost.everyTree':
+      'Saving removes "Every tree". It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
+    'lost.everyUnit':
+      'Saving deletes the "Every organization unit" policy. It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
+    'noneBlocked.childUnits': 'child units',
+    'noneBlocked.dropsEveryTree': 'Not available. It also removes Every tree, which leaves nothing granted.',
+    'noneBlocked.otherIsNone': 'Not available while {{section}} is set to None.',
+    'noneBlocked.otherTrees': 'other trees',
+    nothingChosen: 'Nothing is granted below yet. Saving like this is the same as "Only {{owner}}".',
+    'picker.alreadyExcluded': 'Already excluded',
+    'picker.alreadyGranted': 'Already granted',
+    'picker.collapse': 'Hide units under {{name}}',
+    'picker.empty': 'No organization units to show.',
+    'picker.expand': 'Show units under {{name}}',
+    'picker.includedWith': 'Included with {{name}}',
+    'picker.loadError': 'Failed to load organization units.',
+    'picker.loadMore': 'Load more',
+    'picker.noneSelected': 'Nothing selected yet.',
+    'picker.search': 'Search organization units',
+    'picker.toExclude': 'To exclude',
+    'picker.toGrant': 'To grant',
+    'picker.unselect': 'Remove {{name}}',
+    'reach.label': 'Reach for {{name}}',
+    'reach.subtree': 'And below',
+    'reach.subtreeHint': 'Includes every unit below it, now and later.',
+    'reach.unit': 'This unit only',
+    'reach.unitHint': "Units below it don't get access.",
+    revoke: 'Revoke access for {{name}}',
+    'save.success': 'Organization access updated.',
+    'scope.chosen.description': 'Pick child units of {{owner}} and other trees, separately below.',
+    'scope.chosen.title': 'Chosen organization units',
+    'scope.everyUnit.description': 'Every unit in every tree, now and later, with optional exceptions.',
+    'scope.everyUnit.title': 'Every organization unit',
+    'scope.owner.description': 'No child unit and no other tree can use it.',
+    'scope.owner.title': 'Only {{owner}}',
+    'switch.cantRestore.everyTree':
+      '"Every tree" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
+    'switch.cantRestore.everyUnit':
+      '"Every organization unit" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
+    'switch.cleared.childUnitExclusions': 'Child unit exceptions: {{names}}',
+    'switch.cleared.childUnits': 'Granted child units: {{names}}',
+    'switch.cleared.everyTree': 'Every tree',
+    'switch.cleared.everyTreeWithExceptions': 'Every tree, with its exceptions: {{names}}',
+    'switch.cleared.everyUnit': 'The "Every organization unit" policy',
+    'switch.cleared.everyUnitWithExceptions': 'The "Every organization unit" policy, with its exceptions: {{names}}',
+    'switch.cleared.trees': 'Granted trees: {{names}}',
+    'switch.confirm': 'Switch and clear',
+    'switch.confirmChangeScope': 'Delete policy and change scope',
+    'switch.confirmOwner': 'Stop sharing',
+    'switch.intro': "What you set up for {{choice}} doesn't carry over. Switching clears:",
+    'switch.introChangeScope':
+      'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child units of {{owner}}, which you can change below. Deleting the policy clears:',
+    'switch.introOwner': 'Only {{owner}} will be able to use {{resource}}. This clears:',
+    'switch.keep': 'Keep current choice',
+    'switch.notYet': 'Nothing is removed until you save. Until then, Reset brings everything back.',
+    'switch.title': 'Switch to {{choice}}?',
+    'switch.titleChangeScope': 'Change the scope?',
+    'switch.titleOwner': 'Stop sharing {{resource}}?',
+    'switch.unitSettings':
+      'Unit settings are cleared too. Units lose the settings they chose for themselves within their terms.',
+    'trees.add': 'Add a tree',
+    'trees.choices.every.description': 'The top unit of every tree, now and later, with optional exceptions.',
+    'trees.choices.every.title': 'Every tree',
+    'trees.choices.every.unavailable': "Every tree's top unit. Only set through a resource file or an import.",
+    'trees.choices.none.description': 'No other tree has access.',
+    'trees.choices.none.title': 'None',
+    'trees.choices.selected.description': 'Grant top units one by one.',
+    'trees.choices.selected.title': 'Selected trees',
+    'trees.description':
+      "Top units of trees outside {{owner}}'s. Units below a top unit don't get access unless it passes access on to them.",
+    'trees.empty': 'No trees picked yet. Use Add a tree to pick them.',
+    'trees.title': 'Other organization trees',
+    'trees.topUnitOnly': 'Top unit only',
+    'who.description': 'Users and agents of a granted organization unit can sign in to {{resource}}.',
+    'who.title': 'Who can use {{resource}}',
+  },
+
+  // ============================================================================
   // Groups namespace - Group management feature translations
   // ============================================================================
   groups: {
@@ -3033,6 +3152,10 @@ const translations = {
     'edit.page.tabs.flows': 'Flows',
     'edit.page.tabs.customization': 'Customization',
     'edit.page.tabs.token': 'Token',
+    'edit.page.tabs.organizationAccess': 'Organization Access',
+    'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
+    'edit.organizationAccess.tokenOnlyDescription':
+      '{{name}} can request tokens for a granted organization unit, to act within that unit.',
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'Unsaved changes',
     'edit.page.validation.missingRedirectUri': 'A redirect URI is required.',
@@ -3410,6 +3533,15 @@ const translations = {
       "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
     'errors.APP-1050':
       "This client doesn't meet the metadata document rules. Check its redirect URIs, grant types, and authentication settings.",
+    'errors.APP-1051':
+      "This organization access can't be saved. Check the granted units and exceptions, then try again.",
+    'errors.APP-1052':
+      'This organization access no longer exists. Reset to load the current access, then make your changes again.',
+    'errors.APP-1053':
+      'Organization access was set up elsewhere meanwhile. Reset to load it, then make your changes again.',
+    'errors.APP-1054':
+      "Someone else changed this application's organization access. Reset to load the latest version, then make your changes again.",
+    'errors.APP-1055': "This organization access is declared in a resource file and can't be changed here.",
     'cimd.document.quickPicks': 'Known clients:',
     'cimd.document.subtitle':
       "The client's URL is its client ID. Its name and sign-in details come from its vendor, with no setup in the client itself.",
