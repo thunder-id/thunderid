@@ -125,6 +125,13 @@ const ImportConfigurationValidatePage = lazy(() =>
 const ImportExportPage = lazy(() =>
   import('@thunderid/configure-import-export').then((m) => ({default: m.ImportExportPage})),
 );
+const DeployPage = lazy(() => import('@thunderid/configure-deploy').then((m) => ({default: m.DeployPage})));
+const GatewayExplorerPage = lazy(() =>
+  import('@thunderid/configure-deploy').then((m) => ({default: m.GatewayExplorerPage})),
+);
+const GatewayValuesPage = lazy(() =>
+  import('@thunderid/configure-deploy').then((m) => ({default: m.GatewayValuesPage})),
+);
 const ConnectionsListPage = lazy(() =>
   import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionsListPage})),
 );
@@ -337,6 +344,18 @@ export default function App(): JSX.Element {
                 <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
                   <Route index element={<ApplicationCreatePage />} />
                 </Route>
+              </Route>
+              <Route
+                path={RouteConfig.deploy.list()}
+                element={
+                  <ProtectedRoute>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<DeployPage />} />
+                <Route path="gateways/:gatewayId/explore" element={<GatewayExplorerPage />} />
+                <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
               </Route>
               <Route
                 path={RouteConfig.agents.create()}

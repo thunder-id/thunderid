@@ -132,6 +132,15 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
   });
 
+  it('opens the Deploy page from the header, not from the navigation', async () => {
+    render(<DashboardLayout />);
+
+    expect(screen.queryByRole('link', {name: /deploy/i})).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('header-deploy'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/deploy');
+  });
+
   it('renders navigation items', () => {
     render(<DashboardLayout />);
 

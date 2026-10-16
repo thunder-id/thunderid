@@ -65,6 +65,7 @@
     "@thunderid/configure-agents": "workspace:^",
     "@thunderid/configure-applications": "workspace:^",
     "@thunderid/configure-connections": "workspace:^",
+    "@thunderid/configure-deploy": "workspace:^",
     "@thunderid/configure-design": "workspace:^",
     "@thunderid/configure-flows": "workspace:^",
     "@thunderid/configure-groups": "workspace:^",
