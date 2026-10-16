@@ -53,6 +53,59 @@ fun AuthScreen(applicationId: String) {
 }
 ```
 
+## Setting Up Federated Sign-In
+
+When a sign-in step offers a federated or social login option, `SignIn` opens the identity provider in a Custom Tab through `FederatedAuthSession` and waits for the provider to redirect back to your app. Your host Activity must deliver that redirect to the SDK. Set up the following four pieces in the Activity that hosts `SignIn`.
+
+### Register the Redirect URI
+
+Add an intent filter with the `BROWSABLE` category for the scheme of your redirect URI. Without it, the browser has no app to hand the redirect to, so the user stays in the browser after signing in with the provider.
+
+```xml
+<activity
+    android:name=".MainActivity"
+    android:exported="true"
+    android:launchMode="singleTask">
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="dev.thunderid.quickstart" />
+    </intent-filter>
+</activity>
+```
+
+Replace `dev.thunderid.quickstart` with the scheme of your redirect URI.
+
+### Set the Launch Mode to `singleTask`
+
+Set `android:launchMode="singleTask"` on the Activity, as shown in the manifest above. The Custom Tab runs in your app's task on top of the Activity. With `standard` or `singleTop`, the redirect starts a second instance of the Activity, which has no pending sign-in, and the original sign-in form never receives the result. `singleTask` closes the Custom Tab and delivers the redirect to the running Activity's `onNewIntent`.
+
+### Forward the Redirect from `onNewIntent`
+
+Override `onNewIntent` and pass the redirect URI to `FederatedAuthSession.onRedirect`. Without this call, the SDK never receives the provider's response, so `SignIn` keeps waiting after the browser closes.
+
+```kotlin
+import android.content.Intent
+import dev.thunderid.android.auth.FederatedAuthSession
+
+override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    intent.data?.let(FederatedAuthSession::onRedirect)
+}
+```
+
+### Cancel a Dismissed Sign-In from `onResume`
+
+Call `FederatedAuthSession.cancelIfPending()` from `onResume`. Android delivers a redirect to `onNewIntent` before `onResume` runs, so a sign-in that is still pending at this point means the user closed the browser without finishing. Cancelling it returns the form to the same step with no error, so the user can pick an option again. Without this call, the sign-in form keeps showing its loading indicator indefinitely after the user dismisses the browser.
+
+```kotlin
+override fun onResume() {
+    super.onResume()
+    FederatedAuthSession.cancelIfPending()
+}
+```
+
 ## Customization with `BaseSignIn`
 
 `BaseSignIn` is the unstyled builder variant. It manages the Flow Execution loop and passes a `SignInState` object to your content lambda, giving you full control over the form's appearance.
