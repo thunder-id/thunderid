@@ -293,6 +293,8 @@ func (ts *GatewayVersionsTestSuite) TestAnUnreachableGatewayIsReported() {
 		map[string]any{"version": fmt.Sprint(captured.Version)}, nil)
 
 	ts.Equal(http.StatusBadGateway, status)
+	ts.Equal(http.StatusBadGateway, ts.call(http.MethodGet, "/gateways/"+unreachable.ID+"/variables", nil, nil),
+		"a store read through an unreachable gateway was not reported as such")
 }
 
 // A gateway's variables are managed through this plane, which presents the gateway's key: what is

@@ -158,7 +158,7 @@ func callGatewayStore[T any](ctx context.Context, s *storeService, gatewayID str
 			return &StoreAnswer[T]{Refusal: refusal}, nil
 		}
 		s.logger.Error(ctx, "Failed to reach a gateway's store", log.String("gatewayId", gw.ID), log.Error(err))
-		return nil, &ErrorGatewayUnreachable
+		return nil, unreachable(err)
 	}
 	return &StoreAnswer[T]{Value: value, Created: created}, nil
 }

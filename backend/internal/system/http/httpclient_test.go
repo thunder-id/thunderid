@@ -354,7 +354,7 @@ func (suite *HTTPClientTestSuite) TestClientWithoutRedirects_HonoursTimeout() {
 func (suite *HTTPClientTestSuite) TestNewHTTPClientWithRootCAs() {
 	timeout := 3 * time.Second
 	roots := x509.NewCertPool()
-	client := NewHTTPClientWithRootCAs(timeout, roots)
+	client := NewHTTPClientWithRootCAs(timeout, roots, false)
 	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
 
 	httpClient := client.(*HTTPClient)
@@ -373,14 +373,14 @@ func (suite *HTTPClientTestSuite) TestClientWithRootCAs_TrustsOnlyTheGivenAuthor
 	trusted := x509.NewCertPool()
 	trusted.AddCert(server.Certificate())
 
-	client := NewHTTPClientWithRootCAs(5*time.Second, trusted)
+	client := NewHTTPClientWithRootCAs(5*time.Second, trusted, false)
 	resp, err := client.Get(server.URL)
 	assert.NoError(suite.T(), err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(suite.T(), http.StatusOK, resp.StatusCode)
 	client.(*HTTPClient).CloseIdleConnections()
 
-	refused, err := NewHTTPClientWithRootCAs(5*time.Second, x509.NewCertPool()).Get(server.URL)
+	refused, err := NewHTTPClientWithRootCAs(5*time.Second, x509.NewCertPool(), false).Get(server.URL)
 	if refused != nil {
 		_ = refused.Body.Close()
 	}
@@ -403,7 +403,7 @@ func (suite *HTTPClientTestSuite) TestClientWithRootCAs_DoesNotFollowRedirects()
 	trusted.AddCert(redirecting.Certificate())
 	trusted.AddCert(target.Certificate())
 
-	resp, err := NewHTTPClientWithRootCAs(5*time.Second, trusted).Get(redirecting.URL)
+	resp, err := NewHTTPClientWithRootCAs(5*time.Second, trusted, false).Get(redirecting.URL)
 
 	assert.NoError(suite.T(), err)
 	defer func() { _ = resp.Body.Close() }()

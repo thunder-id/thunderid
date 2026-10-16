@@ -476,7 +476,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		if kept && errors.Is(err, errImportNotWritten) {
 			s.restoreExclusions(ctx, gw.ID, before, exclude, include)
 		}
-		return nil, &ErrorGatewayUnreachable
+		return nil, unreachable(err)
 	}
 
 	result := &ApplyResult{GatewayID: gw.ID, DryRun: dryRun, Diff: *diff, Import: answer}
@@ -559,7 +559,7 @@ func (s *versionService) missingValues(ctx context.Context, gw *Gateway, key str
 	if err != nil {
 		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayId", gw.ID),
 			log.Error(err))
-		return nil, &ErrorGatewayUnreachable
+		return nil, unreachable(err)
 	}
 	if !missing.empty() {
 		missing.References = referencesTo(content, missing)

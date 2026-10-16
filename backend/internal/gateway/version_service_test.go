@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -605,6 +607,21 @@ func TestADryRunRecordsNothing(t *testing.T) {
 	assert.False(t, result.Recorded)
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
 	assert.Zero(t, held.AppliedVersion)
+}
+
+// A gateway whose host resolves to a private address this deployment does not reach is reported as
+// such, naming the setting that allows it, rather than as any unreachable gateway.
+func TestAGatewayOnAPrivateAddressIsReportedWithTheSetting(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+	f.client.err = fmt.Errorf("failed to reach the gateway: %w",
+		fmt.Errorf("host %q resolves to a private address: %w", "dp.internal", syshttp.ErrPrivateAddress))
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorGatewayPrivateAddress.Code, svcErr.Code)
+	assert.Contains(t, svcErr.ErrorDescription.DefaultValue, "gateway.allow_private_addresses")
 }
 
 // A gateway that cannot be reached is reported, and nothing is recorded for it.

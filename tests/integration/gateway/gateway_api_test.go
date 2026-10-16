@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,19 +163,48 @@ func (ts *GatewayAPITestSuite) TestANameRegistersOnce() {
 	ts.Equal("GTW-1004", code)
 }
 
-// A registration that could never be reached is refused where the caller can still see why.
+// A registration that could never be reached, or called safely, is refused where the caller can still
+// see why: every call to a gateway carries its key, so the address must be https and carry no
+// credentials of its own, and a name is kept to what reads the same everywhere it is shown.
 func (ts *GatewayAPITestSuite) TestAnUnusableRegistrationIsRefused() {
-	for name, body := range map[string]map[string]string{
-		"no name":             {"baseUrl": "https://dp.test"},
-		"no base url":         {"name": "x"},
-		"base url is a slash": {"name": "x", "baseUrl": "/"},
+	for name, c := range map[string]struct {
+		body map[string]string
+		code string
+	}{
+		"no name":             {map[string]string{"baseUrl": "https://dp.test"}, "GTW-1003"},
+		"no base url":         {map[string]string{"name": "x"}, "GTW-1005"},
+		"base url is a slash": {map[string]string{"name": "x", "baseUrl": "/"}, "GTW-1009"},
 		"base url is a scheme": {
-			"name": "x", "baseUrl": "https://"},
+			map[string]string{"name": "x", "baseUrl": "https://"}, "GTW-1009"},
+		"base url is http": {
+			map[string]string{"name": "x", "baseUrl": "http://dp.integration.test:8090"}, "GTW-1009"},
+		"base url carries credentials": {
+			map[string]string{"name": "x", "baseUrl": "https://user:secret@dp.integration.test:8090"}, "GTW-1009"},
+		"name is too long": {
+			map[string]string{"name": strings.Repeat("x", 65), "baseUrl": "https://dp.integration.test:8090"},
+			"GTW-1028"},
+		"name holds a slash": {
+			map[string]string{"name": "a/b", "baseUrl": "https://dp.integration.test:8090"}, "GTW-1028"},
 	} {
 		ts.Run(name, func() {
-			ts.registerExpectingError(body, http.StatusBadRequest)
+			ts.Equal(c.code, ts.registerExpectingError(c.body, http.StatusBadRequest))
 		})
 	}
+}
+
+// An update may not give a gateway a name a registration could not have.
+func (ts *GatewayAPITestSuite) TestUpdateRefusesAnUnusableName() {
+	created := ts.register(map[string]string{
+		"name":    ts.name("update-bad-name"),
+		"baseUrl": "https://update-bad-name.integration.test:8090",
+	}, http.StatusCreated)
+
+	resp := ts.send(http.MethodPut, "/gateways/"+created.ID, map[string]string{"name": "a/b"})
+	defer func() { _ = resp.Body.Close() }()
+	ts.Equal(http.StatusBadRequest, resp.StatusCode)
+	var failure errorResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&failure))
+	ts.Equal("GTW-1028", failure.Code)
 }
 
 func (ts *GatewayAPITestSuite) TestListReturnsWhatWasRegistered() {

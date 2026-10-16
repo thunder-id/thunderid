@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -487,11 +488,26 @@ func TestMain(m *testing.M) {
 const shippedGatewayBound = 1
 
 // configureGatewayBound puts a bound in the runtime configuration, as loading a config file would.
+// Gateways on private addresses are allowed, as a test's own servers sit on loopback.
 func configureGatewayBound(bound int) {
+	configureGateway(bound, true)
+}
+
+// configureGateway puts a bound and whether private addresses are allowed in the runtime
+// configuration, as loading a config file would.
+func configureGateway(bound int, allowPrivate bool) {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("", &config.Config{
-		Gateway: config.GatewayConfig{MaxGateways: &bound},
+		Gateway: config.GatewayConfig{MaxGateways: &bound, AllowPrivateAddresses: allowPrivate},
 	})
+}
+
+// refusePrivateAddresses keeps gateways off private addresses for a test, as a deployment that
+// configures nothing does, and restores the allowance afterwards.
+func refusePrivateAddresses(t *testing.T) {
+	t.Helper()
+	configureGateway(5, false)
+	t.Cleanup(func() { configureGatewayBound(shippedGatewayBound) })
 }
 
 // allowSeveralGateways lifts the registration bound for a test and restores it afterwards. The
@@ -554,6 +570,8 @@ func TestRegisterRefusesABaseURLThatIsNotOne(t *testing.T) {
 		"no scheme":    "dp.example.com:8090",
 		"not a url":    "not a url",
 		"wrong scheme": "ftp://dp.example.com",
+		"plain http":   "http://dp.example.com:8090",
+		"credentials":  "https://admin:secret@dp.example.com:8090",
 		"slashes only": "///",
 	} {
 		req := validRequest("dev")
@@ -812,5 +830,74 @@ func TestUpdateWithAKeyReplacesIt(t *testing.T) {
 	}
 	if updated.Key != "" {
 		t.Fatal("an edit returned a key")
+	}
+}
+
+// A base URL naming a loopback, link-local or private address is refused unless the deployment
+// allows gateways there, since every call to it would carry the gateway's key into this plane's own
+// network. The refusal names the setting that allows it.
+func TestRegisterRefusesAPrivateBaseURLUnlessAllowed(t *testing.T) {
+	refusePrivateAddresses(t)
+
+	for name, raw := range map[string]string{
+		"loopback":   "https://127.0.0.1:8090",
+		"localhost":  "https://localhost:8090",
+		"ipv6 loop":  "https://[::1]:8090",
+		"private":    "https://10.0.0.5:8090",
+		"link-local": "https://169.254.169.254",
+	} {
+		req := validRequest("dev")
+		req.BaseURL = raw
+		store := &fakeStore{}
+
+		_, svcErr := newTestService(t, store).Register(context.Background(), req)
+
+		if svcErr == nil || svcErr.Code != ErrorPrivateBaseURL.Code {
+			t.Fatalf("%s: expected %q to be refused as private, got %v", name, raw, svcErr)
+		}
+		if len(store.gateways) != 0 {
+			t.Fatalf("%s: %q was stored anyway", name, raw)
+		}
+	}
+
+	configureGateway(5, true)
+	req := validRequest("dev")
+	req.BaseURL = "https://localhost:8090"
+	if _, svcErr := newTestService(t, &fakeStore{}).Register(context.Background(), req); svcErr != nil {
+		t.Fatalf("an allowed private address was refused: %v", svcErr)
+	}
+}
+
+// A name is at most 64 letters, digits, spaces, hyphens, underscores and dots, on registration and
+// on a rename alike.
+func TestAGatewayNameIsKeptSimple(t *testing.T) {
+	allowSeveralGateways(t)
+
+	for _, name := range []string{"dev", "Production EU-1", "dp_2.internal"} {
+		req := validRequest(name)
+		if _, svcErr := newTestService(t, &fakeStore{}).Register(context.Background(), req); svcErr != nil {
+			t.Fatalf("%q was refused: %v", name, svcErr)
+		}
+	}
+	for _, name := range []string{strings.Repeat("a", 65), "dev/prod", "dev\nprod", "<dev>", "...", "- -", "_"} {
+		store := &fakeStore{}
+		_, svcErr := newTestService(t, store).Register(context.Background(), validRequest(name))
+		if svcErr == nil || svcErr.Code != ErrorInvalidGatewayName.Code {
+			t.Fatalf("%q was not refused as a name: %v", name, svcErr)
+		}
+		if len(store.gateways) != 0 {
+			t.Fatalf("%q was stored anyway", name)
+		}
+	}
+
+	store := &fakeStore{}
+	gw, svcErr := newTestService(t, store).Register(context.Background(), validRequest("dev"))
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	bad := "dev/prod"
+	_, svcErr = newTestService(t, store).Update(context.Background(), gw.ID, UpdateRequest{Name: &bad})
+	if svcErr == nil || svcErr.Code != ErrorInvalidGatewayName.Code {
+		t.Fatalf("a rename to %q was not refused: %v", bad, svcErr)
 	}
 }

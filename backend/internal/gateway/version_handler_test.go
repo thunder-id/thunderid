@@ -89,6 +89,7 @@ func TestVersionRoutesMapErrorsToStatuses(t *testing.T) {
 		&ErrorGatewayNotFound:          http.StatusNotFound,
 		&ErrorInvalidVersion:           http.StatusBadRequest,
 		&ErrorGatewayUnreachable:       http.StatusBadGateway,
+		&ErrorGatewayPrivateAddress:    http.StatusBadGateway,
 		&ErrorMissingValues:            http.StatusConflict,
 		&tidcommon.InternalServerError: http.StatusInternalServerError,
 	} {

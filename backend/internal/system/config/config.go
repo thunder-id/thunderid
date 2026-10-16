@@ -338,6 +338,12 @@ type GatewayConfig struct {
 	// MaxVersions bounds how many captured configuration versions a deployment keeps. Capturing one
 	// beyond it removes the oldest, except a version some gateway holds or could be reverted to.
 	MaxVersions *int `yaml:"max_versions" json:"max_versions"`
+	// AllowPrivateAddresses lets a gateway be registered at, and reached on, a loopback, link-local
+	// or private address. Off, which is the default, a base URL naming one is refused at registration
+	// and a hostname that resolves to one is refused when the gateway is called, so an administrator
+	// cannot point this plane's calls, which carry the gateway's key, at something inside its own
+	// network. Turn it on for a local or single-host setup whose gateways sit on such addresses.
+	AllowPrivateAddresses bool `yaml:"allow_private_addresses" json:"allow_private_addresses"`
 	// Store defines the storage mode for gateways.
 	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
 	// If not specified, falls back to global DeclarativeResources.Enabled setting:

@@ -9,8 +9,8 @@
 //   - NewHTTPClientWithCheckRedirect(policy) - creates a client with a redirect policy and an SSRF dial guard
 //   - NewHTTPClientWithoutRedirects(duration, rejectPrivate) - creates a client with a custom timeout that never
 //     follows redirects, optionally with the SSRF dial guard
-//   - NewHTTPClientWithRootCAs(duration, rootCAs) - creates a client with a custom timeout that never follows
-//     redirects and trusts the given certificate authorities
+//   - NewHTTPClientWithRootCAs(duration, rootCAs, rejectPrivate) - creates a client with a custom timeout that never
+//     follows redirects and trusts the given certificate authorities, optionally with the SSRF dial guard
 //
 // Usage examples:
 //
@@ -124,18 +124,24 @@ func NewHTTPClientWithoutRedirects(timeout time.Duration, rejectPrivate bool) HT
 
 // NewHTTPClientWithRootCAs creates an HTTPClient with the given timeout that trusts the given certificate
 // authorities and returns a 3xx response instead of following it. Use it to reach a server whose
-// certificate a private authority issued, with verification kept on.
-func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool) HTTPClientInterface {
+// certificate a private authority issued, with verification kept on. With rejectPrivate it dials
+// through the SSRF-safe dialer, refusing any host that resolves to a loopback, link-local, private
+// or unspecified address.
+func NewHTTPClientWithRootCAs(timeout time.Duration, rootCAs *x509.CertPool, rejectPrivate bool) HTTPClientInterface {
+	transport := &http.Transport{
+		// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
+		TLSClientConfig: &tls.Config{
+			MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
+			RootCAs:    rootCAs,
+		},
+	}
+	if rejectPrivate {
+		transport.DialContext = ssrfSafeDialContext
+	}
 	return &HTTPClient{
 		client: &http.Client{
-			Timeout: timeout,
-			Transport: &http.Transport{
-				// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
-				TLSClientConfig: &tls.Config{
-					MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
-					RootCAs:    rootCAs,
-				},
-			},
+			Timeout:       timeout,
+			Transport:     transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}

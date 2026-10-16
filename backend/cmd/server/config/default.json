@@ -402,6 +402,7 @@
   "gateway": {
     "max_gateways": 1,
     "max_versions": 3,
+    "allow_private_addresses": false,
     "store": "composite"
   }
 }

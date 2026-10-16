@@ -121,6 +121,23 @@ var (
 				"cannot be left out.",
 		},
 	}
+	// ErrorGatewayPrivateAddress is returned when a call to a gateway was refused before it was made,
+	// because its host resolves to a loopback, link-local or private address and the deployment does
+	// not allow gateways on such addresses.
+	ErrorGatewayPrivateAddress = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "GTW-5002",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.gateway_private_address",
+			DefaultValue: "The gateway's address resolves to a private address this deployment does not reach",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.gateway_private_address.description",
+			DefaultValue: "The gateway's host resolves to a loopback, link-local or private address. Set " +
+				"gateway.allow_private_addresses to reach gateways on such addresses, or register the gateway " +
+				"on a public one.",
+		},
+	}
 	// ErrorGatewayUnreachable is returned when a gateway could not be called or refused the import.
 	ErrorGatewayUnreachable = tidcommon.ServiceError{
 		Type: tidcommon.ServerErrorType,

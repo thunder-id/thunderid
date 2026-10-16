@@ -19,6 +19,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // gatewayImportRequest is the body of a gateway's POST /import.
@@ -109,6 +110,16 @@ func (c *gatewayClient) Import(ctx context.Context, gw *Gateway, key string,
 	return answer, nil
 }
 
+// unreachable is the error a failed call to a gateway is reported as: a host that resolves to an
+// address this deployment does not reach gateways on is named as such, since the administrator can
+// put that right in the configuration, and anything else as the gateway being unreachable.
+func unreachable(err error) *tidcommon.ServiceError {
+	if errors.Is(err, syshttp.ErrPrivateAddress) {
+		return &ErrorGatewayPrivateAddress
+	}
+	return &ErrorGatewayUnreachable
+}
+
 // neverConnected reports whether a call failed before the request could be sent: the connection was
 // refused or never made, or the gateway's certificate did not verify.
 func neverConnected(err error) bool {
@@ -136,7 +147,10 @@ const importTimeout = 2 * time.Minute
 // rather than turning it off.
 //
 // Every call carries the gateway's key, so the client reaches the gateway only over HTTPS and follows
-// no redirect: a redirect would hand the key's header to whatever the response pointed at.
+// no redirect: a redirect would hand the key's header to whatever the response pointed at. Unless the
+// deployment allows gateways on private addresses, a host that resolves to a loopback, link-local or
+// private address is refused as it is dialed, so a registered name cannot be pointed at something
+// inside this plane's network after the fact.
 func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterface, error) {
 	if !strings.HasPrefix(strings.ToLower(gw.BaseURL), "https://") {
 		return nil, fmt.Errorf("the gateway's baseUrl is not https, so its key is not sent")
@@ -148,7 +162,7 @@ func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterf
 	if gw.CACertificate != "" && !roots.AppendCertsFromPEM([]byte(gw.CACertificate)) {
 		return nil, fmt.Errorf("the gateway's caCertificate is not a PEM certificate")
 	}
-	return syshttp.NewHTTPClientWithRootCAs(timeout, roots), nil
+	return syshttp.NewHTTPClientWithRootCAs(timeout, roots, !allowPrivateAddresses()), nil
 }
 
 // releaseConnections closes a client's idle connections. A client is built per gateway call, for the

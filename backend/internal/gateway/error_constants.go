@@ -43,7 +43,8 @@ var (
 		},
 	}
 
-	// ErrorInvalidBaseURL is returned when a base URL is not an absolute http or https URL.
+	// ErrorInvalidBaseURL is returned when a base URL is not an absolute https URL without
+	// credentials in it.
 	ErrorInvalidBaseURL = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "GTW-1009",
@@ -52,8 +53,39 @@ var (
 			DefaultValue: "Invalid base URL",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.gatewayservice.invalid_base_url_description",
-			DefaultValue: "A base URL must be an absolute http or https URL, such as https://dp.example.com:8090",
+			Key: "error.gatewayservice.invalid_base_url_description",
+			DefaultValue: "A base URL must be an absolute https URL with no credentials in it, " +
+				"such as https://dp.example.com:8090",
+		},
+	}
+	// ErrorPrivateBaseURL is returned when a base URL names a loopback, link-local or private address
+	// and the deployment does not allow those.
+	ErrorPrivateBaseURL = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.private_base_url",
+			DefaultValue: "A base URL may not name a private address",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.private_base_url_description",
+			DefaultValue: "This deployment reaches gateways on public addresses only; " +
+				"set gateway.allow_private_addresses to register one on a loopback, link-local or private address",
+		},
+	}
+	// ErrorInvalidGatewayName is returned when a name is longer than a name may be, or holds a
+	// character a name may not.
+	ErrorInvalidGatewayName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.invalid_name",
+			DefaultValue: "Invalid gateway name",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.invalid_name_description",
+			DefaultValue: "A gateway name is at most 64 characters of letters, digits, spaces, " +
+				"hyphens, underscores and dots",
 		},
 	}
 

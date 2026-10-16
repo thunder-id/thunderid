@@ -32,6 +32,8 @@ gateway:
   # The default of one gateway would refuse the second registration in every uniqueness test before
   # the rule under test was reached.
   max_gateways: 5
+  # The suite registers gateways on localhost.
+  allow_private_addresses: true
 
 tls:
   cert_file: "config/certs/server.cert"

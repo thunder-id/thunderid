@@ -81,13 +81,14 @@ func (f *gatewayFileStore) GetByName(ctx context.Context, name string) (*Gateway
 // GetByBaseURL matches the way the database store does, on the normalized address, so a declared
 // gateway and a registered one cannot both claim the same data plane under different spellings.
 func (f *gatewayFileStore) GetByBaseURL(ctx context.Context, baseURL string) (*Gateway, error) {
-	wanted, ok := normalizeBaseURL(baseURL)
-	if !ok {
+	// Matching is on spelling alone, so an address the deployment would refuse still matches.
+	wanted, problem := normalizeBaseURL(baseURL, true)
+	if problem != baseURLUsable {
 		wanted = strings.TrimSpace(baseURL)
 	}
 	return f.findBy(ctx, func(gw Gateway) bool {
-		stored, ok := normalizeBaseURL(gw.BaseURL)
-		if !ok {
+		stored, problem := normalizeBaseURL(gw.BaseURL, true)
+		if problem != baseURLUsable {
 			stored = strings.TrimSpace(gw.BaseURL)
 		}
 		return stored == wanted

@@ -20,6 +20,8 @@ server:
 
 gateway:
   max_gateways: 5
+  # The suite registers the data plane on localhost.
+  allow_private_addresses: true
 
 tls:
   min_version: "1.3"

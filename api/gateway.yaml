@@ -83,7 +83,11 @@ paths:
         this response. Configure the gateway with it: nothing reads it back.
 
         The gateway is not contacted. An unreachable `baseUrl` is found when something first
-        calls that gateway, not here.
+        calls that gateway, not here. A `baseUrl` must be an absolute `https` URL without
+        credentials in it (`400`, `GTW-1009`), and may not name a loopback, link-local or private
+        address unless the deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`).
+        A `name` is at most 64 letters, digits, spaces, hyphens, underscores and dots (`400`,
+        `GTW-1028`).
 
         How many gateways a deployment may hold is bounded by `gateway.max_gateways`, which is one
         unless a deployment changes it. Setting it to zero refuses every registration, for a
@@ -149,7 +153,11 @@ paths:
         address can be moved without restating the certificate.
 
         `baseUrl` is what says which gateway this is, so moving it is how a gateway that moved
-        is followed, and it is refused if another gateway already answers at that address.
+        is followed, and it is refused if another gateway already answers at that address. A new
+        `baseUrl` is held to the rules of a registration: an absolute `https` URL without
+        credentials (`400`, `GTW-1009`), not a loopback, link-local or private address unless the
+        deployment sets `gateway.allow_private_addresses` (`400`, `GTW-1027`). A new `name` is at
+        most 64 letters, digits, spaces, hyphens, underscores and dots (`400`, `GTW-1028`).
 
         A key the body carries replaces the stored one, which is how a gateway's credential is
         rotated: send the new value here and give the same value to the gateway.
