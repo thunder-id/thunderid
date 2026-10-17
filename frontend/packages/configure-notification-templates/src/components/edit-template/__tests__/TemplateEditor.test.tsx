@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import type {TemplateWarning} from '@thunderid/configure-design';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -20,12 +21,25 @@ const {mockUseUpdate, mockMutate} = vi.hoisted(() => ({
 }));
 vi.mock('@/api/useUpdateNotificationTemplate', () => ({default: mockUseUpdate}));
 
-// Stub the config + preview panes; this suite covers the editor's header editing and save payload.
+// Stub the config + preview panes; this suite covers the editor's header editing, save payload, and
+// the warnings hand-off: the preview stub reports a warning and the content stub lists what it gets.
 vi.mock('@/components/edit-template/TemplateContentEditor', () => ({
-  default: () => <div data-testid="content-editor" />,
+  default: ({warnings = []}: {warnings?: TemplateWarning[]}) => (
+    <div data-testid="content-editor">{warnings.map((w) => `${w.field}:${w.code}`).join(',')}</div>
+  ),
 }));
 vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({
-  default: () => <div data-testid="preview-panel" />,
+  default: ({onWarningsChange}: {onWarningsChange?: (warnings: TemplateWarning[]) => void}) => (
+    <button
+      type="button"
+      data-testid="preview-panel"
+      onClick={() =>
+        onWarningsChange?.([{field: 'subject', severity: 'error', code: 'missingTranslation', token: '{{t(x)}}'}])
+      }
+    >
+      report warnings
+    </button>
+  ),
 }));
 
 const emailTemplate: EmailTemplate = {
@@ -260,6 +274,19 @@ describe('TemplateEditor', () => {
       await user.click(screen.getByRole('button', {name: t('notificationTemplates:editor.back')}));
 
       expect(mockNavigate).toHaveBeenCalledWith('/notification-templates/email');
+    });
+  });
+
+  describe('Warnings', () => {
+    it('passes the warnings reported by the preview to the content editor', async () => {
+      const user = userEvent.setup();
+      render(<TemplateEditor channel="email" template={emailTemplate} />);
+
+      expect(screen.getByTestId('content-editor')).toBeEmptyDOMElement();
+
+      await user.click(screen.getByTestId('preview-panel'));
+
+      expect(screen.getByTestId('content-editor')).toHaveTextContent('subject:missingTranslation');
     });
   });
 });

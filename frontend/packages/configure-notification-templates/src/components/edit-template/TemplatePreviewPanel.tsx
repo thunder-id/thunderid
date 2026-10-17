@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {NotificationTemplatePreview} from '@thunderid/configure-design';
+import {NotificationTemplatePreview, type TemplateWarning} from '@thunderid/configure-design';
 import {useGetThemes, useGetTheme, type Theme} from '@thunderid/design';
 import {getDisplayNameForCode, I18nDefaultConstants, toFlagEmoji, useGetLanguages} from '@thunderid/i18n';
 import {Box, MenuItem, TextField, Typography} from '@wso2/oxygen-ui';
@@ -23,6 +23,8 @@ export interface TemplatePreviewPanelProps {
   body: string;
   /** Color scheme the email body is authored against. */
   colorScheme: TemplateColorScheme;
+  /** Receives the preview's token warnings for the selected language and theme. */
+  onWarningsChange?: (warnings: TemplateWarning[]) => void;
 }
 
 /**
@@ -36,6 +38,7 @@ export default function TemplatePreviewPanel({
   subject = undefined,
   body,
   colorScheme,
+  onWarningsChange = undefined,
 }: TemplatePreviewPanelProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const isEmail = channel === 'email';
@@ -131,6 +134,7 @@ export default function TemplatePreviewPanel({
         theme={previewTheme}
         colorScheme={colorScheme}
         contextKeys={CONTEXT_TOKEN_KEYS}
+        onWarningsChange={onWarningsChange}
       />
     </Box>
   );

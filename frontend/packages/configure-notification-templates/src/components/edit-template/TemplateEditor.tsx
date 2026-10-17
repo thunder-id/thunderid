@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {UnsavedChangesBar} from '@thunderid/components';
+import type {TemplateWarning} from '@thunderid/configure-design';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, IconButton, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -74,6 +75,8 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
   };
   const [colorScheme, setColorScheme] = useState<TemplateColorScheme>(originalColorScheme);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Computed by the preview (it holds the selected language and theme) and shown on the fields.
+  const [warnings, setWarnings] = useState<TemplateWarning[]>([]);
 
   // Mirror the create wizard: email needs a subject and both channels need a body.
   const contentValid = (!isEmail || subject.trim() !== '') && body.trim() !== '';
@@ -256,6 +259,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
             setSaveError(null);
           }}
           onColorSchemeChange={setColorScheme}
+          warnings={warnings}
         />
 
         {/* ── Preview pane ────────────────────────────────────────────── */}
@@ -264,6 +268,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
           subject={isEmail ? subject : undefined}
           body={body}
           colorScheme={colorScheme}
+          onWarningsChange={setWarnings}
         />
       </Box>
 

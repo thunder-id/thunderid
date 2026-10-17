@@ -99,4 +99,64 @@ describe('TemplateContentEditor', () => {
       expect(onSubjectChange).not.toHaveBeenCalled();
     });
   });
+
+  describe('Field warnings', () => {
+    const subjectInput = (): HTMLElement => screen.getAllByRole('textbox')[0];
+    const subjectFieldText = (): string => subjectInput().closest('.MuiFormControl-root')?.textContent ?? '';
+
+    it('shows a subject warning on the subject field and marks it invalid', () => {
+      render(
+        <TemplateContentEditor
+          {...baseProps}
+          warnings={[
+            {field: 'subject', severity: 'error', code: 'missingTranslation', token: '{{t(otp.email.subject1)}}'},
+          ]}
+        />,
+      );
+
+      expect(subjectFieldText()).toMatch(/No translation for/i);
+      expect(subjectInput()).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('shows a body warning below the body and leaves the subject untouched', () => {
+      render(
+        <TemplateContentEditor
+          {...baseProps}
+          warnings={[{field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'}]}
+        />,
+      );
+
+      expect(screen.getByText(/is not a supported token/i)).toBeInTheDocument();
+      expect(subjectFieldText()).not.toMatch(/is not a supported token/i);
+      expect(subjectInput()).toHaveAttribute('aria-invalid', 'false');
+    });
+
+    it('shows a token that appears in both fields on each of them', () => {
+      render(
+        <TemplateContentEditor
+          {...baseProps}
+          warnings={[
+            {field: 'subject', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'},
+            {field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'},
+          ]}
+        />,
+      );
+
+      expect(screen.getAllByText(/is not a supported token/i)).toHaveLength(2);
+    });
+
+    it('keeps the field out of the error state when it only has warning-severity messages', () => {
+      render(
+        <TemplateContentEditor
+          {...baseProps}
+          warnings={[
+            {field: 'subject', severity: 'warning', code: 'designUnresolved', token: '{{design(palette.unknown)}}'},
+          ]}
+        />,
+      );
+
+      expect(subjectFieldText()).toMatch(/does not match any value/i);
+      expect(subjectInput()).toHaveAttribute('aria-invalid', 'false');
+    });
+  });
 });

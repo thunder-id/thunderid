@@ -11,6 +11,7 @@ export {
   type NotificationTemplatePreviewProps,
   type NotificationChannel,
 } from './NotificationTemplatePreview/NotificationTemplatePreview';
+export {templateWarningMessage, type TemplateWarning} from './NotificationTemplatePreview/templateTokens';
 
 // Components
 export {default as LayoutPresetThumbnail, type LayoutPresetVariant} from './components/layouts/LayoutPresetThumbnail';
