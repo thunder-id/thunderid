@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {FullScreenCreationWizardLayout} from '@thunderid/components';
+import type {TemplateWarning} from '@thunderid/configure-design';
 import {
   OrganizationUnitPickerScreen,
   useGetOrganizationUnit,
@@ -71,6 +72,8 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   const [body, setBody] = useState('');
   const [colorScheme, setColorScheme] = useState<TemplateColorScheme>('light');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Computed by the preview (it holds the selected language and theme) and shown on the fields.
+  const [warnings, setWarnings] = useState<TemplateWarning[]>([]);
 
   // A single-OU deployment adopts its only OU; otherwise the user's pick on the OU step.
   const soleOuId: string = !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
@@ -292,12 +295,14 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
               setSubmitError(null);
             }}
             onColorSchemeChange={setColorScheme}
+            warnings={warnings}
           />
           <TemplatePreviewPanel
             channel={channel}
             subject={isEmail ? subject : undefined}
             body={body}
             colorScheme={colorScheme}
+            onWarningsChange={setWarnings}
           />
         </Box>
       )}
