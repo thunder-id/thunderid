@@ -1,12 +1,25 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Card, CardContent, TextField, ToggleButton, ToggleButtonGroup, Typography} from '@wso2/oxygen-ui';
+import {templateWarningMessage, type TemplateWarning} from '@thunderid/configure-design';
+import {
+  Box,
+  Card,
+  CardContent,
+  FormHelperText,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {Moon, Sun} from '@wso2/oxygen-ui-icons-react';
 import {useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import TokenCatalog from './TokenCatalog';
 import type {NotificationChannel, TemplateColorScheme} from '../../models/notification-template';
+
+// Links the body input to its warnings, which render outside the TextField (see below).
+const BODY_WARNINGS_ID = 'template-body-warnings';
 
 /**
  * Props for the {@link TemplateContentEditor} component.
@@ -21,6 +34,8 @@ export interface TemplateContentEditorProps {
   onSubjectChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onColorSchemeChange: (value: TemplateColorScheme) => void;
+  /** Token warnings from the preview; each is shown on the field it came from. */
+  warnings?: TemplateWarning[];
   /** Wrap the fields in an outlined card. Defaults to true. */
   card?: boolean;
 }
@@ -40,10 +55,29 @@ export default function TemplateContentEditor({
   onSubjectChange,
   onBodyChange,
   onColorSchemeChange,
+  warnings = [],
   card = true,
 }: TemplateContentEditorProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const isEmail = channel === 'email';
+
+  const subjectWarnings = warnings.filter((warning) => warning.field === 'subject');
+  const bodyWarnings = warnings.filter((warning) => warning.field === 'body');
+  const subjectHasError = subjectWarnings.some((warning) => warning.severity === 'error');
+  const bodyHasError = bodyWarnings.some((warning) => warning.severity === 'error');
+  const bodyBorderColor = bodyHasError ? 'error.main' : bodyWarnings.length > 0 ? 'warning.main' : 'divider';
+
+  // One line per warning, colored by its own severity so a warning listed alongside errors stays amber.
+  const renderWarnings = (fieldWarnings: TemplateWarning[]): JSX.Element[] =>
+    fieldWarnings.map((warning) => (
+      <Box
+        component="span"
+        key={`${warning.code}:${warning.token}`}
+        sx={{display: 'block', color: warning.severity === 'error' ? 'error.main' : 'warning.main'}}
+      >
+        {templateWarningMessage(t, warning)}
+      </Box>
+    ));
 
   const [tokensCollapsed, setTokensCollapsed] = useState(false);
   const subjectRef = useRef<HTMLInputElement>(null);
@@ -128,6 +162,8 @@ export default function TemplateContentEditor({
               activeField.current = 'subject';
             }}
             inputRef={subjectRef}
+            error={subjectHasError}
+            helperText={subjectWarnings.length > 0 ? renderWarnings(subjectWarnings) : undefined}
             sx={{mb: 2.5}}
           />
         </>
@@ -141,7 +177,7 @@ export default function TemplateContentEditor({
           display: 'grid',
           gridTemplateColumns: tokensCollapsed ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr) 285px',
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: bodyBorderColor,
           borderRadius: 1,
           overflow: 'hidden',
           minHeight: 440,
@@ -156,6 +192,8 @@ export default function TemplateContentEditor({
             activeField.current = 'body';
           }}
           inputRef={bodyRef}
+          error={bodyHasError}
+          inputProps={{'aria-describedby': bodyWarnings.length > 0 ? BODY_WARNINGS_ID : undefined}}
           InputProps={{sx: {fontFamily: 'monospace', fontSize: '0.8125rem', alignItems: 'flex-start', height: '100%'}}}
           sx={{
             height: '100%',
@@ -170,6 +208,10 @@ export default function TemplateContentEditor({
           onToggleCollapse={() => setTokensCollapsed((c) => !c)}
         />
       </Box>
+      {/* The body's own outline is hidden inside the shared box above, so its warnings render here. */}
+      {bodyWarnings.length > 0 && (
+        <FormHelperText id={BODY_WARNINGS_ID}>{renderWarnings(bodyWarnings)}</FormHelperText>
+      )}
     </>
   );
 

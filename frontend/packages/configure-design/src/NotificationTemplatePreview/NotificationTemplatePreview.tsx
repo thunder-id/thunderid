@@ -3,8 +3,8 @@
 
 import {DefaultTheme, type Theme} from '@thunderid/design';
 import {useGetTranslations} from '@thunderid/i18n';
-import {Alert, Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
-import {useMemo, type JSX} from 'react';
+import {Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
+import {useEffect, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {
   collectWarnings,
@@ -45,12 +45,14 @@ export interface NotificationTemplatePreviewProps {
    * it is flagged; when omitted, ctx tokens are left unchecked.
    */
   contextKeys?: ReadonlySet<string>;
+  /** Receives the tokens that won't render (see `collectWarnings`), so the caller can show them on their fields. */
+  onWarningsChange?: (warnings: TemplateWarning[]) => void;
 }
 
 /**
  * Presentational live preview of a notification template (email/SMS) for a given locale,
  * theme and color scheme, rendered via GatePreview. Resolves {{t(key)}}; leaves {{ctx}}
- * and {{design}} literal; warns on tokens that won't render (see `collectWarnings`).
+ * and {{design}} literal; reports tokens that won't render through `onWarningsChange`.
  * Reused by the flow step preview and the template editor.
  */
 export default function NotificationTemplatePreview({
@@ -61,6 +63,7 @@ export default function NotificationTemplatePreview({
   theme = undefined,
   colorScheme = undefined,
   contextKeys = undefined,
+  onWarningsChange = undefined,
 }: NotificationTemplatePreviewProps): JSX.Element {
   const {t} = useTranslation('design');
 
@@ -103,6 +106,10 @@ export default function NotificationTemplatePreview({
           }),
     [themeLoading, subject, body, channel, translations, effectiveTheme, scheme, contextKeys, skipMissingTranslation],
   );
+
+  useEffect(() => {
+    onWarningsChange?.(warnings);
+  }, [warnings, onWarningsChange]);
 
   const opts = useMemo(
     () => ({translations, theme: effectiveTheme, colorScheme: scheme}),
@@ -168,16 +175,6 @@ export default function NotificationTemplatePreview({
 
   return (
     <Stack spacing={1.5} sx={{width: '100%'}}>
-      {warnings.length > 0 && (
-        <Stack spacing={1}>
-          {warnings.map((warning) => (
-            <Alert key={`${warning.code}:${warning.token}`} severity={warning.severity} sx={{py: 0.25}}>
-              {warningMessage(t, warning)}
-            </Alert>
-          ))}
-        </Stack>
-      )}
-
       {/* Floating card. Email renders the resolved HTML as a real document (iframe srcDoc) so
           {{design}}-driven styles, <style> blocks and body-level CSS apply like an email client;
           SMS renders the resolved text. */}
@@ -200,46 +197,4 @@ export default function NotificationTemplatePreview({
       </Box>
     </Stack>
   );
-}
-
-/** Maps a warning code to a localized message. */
-function warningMessage(
-  t: (key: string, defaultValue: string, options?: Record<string, unknown>) => string,
-  warning: TemplateWarning,
-): string {
-  const {code, token} = warning;
-  switch (code) {
-    case 'unsupported':
-      return t(
-        'notificationTemplatePreview.warnings.unsupported',
-        '"{{token}}" is not a supported token and will cause the template to fail to send.',
-        {token},
-      );
-    case 'designNotAllowed':
-      return t(
-        'notificationTemplatePreview.warnings.designNotAllowed',
-        'Design token "{{token}}" is only allowed in the email body, not here.',
-        {token},
-      );
-    case 'designUnresolved':
-      return t(
-        'notificationTemplatePreview.warnings.designUnresolved',
-        'Design token "{{token}}" does not match any value in the selected theme; it is shown as-is and may not render.',
-        {token},
-      );
-    case 'missingTranslation':
-      return t(
-        'notificationTemplatePreview.warnings.missingTranslation',
-        'No translation for "{{token}}" in any language; the template will fail to send until it is added.',
-        {token},
-      );
-    case 'unknownContext':
-      return t(
-        'notificationTemplatePreview.warnings.unknownContext',
-        '"{{token}}" is not a recognized context value and will not be substituted when the template is sent.',
-        {token},
-      );
-    default:
-      return token;
-  }
 }
