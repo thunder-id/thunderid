@@ -28,7 +28,13 @@ const (
 	agentOwnerInput         = "owner"
 	agentDelegatedInput     = "delegated"
 	agentRedirectURIsInput  = "redirectUris"
+	agentAuthFlowIDInput    = "authFlowId"
+	agentUserTypesInput     = "allowedUserTypes"
 )
+
+// The handle of the authentication flow the bootstrap seeds, which a delegated agent signs users in
+// through.
+const seededAuthFlowHandle = "default-flow"
 
 // The user type the bootstrap seeds, whose schema requires a unique username and email.
 const seededUserTypeName = "person"
@@ -60,6 +66,8 @@ type AgentOnboardingFlowTestSuite struct {
 	delegatedAgent  string
 	ownerCheckAgent string
 	ownerUserID     string
+	authFlowID      string
+	multiURIAgent   string
 }
 
 func TestAgentOnboardingFlowTestSuite(t *testing.T) {
@@ -71,11 +79,16 @@ func (ts *AgentOnboardingFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to resolve the shipped agent onboarding flow")
 	ts.Require().NotEmpty(flowID, "The shipped agent onboarding flow must be present")
 	ts.flowID = flowID
+
+	authFlowID, err := testutils.GetFlowIDByHandle(seededAuthFlowHandle, "AUTHENTICATION")
+	ts.Require().NoError(err, "Failed to resolve the seeded authentication flow")
+	ts.Require().NotEmpty(authFlowID, "The seeded authentication flow must be present")
+	ts.authFlowID = authFlowID
 }
 
 func (ts *AgentOnboardingFlowTestSuite) TearDownSuite() {
 	for _, agentID := range []string{ts.createdAgent, ts.bareAgent, ts.takenNameAgent, ts.secondAgent,
-		ts.ownedAgent, ts.delegatedAgent, ts.ownerCheckAgent} {
+		ts.ownedAgent, ts.delegatedAgent, ts.ownerCheckAgent, ts.multiURIAgent} {
 		if agentID == "" {
 			continue
 		}
@@ -155,8 +168,64 @@ func inputIdentifiers(step common.FlowStep) []string {
 	return identifiers
 }
 
-// A value the agent type rejects at creation sends the run back to the details prompt, which must
-// still offer the choices of its enumerated attributes so the administrator can pick again.
+// detailsSelectOptions reads the choices the shipped flow's details prompt carries on its select
+// components, keyed by the attribute each one collects. The prompt precedes provisioning, so nothing
+// is forwarded to it and the choices live on the components themselves.
+func detailsSelectOptions(ts *suite.Suite, flowID string) map[string][]interface{} {
+	ts.T().Helper()
+
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err, "Failed to obtain admin access token")
+
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/flows/"+flowID, nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to read the shipped agent onboarding flow")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "Reading the flow failed: %s", string(body))
+
+	var flow struct {
+		Nodes []struct {
+			ID   string                 `json:"id"`
+			Meta map[string]interface{} `json:"meta"`
+		} `json:"nodes"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &flow))
+
+	options := map[string][]interface{}{}
+	var collect func(components []interface{})
+	collect = func(components []interface{}) {
+		for _, raw := range components {
+			component, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if component["type"] == "SELECT" {
+				ref, _ := component["ref"].(string)
+				options[ref], _ = component["options"].([]interface{})
+			}
+			if children, ok := component["components"].([]interface{}); ok {
+				collect(children)
+			}
+		}
+	}
+	for _, node := range flow.Nodes {
+		if node.ID == "prompt_agent_details" {
+			components, _ := node.Meta["components"].([]interface{})
+			collect(components)
+		}
+	}
+
+	return options
+}
+
+// A value the agent type rejects at creation sends the run back to the details prompt, which asks
+// for the enumerated attribute again so the administrator can pick again.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueReturnsToDetailsWithChoices() {
 	_, step, _ := ts.step("", "", "", nil)
 	executionID := step.ExecutionID
@@ -169,14 +238,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueRet
 
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run returns to the details prompt: %s", string(body))
 	ts.Require().NotNil(step.Error, "the rejection is reported")
-	found := false
-	for _, input := range step.Data.Inputs {
-		if input.Identifier == agentModelProviderInput {
-			found = true
-			ts.NotEmpty(input.Options, "the model provider choices are offered again")
-		}
-	}
-	ts.True(found, "the details prompt asks for the model provider again")
+	ts.Contains(inputIdentifiers(step), agentModelProviderInput, "the details prompt asks for the model provider again")
 }
 
 // Running the shipped flow to completion exercises the whole chain in one execution: the
@@ -202,16 +264,11 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_CompletesAndRetu
 	ts.Contains(inputIdentifiers(step), agentModelInput, "the details prompt offers the schema attributes")
 
 	// A select the schema restricts to a fixed set must carry its choices, or the Console has nothing
-	// to render. They reach the prompt only through the provisioning node, so a flow that skipped it
-	// would still list the input but with no options.
-	for _, input := range step.Data.Inputs {
-		if input.Identifier == agentModelProviderInput {
-			ts.NotEmpty(input.Options, "the model provider select carries the schema's enum values")
-		}
-		if input.Identifier == "function" {
-			ts.NotEmpty(input.Options, "the function select carries the schema's enum values")
-		}
-	}
+	// to render. The details prompt runs before provisioning, so the choices are written on the
+	// select components in the flow rather than forwarded to the prompt.
+	options := detailsSelectOptions(&ts.Suite, ts.flowID)
+	ts.NotEmpty(options[agentModelProviderInput], "the model provider select carries its choices")
+	ts.NotEmpty(options["function"], "the function select carries its choices")
 
 	agentName := common.GenerateUniqueUsername("integration_agent")
 	status, step, body = ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
@@ -442,8 +499,9 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegationRequir
 
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus,
 		"delegation without a callback pauses rather than completing: %s", string(body))
-	ts.Contains(inputIdentifiers(step), agentRedirectURIsInput,
-		"the callback is asked for: %s", string(body))
+	for _, input := range []string{agentRedirectURIsInput, agentAuthFlowIDInput, agentUserTypesInput} {
+		ts.Contains(inputIdentifiers(step), input, "%s is asked for: %s", input, string(body))
+	}
 }
 
 // Given the callback, the agent is provisioned as a delegated client: it keeps the URI it was
@@ -453,7 +511,12 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 
 	ts.delegatedAgent = ts.runToCompletion(
 		common.GenerateUniqueUsername("integration_agent_delegated"), "",
-		map[string]string{agentDelegatedInput: "true", agentRedirectURIsInput: callback})
+		map[string]string{
+			agentDelegatedInput:    "true",
+			agentRedirectURIsInput: callback,
+			agentAuthFlowIDInput:   ts.authFlowID,
+			agentUserTypesInput:    seededUserTypeName,
+		})
 
 	agent, err := testutils.GetAgent(ts.delegatedAgent)
 	ts.Require().NoError(err, "Failed to read the provisioned agent")
@@ -464,6 +527,47 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 	ts.Contains(oauth.RedirectURIs, callback, "the callback the caller gave is the one stored")
 	ts.Contains(oauth.GrantTypes, "authorization_code", "delegation adds the authorization code grant")
 	ts.True(oauth.PKCERequired, "a delegated agent requires PKCE")
+	ts.Equal(ts.authFlowID, agent.AuthFlowID, "the chosen login flow is the one stored")
+	ts.Equal([]string{seededUserTypeName}, agent.AllowedUserTypes, "the chosen user type is the one stored")
+}
+
+// Callback URIs arrive as one comma-separated value and are stored as separate redirect URIs.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKeepsEveryCommaSeparatedRedirectURI() {
+	const first, second = "https://agent.example.com/callback", "https://agent.example.com/other"
+
+	ts.multiURIAgent = ts.runToCompletion(
+		common.GenerateUniqueUsername("integration_agent_multi_uri"), "",
+		map[string]string{
+			agentDelegatedInput:    "true",
+			agentRedirectURIsInput: first + ", " + second,
+			agentAuthFlowIDInput:   ts.authFlowID,
+			agentUserTypesInput:    seededUserTypeName,
+		})
+
+	agent, err := testutils.GetAgent(ts.multiURIAgent)
+	ts.Require().NoError(err, "Failed to read the provisioned agent")
+	ts.Require().NotEmpty(agent.InboundAuthConfig)
+	ts.Require().NotNil(agent.InboundAuthConfig[0].Config)
+	ts.ElementsMatch([]string{first, second}, agent.InboundAuthConfig[0].Config.RedirectURIs)
+}
+
+// A login flow that does not exist is refused by the agent service. The run stays open and reports
+// the error instead of ending.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknownLoginFlow() {
+	_, step, _ := ts.step("", "", "", nil)
+	executionID := step.ExecutionID
+	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
+	_, step, body := ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{
+		agentNameInput:         common.GenerateUniqueUsername("integration_agent_bad_flow"),
+		agentDelegatedInput:    "true",
+		agentRedirectURIsInput: "https://agent.example.com/callback",
+		agentAuthFlowIDInput:   "00000000-0000-0000-0000-000000000000",
+		agentUserTypesInput:    seededUserTypeName,
+	})
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "the run continues: %s", string(body))
+	ts.Require().NotNil(step.Error, "the rejection is reported: %s", string(body))
+	ts.Equal("AGT-1028", step.Error.Code)
 }
 
 // attributeString reads a string attribute from an agent's attributes payload.

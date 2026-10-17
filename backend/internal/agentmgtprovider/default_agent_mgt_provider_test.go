@@ -147,6 +147,22 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentDerivesDelegatedOA
 	suite.Equal(req.AllowedUserTypes, (*captured).AllowedUserTypes)
 }
 
+// A login flow and an allowed user type that the caller chose are part of the agent profile the
+// provider copies, so a delegated agent reaches the service with both.
+func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentKeepsACallerSelectedLoginFlowAndUserType() {
+	req := withRedirectURIs(newTestAgent(), "https://app.example.com/callback")
+	req.AuthFlowID = "login-flow-1"
+	req.AllowedUserTypes = []string{"employee"}
+
+	captured := suite.captureCreatedAgent()
+
+	_, svcErr := suite.provider.CreateAgent(context.Background(), req, true)
+
+	suite.Nil(svcErr)
+	suite.Equal("login-flow-1", (*captured).AuthFlowID)
+	suite.Equal([]string{"employee"}, (*captured).AllowedUserTypes)
+}
+
 // Token settings and flow identifiers are left unset so the inbound client service applies the
 // organization unit and server defaults. Sending them would pin a new agent to whatever the
 // provider happened to hardcode.

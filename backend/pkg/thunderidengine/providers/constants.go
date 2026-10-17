@@ -402,6 +402,13 @@ const (
 	// InputTypeUserSelect represents a user selection input type. As with OU_SELECT the client
 	// sources the candidates, and the value submitted is a user identifier.
 	InputTypeUserSelect = "USER_SELECT"
+	// InputTypeAuthFlowSelect represents an authentication flow selection input type. As with
+	// USER_SELECT the client sources the candidates, offers only authentication flows, and the value
+	// submitted is a flow identifier.
+	InputTypeAuthFlowSelect = "AUTH_FLOW_SELECT"
+	// InputTypeUserTypeSelect represents a user type selection input type. As with USER_SELECT the
+	// client sources the candidates, and the value submitted is a user type handle.
+	InputTypeUserTypeSelect = "USER_TYPE_SELECT"
 	// InputTypeNumber represents a numeric input type.
 	InputTypeNumber = "NUMBER_INPUT"
 	// InputTypeDate represents a date input type.
@@ -418,19 +425,21 @@ const (
 
 // ValidInputTypes is the set of valid input type strings.
 var ValidInputTypes = map[string]bool{
-	InputTypeText:       true,
-	InputTypeEmail:      true,
-	InputTypePassword:   true,
-	InputTypeOTP:        true,
-	InputTypePhone:      true,
-	InputTypeConsent:    true,
-	InputTypeHidden:     true,
-	InputTypeSelect:     true,
-	InputTypeOUSelect:   true,
-	InputTypeUserSelect: true,
-	InputTypeNumber:     true,
-	InputTypeDate:       true,
-	InputTypeBoolean:    true,
+	InputTypeText:           true,
+	InputTypeEmail:          true,
+	InputTypePassword:       true,
+	InputTypeOTP:            true,
+	InputTypePhone:          true,
+	InputTypeConsent:        true,
+	InputTypeHidden:         true,
+	InputTypeSelect:         true,
+	InputTypeOUSelect:       true,
+	InputTypeUserSelect:     true,
+	InputTypeAuthFlowSelect: true,
+	InputTypeUserTypeSelect: true,
+	InputTypeNumber:         true,
+	InputTypeDate:           true,
+	InputTypeBoolean:        true,
 }
 
 // ExecutorType defines the type of an executor in the flow execution.

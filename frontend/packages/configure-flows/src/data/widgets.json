@@ -2236,8 +2236,8 @@
     "category": "FLOW",
     "type": "AGENT_DELEGATION",
     "display": {
-      "label": "Agent Delegation",
-      "description": "Ask whether the agent may act for a signed-in user, and where to send them back",
+      "label": "Choose Agent Mode",
+      "description": "Ask whether the agent acts using its own identity or on behalf of a signed-in user",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },
@@ -2267,7 +2267,7 @@
             "type": "VIEW",
             "size": {
               "width": 360,
-              "height": 320
+              "height": 520
             },
             "position": {
               "x": 760,
@@ -2289,7 +2289,7 @@
                   "type": "TEXT",
                   "align": "left",
                   "variant": "HEADING_6",
-                  "label": "Choose how this agent acts. On its own behalf it runs with no user involved. On behalf of a user it signs a user in first and acts with that user's access."
+                  "label": "Choose how this agent acts. It can use its own identity or act on behalf of a signed-in user."
                 },
                 {
                   "id": "{{ID}}",
@@ -2301,7 +2301,7 @@
                       "category": "FIELD",
                       "type": "BOOLEAN_INPUT",
                       "ref": "delegated",
-                      "label": "Delegated mode",
+                      "label": "Act on behalf of a signed-in user",
                       "required": false
                     },
                     {
@@ -2310,9 +2310,145 @@
                       "type": "TEXT_INPUT",
                       "ref": "redirectUris",
                       "label": "Authorized redirect URIs",
-                      "placeholder": "https://example.com/callback",
-                      "hint": "Set this when delegated mode is on.",
+                      "placeholder": "https://example.com/callback, https://app.example.com/callback",
+                      "hint": "Used when the agent acts on behalf of a signed-in user. The callbacks users return to after signing in. Enter several separated by commas.",
                       "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "AUTH_FLOW_SELECT",
+                      "ref": "authFlowId",
+                      "label": "Login flow",
+                      "placeholder": "Select a login flow",
+                      "hint": "Used when the agent acts on behalf of a signed-in user. The login flow that signs users in to this agent.",
+                      "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "USER_TYPE_SELECT",
+                      "ref": "allowedUserTypes",
+                      "label": "User type",
+                      "placeholder": "Select a user type",
+                      "hint": "Used when the agent acts on behalf of a signed-in user. The user type that may sign in through this agent.",
+                      "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Continue",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": ""
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "FLOW",
+    "type": "AGENT_OBO_DETAILS",
+    "display": {
+      "label": "Delegated Agent Details",
+      "description": "Collect the redirect URIs, login flow, and user type for an agent that acts on behalf of a signed-in user",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{AGENT_OBO_DETAILS_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "AGENT_OBO_DETAILS_STEP_ID",
+              "type": "ID"
+            }
+          ],
+          "autoWire": {
+            "entry": {
+              "stepRef": "AGENT_OBO_DETAILS_STEP_ID"
+            },
+            "exit": {
+              "stepRef": "AGENT_OBO_DETAILS_STEP_ID",
+              "handle": "success"
+            }
+          }
+        },
+        "steps": [
+          {
+            "id": "{{AGENT_OBO_DETAILS_STEP_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 360,
+              "height": 520
+            },
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_1",
+                  "label": "Details for acting on behalf of a user"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_6",
+                  "label": "Provide the redirect URIs, login flow, and user type for an agent that acts on behalf of a signed-in user."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "TEXT_INPUT",
+                      "ref": "redirectUris",
+                      "label": "Authorized redirect URIs",
+                      "placeholder": "https://example.com/callback, https://app.example.com/callback",
+                      "hint": "The callbacks users return to after signing in. Enter several separated by commas.",
+                      "required": true
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "AUTH_FLOW_SELECT",
+                      "ref": "authFlowId",
+                      "label": "Login flow",
+                      "placeholder": "Select a login flow",
+                      "hint": "The login flow that signs users in to this agent.",
+                      "required": true
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "USER_TYPE_SELECT",
+                      "ref": "allowedUserTypes",
+                      "label": "User type",
+                      "placeholder": "Select a user type",
+                      "hint": "The user type that may sign in through this agent.",
+                      "required": true
                     },
                     {
                       "id": "{{ID}}",
