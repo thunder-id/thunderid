@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,12 +33,19 @@ func newResourceHandler(resourceService ResourceServiceInterface) *resourceHandl
 
 // Resource Server Handlers
 
-// HandleResourceServerListRequest handles listing resource servers.
+// HandleResourceServerListRequest handles listing resource servers with optional pagination and identifier filtering.
 func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	query := r.URL.Query()
+
+	limit, offset, svcErr := parsePaginationParams(query)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
+		return
+	}
+
+	if identifier := query.Get("identifier"); identifier != "" {
+		h.handleResourceServerListByIdentifier(ctx, w, identifier, limit, offset)
 		return
 	}
 
@@ -48,6 +56,47 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 	}
 
 	response := toResourceServerListResponse(result)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
+}
+
+// handleResourceServerListByIdentifier filters the resource server list by exact identifier match
+// while preserving pagination parameters.
+func (h *resourceHandler) handleResourceServerListByIdentifier(
+	ctx context.Context, w http.ResponseWriter, identifier string, limit, offset int,
+) {
+	baseURL := fmt.Sprintf("/resource-servers?identifier=%s", url.QueryEscape(identifier))
+	rs, svcErr := h.resourceService.GetResourceServerByIdentifier(ctx, identifier)
+	if svcErr != nil {
+		if svcErr.Code == ErrorResourceServerNotFound.Code {
+			response := toResourceServerListResponse(&ResourceServerList{
+				TotalResults:    0,
+				StartIndex:      offset + 1,
+				Count:           0,
+				ResourceServers: []providers.ResourceServer{},
+				Links:           buildPaginationLinks(baseURL, limit, offset, 0),
+			})
+			sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
+			return
+		}
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	totalCount := 1
+	var servers []providers.ResourceServer
+	if offset == 0 && limit > 0 {
+		servers = []providers.ResourceServer{*rs}
+	} else {
+		servers = []providers.ResourceServer{}
+	}
+
+	response := toResourceServerListResponse(&ResourceServerList{
+		TotalResults:    totalCount,
+		StartIndex:      offset + 1,
+		Count:           len(servers),
+		ResourceServers: servers,
+		Links:           buildPaginationLinks(baseURL, limit, offset, totalCount),
+	})
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 

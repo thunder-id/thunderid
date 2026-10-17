@@ -166,11 +166,25 @@ The `handle` and `parent` fields on a resource are immutable after creation.
 
 ## List Resource Servers
 
+List resource servers using pagination parameters:
+
 ```bash
 curl -kL https://localhost:8090/resource-servers?limit=10&offset=0 \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer <access-token>'
 ```
+
+### Filter by Identifier
+
+To look up a resource server by its RFC 8707 identifier, pass the `identifier` query parameter:
+
+```bash
+curl -kL "https://localhost:8090/resource-servers?identifier=https%3A%2F%2Fapi.example.com%2Fbooking" \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The filter performs an exact match and returns a standard list response containing zero or one resource server. Pagination parameters (`limit` and `offset`) are respected. When `offset` is `0` and a matching resource server exists, `totalResults` is `1` and `count` is `1`. If no match exists or `offset` is greater than `0`, `count` is `0` and `resourceServers` is empty.
 
 ## Get Resource Server Details
 

@@ -4387,6 +4387,20 @@ func (suite *ResourceServiceTestSuite) TestBuildPaginationLinks() {
 				// No last because offset(10) >= lastPageOffset(10)
 			},
 		},
+		{
+			name:        "MiddlePage_WithQueryParamInBase",
+			base:        "/resource-servers?identifier=https%3A%2F%2Fapi.example.com",
+			limit:       10,
+			offset:      20,
+			totalCount:  50,
+			description: "Base URL already containing query parameters preserves them with & separator",
+			expectedLinks: []Link{
+				{Href: "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=0&limit=10", Rel: "first"},
+				{Href: "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=10&limit=10", Rel: "prev"},
+				{Href: "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=30&limit=10", Rel: "next"},
+				{Href: "/resource-servers?identifier=https%3A%2F%2Fapi.example.com&offset=40&limit=10", Rel: "last"},
+			},
+		},
 	}
 
 	for _, tc := range testCases {

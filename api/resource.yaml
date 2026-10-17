@@ -39,9 +39,11 @@ paths:
       tags:
         - Resource Servers
       summary: List resource servers
+      description: Retrieve a paginated list of resource servers. When filtered by identifier, returns an exact match containing zero or one result while preserving pagination parameters.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/identifierQueryParam'
       responses:
         "200":
           description: List of resource servers
@@ -2267,6 +2269,13 @@ components:
         type: integer
         minimum: 0
         default: 0
+    identifierQueryParam:
+      in: query
+      name: identifier
+      required: false
+      description: Filter resource servers by exact identifier match (RFC 8707 resource indicator). Returns zero or one result while preserving pagination parameters.
+      schema:
+        type: string
 
   schemas:
     ResourceServer:
