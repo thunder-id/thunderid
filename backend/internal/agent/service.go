@@ -391,7 +391,8 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	}
 	updatedEntity.SystemAttributes = sysAttrsJSON
 
-	if _, err := s.entityService.UpdateEntity(ctx, agentID, updatedEntity); err != nil {
+	updated, err := s.entityService.UpdateEntity(ctx, agentID, updatedEntity)
+	if err != nil {
 		if mapped := mapEntityError(err); mapped != nil {
 			return nil, mapped
 		}
@@ -422,8 +423,13 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		}}
 	}
 
+	var savedAttrs json.RawMessage
+	if updated != nil {
+		savedAttrs = updated.Attributes
+	}
+
 	resp := buildCompleteResponse(agentID, owner, clientID, clientSecret,
-		req.Type, req.Description, req.LogoURL, req.Attributes,
+		req.Type, req.Description, req.LogoURL, savedAttrs,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)

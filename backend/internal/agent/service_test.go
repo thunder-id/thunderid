@@ -90,7 +90,12 @@ func (suite *AgentServiceTestSuite) setupService() (
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Maybe().Return((*string)(nil), entity.ErrEntityNotFound)
 	mockEntity.On("UpdateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Maybe().Return(&providers.Entity{}, nil)
+		Maybe().Return(func(_ context.Context, _ string, entity *providers.Entity) *providers.Entity {
+		if entity == nil {
+			return &providers.Entity{}
+		}
+		return entity
+	}, nil)
 	mockEntity.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -1149,7 +1154,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
-		Return(&providers.Entity{}, nil)
+		Return(&providers.Entity{Attributes: json.RawMessage(`{"name":"test-agent"}`)}, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
 		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
@@ -1157,6 +1162,28 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
 	assert.JSONEq(suite.T(), `{"name":"test-agent"}`, string(resp.Attributes))
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReturnsSavedAttributesExcludingUndeclaredAndCredentials() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	savedAttrs := json.RawMessage(`{"name":"test-agent","model":"m2"}`)
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return(&providers.Entity{Attributes: savedAttrs}, nil)
+
+	reqAttrs := json.RawMessage(`{"name":"test-agent","model":"m2","notInSchema":"dropped","apiSecret":"plaintext-secret"}`)
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type:       testAgentType,
+		Attributes: reqAttrs,
+	})
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.JSONEq(suite.T(), `{"name":"test-agent","model":"m2"}`, string(resp.Attributes))
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_FlowIDResolvedToDefault() {
