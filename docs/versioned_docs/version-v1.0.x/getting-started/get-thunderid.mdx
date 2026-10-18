@@ -2,37 +2,212 @@
 title: Get started
 docType: guide
 sidebar_position: 2
-description: Download and run ThunderID using the release artifact, Docker Compose, or Helm on Kubernetes.
+description: Download and run ThunderID using the CLI, Docker, Helm, the release artifact, or an agent skill pack.
+toc_max_heading_level: 2
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import Stepper from '@site/src/components/Stepper';
 import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
+import {Package, ShipWheel} from '@wso2/oxygen-ui-icons-react';
+import ClaudeLogo from '@site/src/components/icons/ClaudeLogo';
+import CliLogo from '@site/src/components/icons/CliLogo';
+import CodexLogo from '@site/src/components/icons/CodexLogo';
+import DockerLogo from '@site/src/components/icons/DockerLogo';
+import SkillsLogo from '@site/src/components/icons/SkillsLogo';
 
 # Get <ProductName />
 
-<ProductName /> is available in multiple formats to suit your deployment needs. Choose the option that works best for you.
+Run the identity service locally, ship it to a cluster, or wire it into your coding agent. Pick the path that matches how you work, every option lands on the same build.
 
 <DeveloperShortcut compact title="Building something? Start with a quickstart instead." subtitle="Quickstarts include setup and take you from zero to a working sign-in. Choose a quickstart from the sidebar." />
 
 <Tabs>
-<TabItem value="release" label="Release Artifact" default>
+<TabItem value="cli" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><CliLogo size={14} />CLI</span>} default>
+
+The fastest way to a running instance. No download or manual setup, <ProductName /> installs and starts itself.
+
+### Prerequisites
+
+- Node.js 18+
+- Terminal or command prompt access
+
+<Stepper stepNode="h3" as="h2">
+
+### Run <ProductName />
+
+Run the following command. On first run it downloads the latest release, initializes <ProductName />, and starts the server. Later runs reuse the cached installation and start immediately.
+
+```bash
+npx {{productSlug}}
+```
+
+### Access <ProductName />
+
+Sign in to the Console with the admin credentials printed to your terminal on first run.
+
+:::tip Success
+Access <ProductName /> on **https://localhost:8090/console**
+:::
+
+</Stepper>
+
+</TabItem>
+
+<TabItem value="docker" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><DockerLogo size={14} />Docker Compose</span>}>
+
+The quickest way to get <ProductName /> up and running with all dependencies configured.
+
+### Prerequisites
+
+- Docker and Docker Compose installed on your machine
+- Terminal or command prompt access
+
+<Stepper stepNode="h3" as="h2">
+
+### Start <ProductName />
+
+Run the following command to start <ProductName /> using Docker Compose:
+
+```bash
+docker compose -f oci://ghcr.io/thunder-id/thunderid-quick-start:latest up
+```
+
+:::note
+This command will automatically:
+- Initialize the database
+- Run the setup process
+- Start the <ProductName /> server
+:::
+
+
+:::tip Success
+Access <ProductName /> on **https://localhost:8090/console**
+:::
+
+</Stepper>
+
+</TabItem>
+
+<TabItem value="helm" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><ShipWheel size={14} />Helm</span>}>
+
+Deploy <ProductName /> on Kubernetes with PostgreSQL using Helm charts.
+
+### Prerequisites
+
+- A running Kubernetes cluster ([minikube](https://kubernetes.io/docs/tasks/tools/#minikube) or [kind](https://kind.sigs.k8s.io/) for local development)
+- [Helm](https://helm.sh/docs/intro/install/) and [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
+- Terminal or command prompt access
+
+<Stepper stepNode="h3" as="h2">
+
+### Set Up the Database
+
+Install PostgreSQL using the [Bitnami Helm chart](https://bitnami.com/stacks/postgresql):
+
+```bash
+helm install postgresql oci://registry-1.docker.io/bitnamicharts/postgresql \
+  --set auth.username=dbuser \
+  --set auth.password=dbpassword \
+  --set auth.postgresPassword=dbpassword \
+  --set-file primary.initdb.scripts.setup\\.sql=<(cat <<'SQL'
+CREATE DATABASE configdb;
+CREATE DATABASE runtime_transient;
+CREATE DATABASE entitydb;
+CREATE DATABASE runtime_persistent;
+GRANT ALL PRIVILEGES ON DATABASE configdb TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE runtime_transient TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE entitydb TO dbuser;
+GRANT ALL PRIVILEGES ON DATABASE runtime_persistent TO dbuser;
+SQL
+)
+```
+
+Wait for PostgreSQL to be ready:
+
+```bash
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql --timeout=120s
+```
+
+Apply the database schemas:
+
+```bash
+kubectl run {{productSlug}}-dbinit --image=ghcr.io/thunder-id/{{productSlug}}:latest --restart=Never --command -- sleep 300
+kubectl wait --for=condition=ready pod/{{productSlug}}-dbinit --timeout=60s
+for db in configdb runtime_transient entitydb runtime_persistent; do
+  kubectl exec {{productSlug}}-dbinit -- cat /opt/{{productSlug}}/dbscripts/$db/postgres.sql | \
+    kubectl exec -i postgresql-0 -- env PGPASSWORD=dbpassword psql -U dbuser -d $db
+done
+kubectl delete pod {{productSlug}}-dbinit
+```
+
+### Install <ProductName />
+
+Install <ProductName /> using the [<ProductName /> Helm chart](https://github.com/orgs/thunder-id/packages/container/package/helm-charts%2Fthunderid):
+
+```bash
+helm install {{productSlug}} oci://ghcr.io/thunder-id/helm-charts/{{productSlug}} \
+  --devel \
+  --set configuration.database.config.postgres.hostname=postgresql \
+  --set configuration.database.config.postgres.sslmode=disable \
+  --set configuration.database.runtime_transient.postgres.hostname=postgresql \
+  --set configuration.database.runtime_transient.postgres.sslmode=disable \
+  --set configuration.database.entity.postgres.hostname=postgresql \
+  --set configuration.database.entity.postgres.sslmode=disable \
+  --set configuration.database.runtime_persistent.postgres.hostname=postgresql \
+  --set configuration.database.runtime_persistent.postgres.sslmode=disable \
+  --set configuration.server.publicUrl=https://localhost:8090 \
+  --set configuration.gateClient.hostname=localhost \
+  --set configuration.gateClient.port=8090
+```
+
+Wait for <ProductName /> to be ready:
+
+```bash
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name={{productSlug}} --timeout=120s
+```
+
+### Access <ProductName />
+
+Forward the service port to your local machine:
+
+```bash
+kubectl port-forward svc/{{productSlug}}-service 8090:8090
+```
+
+When no password is configured (the default), the setup job generates a random admin password and stores it in the `{{productSlug}}-admin-credentials` Secret. Retrieve it to sign in to the Console. If you supplied `setup.admin.password` or `setup.admin.passwordRef`, use that credential instead; no Secret is generated:
+
+```bash
+kubectl get secret {{productSlug}}-admin-credentials -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+Open `https://localhost:8090/console` and sign in using the admin username with that password.
+
+:::tip Success
+Access <ProductName /> on **https://localhost:8090/console**
+:::
+
+</Stepper>
+
+</TabItem>
+
+<TabItem value="release" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><Package size={14} />Release Artifact</span>}>
 
 Get the latest release of <ProductName /> and run it locally on your machine.
 
-## Prerequisites
+### Prerequisites
 
 - Your operating system and architecture (macOS, Linux, or Windows)
 - Terminal or command prompt access
 
-<Stepper stepNode="h2" as="h2">
+<Stepper stepNode="h3" as="h2">
 
-## Download the Distribution
+### Download the Distribution
 
 Download the latest release from the <a href="/releases/" target="_blank">releases page</a>.
 
-## Extract the Archive
+### Extract the Archive
 
 Unzip the downloaded file:
 
@@ -46,7 +221,7 @@ Navigate to the extracted directory:
 cd {{productSlug}}-<version>-<os>-<arch>/
 ```
 
-## Setup <ProductName />
+### Setup <ProductName />
 
 Initialize <ProductName /> with the default configurations and data before starting the server for the first time.
 
@@ -69,7 +244,7 @@ Initialize <ProductName /> with the default configurations and data before start
 
 Setup generates this deployment's own TLS, JWT signing, and encryption keys, in addition to seeding the default data, so every deployment uses unique key material. The keys are reused on later runs, and the server does not start without them.
 
-## Start <ProductName />
+### Start <ProductName />
 
 Launch the <ProductName /> server:
 
@@ -131,138 +306,84 @@ Access <ProductName /> on **https://localhost:8090/console**
 
 </TabItem>
 
-<TabItem value="docker" label="Docker Compose">
+<TabItem value="claude" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><ClaudeLogo size={14} />Claude</span>}>
 
-The quickest way to get <ProductName /> up and running with all dependencies configured.
+Install the <ProductName /> agent skills so Claude Code knows how to register applications, wire OIDC flows, and review policy.
 
-## Prerequisites
+### Prerequisites
 
-- Docker and Docker Compose installed on your machine
-- Terminal or command prompt access
+- Claude Code CLI
 
-<Stepper stepNode="h2" as="h2">
+<Stepper stepNode="h3" as="h2">
 
-## Start <ProductName />
+### Install the Skills Plugin
 
-Run the following command to start <ProductName /> using Docker Compose:
+Run the following in a Claude chat:
 
-```bash
-docker compose -f oci://ghcr.io/thunder-id/thunderid-quick-start:latest up
+```text
+/plugin marketplace add thunder-id/skills
 ```
 
-:::note
-This command will automatically:
-- Initialize the database
-- Run the setup process
-- Start the <ProductName /> server
-:::
+### Try It
 
+Ask Claude to use a skill by name:
 
-:::tip Success
-Access <ProductName /> on **https://localhost:8090/console**
-:::
+```text
+Use the thunderid:register-app skill to add a Next.js web app.
+```
 
 </Stepper>
 
 </TabItem>
 
-<TabItem value="helm" label="Helm">
+<TabItem value="codex" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><CodexLogo size={14} />Codex</span>}>
 
-Deploy <ProductName /> on Kubernetes with PostgreSQL using Helm charts.
+The same skill pack, installed through the Codex plugin marketplace so every session in the workspace picks it up.
 
-## Prerequisites
+### Prerequisites
 
-- A running Kubernetes cluster ([minikube](https://kubernetes.io/docs/tasks/tools/#minikube) or [kind](https://kind.sigs.k8s.io/) for local development)
-- [Helm](https://helm.sh/docs/intro/install/) and [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed
-- Terminal or command prompt access
+- Codex CLI
 
-<Stepper stepNode="h2" as="h2">
+<Stepper stepNode="h3" as="h2">
 
-## Set Up the Database
+### Install the Skills Plugin
 
-Install PostgreSQL using the [Bitnami Helm chart](https://bitnami.com/stacks/postgresql):
+Run the following in your terminal:
 
 ```bash
-helm install postgresql oci://registry-1.docker.io/bitnamicharts/postgresql \
-  --set auth.username=dbuser \
-  --set auth.password=dbpassword \
-  --set auth.postgresPassword=dbpassword \
-  --set-file primary.initdb.scripts.setup\\.sql=<(cat <<'SQL'
-CREATE DATABASE configdb;
-CREATE DATABASE runtime_transient;
-CREATE DATABASE entitydb;
-CREATE DATABASE runtime_persistent;
-GRANT ALL PRIVILEGES ON DATABASE configdb TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE runtime_transient TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE entitydb TO dbuser;
-GRANT ALL PRIVILEGES ON DATABASE runtime_persistent TO dbuser;
-SQL
-)
+codex plugin marketplace add thunder-id/skills
 ```
 
-Wait for PostgreSQL to be ready:
+</Stepper>
+
+</TabItem>
+
+<TabItem value="skills" label={<span style={{display: 'inline-flex', alignItems: 'center', gap: '6px'}}><SkillsLogo size={14} />Skills</span>}>
+
+Packaged procedures that teach any skills-compatible agent how <ProductName /> works.
+
+### Prerequisites
+
+- An agent that supports skills
+- Node.js 18+
+
+<Stepper stepNode="h3" as="h2">
+
+### Install the Skill Pack
+
+Install into the agent skills directory for the current user:
 
 ```bash
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql --timeout=120s
+npx skills add thunder-id/skills
 ```
 
-Apply the database schemas:
+### Invoke a Skill
 
-```bash
-kubectl run {{productSlug}}-dbinit --image=ghcr.io/thunder-id/{{productSlug}}:latest --restart=Never --command -- sleep 300
-kubectl wait --for=condition=ready pod/{{productSlug}}-dbinit --timeout=60s
-for db in configdb runtime_transient entitydb runtime_persistent; do
-  kubectl exec {{productSlug}}-dbinit -- cat /opt/{{productSlug}}/dbscripts/$db/postgres.sql | \
-    kubectl exec -i postgresql-0 -- env PGPASSWORD=dbpassword psql -U dbuser -d $db
-done
-kubectl delete pod {{productSlug}}-dbinit
+Skills are discoverable by name from any connected agent:
+
+```text
+Use the thunderid:register-app skill to add a Next.js web app.
 ```
-
-## Install <ProductName />
-
-Install <ProductName /> using the [<ProductName /> Helm chart](https://github.com/orgs/thunder-id/packages/container/package/helm-charts%2Fthunderid):
-
-```bash
-helm install {{productSlug}} oci://ghcr.io/thunder-id/helm-charts/{{productSlug}} \
-  --devel \
-  --set configuration.database.config.postgres.hostname=postgresql \
-  --set configuration.database.config.postgres.sslmode=disable \
-  --set configuration.database.runtime_transient.postgres.hostname=postgresql \
-  --set configuration.database.runtime_transient.postgres.sslmode=disable \
-  --set configuration.database.entity.postgres.hostname=postgresql \
-  --set configuration.database.entity.postgres.sslmode=disable \
-  --set configuration.database.runtime_persistent.postgres.hostname=postgresql \
-  --set configuration.database.runtime_persistent.postgres.sslmode=disable \
-  --set configuration.server.publicUrl=https://localhost:8090 \
-  --set configuration.gateClient.hostname=localhost \
-  --set configuration.gateClient.port=8090
-```
-
-Wait for <ProductName /> to be ready:
-
-```bash
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name={{productSlug}} --timeout=120s
-```
-
-## Access <ProductName />
-
-Forward the service port to your local machine:
-
-```bash
-kubectl port-forward svc/{{productSlug}}-service 8090:8090
-```
-
-When no password is configured (the default), the setup job generates a random admin password and stores it in the `{{productSlug}}-admin-credentials` Secret. Retrieve it to sign in to the Console. If you supplied `setup.admin.password` or `setup.admin.passwordRef`, use that credential instead; no Secret is generated:
-
-```bash
-kubectl get secret {{productSlug}}-admin-credentials -o jsonpath="{.data.admin-password}" | base64 -d; echo
-```
-
-Open `https://localhost:8090/console` and sign in using the admin username with that password.
-
-:::tip Success
-Access <ProductName /> on **https://localhost:8090/console**
-:::
 
 </Stepper>
 
