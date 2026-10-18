@@ -49,18 +49,28 @@ func initializeStore(cacheManager cache.CacheManagerInterface,
 	switch mode {
 	case serverconst.StoreModeDeclarative:
 		fileStore := newFileBasedStore()
+		if err := seedCORSFromDeploymentConfig(fileStore, handlers); err != nil {
+			return nil, err
+		}
 		if err := loadDeclarativeResources(fileStore, handlers); err != nil {
 			return nil, err
 		}
 		return fileStore, nil
 	case serverconst.StoreModeComposite:
 		fileStore := newFileBasedStore()
+		if err := seedCORSFromDeploymentConfig(fileStore, handlers); err != nil {
+			return nil, err
+		}
 		if err := loadDeclarativeResources(fileStore, handlers); err != nil {
 			return nil, err
 		}
 		return newCompositeServerConfigStore(fileStore, cachedDB()), nil
 	default:
-		return cachedDB(), nil
+		db := cachedDB()
+		if err := seedMutableCORSFromDeploymentConfig(db, handlers); err != nil {
+			return nil, err
+		}
+		return db, nil
 	}
 }
 
