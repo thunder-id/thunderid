@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {describe, it, expect} from 'vitest';
-import {collectWarnings, parseTokens, resolveForPreview} from '../templateTokens';
+import {describe, it, expect, vi} from 'vitest';
+import {collectWarnings, parseTokens, resolveForPreview, templateWarningMessage} from '../templateTokens';
 
 describe('parseTokens', () => {
   it('classifies t, design and ctx tokens with their keys', () => {
@@ -85,7 +85,9 @@ describe('collectWarnings', () => {
 
   it('reports an unsupported token as an error', () => {
     const warnings = collectWarnings({channel: 'email', body: '{{meta(application.name)}}', translations});
-    expect(warnings).toEqual([{severity: 'error', code: 'unsupported', token: '{{meta(application.name)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(application.name)}}'},
+    ]);
   });
 
   it('reports a design token in the subject as not allowed', () => {
@@ -96,6 +98,7 @@ describe('collectWarnings', () => {
       translations,
     });
     expect(warnings).toContainEqual({
+      field: 'subject',
       severity: 'error',
       code: 'designNotAllowed',
       token: '{{design(palette.primary.main)}}',
@@ -105,6 +108,7 @@ describe('collectWarnings', () => {
   it('reports a design token in an SMS body as not allowed', () => {
     const warnings = collectWarnings({channel: 'sms', body: '{{design(palette.primary.main)}}', translations});
     expect(warnings).toContainEqual({
+      field: 'body',
       severity: 'error',
       code: 'designNotAllowed',
       token: '{{design(palette.primary.main)}}',
@@ -120,12 +124,16 @@ describe('collectWarnings', () => {
   it('warns when a design token does not resolve against the theme', () => {
     const theme = {colorSchemes: {light: {palette: {}}}};
     const warnings = collectWarnings({channel: 'email', body: '{{design(palette.unknown)}}', translations, theme});
-    expect(warnings).toEqual([{severity: 'warning', code: 'designUnresolved', token: '{{design(palette.unknown)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'body', severity: 'warning', code: 'designUnresolved', token: '{{design(palette.unknown)}}'},
+    ]);
   });
 
   it('reports a translation with no value as an error (missing in every language)', () => {
     const warnings = collectWarnings({channel: 'email', body: '{{t(missing.key)}}', translations});
-    expect(warnings).toEqual([{severity: 'error', code: 'missingTranslation', token: '{{t(missing.key)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'body', severity: 'error', code: 'missingTranslation', token: '{{t(missing.key)}}'},
+    ]);
   });
 
   const contextKeys = new Set(['otpCode']);
@@ -136,25 +144,57 @@ describe('collectWarnings', () => {
 
   it('reports an unknown ctx token as an error', () => {
     const warnings = collectWarnings({channel: 'email', body: '{{ctx(unknownKey)}}', translations, contextKeys});
-    expect(warnings).toEqual([{severity: 'error', code: 'unknownContext', token: '{{ctx(unknownKey)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'body', severity: 'error', code: 'unknownContext', token: '{{ctx(unknownKey)}}'},
+    ]);
   });
 
   it('reports an unknown ctx token in an SMS body too', () => {
     const warnings = collectWarnings({channel: 'sms', body: '{{ctx(unknownKey)}}', translations, contextKeys});
-    expect(warnings).toEqual([{severity: 'error', code: 'unknownContext', token: '{{ctx(unknownKey)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'body', severity: 'error', code: 'unknownContext', token: '{{ctx(unknownKey)}}'},
+    ]);
   });
 
   it('leaves ctx tokens unchecked when no context catalog is supplied', () => {
     expect(collectWarnings({channel: 'email', body: '{{ctx(unknownKey)}}', translations})).toEqual([]);
   });
 
-  it('de-duplicates the same token+code across subject and body', () => {
+  it('reports the same token+code once per field when it appears in both subject and body', () => {
     const warnings = collectWarnings({
       channel: 'email',
       subject: '{{meta(x)}}',
       body: '{{meta(x)}}',
       translations,
     });
-    expect(warnings).toEqual([{severity: 'error', code: 'unsupported', token: '{{meta(x)}}'}]);
+    expect(warnings).toEqual([
+      {field: 'subject', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'},
+      {field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'},
+    ]);
+  });
+
+  it('de-duplicates the same token+code within one field', () => {
+    const warnings = collectWarnings({channel: 'email', body: '{{meta(x)}} and {{meta(x)}}', translations});
+    expect(warnings).toEqual([{field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'}]);
+  });
+});
+
+describe('templateWarningMessage', () => {
+  it('resolves the message from the design namespace with the token interpolated', () => {
+    const t = vi.fn((_key: string, defaultValue: string) => defaultValue);
+
+    const message = templateWarningMessage(t, {
+      field: 'subject',
+      severity: 'error',
+      code: 'missingTranslation',
+      token: '{{t(missing.key)}}',
+    });
+
+    expect(t).toHaveBeenCalledWith(
+      'design:notificationTemplatePreview.warnings.missingTranslation',
+      expect.any(String),
+      {token: '{{t(missing.key)}}'},
+    );
+    expect(message).toContain('No translation for');
   });
 });

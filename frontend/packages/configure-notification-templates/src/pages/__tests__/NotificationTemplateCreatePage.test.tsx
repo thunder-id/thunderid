@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import type {TemplateWarning} from '@thunderid/configure-design';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -122,28 +123,46 @@ vi.mock('@/components/create-template/ConfigureTemplateIdentity', () => ({
   ),
 }));
 
-// Step-3 stubs: a button that fills the content; the preview is inert.
+// Step-3 stubs: a button that fills the content and a list of the warnings it receives; the preview
+// only reports a warning when clicked.
 vi.mock('@/components/edit-template/TemplateContentEditor', () => ({
   default: ({
     onSubjectChange,
     onBodyChange,
+    warnings = [],
   }: {
     onSubjectChange: (v: string) => void;
     onBodyChange: (v: string) => void;
+    warnings?: TemplateWarning[];
   }) => (
+    <>
+      <button
+        type="button"
+        data-testid="fill-content"
+        onClick={() => {
+          onSubjectChange('Your code');
+          onBodyChange('<p>Body</p>');
+        }}
+      >
+        fill content
+      </button>
+      <div data-testid="content-warnings">{warnings.map((w) => `${w.field}:${w.code}`).join(',')}</div>
+    </>
+  ),
+}));
+vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({
+  default: ({onWarningsChange}: {onWarningsChange?: (warnings: TemplateWarning[]) => void}) => (
     <button
       type="button"
-      data-testid="fill-content"
-      onClick={() => {
-        onSubjectChange('Your code');
-        onBodyChange('<p>Body</p>');
-      }}
+      data-testid="preview"
+      onClick={() =>
+        onWarningsChange?.([{field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(x)}}'}])
+      }
     >
-      fill content
+      report warnings
     </button>
   ),
 }));
-vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({default: () => <div data-testid="preview" />}));
 
 describe('NotificationTemplateCreatePage', () => {
   let t: (key: string) => string;
@@ -340,5 +359,20 @@ describe('NotificationTemplateCreatePage', () => {
     await user.click(screen.getByRole('button', {name: t('common:actions.cancel')}));
 
     expect(mockNavigate).toHaveBeenCalledWith('/notification-templates/email');
+  });
+
+  it('passes the warnings reported by the preview to the content editor', async () => {
+    const user = userEvent.setup();
+    render(<NotificationTemplateCreatePage />);
+
+    await startFromScratch(user);
+    await user.click(screen.getByTestId('fill-identity'));
+    await user.click(continueBtn());
+
+    expect(screen.getByTestId('content-warnings')).toBeEmptyDOMElement();
+
+    await user.click(screen.getByTestId('preview'));
+
+    expect(screen.getByTestId('content-warnings')).toHaveTextContent('body:unsupported');
   });
 });

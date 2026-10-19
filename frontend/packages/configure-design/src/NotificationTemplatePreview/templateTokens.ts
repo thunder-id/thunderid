@@ -16,8 +16,9 @@ export interface ParsedToken {
   key?: string;
 }
 
-/** A token the preview cannot render faithfully. */
+/** A token the preview cannot render faithfully, tagged with the field it appears in. */
 export interface TemplateWarning {
+  field: TemplateField;
   severity: 'error' | 'warning';
   code: 'unsupported' | 'designNotAllowed' | 'designUnresolved' | 'missingTranslation' | 'unknownContext';
   token: string;
@@ -142,14 +143,14 @@ function collectFieldWarnings(
   const warnings: TemplateWarning[] = [];
   for (const token of parseTokens(text)) {
     if (token.kind === null) {
-      warnings.push({severity: 'error', code: 'unsupported', token: token.raw});
+      warnings.push({field, severity: 'error', code: 'unsupported', token: token.raw});
       continue;
     }
     if (token.kind === 'design') {
       if (field === 'subject' || channel === 'sms') {
-        warnings.push({severity: 'error', code: 'designNotAllowed', token: token.raw});
+        warnings.push({field, severity: 'error', code: 'designNotAllowed', token: token.raw});
       } else if (token.key !== undefined && resolveDesignToken(token.key, opts.theme, scheme) === undefined) {
-        warnings.push({severity: 'warning', code: 'designUnresolved', token: token.raw});
+        warnings.push({field, severity: 'warning', code: 'designUnresolved', token: token.raw});
       }
       continue;
     }
@@ -158,7 +159,7 @@ function collectFieldWarnings(
       // the offered catalog) will render literally on send — surface it like a missing translation.
       // Only validate when the caller supplies the catalog; otherwise ctx is left unchecked.
       if (opts.contextKeys !== undefined && token.key !== undefined && !opts.contextKeys.has(token.key)) {
-        warnings.push({severity: 'error', code: 'unknownContext', token: token.raw});
+        warnings.push({field, severity: 'error', code: 'unknownContext', token: token.raw});
       }
       continue;
     }
@@ -170,13 +171,13 @@ function collectFieldWarnings(
     ) {
       // Preview translations are already the best match across languages, so a key missing here has
       // no value in any language and the renderer fails the send — surface it as an error, not a warning.
-      warnings.push({severity: 'error', code: 'missingTranslation', token: token.raw});
+      warnings.push({field, severity: 'error', code: 'missingTranslation', token: token.raw});
     }
   }
   return warnings;
 }
 
-/** De-duplicated warnings across subject and body. */
+/** Warnings for subject and body, de-duplicated within each field. */
 export function collectWarnings(input: {
   subject?: string;
   body: string;
@@ -203,7 +204,7 @@ export function collectWarnings(input: {
   const seen = new Set<string>();
   const deduped: TemplateWarning[] = [];
   for (const warning of all) {
-    const dedupeKey = `${warning.code}:${warning.token}`;
+    const dedupeKey = `${warning.field}:${warning.code}:${warning.token}`;
     if (seen.has(dedupeKey)) {
       continue;
     }
@@ -211,4 +212,46 @@ export function collectWarnings(input: {
     deduped.push(warning);
   }
   return deduped;
+}
+
+/** Maps a warning code to a localized message; keys carry the `design:` namespace so any `t` resolves them. */
+export function templateWarningMessage(
+  t: (key: string, defaultValue: string, options?: Record<string, unknown>) => string,
+  warning: TemplateWarning,
+): string {
+  const {code, token} = warning;
+  switch (code) {
+    case 'unsupported':
+      return t(
+        'design:notificationTemplatePreview.warnings.unsupported',
+        '"{{token}}" is not a supported token and will cause the template to fail to send.',
+        {token},
+      );
+    case 'designNotAllowed':
+      return t(
+        'design:notificationTemplatePreview.warnings.designNotAllowed',
+        'Design token "{{token}}" is only allowed in the email body, not here.',
+        {token},
+      );
+    case 'designUnresolved':
+      return t(
+        'design:notificationTemplatePreview.warnings.designUnresolved',
+        'Design token "{{token}}" does not match any value in the selected theme; it is shown as-is and may not render.',
+        {token},
+      );
+    case 'missingTranslation':
+      return t(
+        'design:notificationTemplatePreview.warnings.missingTranslation',
+        'No translation for "{{token}}" in any language; the template will fail to send until it is added.',
+        {token},
+      );
+    case 'unknownContext':
+      return t(
+        'design:notificationTemplatePreview.warnings.unknownContext',
+        '"{{token}}" is not a recognized context value and will not be substituted when the template is sent.',
+        {token},
+      );
+    default:
+      return token;
+  }
 }

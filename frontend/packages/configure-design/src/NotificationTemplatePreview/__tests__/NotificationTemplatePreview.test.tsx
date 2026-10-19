@@ -83,41 +83,71 @@ describe('NotificationTemplatePreview', () => {
   });
 
   it('warns about an unsupported token', () => {
-    render(<NotificationTemplatePreview channel="email" body="{{meta(application.name)}}" locale="en-US" />);
+    const onWarningsChange = vi.fn();
+    render(
+      <NotificationTemplatePreview
+        channel="email"
+        body="{{meta(application.name)}}"
+        locale="en-US"
+        onWarningsChange={onWarningsChange}
+      />,
+    );
 
-    expect(screen.getByText(/is not a supported token/i)).toBeInTheDocument();
+    expect(onWarningsChange).toHaveBeenLastCalledWith([
+      {field: 'body', severity: 'error', code: 'unsupported', token: '{{meta(application.name)}}'},
+    ]);
+    // The editor shows warnings on the fields now; the preview no longer renders a banner.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('warns when a design token is used in the subject', () => {
+    const onWarningsChange = vi.fn();
     render(
       <NotificationTemplatePreview
         channel="email"
         subject="{{design(palette.primary.main)}}"
         body="hi"
         locale="en-US"
+        onWarningsChange={onWarningsChange}
       />,
     );
 
-    expect(screen.getByText(/only allowed in the email body/i)).toBeInTheDocument();
+    expect(onWarningsChange).toHaveBeenLastCalledWith([
+      {field: 'subject', severity: 'error', code: 'designNotAllowed', token: '{{design(palette.primary.main)}}'},
+    ]);
   });
 
   it('warns when a translation has no value for the locale', () => {
-    render(<NotificationTemplatePreview channel="email" body="{{t(missing.key)}}" locale="en-US" />);
+    const onWarningsChange = vi.fn();
+    render(
+      <NotificationTemplatePreview
+        channel="email"
+        body="{{t(missing.key)}}"
+        locale="en-US"
+        onWarningsChange={onWarningsChange}
+      />,
+    );
 
-    expect(screen.getByText(/No translation for/i)).toBeInTheDocument();
+    expect(onWarningsChange).toHaveBeenLastCalledWith([
+      {field: 'body', severity: 'error', code: 'missingTranslation', token: '{{t(missing.key)}}'},
+    ]);
   });
 
   it('warns when an unknown context token is used', () => {
+    const onWarningsChange = vi.fn();
     render(
       <NotificationTemplatePreview
         channel="email"
         body="{{ctx(unknownKey)}}"
         locale="en-US"
         contextKeys={new Set(['otpCode'])}
+        onWarningsChange={onWarningsChange}
       />,
     );
 
-    expect(screen.getByText(/is not a recognized context value/i)).toBeInTheDocument();
+    expect(onWarningsChange).toHaveBeenLastCalledWith([
+      {field: 'body', severity: 'error', code: 'unknownContext', token: '{{ctx(unknownKey)}}'},
+    ]);
   });
 
   it('leaves ctx tokens unchecked when no context catalog is provided', () => {

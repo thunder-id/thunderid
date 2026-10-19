@@ -73,6 +73,13 @@ describe('TemplatePreviewPanel', () => {
       );
     });
 
+    it('forwards onWarningsChange to the preview', () => {
+      const onWarningsChange = vi.fn();
+      render(<TemplatePreviewPanel {...defaultProps} onWarningsChange={onWarningsChange} />);
+
+      expect(mockPreview).toHaveBeenCalledWith(expect.objectContaining({onWarningsChange}));
+    });
+
     it('resolves and forwards the selected theme to the preview', async () => {
       mockUseGetTheme.mockReturnValue({data: {theme: {colorSchemes: {light: {palette: {}}}}}});
       const user = userEvent.setup();
