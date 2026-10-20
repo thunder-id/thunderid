@@ -128,3 +128,35 @@ var (
 		},
 	}
 )
+
+// Authorization details errors, treated by the consent executor as a denial rather than a flow failure.
+var (
+	// ErrorAuthorizationDetailsNotAdmitted is returned when consent is reached for details whose type
+	// processor has not admitted them.
+	ErrorAuthorizationDetailsNotAdmitted = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "RAR-5001",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_details_not_admitted",
+			DefaultValue: "Authorization details were not processed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_details_not_admitted_description",
+			DefaultValue: "Consent was reached for authorization details whose type processor did not run",
+		},
+	}
+	// ErrorAuthorizationDetailModificationRefused is returned when the user changes an authorization
+	// detail in a way its type does not allow.
+	ErrorAuthorizationDetailModificationRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_detail_modification_refused",
+			DefaultValue: "Authorization details change refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.consentenforcerservice.authorization_detail_modification_refused_description",
+			DefaultValue: "The change made to the authorization details is not allowed",
+		},
+	}
+)

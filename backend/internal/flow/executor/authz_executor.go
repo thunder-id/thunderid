@@ -143,9 +143,21 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		log.Int("roleCount", len(mappedRoleIDs)),
 		log.Int("permissionCount", len(requestedPerms)))
 
-	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(
-			userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID))
+	evaluationsRequest := a.buildAccessEvaluationsRequest(
+		userID, entityCategory, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID)
+	// Authorization details are passed as context; the policy engine decides only the permissions.
+	details, err := requestedAuthorizationDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(details) > 0 {
+		requested := make([]json.RawMessage, 0, len(details))
+		for _, detail := range details {
+			requested = append(requested, detail.Requested)
+		}
+		evaluationsRequest.SetContext(providers.AccessEvaluationContextAuthorizationDetails, requested)
+	}
+	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context, evaluationsRequest)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))

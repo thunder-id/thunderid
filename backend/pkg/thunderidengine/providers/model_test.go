@@ -344,6 +344,32 @@ func (suite *ModelTestSuite) TestApplication_EntityCategoryIsNotSerialized() {
 	assert.NotContains(suite.T(), string(out), "agent")
 }
 
+func (suite *ModelTestSuite) TestAccessEvaluationsRequest_SetContext_SetsOnEveryEvaluation() {
+	req := &AccessEvaluationsRequest{Evaluations: []AccessEvaluationRequest{
+		{Permission: Permission{Name: "read"}},
+		{Permission: Permission{Name: "write"}, Context: map[string]interface{}{"existing": "value"}},
+	}}
+	details := []interface{}{map[string]interface{}{"type": "payment_initiation"}}
+
+	req.SetContext(AccessEvaluationContextAuthorizationDetails, details)
+
+	for _, evaluation := range req.Evaluations {
+		suite.Require().NotNil(evaluation.Context)
+		suite.Equal(details, evaluation.Context[AccessEvaluationContextAuthorizationDetails])
+	}
+	suite.Len(req.Evaluations[0].Context, 1)
+	suite.Equal("value", req.Evaluations[1].Context["existing"])
+	suite.Len(req.Evaluations[1].Context, 2)
+}
+
+func (suite *ModelTestSuite) TestAccessEvaluationsRequest_SetContext_NoEvaluationsIsNoop() {
+	req := &AccessEvaluationsRequest{}
+
+	req.SetContext(AccessEvaluationContextAuthorizationDetails, "value")
+
+	suite.Empty(req.Evaluations)
+}
+
 // ----- AuthorizationRuleMapping -----
 
 type AuthorizationRuleMappingModelTestSuite struct {

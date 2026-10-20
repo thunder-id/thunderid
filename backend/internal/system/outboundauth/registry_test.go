@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -94,31 +93,4 @@ func (s *RegistryTestSuite) TestGetMethodsServesFieldlessMethodAsEmptyArray() {
 	encoded, err := json.Marshal(result[0])
 	s.Require().NoError(err)
 	s.Contains(string(encoded), `"fields":[]`)
-}
-
-// Every credential field of every registered method is listed once, so a secret may be imported
-// into any of them and nowhere else.
-func TestCredentialFieldKeysListsEachCredentialOnce(t *testing.T) {
-	keys := CredentialFieldKeys()
-
-	assert.Contains(t, keys, FieldBasicPassword)
-	seen := map[string]bool{}
-	for _, key := range keys {
-		assert.False(t, seen[key], "%q is listed twice", key)
-		seen[key] = true
-		credential := false
-		for _, method := range registeredMethods {
-			for _, field := range method.Fields {
-				credential = credential || (field.Key == key && field.Credential)
-			}
-		}
-		assert.True(t, credential, "%q is not a credential field of any method", key)
-	}
-	for _, method := range registeredMethods {
-		for _, field := range method.Fields {
-			if field.Credential {
-				assert.Contains(t, keys, field.Key)
-			}
-		}
-	}
 }

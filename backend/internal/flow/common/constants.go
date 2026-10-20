@@ -265,6 +265,10 @@ const (
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
+	// RuntimeKeyRequestedAuthorizationDetails holds the requested RFC 9396 authorization details as JSON.
+	RuntimeKeyRequestedAuthorizationDetails = "requested_authorization_details"
+	// RuntimeKeyConsentedAuthorizationDetails holds the authorization details granted by consent as JSON.
+	RuntimeKeyConsentedAuthorizationDetails = "consented_authorization_details"
 	// RuntimeKeyCallbackType holds the OAuth grant type of the initiating request, seeded by the OAuth
 	// initiator and surfaced onto the terminal flow response as DataCallbackType so the Gate/SDK routes
 	// to the correct callback handler. Absent for non-OAuth flows.

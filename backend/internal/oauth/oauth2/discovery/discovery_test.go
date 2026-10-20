@@ -10,6 +10,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -21,8 +24,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailtypeprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
@@ -92,7 +97,9 @@ func (suite *DiscoveryTestSuite) SetupTest() {
 		Return(testConfig.OAuth.DPoP.AllowedAlgs).Maybe()
 	suite.cryptoMock.EXPECT().GetSupportedEncryptionAlgorithms().
 		Return([]string{string(cryptolib.AlgorithmRSAOAEP256)}).Maybe()
-	suite.discoveryService = newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfg)
+	suite.discoveryService = newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock),
+		authzdetailexec.NoTypes(),
+		suite.oauthCfg)
 	suite.handler = newDiscoveryHandler(suite.discoveryService)
 }
 
@@ -231,7 +238,8 @@ func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured
 	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 	cryptoMock.EXPECT().GetSupportedSigningAlgorithms().Return(nil)
 
-	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	oauth2Meta := svc.GetOAuth2AuthorizationServerMetadata(context.Background())
 	assert.Nil(suite.T(), oauth2Meta.DPoPSigningAlgValuesSupported)
 
@@ -263,7 +271,8 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_BackchannelLogoutFlags() {
 			suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
 				Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil).
 				Once()
-			svc := newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock), cfg)
+			svc := newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock),
+				authzdetailexec.NoTypes(), cfg)
 
 			meta, err := svc.GetOIDCMetadata(context.Background())
 
@@ -289,7 +298,8 @@ func (suite *DiscoveryTestSuite) TestDCRRevocationLogoutEndpointsOmittedWhenDisa
 	defer config.ResetServerRuntime()
 
 	svc := newDiscoveryService(
-		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	oauth2Meta := svc.GetOAuth2AuthorizationServerMetadata(context.Background())
 	assert.Empty(suite.T(), oauth2Meta.RegistrationEndpoint)
 	assert.Empty(suite.T(), oauth2Meta.RevocationEndpoint)
@@ -322,7 +332,8 @@ func (suite *DiscoveryTestSuite) TestClientIDMetadataDocumentSupported() {
 	defer config.ResetServerRuntime()
 
 	svc := newDiscoveryService(
-		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	assert.True(suite.T(), svc.GetOAuth2AuthorizationServerMetadata(context.Background()).
 		ClientIDMetadataDocumentSupported)
 }
@@ -390,7 +401,8 @@ func (suite *DiscoveryTestSuite) TestInitialize() {
 		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
 
 	mux := http.NewServeMux()
-	service := Initialize(mux, suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfg)
+	service := Initialize(mux, suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfg)
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*DiscoveryServiceInterface)(nil), service)
@@ -433,7 +445,8 @@ func (suite *DiscoveryTestSuite) TestGetBaseURL_WithPublicHostname() {
 	_ = config.InitializeServerRuntime("test", testConfig)
 
 	service := newDiscoveryService(
-		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	metadata := service.GetOAuth2AuthorizationServerMetadata(context.Background())
 	assert.Contains(suite.T(), metadata.AuthorizationEndpoint, "public.thunder.io")
 	config.ResetServerRuntime()
@@ -454,7 +467,8 @@ func (suite *DiscoveryTestSuite) TestGetBaseURL_WithHTTPOnly() {
 	_ = config.InitializeServerRuntime("test", testConfig)
 
 	service := newDiscoveryService(
-		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	metadata := service.GetOAuth2AuthorizationServerMetadata(context.Background())
 	assert.Contains(suite.T(), metadata.AuthorizationEndpoint, "http://")
 	config.ResetServerRuntime()
@@ -470,7 +484,7 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_MultipleKeyAlgorithms() {
 			{KeyID: "k2", Algorithm: string(cryptolib.AlgorithmES256)},
 			{KeyID: "k3", Algorithm: string(cryptolib.AlgorithmEdDSA)},
 		}, nil)
-	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), suite.oauthCfg)
+	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), authzdetailexec.NoTypes(), suite.oauthCfg)
 	meta, err := svc.GetOIDCMetadata(context.Background())
 	assert.NoError(suite.T(), err)
 	algs := meta.IDTokenSigningAlgValuesSupported
@@ -490,7 +504,7 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_DeduplicatesAlgorithms() {
 			{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)},
 			{KeyID: "k2", Algorithm: string(cryptolib.AlgorithmRS256)},
 		}, nil)
-	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), suite.oauthCfg)
+	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), authzdetailexec.NoTypes(), suite.oauthCfg)
 	meta, err := svc.GetOIDCMetadata(context.Background())
 	assert.NoError(suite.T(), err)
 	algs := meta.IDTokenSigningAlgValuesSupported
@@ -527,7 +541,8 @@ func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_JWTBear
 	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
 		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
 
-	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+	svc := newDiscoveryService(cryptoMock, newTestJWEService(cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	meta, err := svc.GetOIDCMetadata(context.Background())
 	assert.NoError(suite.T(), err)
 
@@ -589,7 +604,8 @@ func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_NotOnOA
 		},
 	}
 	svc := newDiscoveryService(
-		suite.cryptoMock, newTestJWEService(suite.cryptoMock), suite.oauthCfgFromServerConfig(testConfig))
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(),
+		suite.oauthCfgFromServerConfig(testConfig))
 	handler := newDiscoveryHandler(svc)
 
 	req := httptest.NewRequest("GET", "/.well-known/oauth-authorization-server", nil)
@@ -614,7 +630,7 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_EngineOverridesLandInWellKnow
 	}
 	cfg.OAuth.AllowedSubjectTypes = []string{"public", "pairwise"}
 
-	svc := newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock), cfg)
+	svc := newDiscoveryService(suite.cryptoMock, newTestJWEService(suite.cryptoMock), authzdetailexec.NoTypes(), cfg)
 	meta, err := svc.GetOIDCMetadata(context.Background())
 	assert.NoError(suite.T(), err)
 
@@ -648,4 +664,218 @@ func (suite *DiscoveryTestSuite) TestRequestObjectParametersSerializedExplicitly
 	value, present = doc["request_parameter_supported"]
 	assert.True(suite.T(), present, "request_parameter_supported must be present")
 	assert.Equal(suite.T(), false, value)
+}
+
+const testPaymentType = "https://bank.example.com/payment"
+
+// testPaymentSchema has a client-decreasable field, a user-changeable field and a processor-supplied field.
+var testPaymentSchema = json.RawMessage(`{"type":"object","properties":{` +
+	`"amount":{"type":"number","maximum":100,"policy":{"modification":"decrease","modifiableBy":["client","user"]}},` +
+	`"until":{"type":"string","format":"date","policy":{"modification":"decrease","modifiableBy":["user"]}},` +
+	`"creditorAccount":{"type":"string","policy":{"suppliedBy":"processor"}}},` +
+	`"required":["amount","creditorAccount"]}`)
+
+type AuthorizationDetailsTypesTestSuite struct {
+	suite.Suite
+	types   *authzdetailtypeprovidermock.AuthorizationDetailTypeProviderMock
+	service DiscoveryServiceInterface
+	handler discoveryHandlerInterface
+}
+
+func TestAuthorizationDetailsTypesTestSuite(t *testing.T) {
+	suite.Run(t, new(AuthorizationDetailsTypesTestSuite))
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) SetupTest() {
+	s.types = authzdetailtypeprovidermock.NewAuthorizationDetailTypeProviderMock(s.T())
+	s.service, s.handler = s.newService(true)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) newService(enabled bool) (DiscoveryServiceInterface,
+	discoveryHandlerInterface) {
+	crypto := cryptomock.NewRuntimeCryptoProviderMock(s.T())
+	crypto.EXPECT().GetSupportedSigningAlgorithms().Return(nil).Maybe()
+	cfg := oauthconfig.Config{BaseURL: "https://auth.example.com", OAuth: engineconfig.OAuthConfig{
+		AuthorizationDetails: engineconfig.AuthorizationDetailsConfig{TypeMetadataEnabled: &enabled}}}
+	service := newDiscoveryService(crypto, nil, s.types, cfg)
+	return service, newDiscoveryHandler(service)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) paymentType() *providers.AuthorizationDetailType {
+	return &providers.AuthorizationDetailType{ID: "type-1", Type: testPaymentType, Name: "Payment",
+		Description: "A single payment", Version: 3, Schema: testPaymentSchema, ConsentTemplate: "Pay {{amount}}",
+		Processor: &providers.AuthorizationDetailProcessor{Endpoint: "https://bank.example.com/process"},
+		Reuse:     true}
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestDiscoveryAdvertisesEndpoint() {
+	s.types.EXPECT().ListAuthorizationDetailTypeValues(mock.Anything).Return([]string{testPaymentType}, nil)
+
+	metadata := s.service.GetOAuth2AuthorizationServerMetadata(context.Background())
+
+	s.Equal([]string{testPaymentType}, metadata.AuthorizationDetailsTypesSupported)
+	s.Equal("https://auth.example.com"+constants.OAuth2AuthorizationDetailsTypesEndpoint,
+		metadata.AuthorizationDetailsTypesEndpoint)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestDiscoveryOmitsEndpointWhenDisabled() {
+	s.types.EXPECT().ListAuthorizationDetailTypeValues(mock.Anything).Return([]string{testPaymentType}, nil)
+	service, _ := s.newService(false)
+
+	metadata := service.GetOAuth2AuthorizationServerMetadata(context.Background())
+
+	s.Equal([]string{testPaymentType}, metadata.AuthorizationDetailsTypesSupported)
+	s.Empty(metadata.AuthorizationDetailsTypesEndpoint)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestRoutesRegisteredOnlyWhenEnabled() {
+	enabled, disabled := true, false
+	for name, tc := range map[string]struct {
+		setting *bool
+		want    int
+	}{"enabled": {&enabled, http.StatusOK}, "disabled": {&disabled, http.StatusNotFound},
+		"unset": {nil, http.StatusOK}} {
+		types := authzdetailtypeprovidermock.NewAuthorizationDetailTypeProviderMock(s.T())
+		types.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).Return(nil, nil).Maybe()
+		cfg := oauthconfig.Config{OAuth: engineconfig.OAuthConfig{
+			AuthorizationDetails: engineconfig.AuthorizationDetailsConfig{TypeMetadataEnabled: tc.setting}}}
+		mux := http.NewServeMux()
+		Initialize(mux, nil, nil, types, cfg)
+
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, constants.OAuth2AuthorizationDetailsTypesEndpoint, nil))
+
+		s.Equal(tc.want, w.Code, name)
+	}
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeReturnsRequestViewOnly() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(s.paymentType(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorization-details-types/x", nil)
+	req.SetPathValue("type", testPaymentType)
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsType(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.NotEmpty(w.Header().Get("ETag"))
+	s.JSONEq(`{"type":"`+testPaymentType+`","name":"Payment","description":"A single payment","version":3,`+
+		`"schema":{"type":"object","properties":{"amount":{"type":"number","maximum":100},`+
+		`"until":{"type":"string","format":"date"}},"required":["amount"]},`+
+		`"modifications":[{"field":"amount","modification":"decrease"}]}`, w.Body.String())
+	for _, internal := range []string{"type-1", "processor", "bank.example.com/process", "Pay {{amount}}", "reuse",
+		"policy", "creditorAccount"} {
+		s.NotContains(w.Body.String(), internal)
+	}
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeDecodesTheURLEncodedTypeInThePath() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(s.paymentType(), nil)
+	mux := http.NewServeMux()
+	registerAuthorizationDetailsTypesRoutes(mux, s.handler)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
+		constants.OAuth2AuthorizationDetailsTypesEndpoint+"/https%3A%2F%2Fbank.example.com%2Fpayment", nil))
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Contains(w.Body.String(), `"type":"`+testPaymentType+`"`)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeAnswersNotModifiedForMatchingETag() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(s.paymentType(), nil)
+	first := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorization-details-types/x", nil)
+	req.SetPathValue("type", testPaymentType)
+	s.handler.HandleAuthorizationDetailsType(first, req)
+
+	req.Header.Set("If-None-Match", first.Header().Get("ETag"))
+	second := httptest.NewRecorder()
+	s.handler.HandleAuthorizationDetailsType(second, req)
+
+	s.Equal(http.StatusNotModified, second.Code)
+	s.Empty(second.Body.String())
+}
+
+func TestEtagListed(t *testing.T) {
+	etag := `"abc"`
+	for header, want := range map[string]bool{
+		`"abc"`:          true,
+		`W/"abc"`:        true,
+		`"x", W/"abc"`:   true,
+		"*":              true,
+		`"abd"`:          false,
+		"":               false,
+		`W/"abd", "abe"`: false,
+	} {
+		assert.Equal(t, want, etagListed(header, etag), header)
+	}
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeNotFound() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, "unknown").Return(nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorization-details-types/unknown", nil)
+	req.SetPathValue("type", "unknown")
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsType(w, req)
+
+	s.Equal(http.StatusNotFound, w.Code)
+	s.Contains(w.Body.String(), "RAR-1029")
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeWithUnreadablePoliciesFails() {
+	broken := s.paymentType()
+	broken.Schema = json.RawMessage(`{"type":"object","properties":{"secret":{"type":"string",` +
+		`"policy":{"suppliedBy":"processor","modification":"bogus"}}}}`)
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).Return(broken, nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorization-details-types/x", nil)
+	req.SetPathValue("type", testPaymentType)
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsType(w, req)
+
+	s.Equal(http.StatusInternalServerError, w.Code)
+	s.NotContains(w.Body.String(), "secret")
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestGetTypeStoreFailure() {
+	s.types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testPaymentType).
+		Return(nil, &tidcommon.InternalServerError)
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/authorization-details-types/x", nil)
+	req.SetPathValue("type", testPaymentType)
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsType(w, req)
+
+	s.Equal(http.StatusInternalServerError, w.Code)
+}
+
+// The list is read from the registry in one call, not one call per type.
+func (s *AuthorizationDetailsTypesTestSuite) TestListTypesReadsTheRegistryOnce() {
+	s.types.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
+		Return([]providers.AuthorizationDetailType{*s.paymentType()}, nil).Once()
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsTypes(w, httptest.NewRequest(http.MethodGet,
+		constants.OAuth2AuthorizationDetailsTypesEndpoint, nil))
+
+	s.Equal(http.StatusOK, w.Code)
+	var resp AuthorizationDetailsTypesResponse
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Require().Len(resp.Types, 1)
+	s.Equal(testPaymentType, resp.Types[0].Type)
+}
+
+func (s *AuthorizationDetailsTypesTestSuite) TestListTypesStoreFailure() {
+	s.types.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).Return(nil, &tidcommon.InternalServerError)
+	w := httptest.NewRecorder()
+
+	s.handler.HandleAuthorizationDetailsTypes(w, httptest.NewRequest(http.MethodGet,
+		constants.OAuth2AuthorizationDetailsTypesEndpoint, nil))
+
+	s.Equal(http.StatusInternalServerError, w.Code)
+	var resp apierror.ErrorResponse
+	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	s.Equal(tidcommon.InternalServerError.Code, resp.Code)
 }

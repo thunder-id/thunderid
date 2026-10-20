@@ -32,6 +32,7 @@ func Initialize(
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
 	jtiStore jti.JTIStoreInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) (AuthorizeServiceInterface, error) {
 	authzCodeStore := newAuthorizationCodeStore(storeProvider)
 	authzReqStore := newAuthorizationRequestStore(storeProvider, cfg.OAuth.AuthorizationRequest.ValidityPeriod)
@@ -39,7 +40,7 @@ func Initialize(
 	authzService := newAuthorizeService(
 		actorProvider, resourceService, jwtService, flowExecService,
 		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker,
-		ssoSession, flowProvider, cfg, jtiStore,
+		ssoSession, flowProvider, cfg, jtiStore, authzDetails,
 	)
 	authzHandler := newAuthorizeHandler(authzService, ssoTransport, cfg)
 	registerRoutes(mux, authzHandler)

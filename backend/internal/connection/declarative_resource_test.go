@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -844,12 +845,17 @@ func yamlPathOf(structPath string) string {
 func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets() {
 	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
 	fields := exporter.SecretFields()
-	s.Contains(fields, "authentication.properties."+outboundauth.FieldBasicPassword)
+	s.True(secretAllowedAt(fields, "authentication.properties."+outboundauth.FieldBasicPassword))
+	s.False(secretAllowedAt(fields, "name"), "a secret outside a credential field is refused")
 
 	for _, model := range []*connectionExportModel{
 		{Type: "google", ClientSecret: "s"},
 		{Type: "twilio", AuthToken: "t"},
 		{Type: "vonage", APISecret: "a"},
+		{Type: smsGatewayVendorName, Authentication: &outboundauth.Authentication{
+			Type:       string(outboundauth.TypeAPIKey),
+			Properties: map[string]string{"X-Api-Key": "k"},
+		}},
 		{Type: emailSMTPVendorName, Authentication: &outboundauth.Authentication{
 			Type: string(outboundauth.TypeBasic),
 			Properties: map[string]string{
@@ -860,7 +866,30 @@ func (s *DeclarativeResourceTestSuite) TestSecretFieldsCoverEveryVendorsSecrets(
 		rules := exporter.GetResourceRulesForResource(model)
 		s.Require().NotEmpty(rules.SecretVariables, model.Type)
 		for _, path := range rules.SecretVariables {
-			s.Contains(fields, yamlPathOf(path), model.Type)
+			s.True(secretAllowedAt(fields, yamlPathOf(path)), "%s: %s", model.Type, path)
 		}
 	}
+}
+
+// secretAllowedAt reports whether an import accepts a secret reference at a dotted field path, judged the way
+// the secret resolver judges an imported document.
+func secretAllowedAt(fields []string, path string) bool {
+	parts := strings.Split(path, ".")
+	doc := map[string]interface{}{}
+	current := doc
+	for _, part := range parts[:len(parts)-1] {
+		next := map[string]interface{}{}
+		current[part] = next
+		current = next
+	}
+	current[parts[len(parts)-1]] = "sec:TEST_SECRET"
+	encoded, err := yaml.Marshal(doc)
+	if err != nil {
+		return false
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(encoded, &node); err != nil {
+		return false
+	}
+	return len(secretresolver.MisplacedSecrets(&node, fields)) == 0
 }

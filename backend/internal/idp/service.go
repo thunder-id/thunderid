@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -21,6 +20,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/rule"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -957,46 +957,46 @@ func validateAuthorizationRuleMappings(mappings []providers.AuthorizationRuleMap
 // validateAuthorizationRule validates a single rule: operator compatible with the mapping's shape
 // and value type, a parseable value, and at least one well-formed target.
 func validateAuthorizationRule(
-	mapping providers.AuthorizationRuleMapping, rule providers.AuthorizationRule,
+	mapping providers.AuthorizationRuleMapping, authzRule providers.AuthorizationRule,
 ) *tidcommon.ServiceError {
 	claim := mapping.Claim
 	valueType := mapping.EffectiveValueType()
 
-	if !rule.Operator.IsValid() {
+	if !authzRule.Operator.IsValid() {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_operator_invalid_description",
 			DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' has an unsupported " +
 				"operator '{{param(operator)}}'",
-			Params: map[string]string{"claim": claim, "operator": string(rule.Operator)},
+			Params: map[string]string{"claim": claim, "operator": string(authzRule.Operator)},
 		})
 	}
-	if rule.Operator.IsMembership() && !mapping.IsMultiValued() {
+	if authzRule.Operator.IsMembership() && !mapping.IsMultiValued() {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_membership_requires_multi_valued_description",
 			DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' uses operator " +
 				"'{{param(operator)}}', which requires an array value type or a string value type " +
 				"with a delimiter",
-			Params: map[string]string{"claim": claim, "operator": string(rule.Operator)},
+			Params: map[string]string{"claim": claim, "operator": string(authzRule.Operator)},
 		})
 	}
-	if !rule.Operator.IsMembership() && mapping.IsMultiValued() {
+	if !authzRule.Operator.IsMembership() && mapping.IsMultiValued() {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_multi_valued_requires_membership_description",
 			DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' declares multiple " +
 				"values, so its rules must use the includes or not_includes operator, not " +
 				"'{{param(operator)}}'",
-			Params: map[string]string{"claim": claim, "operator": string(rule.Operator)},
+			Params: map[string]string{"claim": claim, "operator": string(authzRule.Operator)},
 		})
 	}
-	if rule.Operator.IsOrdering() && valueType != providers.AuthorizationValueTypeNumber {
+	if authzRule.Operator.IsOrdering() && valueType != providers.AuthorizationValueTypeNumber {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_operator_requires_number_description",
 			DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' uses operator " +
 				"'{{param(operator)}}', which requires a number value type",
-			Params: map[string]string{"claim": claim, "operator": string(rule.Operator)},
+			Params: map[string]string{"claim": claim, "operator": string(authzRule.Operator)},
 		})
 	}
-	if strings.TrimSpace(rule.Value) == "" {
+	if strings.TrimSpace(authzRule.Value) == "" {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_empty_value_description",
 			DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' must not contain an " +
@@ -1005,35 +1005,35 @@ func validateAuthorizationRule(
 		})
 	}
 	if valueType == providers.AuthorizationValueTypeNumber {
-		if _, err := strconv.ParseFloat(strings.TrimSpace(rule.Value), 64); err != nil {
+		if err := rule.Validate(strings.TrimSpace(authzRule.Value), rule.TypeNumber); err != nil {
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_value_not_number_description",
 				DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' has value " +
 					"'{{param(value)}}', which is not a number",
-				Params: map[string]string{"claim": claim, "value": rule.Value},
+				Params: map[string]string{"claim": claim, "value": authzRule.Value},
 			})
 		}
 	}
 	if valueType == providers.AuthorizationValueTypeBoolean {
-		if _, err := strconv.ParseBool(strings.TrimSpace(rule.Value)); err != nil {
+		if err := rule.Validate(strings.TrimSpace(authzRule.Value), rule.TypeBoolean); err != nil {
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_value_not_boolean_description",
 				DefaultValue: "authorization rule mapping for claim '{{param(claim)}}' has value " +
 					"'{{param(value)}}', which is not a boolean",
-				Params: map[string]string{"claim": claim, "value": rule.Value},
+				Params: map[string]string{"claim": claim, "value": authzRule.Value},
 			})
 		}
 	}
-	if len(rule.Targets) == 0 {
+	if len(authzRule.Targets) == 0 {
 		return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 			Key: "error.idpservice.authorization_rule_mapping_no_targets_description",
 			DefaultValue: "authorization rule mapping value '{{param(value)}}' for claim " +
 				"'{{param(claim)}}' requires at least one target",
-			Params: map[string]string{"value": rule.Value, "claim": claim},
+			Params: map[string]string{"value": authzRule.Value, "claim": claim},
 		})
 	}
-	for _, target := range rule.Targets {
-		if svcErr := validateAuthorizationTarget(claim, rule.Value, target); svcErr != nil {
+	for _, target := range authzRule.Targets {
+		if svcErr := validateAuthorizationTarget(claim, authzRule.Value, target); svcErr != nil {
 			return svcErr
 		}
 	}

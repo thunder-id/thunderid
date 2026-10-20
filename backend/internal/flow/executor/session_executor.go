@@ -329,6 +329,10 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyForceReauth:    {},
 	common.RuntimeKeyMaxAge:         {},
 	common.RuntimeKeySilentAuthOnly: {},
+	// Authorization details and the consent prompt belong to the establishing authorization request.
+	common.RuntimeKeyRequestedAuthorizationDetails: {},
+	common.RuntimeKeyConsentedAuthorizationDetails: {},
+	common.RuntimeKeyConsentSessionToken:           {},
 	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
 	"applicationId": {},
 }

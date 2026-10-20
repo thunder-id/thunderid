@@ -6,6 +6,8 @@ package ciba
 
 import (
 	"time"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // CIBARequestState represents the lifecycle state of a CIBA authentication request.
@@ -45,6 +47,9 @@ type CIBAAuthRequest struct {
 	ExpiryTime       time.Time
 	// AuthorizedAt is when the request was marked authenticated, which a reused session's AuthTime predates.
 	AuthorizedAt time.Time
+	// AuthorizationDetails holds the requested RFC 9396 details, replaced by the approved ones on authentication.
+	AuthorizationDetails []providers.AuthorizationDetail `json:",omitempty"`
+	FailureDescription   string                          `json:",omitempty"`
 }
 
 // BackchannelAuthResponse represents the response body for a successful backchannel authentication request.
@@ -71,6 +76,8 @@ type BackchannelAuthRequest struct {
 	ACRValues       string
 	Headers         map[string][]string
 	QueryParams     map[string][]string
+	// AuthorizationDetails is the raw RFC 9396 authorization_details parameter.
+	AuthorizationDetails string
 }
 
 // assertionClaims represents the claims extracted from the flow assertion JWT.
@@ -82,4 +89,6 @@ type assertionClaims struct {
 	authReqID             string
 	authorizedPermissions string
 	flowErrorType         string
+	// grantedAuthorizationDetails is nil when the assertion carries no decision on them.
+	grantedAuthorizationDetails []providers.AuthorizationDetail
 }

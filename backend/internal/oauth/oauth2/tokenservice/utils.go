@@ -423,6 +423,7 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimIDP] = true
 	reserved[constants.ClaimTokenFamilyID] = true
 	reserved[constants.ClaimSessionID] = true
+	reserved[constants.ClaimAuthorizationDetails] = true
 	return reserved
 }
 

@@ -29,6 +29,8 @@ tags:
     description: Pushed Authorization Requests per RFC 9126.
   - name: JWKS
     description: JSON Web Key Set endpoint for token verification.
+  - name: Authorization Details Types
+    description: Request view of the RFC 9396 authorization details types the server supports.
   - name: UserInfo
     description: OIDC UserInfo endpoint for retrieving claims about the authenticated user.
   - name: DCR
@@ -124,9 +126,21 @@ paths:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values are rejected with invalid_target.
-            When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used. OIDC-only and scopeless requests use the
+            When omitted from a request carrying permission scopes or authorization details, the
+            configured defaultResourceServer is used. OIDC-only and scopeless requests use the
             client_id audience.
+        - name: authorization_details
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`.
+            Each object is validated against its type (its schema and limits; a member the type does
+            not declare is refused, the RFC 9396 common fields included), and an invalid one is
+            refused with `invalid_authorization_details`. Details carry no resource server: the access
+            token audience comes from `resource`, or the default resource server when it is omitted,
+            as for permission scopes.
         - name: acr_values
           in: query
           required: false
@@ -294,13 +308,17 @@ paths:
 
         RFC 8707 resource indicators bind the request to a single resource server before user
         authorization. A valid `resource` binds the request to that resource server; when omitted from
-        a permission-bearing request the configured `defaultResourceServer` is used, and a
-        permission-bearing request with no resource and no default is rejected with `invalid_target`.
+        a request carrying permission scopes or authorization details the configured
+        `defaultResourceServer` is used, and such a request with no resource and no default is
+        rejected with `invalid_target`.
         OIDC-only requests without a resource remain valid and keep the `client_id` audience. Multiple
         `resource` values, including duplicates, are rejected with `invalid_target`. The resulting
         access token has the bound resource server identifier as its sole `aud`, and its permissions
         are limited to those defined by that resource server. A `resource` optionally supplied when
         polling the token endpoint must exactly match the bound resource server.
+
+        RFC 9396 `authorization_details` may be sent here, as RFC 9396 section 3 allows for
+        backchannel authentication requests. See the `authorization_details` field.
       tags:
         - Backchannel Authentication
       requestBody:
@@ -332,7 +350,7 @@ paths:
         "400":
           description: >-
             Bad Request — invalid_request, invalid_scope, invalid_target, unknown_user_id,
-            invalid_binding_message, or unauthorized_client.
+            invalid_binding_message, invalid_authorization_details, or unauthorized_client.
           content:
             application/json:
               schema:
@@ -754,6 +772,120 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthError'
 
+  /oauth2/authorization-details-types:
+    get:
+      summary: List authorization details types
+      description: |
+        Returns the request view of every registered RFC 9396 authorization details type: the fields a
+        client may send, with their constraints, and the changes it may make to a granted detail at the
+        token endpoint. Processor, consent and reuse settings, the user and processor rules, and internal
+        identifiers are never returned. Public and read-only, advertised in discovery as
+        `authorization_details_types_endpoint`, and not served when
+        `oauth.authorization_details.type_metadata_enabled` is `false`.
+      tags:
+        - Authorization Details Types
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
+      responses:
+        "200":
+          description: The request view of every registered type.
+          headers:
+            ETag:
+              $ref: '#/components/headers/AuthorizationDetailsTypesETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailsTypesResponse'
+        "304":
+          description: The content matches the `If-None-Match` ETag.
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /oauth2/authorization-details-types/{type}:
+    get:
+      summary: Get an authorization details type
+      description: Returns the request view of one registered type.
+      tags:
+        - Authorization Details Types
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: The type value, URL-encoded since it may be a URI.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfNoneMatchHeader'
+      responses:
+        "200":
+          description: The request view of the type.
+          headers:
+            ETag:
+              $ref: '#/components/headers/AuthorizationDetailsTypesETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDetailsTypeMetadata'
+              example:
+                type: "payment_initiation"
+                name: "Payment initiation"
+                description: "Initiates a single payment from the user's account"
+                version: 3
+                schema:
+                  type: "object"
+                  required: ["instructedAmount", "creditorName"]
+                  properties:
+                    instructedAmount:
+                      type: "object"
+                      properties:
+                        amount: {type: "number", maximum: 10000}
+                        currency: {type: "string"}
+                    creditorName: {type: "string", maxLength: 140}
+                modifications:
+                  - field: "instructedAmount.amount"
+                    modification: "decrease"
+        "304":
+          description: The content matches the `If-None-Match` ETag.
+        "404":
+          description: No type is registered under the value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RAR-1029"
+                message:
+                  key: "error.discoveryservice.authorization_details_type_not_found"
+                  defaultValue: "Authorization details type not found"
+                description:
+                  key: "error.discoveryservice.authorization_details_type_not_found_description"
+                  defaultValue: "No authorization details type is registered under the requested value"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
 components:
   securitySchemes:
     OAuth2:
@@ -764,7 +896,60 @@ components:
           tokenUrl: https://localhost:8090/oauth2/token
           scopes:
             system: Access to system management APIs
+  parameters:
+    IfNoneMatchHeader:
+      name: If-None-Match
+      in: header
+      required: false
+      description: An ETag from an earlier response; the server answers `304` when the content is unchanged.
+      schema:
+        type: string
+  headers:
+    AuthorizationDetailsTypesETag:
+      description: An ETag of the response content.
+      schema:
+        type: string
   schemas:
+    AuthorizationDetailsTypesResponse:
+      type: object
+      required: [types]
+      properties:
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorizationDetailsTypeMetadata'
+    AuthorizationDetailsTypeMetadata:
+      type: object
+      required: [type, name, version, schema, modifications]
+      properties:
+        type:
+          type: string
+          description: The type value clients send in `authorization_details`.
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+          description: The type's version, which increments when a change affects earlier approvals and grants.
+        schema:
+          type: object
+          description: |
+            The JSON Schema 2020-12 of the fields a client may send, in the order the type declares them.
+            Fields the processor supplies and field policies are left out.
+        modifications:
+          type: array
+          description: The changes a client may make to a granted detail at the token endpoint.
+          items:
+            type: object
+            required: [field, modification]
+            properties:
+              field:
+                type: string
+                description: The dot-separated path of the field.
+              modification:
+                type: string
+                enum: [decrease, increase, removeItems, addItems]
     AuthCallbackRequest:
       type: object
       required:
@@ -864,8 +1049,8 @@ components:
           type: string
           description: >-
             Resource indicator (RFC 8707). For access-token issuance, binds the issued access token
-            to exactly one resource server. When omitted from a permission-bearing request, the
-            configured defaultResourceServer is used, and if neither is available the request is
+            to exactly one resource server. When omitted from a request carrying permission scopes or
+            authorization details, the configured defaultResourceServer is used, and if neither is available the request is
             rejected with invalid_target. OIDC-only and scopeless requests use the client_id audience. Optional
             for ID-JAG requests, where it is embedded in the issued ID-JAG's `resource` claim. For
             the jwt-bearer grant, when present it must be a subset of the assertion's own `resource`
@@ -880,6 +1065,17 @@ components:
           description: >-
             The backchannel authentication request identifier returned by /oauth2/bc-authorize.
             Required for the `urn:openid:params:grant-type:ciba` grant.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details as a JSON array. On the `authorization_code`,
+            `urn:openid:params:grant-type:ciba` and `refresh_token` grants it modifies the grant
+            (RFC 9396 section 6): each entry is a whole detail object that must be an allowed
+            modification of a distinct granted detail of its type, and the access token carries only the entries. On
+            `client_credentials` it is a new request: every requested type must have a processor, the
+            token carries only the details the processors approve, and a request whose details are all
+            refused fails with `invalid_authorization_details`. Other grants refuse it with
+            `invalid_authorization_details`.
 
     TokenResponse:
       type: object
@@ -910,6 +1106,13 @@ components:
         issued_token_type:
           type: string
           description: The type of the issued token (token exchange only).
+        authorization_details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: >-
+            The RFC 9396 authorization details the access token carries, when the grant has any.
 
     PARRequest:
       type: object
@@ -940,6 +1143,15 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI). Only one value is supported; multiple
             resource values are rejected with invalid_target.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`.
+            Each object is validated against its type (its schema and limits; a member the type does
+            not declare is refused, the RFC 9396 common fields included), and an invalid one is
+            refused with `invalid_authorization_details`. Details carry no resource server: the access
+            token audience comes from `resource`, or the default resource server when it is omitted,
+            as for permission scopes.
         acr_values:
           type: string
         claims:
@@ -1038,6 +1250,12 @@ components:
           type: string
         jti:
           type: string
+        authorization_details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: The RFC 9396 authorization details the token carries, when it has any.
 
     JWKSResponse:
       type: object
@@ -1351,9 +1569,9 @@ components:
           description: >-
             Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
             supported; requests with multiple resource values, including duplicates, are rejected
-            with invalid_target. When omitted from a permission-bearing request, the configured
-            defaultResourceServer is used; a permission-bearing request with no resource and no
-            default is rejected with invalid_target. OIDC-only requests use the client_id audience.
+            with invalid_target. When omitted from a request carrying permission scopes or
+            authorization details, the configured defaultResourceServer is used; such a request with
+            no resource and no default is rejected with invalid_target. OIDC-only requests use the client_id audience.
         binding_message:
           type: string
           description: >-
@@ -1365,6 +1583,19 @@ components:
         acr_values:
           type: string
           description: Space-separated list of requested Authentication Context Class Reference values.
+        authorization_details:
+          type: string
+          description: >-
+            RFC 9396 authorization details: a JSON array of objects, each naming a registered `type`.
+            Each object is validated against its type (its schema and limits; a member the type does
+            not declare is refused, the RFC 9396 common fields included), and an invalid one is
+            refused with `invalid_authorization_details`. Details carry no resource server: the access
+            token audience comes from `resource`, or the default resource server when it is omitted,
+            as for permission scopes. The details are validated before the user is notified. The user's
+            login flow processes them and asks the user to approve them, as on the authorization
+            code path, so the flow needs the authorization detail and consent steps. The token
+            request polling for the result carries the approved details, and may modify them. When
+            the user's flow refuses them, the poll returns `access_denied` with the reason.
     BackchannelAuthResponse:
       type: object
       required:
@@ -1381,6 +1612,32 @@ components:
         interval:
           type: integer
           description: Minimum number of seconds the client must wait between token endpoint polls.
+    Error:
+      type: object
+      description: Error returned by the authorization details type metadata endpoints.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Error code.
+          example: "RAR-1029"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required: [key, defaultValue]
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).
+
     OAuthError:
       type: object
       required:

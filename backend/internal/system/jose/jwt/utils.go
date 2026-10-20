@@ -46,6 +46,27 @@ func DecodeJWTPayload(jwtToken string) (map[string]interface{}, error) {
 	return claims, nil
 }
 
+// DecodeJWTClaim returns a claim of a JWT payload as raw JSON, preserving number precision.
+func DecodeJWTClaim(jwtToken, name string) (json.RawMessage, bool, error) {
+	parts := strings.Split(jwtToken, ".")
+	if len(parts) != 3 {
+		return nil, false, errors.New("invalid JWT format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to decode JWT payload: %w", err)
+	}
+
+	var claims map[string]json.RawMessage
+	if err = json.Unmarshal(payload, &claims); err != nil {
+		return nil, false, fmt.Errorf("failed to unmarshal JWT claims: %w", err)
+	}
+
+	claim, ok := claims[name]
+	return claim, ok, nil
+}
+
 // DecodeJWTHeader decodes the header of a JWT token and returns it as a map.
 func DecodeJWTHeader(jwtToken string) (map[string]interface{}, error) {
 	parts := strings.Split(jwtToken, ".")

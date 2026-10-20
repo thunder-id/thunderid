@@ -1592,9 +1592,45 @@ If no permissions are configured, the executor completes immediately with an emp
 </details>
 
 <details>
+<summary>Authorization Details</summary>
+
+Runs the processors of the RFC 9396 authorization details the application requests. A processor can approve a detail, refuse it, or fill in fields its type leaves to the processor. User Consent then prompts the user for the approved details, and Auth Assertion Generator issues the details the user grants.
+
+**When to use:** In authentication flows of applications that request `authorization_details`. Place it after authentication and before User Consent. If a requested detail's type declares a processor and this executor has not run, User Consent fails the flow with `FET-1115`.
+
+**Prerequisites:** The user must be authenticated. The executor fails if not.
+
+**How it works:**
+1. Reads the authorization details requested for the flow. If none were requested, completes immediately.
+2. Sends each detail to its type's processor, with the authenticated user as the subject and the application as the client. A detail whose type declares no processor passes unchanged.
+3. Applies the processors' changes and passes the approved details to User Consent.
+
+**Input Configuration:** None.
+
+**Example:**
+
+```json
+{
+  "id": "authorization_details",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "AuthorizationDetailExecutor"
+  },
+  "onSuccess": "user_consent"
+}
+```
+
+**Failure conditions:**
+- User not authenticated
+- The processors refused every requested detail (`FET-1112`). A refused detail is dropped while others remain. The error carries the processors' reasons when they give them.
+- A processor could not be reached or answered with a change it may not make, or a requested type changed while the flow was in progress (`FET-1113`)
+
+</details>
+
+<details>
 <summary>User Consent</summary>
 
-Checks whether the authenticated user has active consent records for the required attributes, prompts if any are missing, and records the user's decisions. Auth Assertion Generator automatically filters token claims to consented attributes when this executor has run.
+Checks whether the authenticated user has active consent records for the required attributes and the requested authorization details, prompts if any are missing, and records the user's decisions. Auth Assertion Generator automatically filters token claims to consented attributes, and issues only the authorization details the user granted, when this executor has run.
 
 **When to use:** OAuth flows where the application requests access to specific user data. Required for privacy regulation compliance in many jurisdictions.
 
@@ -1606,7 +1642,7 @@ Checks whether the authenticated user has active consent records for the require
 
 **How consent resolution works:**
 1. Reads `required_essential_attributes` and `required_optional_attributes` from the application's assertion configuration.
-2. Calls the consent enforcer to check existing consent records.
+2. Calls the consent enforcer to check existing consent records. An earlier approval covers a requested authorization detail while the approval is within the application's login consent validity period, the detail's type allows reuse and is still on the version the approval was given on, and the request asks for no more than the approval. A `prompt=consent` request and a CIBA request always prompt.
 3. If all consents are active, completes immediately: no prompt is needed.
 4. If any consents are missing, forwards the prompt data to the Consent View and awaits the user's decisions.
 5. After decisions are received, records them and makes `consentId` and `consented_attributes` available for Auth Assertion Generator.
@@ -1642,6 +1678,9 @@ Checks whether the authenticated user has active consent records for the require
 - `userID` not available
 - User denied one or more essential (required) attributes: hard failure
 - Consent prompt timed out (if `timeout` is configured)
+- A requested authorization detail needs its type's processor and Authorization Details did not run (`FET-1115`)
+- A change the user made to an authorization detail is not allowed by its type (`FET-1114`)
+- A requested authorization details type changed while the flow was in progress (`FET-1113`)
 - Consent service error
 
 </details>

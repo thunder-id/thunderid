@@ -5,6 +5,7 @@ package tokenservice
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -199,6 +200,11 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	// Extract claims_locales if present
 	claimsLocales, _ := extractStringClaim(claims, "access_token_claims_locales")
 
+	authorizationDetails, err := refreshTokenAuthorizationDetails(token)
+	if err != nil {
+		return nil, err
+	}
+
 	var dpopJkt string
 	if _, exists := claims["dpop_jkt"]; exists {
 		s, err := extractStringClaim(claims, "dpop_jkt")
@@ -214,23 +220,63 @@ func (tv *tokenValidator) ValidateRefreshToken(
 
 	// Extract user type and organizational unit details if present
 	return &RefreshTokenClaims{
-		Sub:              sub,
-		ClientID:         clientID,
-		Claims:           claims,
-		Audiences:        audiences,
-		GrantType:        grantType,
-		Scopes:           scopes,
-		AttributeCacheID: attributeCacheID,
-		Iat:              iat,
-		ClaimsRequest:    claimsRequest,
-		ClaimsLocales:    claimsLocales,
-		DPoPJkt:          dpopJkt,
-		ActorSub:         actorSub,
-		JTI:              jti,
-		Exp:              exp,
-		TokenFamilyID:    tokenFamilyID,
-		SessionID:        sessionID,
+		Sub:                  sub,
+		ClientID:             clientID,
+		Claims:               claims,
+		Audiences:            audiences,
+		GrantType:            grantType,
+		Scopes:               scopes,
+		AttributeCacheID:     attributeCacheID,
+		Iat:                  iat,
+		ClaimsRequest:        claimsRequest,
+		ClaimsLocales:        claimsLocales,
+		DPoPJkt:              dpopJkt,
+		ActorSub:             actorSub,
+		JTI:                  jti,
+		Exp:                  exp,
+		TokenFamilyID:        tokenFamilyID,
+		SessionID:            sessionID,
+		AuthorizationDetails: authorizationDetails,
 	}, nil
+}
+
+// refreshTokenAuthorizationDetails rebuilds the granted authorization details from a refresh token's
+// values and type versions claims.
+func refreshTokenAuthorizationDetails(token string) ([]providers.AuthorizationDetail, error) {
+	// Read from the claim's JSON text so numbers are kept exactly.
+	valuesClaim, exists, err := jwt.DecodeJWTClaim(token, constants.ClaimRefreshAuthorizationDetails)
+	var values []json.RawMessage
+	if err == nil && exists {
+		err = json.Unmarshal(valuesClaim, &values)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid authorization details claim in refresh token: %w", err)
+	}
+	var versions map[string]grantedTypeVersion
+	versionsClaim, exists, err := jwt.DecodeJWTClaim(token, constants.ClaimRefreshAuthorizationDetailVersions)
+	if err == nil && exists {
+		err = json.Unmarshal(versionsClaim, &versions)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid authorization detail versions claim in refresh token: %w", err)
+	}
+	if len(values) == 0 {
+		return nil, nil
+	}
+	details := make([]providers.AuthorizationDetail, 0, len(values))
+	for _, value := range values {
+		var typed struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(value, &typed); err != nil {
+			return nil, fmt.Errorf("invalid authorization details claim in refresh token: %w", err)
+		}
+		version := versions[typed.Type]
+		details = append(details, providers.AuthorizationDetail{
+			Type: typed.Type, TypeID: version.TypeID, TypeVersion: version.Version, Value: value, Admitted: true,
+		})
+	}
+	return details, nil
 }
 
 // ValidateSubjectToken validates the subject token of a token exchange — the credential being

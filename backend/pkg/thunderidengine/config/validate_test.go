@@ -552,3 +552,20 @@ func (suite *ValidateTestSuite) TestUserLookupConfig_Validate() {
 		assert.ErrorContains(t, c.Validate(), "cache_ttl must not be negative")
 	})
 }
+
+func (suite *ValidateTestSuite) TestAuthorizationDetailsConfig_Validate() {
+	for _, timeout := range []int64{0, 1, 5, 30} {
+		assert.NoError(suite.T(), (&AuthorizationDetailsConfig{ProcessorTimeout: timeout}).Validate(), timeout)
+	}
+	for _, timeout := range []int64{-1, 31} {
+		assert.ErrorContains(suite.T(), (&AuthorizationDetailsConfig{ProcessorTimeout: timeout}).Validate(),
+			"oauth.authorization_details.processor_timeout", timeout)
+	}
+}
+
+func (suite *ValidateTestSuite) TestAuthorizationDetailsConfig_IsTypeMetadataEnabled() {
+	enabled, disabled := true, false
+	assert.True(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &enabled}.IsTypeMetadataEnabled())
+	assert.False(suite.T(), AuthorizationDetailsConfig{TypeMetadataEnabled: &disabled}.IsTypeMetadataEnabled())
+	assert.True(suite.T(), AuthorizationDetailsConfig{}.IsTypeMetadataEnabled(), "the endpoint is served by default")
+}

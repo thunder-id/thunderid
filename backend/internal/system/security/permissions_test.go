@@ -450,6 +450,18 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		},
 		{name: "Root path falls back to system", method: http.MethodGet, path: "/", wantPerm: p.Root},
 		{
+			name:   "Resource servers require system",
+			method: http.MethodPost, path: "/resource-servers", wantPerm: p.Root,
+		},
+		{
+			name:   "Authorization detail types require system, as resource servers do",
+			method: http.MethodGet, path: "/authorization-detail-types", wantPerm: p.Root,
+		},
+		{
+			name:   "Authorization detail type updates require system",
+			method: http.MethodPut, path: "/authorization-detail-types/adt-1", wantPerm: p.Root,
+		},
+		{
 			name:   "Unknown POST falls back to system",
 			method: http.MethodPost, path: "/configs", wantPerm: p.Root,
 		},

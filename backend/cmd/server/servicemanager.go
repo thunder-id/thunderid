@@ -36,6 +36,8 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/authnprovider/restprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
@@ -353,7 +355,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
-	consentEnforcer := authnConsent.Initialize(jwtService)
 	agentMgtProvider := agentmgtprovider.Initialize()
 
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
@@ -397,6 +398,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The base resourceService is still used for resource-management APIs and server-config validation.
 	resourceServerProvider := resource.NewDefaultAwareResourceServerProvider(resourceService, serverConfigService)
 
+	// Initialize authorization details type management and processing.
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, nil)
+	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
+	exporters = append(exporters, authzDetailExporter)
+	authzDetailService := authzdetailexec.Initialize(authzDetailMgtService,
+		runtime.Config.OAuth.AuthorizationDetails.ProcessorTimeoutOrDefault())
+
+	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService)
+
 	// The security-headers middleware reads the deny-first CSP policy from the server-config csp section.
 	csp.InitializeConfigReader(serverConfigService)
 
@@ -411,35 +421,36 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
-			OUService:             ouProvider,
-			IDPService:            idpService,
-			NotifSenderSvc:        notifSenderSvc,
-			JWTService:            jwtService,
-			AuthAssertGen:         authAssertGen,
-			ConsentEnforcer:       consentEnforcer,
-			AuthnProvider:         authnProvider,
-			OTPService:            otpCoreService,
-			MagicLinkService:      magicLinkService,
-			AuthZService:          authZService,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleService:           roleService,
-			RoleAssignmentService: roleAssignmentService,
-			EntityProvider:        entityProvider,
-			UserMgtProvider:       userMgtProvider,
-			AgentMgtProvider:      agentMgtProvider,
-			AttributeCacheSvc:     attributeCacheService,
-			TemplateRenderer:      notifTemplateRenderer,
-			OAuthSvc:              oauthAuthnService,
-			OIDCSvc:               oidcAuthnService,
-			GithubSvc:             githubAuthnService,
-			GoogleSvc:             googleAuthnService,
-			OpenID4VPVerifierSvc:  openid4vpSvc,
-			SessionService:        sessionService,
-			ResourceService:       resourceServerProvider,
-			UserService:           userService,
-			CriteriaRevoker:       revocationSvc,
-			ResourceMgtService:    resourceService,
+			OUService:                   ouProvider,
+			IDPService:                  idpService,
+			NotifSenderSvc:              notifSenderSvc,
+			JWTService:                  jwtService,
+			AuthAssertGen:               authAssertGen,
+			ConsentEnforcer:             consentEnforcer,
+			AuthnProvider:               authnProvider,
+			OTPService:                  otpCoreService,
+			MagicLinkService:            magicLinkService,
+			AuthZService:                authZService,
+			EntityTypeService:           entityTypeService,
+			GroupService:                groupService,
+			RoleService:                 roleService,
+			RoleAssignmentService:       roleAssignmentService,
+			EntityProvider:              entityProvider,
+			UserMgtProvider:             userMgtProvider,
+			AgentMgtProvider:            agentMgtProvider,
+			AttributeCacheSvc:           attributeCacheService,
+			TemplateRenderer:            notifTemplateRenderer,
+			OAuthSvc:                    oauthAuthnService,
+			OIDCSvc:                     oidcAuthnService,
+			GithubSvc:                   githubAuthnService,
+			GoogleSvc:                   googleAuthnService,
+			OpenID4VPVerifierSvc:        openid4vpSvc,
+			SessionService:              sessionService,
+			ResourceService:             resourceServerProvider,
+			UserService:                 userService,
+			CriteriaRevoker:             revocationSvc,
+			ResourceMgtService:          resourceService,
+			AuthorizationDetailProvider: authzDetailService,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -568,6 +579,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		notifTemplateSvc,
 		authZENPDPService,
 		sharingService,
+		authzDetailMgtService,
 		// References in imported configuration are replaced with what this deployment's store holds. A
 		// secret is put only where an export of the resource keeps one, which its exporter names.
 		secretresolver.New(variablestore.Lookup(references)).
@@ -588,7 +600,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouProvider, attributeCacheService, authZService,
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
 		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
-		sessionService, ssoTransport, flowMgtService, oauthCfg)
+		sessionService, ssoTransport, flowMgtService, authzDetailService, authzDetailMgtService,
+		oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 	if dispatcher != nil {
 		err = terminationHook.Add(dispatcher)

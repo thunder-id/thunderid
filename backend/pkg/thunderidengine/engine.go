@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -153,6 +154,14 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if engineCtx.agentMgtProvider == nil {
 		engineCtx.agentMgtProvider = agentmgtprovider.NewDisabledAgentMgtProvider()
 	}
+	// Without a supplied type registry, every requested authorization detail is refused as unknown.
+	if engineCtx.authorizationDetailTypes == nil {
+		engineCtx.authorizationDetailTypes = authzdetailexec.NoTypes()
+	}
+	if engineCtx.authzDetailProvider == nil {
+		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
+			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
+	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:       engineCtx.flowFactory,
 		AttributeCacheSvc: engineCtx.attributeCacheService,
@@ -166,6 +175,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		ResourceService:   engineCtx.resourceProvider,
 		UserMgtProvider:   engineCtx.userMgtProvider,
 		AgentMgtProvider:  engineCtx.agentMgtProvider,
+
+		AuthorizationDetailProvider: engineCtx.authzDetailProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -241,7 +252,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.transactioner, revocationEnforcer, revocationService,
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
-		nil, nil, engineCtx.flowProvider, oauthConfig)
+		nil, nil, engineCtx.flowProvider, engineCtx.authzDetailProvider,
+		engineCtx.authorizationDetailTypes, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -401,6 +413,8 @@ type engineContext struct {
 	i18nProvider              providers.I18nProvider
 	idpProvider               providers.IDPProvider
 	consentProvider           providers.ConsentProvider
+	authorizationDetailTypes  providers.AuthorizationDetailTypeProvider
+	authzDetailProvider       providers.AuthorizationDetailProvider
 	customExecutors           map[string]providers.Executor
 	observabilitySvc          providers.ObservabilityProvider
 	authzProvider             providers.AuthorizationProvider
@@ -541,6 +555,19 @@ func WithFlowProvider(provider providers.FlowProvider) Option {
 // WithI18nProvider supplies the i18n provider.
 func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
+}
+
+// WithAuthorizationDetailTypeProvider supplies the authorization details type registry. Without it,
+// requests carrying authorization_details are refused.
+func WithAuthorizationDetailTypeProvider(provider providers.AuthorizationDetailTypeProvider) Option {
+	return func(c *engineContext) { c.authorizationDetailTypes = provider }
+}
+
+// WithAuthorizationDetailProvider replaces the authorization details runtime: validation, preparation, processing,
+// refresh filtering and token-endpoint narrowing. A replacement must refuse types without a processor on
+// client_credentials (RAR-1024), return only requested, admitted details, and narrow only within field policies.
+func WithAuthorizationDetailProvider(provider providers.AuthorizationDetailProvider) Option {
+	return func(c *engineContext) { c.authzDetailProvider = provider }
 }
 
 // WithIDPProvider supplies the IDP provider.

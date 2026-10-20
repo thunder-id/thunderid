@@ -59,6 +59,9 @@ const ClientAssertionParamName = "client_assertion"
 // ClientAssertionTypeParamName is the OAuth client_assertion_type request parameter.
 const ClientAssertionTypeParamName = "client_assertion_type"
 
+// AuthorizationDetailsParamName is the RFC 9396 authorization_details request parameter.
+const AuthorizationDetailsParamName = "authorization_details"
+
 // CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
 // such as SMTP and HTTP.
 const CRLF = "\r\n"

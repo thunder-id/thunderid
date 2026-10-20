@@ -5,9 +5,19 @@ package export
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"text/template"
+
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
+
+	"gopkg.in/yaml.v3"
+
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailmgtmock"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -2865,4 +2875,78 @@ func sharingWithNoPolicies(t interface {
 	m := sharingmock.NewSharingServiceInterfaceMock(t)
 	m.EXPECT().ExportPolicies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	return m
+}
+
+func TestExport_AuthorizationDetailTypeRoundTrips(t *testing.T) {
+	original := &providers.AuthorizationDetailType{
+		ID: "adt-1", Type: "payment_initiation", Name: "Payment initiation",
+		Description: "Initiates a payment", Version: 3,
+		Schema: json.RawMessage(`{"type":"object","properties":{"amount":{"type":"string",` +
+			`"policy":{"suppliedBy":"client"}}}}`),
+		ConsentTemplate: "Pay {{amount}}",
+		Processor:       &providers.AuthorizationDetailProcessor{Endpoint: "https://bank.example.com/rar"},
+	}
+	service := authzdetailmgtmock.NewAuthorizationDetailMgtServiceInterfaceMock(t)
+	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
+	exportService := newExportService([]declarativeresource.ResourceExporter{
+		authzdetailmgt.NewTypeExporterForTest(service),
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+
+	resp, svcErr := exportService.ExportResources(context.Background(),
+		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Files, 1)
+	assert.Equal(t, "authorization_detail_type", resp.Files[0].ResourceType)
+
+	var doc yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(resp.Files[0].Content), &doc))
+	got, err := authzdetailmgt.ParseAuthorizationDetailTypeNode(doc.Content[0])
+	require.NoError(t, err)
+	assert.Equal(t, string(original.Schema), string(got.Schema),
+		"the schema keeps the order it declares its members in")
+	assert.NotContains(t, resp.Files[0].Content, "version:", "the version is not exported")
+	assert.Equal(t, 1, got.Version, "a type read back from its file is version 1")
+	// A processor exported without authentication reads back with none.
+	authentication, err := outboundauth.FromProperties(got.Processor.AuthenticationProperties)
+	require.NoError(t, err)
+	assert.False(t, authentication.Enabled())
+	got.Processor.AuthenticationProperties = nil
+	want := *original
+	want.Version = 1
+	assert.Equal(t, &want, got)
+}
+
+func TestExport_AuthorizationDetailTypeProcessorCredentialIsAVariable(t *testing.T) {
+	crypto := cryptomock.NewConfigCryptoProviderMock(t)
+	crypto.EXPECT().Encrypt(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, content []byte) ([]byte, error) {
+			return []byte(hex.EncodeToString(content)), nil
+		}).Maybe()
+	crypto.EXPECT().Decrypt(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, content []byte) ([]byte, error) { return hex.DecodeString(string(content)) }).Maybe()
+	cmodels.SetConfigCryptoProvider(crypto)
+	stored, err := outboundauth.ToProperties(outboundauth.Config{Type: outboundauth.TypeBearer,
+		Properties: map[string]string{outboundauth.FieldBearerToken: "processor-token"}})
+	require.NoError(t, err)
+	schema := `{"type":"object","properties":{"zeta":{"type":"string"},"alpha":{"type":"string"}}}`
+	original := &providers.AuthorizationDetailType{
+		ID: "adt-1", Type: "payment_initiation", Name: "Payment initiation", Schema: json.RawMessage(schema),
+		Processor: &providers.AuthorizationDetailProcessor{Endpoint: "https://bank.example.com/rar",
+			AuthenticationProperties: stored},
+	}
+	service := authzdetailmgtmock.NewAuthorizationDetailMgtServiceInterfaceMock(t)
+	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
+	exportService := newExportService([]declarativeresource.ResourceExporter{
+		authzdetailmgt.NewTypeExporterForTest(service),
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+
+	resp, svcErr := exportService.ExportResources(context.Background(),
+		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Files, 1)
+	content := resp.Files[0].Content
+	assert.NotContains(t, content, "processor-token", "the credential is not written to the file")
+	assert.Contains(t, content, "type: bearer")
+	assert.Contains(t, content, schema, "the schema keeps the order it declares its members in")
 }

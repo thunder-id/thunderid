@@ -1568,6 +1568,72 @@ var (
 			DefaultValue: "The {{param(input)}} input is required and must not be empty",
 		},
 	}
+
+	// ErrAuthorizationDetailsRefused is returned when the processor of an authorization details type
+	// refuses the requested details.
+	ErrAuthorizationDetailsRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1112",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_refused",
+			DefaultValue: "Authorization details refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_refused_desc",
+			DefaultValue: "The requested authorization details were refused",
+		},
+	}
+
+	// errAuthorizationDetailsRefusedReason is the description of a refusal the processor gave a reason for.
+	errAuthorizationDetailsRefusedReason = tidcommon.I18nMessage{
+		Key:          "flows.executor.errors.authorization_details_refused_reason_desc",
+		DefaultValue: "The requested authorization details were refused: {{param(reason)}}",
+	}
+
+	// ErrAuthorizationDetailsUnavailable is returned when the processor of an authorization details type
+	// cannot be reached or answers with a change it may not make.
+	ErrAuthorizationDetailsUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1113",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_unavailable",
+			DefaultValue: "Authorization details could not be checked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_unavailable_desc",
+			DefaultValue: "The requested authorization details could not be checked. Try again later",
+		},
+	}
+
+	// ErrAuthorizationDetailsNotChecked is returned when authorization details reach consent without the
+	// processor their type declares, because the flow does not run the authorization detail executor.
+	ErrAuthorizationDetailsNotChecked = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1115",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_not_checked",
+			DefaultValue: "Authorization details were not checked",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_not_checked_desc",
+			DefaultValue: "The sign-in flow does not run the checks the requested authorization details need",
+		},
+	}
+
+	// ErrAuthorizationDetailsChangeRefused is returned when the user changes an authorization detail in a
+	// way its type does not allow.
+	ErrAuthorizationDetailsChangeRefused = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1114",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_change_refused",
+			DefaultValue: "Authorization details change refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authorization_details_change_refused_desc",
+			DefaultValue: "The change made to the authorization details is not allowed",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

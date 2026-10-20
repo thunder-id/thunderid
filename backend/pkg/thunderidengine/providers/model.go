@@ -1051,6 +1051,12 @@ type ConsentElementApproval struct {
 	Namespace Namespace
 	// IsUserApproved indicates whether the user approved this element
 	IsUserApproved bool
+	// TypeID and TypeVersion identify the type an authorization detail element was approved on.
+	TypeID      string
+	TypeVersion int
+	// Requested and Granted hold an authorization detail element as requested and as granted.
+	Requested json.RawMessage
+	Granted   json.RawMessage
 }
 
 // ConsentPurposeItem represents an element approval record within a consent.
@@ -1093,7 +1099,7 @@ type ConsentPurposePrompt struct {
 	PurposeID string `json:"purposeId"`
 	// Description is a human-readable description of the consent purpose
 	Description string `json:"description,omitempty"`
-	// Type discriminates between attribute and permission consent purposes.
+	// Type discriminates between attribute, permission and authorization details consent purposes.
 	Type string `json:"type,omitempty"`
 	// Essential is the list of mandatory elements that require user consent
 	Essential []PromptElement `json:"essential"`
@@ -1101,13 +1107,81 @@ type ConsentPurposePrompt struct {
 	Optional []PromptElement `json:"optional"`
 }
 
+// ConsentDetailRow is one field of an authorization details object presented for consent.
+type ConsentDetailRow struct {
+	// Path is the dot-separated location of the field within the detail object.
+	Path string `json:"path"`
+	// Label is the display label declared by the type, defaulting to the path.
+	Label string `json:"label"`
+	// Value is the field value as it appears in the detail.
+	Value json.RawMessage `json:"value"`
+	// Modification is the change the user may make to the field before approving, if any.
+	Modification string `json:"modification,omitempty"`
+	// As is the ordering the modification compares the field by, if any.
+	As string `json:"as,omitempty"`
+	// Origin is "server" when the value was supplied by the type's processor rather than the client.
+	Origin string `json:"origin,omitempty"`
+	// Options lists the values the user may add to a list field, when the schema restricts them.
+	Options json.RawMessage `json:"options,omitempty"`
+}
+
+// AuthorizationDetailType is a registered RFC 9396 authorization details type.
+type AuthorizationDetailType struct {
+	ID string
+	// Type is the type value clients send in authorization_details.
+	Type        string
+	Name        string
+	Description string
+	// Version starts at 1 and increments when the schema or the consent template changes, or the processor is
+	// added or removed. An approval holds only for the version it was given on.
+	Version int
+	// Schema is the JSON Schema 2020-12 schema, with field policies, that details of the type conform to.
+	Schema          json.RawMessage
+	ConsentTemplate string
+	Processor       *AuthorizationDetailProcessor
+	// Reuse lets a covering earlier approval skip the prompt and keeps the details in the refresh token.
+	Reuse bool
+	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
+	IsReadOnly bool
+}
+
+// AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.
+type AuthorizationDetailProcessor struct {
+	Endpoint string `json:"endpoint" yaml:"endpoint"`
+	// AuthenticationProperties hold the outbound authentication for processor calls, credentials encrypted.
+	AuthenticationProperties []cmodels.Property `json:"-" yaml:"-"`
+}
+
+// AuthorizationDetail is a validated RFC 9396 authorization detail carried through an authentication flow.
+type AuthorizationDetail struct {
+	// ID identifies the detail within the request and is never sent to the client.
+	ID string `json:"id"`
+	// Type is the detail's authorization details type value.
+	Type string `json:"type"`
+	// TypeID and TypeVersion identify the type definition the request started on.
+	TypeID      string `json:"typeId"`
+	TypeVersion int    `json:"typeVersion"`
+	// Requested is the detail as the client requested it.
+	Requested json.RawMessage `json:"requested"`
+	// Value is the detail after processing.
+	Value json.RawMessage `json:"value"`
+	// Admitted reports whether the detail passed its type's processor, or the type declares none.
+	Admitted bool `json:"admitted"`
+}
+
 // PromptElement represents a single element within a consent purpose prompt. Parent carries
 // rollup linkage for permission elements (zero value, omitted on the wire, for attribute elements).
 type PromptElement struct {
-	// Name is the canonical element name (attribute name or permission string)
+	// Name is the canonical element name (attribute name, permission string or authorization detail ID)
 	Name string `json:"name"`
 	// Parent is the canonical name of the rollup parent, if any
 	Parent string `json:"parent,omitempty"`
+	// DetailType is the type of an authorization detail element.
+	DetailType string `json:"detailType,omitempty"`
+	// Summary is the rendered consent sentence of an authorization detail element.
+	Summary string `json:"summary,omitempty"`
+	// Rows are the fields of an authorization detail element.
+	Rows []ConsentDetailRow `json:"rows,omitempty"`
 }
 
 // ConsentDecisions holds the user's consent decisions.
@@ -1140,6 +1214,8 @@ type ElementDecision struct {
 	Name string `json:"name"`
 	// Approved indicates whether the user approved sharing this element
 	Approved bool `json:"approved"`
+	// Modified holds the values the user lowered on an authorization detail, keyed by field path.
+	Modified map[string]json.RawMessage `json:"modified,omitempty"`
 }
 
 // Consent represents a consent record in the system, containing all relevant details and status.
@@ -1162,6 +1238,8 @@ type Consent struct {
 	CreatedTime int64
 	// UpdatedTime is the Unix timestamp when the consent was last updated
 	UpdatedTime int64
+	// GrantedAuthorizationDetails holds the authorization details the recorded decision grants.
+	GrantedAuthorizationDetails []AuthorizationDetail
 }
 
 // ExecutorSupportedProperties describes the properties that an executor supports, including whether each property is required.
@@ -1509,6 +1587,19 @@ type AccessEvaluationResponse struct {
 // AccessEvaluationsRequest represents a batched fine-grained access evaluation request.
 type AccessEvaluationsRequest struct {
 	Evaluations []AccessEvaluationRequest `json:"evaluations"`
+}
+
+// AccessEvaluationContextAuthorizationDetails is the evaluation context key for requested authorization details.
+const AccessEvaluationContextAuthorizationDetails = "authorization_details"
+
+// SetContext sets a context entry on every evaluation of the request.
+func (r *AccessEvaluationsRequest) SetContext(key string, value interface{}) {
+	for i := range r.Evaluations {
+		if r.Evaluations[i].Context == nil {
+			r.Evaluations[i].Context = map[string]interface{}{}
+		}
+		r.Evaluations[i].Context[key] = value
+	}
 }
 
 // AccessEvaluationsResponse represents a batched fine-grained access evaluation response.

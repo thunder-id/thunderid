@@ -428,6 +428,22 @@ packages:
           pkgname: outboundauth
           filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/authzdetail/mgt:
+    config:
+      all: true
+      dir: internal/authzdetail/mgt
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: authzdetailmgt
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/authzdetail/exec:
+    config:
+      all: true
+      dir: internal/authzdetail/exec
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: authzdetailexec
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/consent:
     config:
       all: true

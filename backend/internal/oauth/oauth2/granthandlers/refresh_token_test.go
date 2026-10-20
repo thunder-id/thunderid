@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
@@ -189,7 +190,30 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockAuthzService,
 		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker,
+		suite.mockCriteriaRevoker, noAuthzDetails(),
+		suite.testCfg,
+	).(*refreshTokenGrantHandler)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) withAuthorizationDetails(details []providers.AuthorizationDetail) {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().RefreshableAuthorizationDetails(mock.Anything, details).
+		Return(details, nil).Once()
+	suite.withAuthorizationDetailService(authzDetails)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) withAuthorizationDetailService(
+	authzDetails *authzdetailprovidermock.AuthorizationDetailProviderMock) {
+	suite.handler = newRefreshTokenGrantHandler(
+		suite.mockJWTService,
+		suite.mockTokenBuilder,
+		suite.mockTokenValidator,
+		suite.mockAttrCacheService,
+		suite.mockResourceService,
+		suite.mockAuthzService,
+		suite.mockActorProvider,
+		suite.mockRefreshRevoker,
+		suite.mockCriteriaRevoker, authzDetails,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -205,7 +229,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockAttrCacheService,
 		suite.mockResourceService, suite.mockAuthzService,
 		suite.mockActorProvider, suite.mockRefreshRevoker,
-		suite.mockCriteriaRevoker, testhelpers.OAuthConfig())
+		suite.mockCriteriaRevoker, noAuthzDetails(), testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
@@ -400,6 +424,32 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_Success() 
 	assert.Equal(suite.T(), int64(3600), tokenResponse.RefreshToken.ExpiresIn)
 	assert.Equal(suite.T(), []string{"read", "write"}, tokenResponse.RefreshToken.Scopes)
 	assert.Equal(suite.T(), testRefreshTokenClientID, tokenResponse.RefreshToken.ClientID)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_CarriesGrantedAuthorizationDetails() {
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool {
+			return assert.ObjectsAreEqual(testPaymentDetails, ctx.AuthorizationDetails)
+		})).Return(&model.TokenDTO{
+		Token:     "new.refresh.token",
+		IssuedAt:  int64(1234567890),
+		ExpiresIn: 3600,
+		ClientID:  testRefreshTokenClientID,
+	}, nil)
+
+	// The access token carries a modification of the grant; the refresh token keeps the whole grant.
+	tokenResponse := &model.TokenResponseDTO{
+		AccessToken:                 model.TokenDTO{AuthorizationDetails: json.RawMessage(`[]`)},
+		GrantedAuthorizationDetails: testPaymentDetails,
+	}
+
+	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp,
+		testRefreshTokenUserID, []string{testRefreshTokenAudience},
+		"authorization_code", []string{"read"}, nil, "", "", "", 0)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "new.refresh.token", tokenResponse.RefreshToken.Token)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_JWTGenerationError() {
@@ -726,7 +776,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockAuthzService,
 		suite.mockActorProvider,
 		nil,
-		nil,
+		nil, noAuthzDetails(),
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 
@@ -801,6 +851,57 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_Success_WithRene
 	assert.NotNil(suite.T(), response)
 	assert.Equal(suite.T(), "new.access.token", response.AccessToken.Token)
 	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_CarriesAuthorizationDetailsForward() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	details := testPaymentDetails
+	suite.withAuthorizationDetails(details)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:             testRefreshTokenClientID,
+			Sub:                  testRefreshTokenUserID,
+			Audiences:            []string{testRefreshTokenAudience},
+			Scopes:               []string{"read", "write"},
+			GrantType:            "authorization_code",
+			Iat:                  int64(suite.validClaims["iat"].(float64)),
+			AuthorizationDetails: details,
+		}, nil)
+
+	var accessCtx *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			accessCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{
+		Token:                "new.access.token",
+		IssuedAt:             time.Now().Unix(),
+		ExpiresIn:            3600,
+		Scopes:               []string{"read"},
+		AuthorizationDetails: json.RawMessage(testPaymentValues),
+	}, nil)
+
+	var refreshCtx *tokenservice.RefreshTokenBuildContext
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool {
+			refreshCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{
+		Token:     "new.refresh.token",
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 86400,
+		Scopes:    []string{"read"},
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	assert.Equal(suite.T(), testPaymentValues, string(accessCtx.AuthorizationDetails))
+	assert.Equal(suite.T(), details, refreshCtx.AuthorizationDetails)
+	assert.Equal(suite.T(), testPaymentValues, string(response.AccessToken.AuthorizationDetails))
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_GetAttributeCacheError() {
@@ -2285,6 +2386,115 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EvaluatesWithSub
 	assert.Equal(suite.T(), []string{"group-1", "group-2"}, evaluatedGroupIDs)
 }
 
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ReauthorizationCarriesGrantedAuthorizationDetails() {
+	suite.resetAuthzMocks()
+	value := `{"type":"payment_initiation","instructedAmount":{"amount":"10"}}`
+	details := []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2", TypeVersion: 2,
+		Value: json.RawMessage(value), Admitted: true}}
+	suite.withAuthorizationDetails(details)
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:             testRefreshTokenClientID,
+			Sub:                  testRefreshTokenUserID,
+			Audiences:            []string{testRefreshTokenAudience},
+			Scopes:               []string{"read", "write"},
+			GrantType:            "authorization_code",
+			Iat:                  int64(suite.validClaims["iat"].(float64)),
+			AuthorizationDetails: details,
+		}, nil)
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+
+	var captured providers.AccessEvaluationsRequest
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req providers.AccessEvaluationsRequest) bool {
+			captured = req
+			return true
+		})).Return(allowAllEvaluations, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotEmpty(captured.Evaluations)
+	for _, evaluation := range captured.Evaluations {
+		contextDetails, ok := evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails]
+		assert.True(suite.T(), ok)
+		encoded, marshalErr := json.Marshal(contextDetails)
+		assert.NoError(suite.T(), marshalErr)
+		assert.Equal(suite.T(), "["+value+"]", string(encoded), "the policy sees the granted values only")
+	}
+}
+
+// Details whose type was deleted, recreated or made one-off are dropped from both tokens.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DropsDetailsNoLongerRenewable() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	details := testPaymentDetails
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	authzDetails.EXPECT().RefreshableAuthorizationDetails(mock.Anything, details).
+		Return(nil, nil).Once()
+	suite.withAuthorizationDetailService(authzDetails)
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:             testRefreshTokenClientID,
+			Sub:                  testRefreshTokenUserID,
+			Audiences:            []string{testRefreshTokenAudience},
+			Scopes:               []string{"read", "write"},
+			GrantType:            "authorization_code",
+			Iat:                  int64(suite.validClaims["iat"].(float64)),
+			AuthorizationDetails: details,
+		}, nil)
+	var accessCtx *tokenservice.AccessTokenBuildContext
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			accessCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600}, nil)
+	var refreshCtx *tokenservice.RefreshTokenBuildContext
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool {
+			refreshCtx = ctx
+			return true
+		})).Return(&model.TokenDTO{Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	suite.Require().Nil(err)
+	assert.Empty(suite.T(), accessCtx.AuthorizationDetails)
+	assert.Empty(suite.T(), refreshCtx.AuthorizationDetails)
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ReauthorizationWithoutAuthorizationDetails() {
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+
+	var captured providers.AccessEvaluationsRequest
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req providers.AccessEvaluationsRequest) bool {
+			captured = req
+			return true
+		})).Return(allowAllEvaluations, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotEmpty(captured.Evaluations)
+	for _, evaluation := range captured.Evaluations {
+		_, ok := evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails]
+		assert.False(suite.T(), ok)
+		assert.Nil(suite.T(), evaluation.Context)
+	}
+}
+
 // OIDC scopes are not permission scopes, so they survive even when the subject holds no permissions
 // on the bound resource server.
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_OIDCScopesSurviveDeauthorization() {
@@ -2608,7 +2818,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorProviderS
 	suite.handler = newRefreshTokenGrantHandler(
 		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
 		suite.mockAttrCacheService, suite.mockResourceService, nil, nil,
-		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, suite.testCfg,
+		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, noAuthzDetails(), suite.testCfg,
 	).(*refreshTokenGrantHandler)
 	suite.refreshClaimsValid()
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
@@ -2879,3 +3089,10 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_NilRespons
 	assert.Nil(suite.T(), err)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
+
+// testPaymentDetails is a granted payment detail as the token path carries it.
+var testPaymentDetails = []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2",
+	TypeVersion: 2, Value: json.RawMessage(`{"type":"payment_initiation","id":"d1"}`), Admitted: true}}
+
+// testPaymentValues is testPaymentDetails as tokens carry them.
+const testPaymentValues = `[{"type":"payment_initiation","id":"d1"}]`

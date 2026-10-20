@@ -468,6 +468,9 @@ const (
 	// NamespacePermission represents the permission consent namespace.
 	// Used for managing consent over resource action permissions (e.g. booking:reservations:read).
 	NamespacePermission Namespace = "permission"
+	// NamespaceAuthorizationDetail represents the RFC 9396 authorization detail consent namespace.
+	// Used for managing consent over individual authorization details (e.g. one payment).
+	NamespaceAuthorizationDetail Namespace = "authorization_detail"
 )
 
 // ConsentAuthorizationStatus defines the possible statuses for a consent authorization record.

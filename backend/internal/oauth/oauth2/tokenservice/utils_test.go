@@ -46,6 +46,13 @@ func (suite *UtilsTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime("test", testConfig)
 }
 
+func (suite *UtilsTestSuite) TestReservedAccessTokenClaimNames_IncludesAuthorizationDetails() {
+	reserved := ReservedAccessTokenClaimNames()
+
+	assert.True(suite.T(), reserved[constants.ClaimAuthorizationDetails])
+	assert.True(suite.T(), builderOwnedClaimNames()[constants.ClaimAuthorizationDetails])
+}
+
 func (suite *UtilsTestSuite) TestJoinScopes_WithMultipleScopes() {
 	scopes := []string{"read", "write", "admin"}
 	result := JoinScopes(scopes)

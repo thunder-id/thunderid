@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -79,17 +80,18 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenDTO := &oauth2model.TokenDTO{
-		TokenType:        tokenType,
-		ExpiresIn:        tokenConfig.ValidityPeriod,
-		Scopes:           tokenCtx.Scopes,
-		ClientID:         tokenCtx.ClientID,
-		UserAttributes:   tokenCtx.SubjectAttributes,
-		AttributeCacheID: tokenCtx.AttributeCacheID,
-		Subject:          tokenCtx.Subject,
-		Audiences:        tokenCtx.Audiences,
-		ClaimsRequest:    tokenCtx.ClaimsRequest,
-		ClaimsLocales:    tokenCtx.ClaimsLocales,
-		TokenFamilyID:    tokenCtx.TokenFamilyID,
+		TokenType:            tokenType,
+		ExpiresIn:            tokenConfig.ValidityPeriod,
+		Scopes:               tokenCtx.Scopes,
+		ClientID:             tokenCtx.ClientID,
+		UserAttributes:       tokenCtx.SubjectAttributes,
+		AttributeCacheID:     tokenCtx.AttributeCacheID,
+		Subject:              tokenCtx.Subject,
+		Audiences:            tokenCtx.Audiences,
+		ClaimsRequest:        tokenCtx.ClaimsRequest,
+		ClaimsLocales:        tokenCtx.ClaimsLocales,
+		TokenFamilyID:        tokenCtx.TokenFamilyID,
+		AuthorizationDetails: tokenCtx.AuthorizationDetails,
 	}
 	if tokenCtx.ActorClaims != nil {
 		tokenDTO.Delegated = true
@@ -340,6 +342,10 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
 	}
 
+	if len(ctx.AuthorizationDetails) > 0 {
+		claims[constants.ClaimAuthorizationDetails] = ctx.AuthorizationDetails
+	}
+
 	return claims, nil
 }
 
@@ -480,6 +486,20 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 
 	if ctx.SessionID != "" {
 		claims[constants.ClaimSessionID] = ctx.SessionID
+	}
+
+	// The refresh token carries only the granted values and the type versions they were approved on.
+	if len(ctx.AuthorizationDetails) > 0 {
+		values, err := authzdetailcommon.EncodeDetailValues(ctx.AuthorizationDetails)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode authorization details: %w", err)
+		}
+		versions := make(map[string]grantedTypeVersion, len(ctx.AuthorizationDetails))
+		for _, detail := range ctx.AuthorizationDetails {
+			versions[detail.Type] = grantedTypeVersion{TypeID: detail.TypeID, Version: detail.TypeVersion}
+		}
+		claims[constants.ClaimRefreshAuthorizationDetails] = values
+		claims[constants.ClaimRefreshAuthorizationDetailVersions] = versions
 	}
 
 	return claims, nil

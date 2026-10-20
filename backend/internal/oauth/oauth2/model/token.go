@@ -4,6 +4,12 @@
 // Package model defines the data structures used in the OAuth2 module.
 package model
 
+import (
+	"encoding/json"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
+
 // TokenRequest represents the OAuth2 token request.
 type TokenRequest struct {
 	GrantType          string   `json:"grant_type"`
@@ -25,6 +31,8 @@ type TokenRequest struct {
 	Audiences          []string `json:"audiences,omitempty"`
 	AuthReqID          string   `json:"auth_req_id,omitempty"`
 	Assertion          string   `json:"assertion,omitempty"`
+	// AuthorizationDetails is the raw RFC 9396 authorization_details parameter.
+	AuthorizationDetails string `json:"authorization_details,omitempty"`
 }
 
 // TokenResponse represents the OAuth2 token response.
@@ -36,6 +44,8 @@ type TokenResponse struct {
 	Scope           string `json:"scope,omitempty"`
 	IDToken         string `json:"id_token,omitempty"`
 	IssuedTokenType string `json:"issued_token_type,omitempty"`
+	// AuthorizationDetails carries the granted RFC 9396 authorization details.
+	AuthorizationDetails json.RawMessage `json:"authorization_details,omitempty"`
 }
 
 // TokenDTO represents the data transfer object for tokens.
@@ -74,6 +84,8 @@ type TokenDTO struct {
 	// SubjectCategory is the entity category of SubjectID (user, agent or app), resolved while the
 	// token is built. Empty when it could not be determined, so consumers omit it rather than assume.
 	SubjectCategory string
+	// AuthorizationDetails holds the granted RFC 9396 authorization details the token carries.
+	AuthorizationDetails json.RawMessage `json:",omitempty"`
 }
 
 // TokenResponseDTO represents the data transfer object for token responses.
@@ -89,4 +101,6 @@ type TokenResponseDTO struct {
 	// SessionID is the SSO session id (sid) of the grant, when it has one, so the refresh token issued
 	// alongside is stamped with it. Access tokens never carry it. Never returned to the client.
 	SessionID string
+	// GrantedAuthorizationDetails is the whole grant, kept on the refresh token. Never returned to the client.
+	GrantedAuthorizationDetails []providers.AuthorizationDetail
 }
