@@ -4044,6 +4044,13 @@ const translations = {
     'core.executions.ouResolver.resolveFrom.caller': 'Caller',
     'core.executions.ouResolver.resolveFrom.prompt': 'Prompt',
     'core.executions.ouResolver.resolveFrom.promptAll': 'Prompt All',
+    'core.executions.ouResolver.parentOuId.label': 'Parent organization unit',
+    'core.executions.ouResolver.parentOuId.placeholder': 'Organization unit ID',
+    'core.executions.ouResolver.parentOuId.hint':
+      'Organizations are selected below this one. Leave empty to use the unit set by the User Type Resolver.',
+    'core.executions.ouResolver.directChildrenOnly.label': 'Limit to direct children',
+    'core.executions.ouResolver.directChildrenOnly.hint':
+      'Only direct children of the parent organization unit can be selected, by handle or ID.',
 
     // Invite executor
     'core.executions.invite.description': 'Configure the invite executor mode.',

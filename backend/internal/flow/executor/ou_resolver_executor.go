@@ -5,6 +5,7 @@ package executor
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -57,6 +58,8 @@ func newOUResolverExecutor(
 		&providers.ExecutorMeta{
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: common.NodePropertyOUResolveFrom},
+				{Property: common.NodePropertyOUParent},
+				{Property: common.NodePropertyOUDirectChildrenOnly},
 			},
 		},
 	)
@@ -71,7 +74,10 @@ func newOUResolverExecutor(
 // It reads the "resolveFrom" node property to determine the OU resolution strategy.
 // Supported strategies:
 //   - "caller": overrides the default OU with the caller's OU from the security context.
-//   - "prompt": checks for child OUs and prompts the user to select one if applicable.
+//   - "prompt": checks for child OUs and prompts the user to select one if applicable. The OUs to select from
+//     are those below the default OU set by UserTypeResolver or, in authentication flows only, the node's
+//     "parentOuId" property. With "directChildrenOnly", only direct children of that OU can be selected, by handle
+//     or by ID.
 //   - "promptAll": shows the full OU tree from root, independent of UserTypeResolver.
 func (e *ouResolverExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -126,8 +132,7 @@ func (e *ouResolverExecutor) resolveFromCaller(ctx *providers.NodeContext,
 	return execResp, nil
 }
 
-// resolveFromPrompt checks whether the user type's OU has child OUs and,
-// if so, prompts the admin to select one during the onboarding flow.
+// resolveFromPrompt checks whether the default OU has child OUs and, if so, prompts the user to select one.
 func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 	logger *log.Logger) (*providers.ExecutorResponse, error) {
 	execResp := &providers.ExecutorResponse{
@@ -136,17 +141,29 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		ForwardedData:  make(map[string]interface{}),
 	}
 
-	// Read the default OU set by UserTypeResolver.
-	// The "prompt" strategy requires UserTypeResolver to have run first and set the defaultOUID.
-	parentOUID := ctx.RuntimeData[defaultOUIDKey]
+	// The OUs are selected below the node's parentOuId property, which only authentication flows may use, or else
+	// the default OU set by UserTypeResolver. Without the property, the "prompt" strategy requires
+	// UserTypeResolver to have run first.
+	parentOUID := e.getParentOU(ctx)
 	if parentOUID == "" {
-		return nil, errors.New(
-			"no defaultOUID in runtime data; UserTypeResolver must run before OUResolver with prompt strategy",
-		)
+		parentOUID = ctx.RuntimeData[defaultOUIDKey]
 	}
+	if parentOUID == "" {
+		message := "no defaultOUID in runtime data; UserTypeResolver must run before OUResolver with prompt strategy"
+		if ctx.FlowType == providers.FlowTypeAuthentication {
+			message += " unless the node sets parentOuId"
+		}
+
+		return nil, errors.New(message)
+	}
+	directChildrenOnly := e.isDirectChildrenOnly(ctx)
 
 	// If the user already provided an OU selection, validate and accept it.
 	if selectedOUID, ok := ctx.UserInputs[ouIDKey]; ok && selectedOUID != "" {
+		if directChildrenOnly {
+			return e.selectDirectChild(ctx, parentOUID, selectedOUID, execResp, logger)
+		}
+
 		// Validate that the selected OU belongs to the parent OU's subtree.
 		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, selectedOUID)
 		if svcErr != nil {
@@ -168,7 +185,6 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 			execResp.Error = &ErrOUNotValidForUserType
 			return execResp, nil
 		}
-
 		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
 		execResp.RuntimeData[ouIDKey] = selectedOUID
 		execResp.Status = providers.ExecComplete
@@ -203,6 +219,57 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		execResp.ForwardedData[common.ForwardedDataKeyInputs] = execResp.Inputs
 	}
 
+	return execResp, nil
+}
+
+// selectDirectChild accepts the user's selection when it names a direct child of the parent OU, either by
+// its handle or by its ID, and records the child's ID as the resolved OU.
+func (e *ouResolverExecutor) selectDirectChild(ctx *providers.NodeContext, parentOUID, selection string,
+	execResp *providers.ExecutorResponse, logger *log.Logger) (*providers.ExecutorResponse, error) {
+	askAgain := func(svcErr *tidcommon.ServiceError) (*providers.ExecutorResponse, error) {
+		execResp.Status = providers.ExecUserInputRequired
+		execResp.Inputs = e.GetDefaultInputs()
+		execResp.Error = svcErr
+		return execResp, nil
+	}
+	failed := func(svcErr *tidcommon.ServiceError) (*providers.ExecutorResponse, error) {
+		return nil, errors.New("failed to validate selected organization unit: " + svcErr.Error.DefaultValue)
+	}
+
+	byHandle := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{{
+		Expr: tidcommon.FilterExpression{Attribute: "handle", Operator: tidcommon.OperatorEq, Value: selection},
+	}}}
+	matches, svcErr := e.ouService.GetOrganizationUnitChildren(ctx.Context, parentOUID, 1, 0, byHandle)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return askAgain(&ErrInvalidOU)
+		}
+		return failed(svcErr)
+	}
+
+	var selectedOUID string
+	if matches != nil && len(matches.OrganizationUnits) > 0 {
+		selectedOUID = matches.OrganizationUnits[0].ID
+	} else {
+		selectedOU, svcErr := e.ouService.GetOrganizationUnit(ctx.Context, selection)
+		if svcErr != nil {
+			if svcErr.Type == tidcommon.ClientErrorType {
+				return askAgain(&ErrInvalidOU)
+			}
+			return failed(svcErr)
+		}
+		if selectedOU.Parent != parentOUID {
+			logger.Debug(ctx.Context, "Selected OU is not a direct child of the parent OU",
+				log.String(ouIDKey, selectedOU.ID),
+				log.String("parentOUID", parentOUID))
+			return askAgain(&ErrOUNotDirectChild)
+		}
+		selectedOUID = selectedOU.ID
+	}
+
+	logger.Debug(ctx.Context, "Direct child OU selected by user", log.String(ouIDKey, selectedOUID))
+	execResp.RuntimeData[ouIDKey] = selectedOUID
+	execResp.Status = providers.ExecComplete
 	return execResp, nil
 }
 
@@ -247,6 +314,29 @@ func (e *ouResolverExecutor) resolveFromPromptAll(ctx *providers.NodeContext,
 	}
 
 	return execResp, nil
+}
+
+// getParentOU retrieves the parentOuId property, which names the OU the "prompt" strategy selects below. It is
+// read in authentication flows only, where UserTypeResolver does not set a default OU.
+func (e *ouResolverExecutor) getParentOU(ctx *providers.NodeContext) string {
+	if ctx.FlowType != providers.FlowTypeAuthentication {
+		return ""
+	}
+	val, _ := ctx.NodeProperties[common.NodePropertyOUParent].(string)
+
+	return strings.TrimSpace(val)
+}
+
+// isDirectChildrenOnly reports whether the node limits the "prompt" strategy to direct children.
+func (e *ouResolverExecutor) isDirectChildrenOnly(ctx *providers.NodeContext) bool {
+	switch val := ctx.NodeProperties[common.NodePropertyOUDirectChildrenOnly].(type) {
+	case bool:
+		return val
+	case string:
+		return val == dataValueTrue
+	default:
+		return false
+	}
 }
 
 // getResolveFrom retrieves the resolveFrom strategy from the node properties.

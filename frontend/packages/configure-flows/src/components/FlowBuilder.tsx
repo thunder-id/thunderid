@@ -19,6 +19,7 @@ import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
 import FlowConstants from '../constants/FlowConstants';
 import CompactStacksContext from '../context/CompactStacksContext';
+import FlowTypeContext from '../context/FlowTypeContext';
 import useEdgeGeneration from '../hooks/useEdgeGeneration';
 import useElementAddition from '../hooks/useElementAddition';
 import useFlowConfig from '../hooks/useFlowConfig';
@@ -702,38 +703,40 @@ function FlowBuilder() {
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
         </Alert>
       )}
-      <CompactStacksContext.Provider value={compactStacksContextValue}>
-        <FlowCanvas
-          resources={resources}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          mutateComponents={mutateComponents}
-          onTemplateLoad={handleTemplateLoad}
-          onWidgetLoad={handleWidgetLoad}
-          onStepLoad={handleStepLoad}
-          onResourceAdd={handleResourceAdd}
-          onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
-          nodes={displayNodes}
-          sourceNodes={nodes}
-          sourceEdges={edges}
-          edges={displayEdges}
-          setNodes={setNodes}
-          setEdges={setEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onEdgeClick={sso.handleEdgeClick}
-          flowTitle={flowName}
-          flowHandle={flowHandle}
-          onFlowTitleChange={handleFlowNameChange}
-          triggerAutoLayoutOnLoad={needsAutoLayout}
-          resourcePanelFooter={ssoToggleFooter}
-          onUndo={undo}
-          onRedo={redo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          isDirty={isDirty}
-        />
-      </CompactStacksContext.Provider>
+      <FlowTypeContext.Provider value={flowType}>
+        <CompactStacksContext.Provider value={compactStacksContextValue}>
+          <FlowCanvas
+            resources={resources}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            mutateComponents={mutateComponents}
+            onTemplateLoad={handleTemplateLoad}
+            onWidgetLoad={handleWidgetLoad}
+            onStepLoad={handleStepLoad}
+            onResourceAdd={handleResourceAdd}
+            onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
+            nodes={displayNodes}
+            sourceNodes={nodes}
+            sourceEdges={edges}
+            edges={displayEdges}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onEdgeClick={sso.handleEdgeClick}
+            flowTitle={flowName}
+            flowHandle={flowHandle}
+            onFlowTitleChange={handleFlowNameChange}
+            triggerAutoLayoutOnLoad={needsAutoLayout}
+            resourcePanelFooter={ssoToggleFooter}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            isDirty={isDirty}
+          />
+        </CompactStacksContext.Provider>
+      </FlowTypeContext.Provider>
       <SsoDisableConfirmDialog
         open={sso.isConfirmDialogOpen}
         checkpointCount={sso.ssoState.ssoCheckIds.length}

@@ -1568,6 +1568,20 @@ var (
 			DefaultValue: "The {{param(input)}} input is required and must not be empty",
 		},
 	}
+
+	// ErrOUNotDirectChild is returned when the selected OU is not a direct child of the OU being selected from.
+	ErrOUNotDirectChild = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1112",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_not_direct_child",
+			DefaultValue: "The selected organization unit is not a direct child.",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_not_direct_child_desc",
+			DefaultValue: "Only a direct child of the organization unit can be selected",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

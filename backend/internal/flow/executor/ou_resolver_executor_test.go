@@ -8,6 +8,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -246,6 +247,245 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_NoDefaultOUID_Retur
 	suite.mockOUService.AssertNotCalled(
 		suite.T(), "GetOrganizationUnitChildren", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_ParentOuIdProperty_UsedWithoutDefaultOUID() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+			common.NodePropertyOUParent:      " " + testParentOUID + " ",
+		},
+		RuntimeData: map[string]string{},
+		UserInputs:  map[string]string{},
+	}
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0, mock.Anything).
+		Return(&providers.OrganizationUnitListResponse{TotalResults: 2}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Equal(suite.T(), testParentOUID, result.AdditionalData[common.DataRootOUID])
+	assert.NotContains(suite.T(), result.RuntimeData, defaultOUIDKey)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_ParentOuIdProperty_TakesPrecedenceOverDefaultOUID() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+			common.NodePropertyOUParent:      testParentOUID,
+		},
+		RuntimeData: map[string]string{defaultOUIDKey: "other-ou"},
+		UserInputs:  map[string]string{ouIDKey: testChildOUID},
+	}
+	suite.mockOUService.On("IsParent", mock.Anything, testParentOUID, testChildOUID).
+		Return(true, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), testChildOUID, result.RuntimeData[ouIDKey])
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_ParentOuIdProperty_NotAStringIsIgnored() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+			common.NodePropertyOUParent:      42,
+		},
+		RuntimeData: map[string]string{},
+		UserInputs:  map[string]string{},
+	}
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_ParentOuIdProperty_IgnoredOutsideAuthenticationFlows() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding} {
+		ctx := &providers.NodeContext{
+			ExecutionID: "flow-123",
+			FlowType:    flowType,
+			NodeProperties: map[string]interface{}{
+				common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+				common.NodePropertyOUParent:      testParentOUID,
+			},
+			RuntimeData: map[string]string{},
+			UserInputs:  map[string]string{},
+		}
+
+		result, err := suite.executor.Execute(ctx)
+
+		assert.Error(suite.T(), err, string(flowType))
+		assert.Nil(suite.T(), result, string(flowType))
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_NoParentOU_ErrorNamesParentOuIdInSignInOnly() {
+	for flowType, mentionsProperty := range map[providers.FlowType]bool{
+		providers.FlowTypeAuthentication: true,
+		providers.FlowTypeRegistration:   false,
+	} {
+		ctx := &providers.NodeContext{
+			ExecutionID:    "flow-123",
+			FlowType:       flowType,
+			NodeProperties: map[string]interface{}{common.NodePropertyOUResolveFrom: ouResolveFromPrompt},
+			RuntimeData:    map[string]string{},
+			UserInputs:     map[string]string{},
+		}
+
+		_, err := suite.executor.Execute(ctx)
+
+		assert.Error(suite.T(), err, string(flowType))
+		assert.Contains(suite.T(), err.Error(), "UserTypeResolver must run before OUResolver", string(flowType))
+		assert.Equal(suite.T(), mentionsProperty, strings.Contains(err.Error(), "parentOuId"), string(flowType))
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) directChildrenCtx(selected string) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom:        ouResolveFromPrompt,
+			common.NodePropertyOUDirectChildrenOnly: true,
+		},
+		RuntimeData: map[string]string{defaultOUIDKey: testParentOUID},
+		UserInputs:  map[string]string{ouIDKey: selected},
+	}
+}
+
+func (suite *OUResolverExecutorTestSuite) handleFilterFor(handle string) interface{} {
+	return mock.MatchedBy(func(f *tidcommon.FilterGroup) bool {
+		return f != nil && len(f.Clauses) == 1 && f.Clauses[0].Expr.Attribute == "handle" &&
+			f.Clauses[0].Expr.Operator == tidcommon.OperatorEq && f.Clauses[0].Expr.Value == handle
+	})
+}
+
+func (suite *OUResolverExecutorTestSuite) noHandleMatch(selection string) {
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0,
+		suite.handleFilterFor(selection)).
+		Return(&providers.OrganizationUnitListResponse{}, (*tidcommon.ServiceError)(nil))
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_AcceptsHandleOfDirectChild() {
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0,
+		suite.handleFilterFor("tenant-a")).
+		Return(&providers.OrganizationUnitListResponse{
+			TotalResults:      1,
+			OrganizationUnits: []providers.OrganizationUnitBasic{{ID: testChildOUID, Handle: "tenant-a"}},
+		}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx("tenant-a"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), testChildOUID, result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetOrganizationUnit", mock.Anything, mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_AcceptsIDOfDirectChild() {
+	suite.noHandleMatch(testChildOUID)
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, testChildOUID).
+		Return(providers.OrganizationUnit{ID: testChildOUID, Parent: testParentOUID}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx(testChildOUID))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), testChildOUID, result.RuntimeData[ouIDKey])
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_RejectsDeeperDescendant() {
+	suite.noHandleMatch("grandchild")
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "grandchild").
+		Return(providers.OrganizationUnit{ID: "grandchild", Parent: testChildOUID}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx("grandchild"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Equal(suite.T(), &ErrOUNotDirectChild, result.Error)
+	assert.NotContains(suite.T(), result.RuntimeData, ouIDKey)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_UnknownValueAsksAgain() {
+	suite.noHandleMatch("nowhere")
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "nowhere").
+		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx("nowhere"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Equal(suite.T(), &ErrInvalidOU, result.Error)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_HandleLookupClientErrorAsksAgain() {
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0, mock.Anything).
+		Return((*providers.OrganizationUnitListResponse)(nil), &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx("tenant-a"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Equal(suite.T(), &ErrInvalidOU, result.Error)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_HandleLookupServerErrorFails() {
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, testParentOUID, 1, 0, mock.Anything).
+		Return((*providers.OrganizationUnitListResponse)(nil), &tidcommon.InternalServerError)
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx("tenant-a"))
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_IDLookupServerErrorFails() {
+	suite.noHandleMatch(testChildOUID)
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, testChildOUID).
+		Return(providers.OrganizationUnit{}, &tidcommon.InternalServerError)
+
+	result, err := suite.executor.Execute(suite.directChildrenCtx(testChildOUID))
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_DirectChildrenOnly_AcceptsStringProperty() {
+	ctx := suite.directChildrenCtx("nowhere")
+	ctx.NodeProperties[common.NodePropertyOUDirectChildrenOnly] = "true"
+	suite.noHandleMatch("nowhere")
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "nowhere").
+		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType})
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), &ErrInvalidOU, result.Error)
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsParent", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_WithoutDirectChildrenOnly_AcceptsDescendant() {
+	ctx := suite.directChildrenCtx("grandchild")
+	delete(ctx.NodeProperties, common.NodePropertyOUDirectChildrenOnly)
+	suite.mockOUService.On("IsParent", mock.Anything, testParentOUID, "grandchild").
+		Return(true, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetOrganizationUnit", mock.Anything, mock.Anything)
 }
 
 func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_Valid() {

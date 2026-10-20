@@ -134,6 +134,11 @@ const (
 	// NodePropertyOUResolveFrom specifies the strategy for resolving the organization unit.
 	// Supported values: "caller" (use the caller's OU).
 	NodePropertyOUResolveFrom = "resolveFrom"
+	// NodePropertyOUParent names the organization unit the "prompt" strategy selects below. It takes the place of
+	// the default OU set by UserTypeResolver, for flows such as sign-in that have no user type step.
+	NodePropertyOUParent = "parentOuId"
+	// NodePropertyOUDirectChildrenOnly limits the "prompt" strategy to the direct children of the parent OU.
+	NodePropertyOUDirectChildrenOnly = "directChildrenOnly"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.

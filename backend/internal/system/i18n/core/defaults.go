@@ -1684,6 +1684,8 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.ou_name_conflict_desc": "An organization unit with the same name already exists in this context",
 	"flows.executor.errors.ou_not_found": "Organization unit not found",
 	"flows.executor.errors.ou_not_found_desc": "The selected organization unit does not exist",
+	"flows.executor.errors.ou_not_direct_child": "The selected organization unit is not a direct child.",
+	"flows.executor.errors.ou_not_direct_child_desc": "Only a direct child of the organization unit can be selected",
 	"flows.executor.errors.ou_not_valid_for_user_type": "The selected organization unit is not valid for the chosen user type.",
 	"flows.executor.errors.ou_not_valid_for_user_type_desc": "The selected organization unit is not valid for the chosen user type",
 	"flows.executor.errors.ou_resolution_failed": "Failed to resolve organization unit",

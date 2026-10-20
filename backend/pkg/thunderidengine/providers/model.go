@@ -41,6 +41,7 @@ type DesignResponse struct {
 // representations, belongs to the organization unit service.
 type OrganizationUnit struct {
 	ID              string
+	Parent          string
 	Handle          string
 	Name            string
 	Description     string

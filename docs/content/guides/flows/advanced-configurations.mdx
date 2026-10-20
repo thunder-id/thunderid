@@ -1488,6 +1488,8 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 | Property | UI Label | Required | Default | Behavior |
 |---|---|---|---|---|
 | `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller`, `prompt`, or `promptAll` |
+| `parentOuId` | Parent organization unit | No | - | Authentication flows only. With `prompt`, the OU below which organizations can be selected. When empty, or in any other flow type, the default OU set by User Type Resolver is used |
+| `directChildrenOnly` | Limit to direct children | No | `false` | With `prompt`, only direct children of the parent OU can be selected, not deeper descendants |
 
 **Resolution Strategies:**
 
@@ -1502,14 +1504,15 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 **`prompt` strategy:**
 - Prompts the user to select a child OU if the default OU has children
 - **When to use:** Delegated onboarding where an admin selects which sub-organization to create the user in
-- **Prerequisites:** 
-  - **User Type Resolver must have run first**: resolves `defaultOUID`
+- **Prerequisites:**
+  - **A parent OU**: either the `parentOuId` property, or the default OU (`defaultOUID`) that **User Type Resolver** resolves when it has run first. `parentOuId` is read in authentication flows only. It is how a sign-in flow, where User Type Resolver does not set a default OU, names the OU to select below
   - **A Blank View with OU selection input must follow this executor**, to collect the user's OU selection
 - **Setup:**
-  1. Place **User Type Resolver** before this executor in registration flows
+  1. In sign-in flows, set `parentOuId`. In other flows, place **User Type Resolver** before this executor
   2. Add a **Blank View** immediately after this executor with an OU selection component
-  3. This executor will prompt only if the default OU has child OUs. Otherwise, it completes silently
-- **Failure conditions:** Default OU not found; selected OU is not a child of the default
+  3. This executor will prompt only if the parent OU has child OUs. Otherwise, it completes silently
+  4. Turn on **Limit to direct children** (`directChildrenOnly`) to accept only direct children of the parent OU. The user can then enter either the child's handle or its ID
+- **Failure conditions:** Neither `parentOuId` nor a default OU is available, or the parent OU is not found; selected OU is not a child of the parent, or, with `directChildrenOnly`, not a direct child
 
 **`promptAll` strategy:**
 - Shows the full OU tree from root, independent of User Type Resolver
