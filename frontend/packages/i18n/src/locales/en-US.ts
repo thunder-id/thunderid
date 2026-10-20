@@ -267,7 +267,6 @@ const translations = {
     'errors.FET-1084': 'This user cannot be deleted in their current state.',
     'errors.FET-1085': 'The user could not be deleted. Please try again.',
     'errors.FET-1086': 'This application cannot be deleted in its current state.',
-    'errors.FET-1087': 'The application could not be deleted. Please try again.',
     'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
     'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
     'errors.FET-1098': 'This role assignment cannot be removed in its current state.',

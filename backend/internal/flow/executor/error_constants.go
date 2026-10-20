@@ -1223,20 +1223,6 @@ var (
 		},
 	}
 
-	// ErrApplicationDeletionFailed is returned when a permitted application deletion cannot be completed.
-	ErrApplicationDeletionFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1087",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.application_deletion_failed",
-			DefaultValue: "Application deletion failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.application_deletion_failed_desc",
-			DefaultValue: "The application could not be deleted",
-		},
-	}
-
 	// ErrSecretRegenerationNotAllowed is returned when the target application has no rotatable secret.
 	ErrSecretRegenerationNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

@@ -38,16 +38,15 @@ type FlowTypeConfig struct {
 // The lifecycle entries name the suspend, unsuspend and unlock administration flows. Applications
 // never lock, so have no unlock.
 type FlowSectionConfig struct {
-	AuthFlow                FlowTypeConfig `json:"authFlow"`
-	RegistrationFlow        FlowTypeConfig `json:"registrationFlow"`
-	UserOnboardingFlow      FlowTypeConfig `json:"userOnboardingFlow"`
-	RecoveryFlow            FlowTypeConfig `json:"recoveryFlow"`
-	SignOutFlow             FlowTypeConfig `json:"signOutFlow"`
-	SelfFlow                FlowTypeConfig `json:"selfFlow"`
-	UserDeletionFlow        FlowTypeConfig `json:"userDeletionFlow"`
-	ApplicationDeletionFlow FlowTypeConfig `json:"applicationDeletionFlow"`
-	SecretRegenerationFlow  FlowTypeConfig `json:"secretRegenerationFlow"`
-	AgentOnboardingFlow     FlowTypeConfig `json:"agentOnboardingFlow"`
+	AuthFlow               FlowTypeConfig `json:"authFlow"`
+	RegistrationFlow       FlowTypeConfig `json:"registrationFlow"`
+	UserOnboardingFlow     FlowTypeConfig `json:"userOnboardingFlow"`
+	RecoveryFlow           FlowTypeConfig `json:"recoveryFlow"`
+	SignOutFlow            FlowTypeConfig `json:"signOutFlow"`
+	SelfFlow               FlowTypeConfig `json:"selfFlow"`
+	UserDeletionFlow       FlowTypeConfig `json:"userDeletionFlow"`
+	SecretRegenerationFlow FlowTypeConfig `json:"secretRegenerationFlow"`
+	AgentOnboardingFlow    FlowTypeConfig `json:"agentOnboardingFlow"`
 
 	RoleAssignmentRemovalFlow  FlowTypeConfig `json:"roleAssignmentRemovalFlow"`
 	RoleDeletionFlow           FlowTypeConfig `json:"roleDeletionFlow"`

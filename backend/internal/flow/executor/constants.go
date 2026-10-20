@@ -60,7 +60,6 @@ const (
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
 	ExecutorNameUserDelete                   = executormeta.ExecutorNameUserDelete
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
-	ExecutorNameApplicationDelete            = executormeta.ExecutorNameApplicationDelete
 	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
 	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
 	ExecutorNameRole                         = executormeta.ExecutorNameRole
@@ -91,8 +90,10 @@ const (
 	ExecutorModeGroupMembershipRemoval = executormeta.ExecutorModeGroupMembershipRemoval
 	ExecutorModeActionDeletion         = executormeta.ExecutorModeActionDeletion
 
-	ExecutorModeRevoke        = executormeta.ExecutorModeRevoke
-	ExecutorModeAdvanceCutoff = executormeta.ExecutorModeAdvanceCutoff
+	ExecutorModeRevoke              = executormeta.ExecutorModeRevoke
+	ExecutorModeAdvanceCutoff       = executormeta.ExecutorModeAdvanceCutoff
+	ExecutorModeRevokeBeforeAction  = executormeta.ExecutorModeRevokeBeforeAction
+	ExecutorModeRevokeBeforeRemoval = executormeta.ExecutorModeRevokeBeforeRemoval
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend

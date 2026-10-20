@@ -226,7 +226,7 @@ func (s *RoleExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 	foreign := map[string]revocation.Reason{
 		ExecutorModeRoleAssignmentRemoval: revocation.ReasonRoleDeleted,
 		ExecutorModeRoleDeletion:          revocation.ReasonRoleAssignmentRemoved,
-		ExecutorModeRolePermissionRemoval: revocation.ReasonApplicationDeleted,
+		ExecutorModeRolePermissionRemoval: revocation.ReasonUserDeleted,
 	}
 	s.Len(foreign, len(roleActionsByMode), "every mode must be covered")
 	for mode, reason := range foreign {

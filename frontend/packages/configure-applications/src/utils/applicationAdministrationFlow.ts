@@ -27,29 +27,6 @@ export async function deleteApplicationNatively(
 }
 
 /**
- * Deletes an application through the configured deletion flow, falling back to the native endpoint.
- *
- * Only the flow revokes the application's tokens; a configured flow that cannot be resolved refuses.
- */
-export async function deleteApplicationViaFlow(
-  http: HttpLike,
-  serverUrl: string,
-  applicationId: string,
-): Promise<void> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.APPLICATION_DELETION,
-    {[AdministrationFlowInput.APPLICATION]: applicationId},
-    'application deletion',
-  );
-
-  if (result === null) {
-    await deleteApplicationNatively(http, serverUrl, applicationId);
-  }
-}
-
-/**
  * Regenerates an application's client secret through the configured regeneration flow, returning the
  * new secret, or null when no flow is configured.
  *

@@ -196,7 +196,7 @@ func (s *IdentityGovernanceExecutorTestSuite) TestSuspendWithAForeignOrTargetles
 	}{
 		"foreign": {revocationPlan{
 			Criteria: []revocation.Criterion{{Type: revocation.CriterionTypeApplicationKey, Value: "client-1"}},
-			Reason:   revocation.ReasonApplicationDeleted,
+			Reason:   revocation.ReasonUserDeleted,
 			TargetID: "app-1",
 		}, "not \"identity_suspended\""},
 		"targetless": {revocationPlan{

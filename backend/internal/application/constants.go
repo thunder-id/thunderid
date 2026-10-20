@@ -38,3 +38,27 @@ const (
 	projectNotFoundErrorCode = "PRJ-1002"
 	ouNotInProjectErrorCode  = "PRJ-1013"
 )
+
+// The system flows this service runs, by handle, before a change is written and after, and the input
+// naming the application they act on.
+const (
+	systemFlowApplicationDeletePre       = "system-application-delete-pre"
+	systemFlowApplicationSecretRotatePre = "system-application-secret-rotate-pre"
+	// systemFlowRevocationPost follows every change whose pre flow revokes up to a cutoff, moving the
+	// cutoff past the write.
+	systemFlowRevocationPost   = "system-revocation-post"
+	systemFlowInputApplication = "targetApplicationId"
+)
+
+// clientSecretDisposition is what an update does with the application's client secret.
+type clientSecretDisposition int
+
+const (
+	// clientSecretUnchanged: no secret was supplied, the client has no use for one, or the one
+	// supplied is the one the application already has.
+	clientSecretUnchanged clientSecretDisposition = iota
+	// clientSecretSet: the application had no secret and gets one, so nothing was issued under one.
+	clientSecretSet
+	// clientSecretRotated: the supplied secret replaces the one the application has.
+	clientSecretRotated
+)

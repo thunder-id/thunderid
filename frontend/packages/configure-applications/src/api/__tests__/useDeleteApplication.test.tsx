@@ -24,19 +24,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-// How the console says this operation runs. Defaults to the flow, which is what a console that
-// declares nothing gets, so the tests written before the option existed are unaffected.
+// How the console says this operation runs. A console that declares nothing gets the flow mode.
 let administrationOperation: unknown = AdministrationModes.FLOW;
 
 const {useThunderID} = await import('@thunderid/react');
 const {useConfig, useToast} = await import('@thunderid/contexts');
-
-const FLOW_ID = '01900000-0000-7000-8000-000000000079';
-const FLOW_HANDLE = 'default-application-deletion-flow';
-
-const flowConfiguredConfig = {merged: {applicationDeletionFlow: {defaultHandle: FLOW_HANDLE}}};
-const noFlowConfiguredConfig = {merged: {}};
-const administrationFlows = {flows: [{flowType: 'ADMINISTRATION', handle: FLOW_HANDLE, id: FLOW_ID}]};
 
 /**
  * The request shape the hook issues, as far as these tests inspect it.
@@ -85,11 +77,8 @@ describe('useDeleteApplication', () => {
   });
 
   /**
-   * Answers the mocked client by URL rather than by call order.
-   *
-   * A deletion issues up to three requests (read the configured handle, resolve it to a flow id, then
-   * execute), so a positional mock would attach a response to the wrong call. A route value may be an
-   * `Error` to reject, or a function returning a promise when a test needs per-call behaviour.
+   * Answers the mocked client by URL. A route value may be an `Error` to reject, or a function
+   * returning a promise when a test needs per-call behaviour.
    */
   function routeHttp(routes: Record<string, unknown>): void {
     mockHttpRequest.mockImplementation((config: unknown): Promise<{data?: unknown}> => {
@@ -114,20 +103,14 @@ describe('useDeleteApplication', () => {
   }
 
   /**
-   * Arranges a successful flow deletion, which is what the shipped configuration produces.
+   * Arranges a successful deletion, or one answered by the given value.
    */
-  function mockFlowDeletion(overrides: Record<string, unknown> = {}): void {
-    routeHttp({
-      '/flow/execute': {flowStatus: 'COMPLETE'},
-      '/flows': administrationFlows,
-      '/server-config/flow': flowConfiguredConfig,
-      ...overrides,
-    });
+  function mockDeletion(response: unknown = {}): void {
+    routeHttp({'/applications/': response});
   }
 
   /**
-   * The requests whose URL contains the given fragment, so assertions can ignore the lookups that
-   * precede the deletion itself.
+   * The requests whose URL contains the given fragment.
    */
   function requestsTo(fragment: string): RecordedRequest[] {
     return mockHttpRequest.mock.calls
@@ -149,7 +132,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should successfully delete an application', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -166,8 +149,8 @@ describe('useDeleteApplication', () => {
     expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success');
   });
 
-  it('should delete through the configured administration flow', async () => {
-    mockFlowDeletion();
+  it('should delete through the endpoint', async () => {
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -178,31 +161,7 @@ describe('useDeleteApplication', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockHttpRequest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'https://api.test.com/flow/execute',
-        method: 'POST',
-        data: {flowId: FLOW_ID, inputs: {targetApplicationId: applicationId}},
-      }),
-    );
-    // Going through the flow is what revokes the application's tokens, so the native endpoint must not
-    // also be called: that would be a second, unrevoked deletion path.
-    expect(requestsTo('/applications/')).toHaveLength(0);
-  });
-
-  // A deployment that configures no deletion flow keeps deleting applications through the endpoint.
-  it('should fall back to the native endpoint when no flow is configured', async () => {
-    routeHttp({'/applications/': {}, '/server-config/flow': noFlowConfiguredConfig});
-
-    const applicationId = '550e8400-e29b-41d4-a716-446655440000';
-    const {result} = renderHook(() => useDeleteApplication());
-
-    result.current.mutate(applicationId);
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-    });
-
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
     expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         url: `https://api.test.com/applications/${applicationId}`,
@@ -214,30 +173,14 @@ describe('useDeleteApplication', () => {
     );
   });
 
-  // A flow that exists but fails must never be downgraded to a native delete: that would remove the
-  // application while leaving every token it issued valid.
-  it('should not fall back to the native endpoint when the flow fails', async () => {
-    mockFlowDeletion({'/applications/': {}, '/flow/execute': new Error('flow refused')});
-
-    const {result} = renderHook(() => useDeleteApplication());
-
-    result.current.mutate('550e8400-e29b-41d4-a716-446655440000');
-
-    await waitFor(() => {
-      expect(result.current.isError).toBe(true);
-    });
-
-    expect(requestsTo('/applications/')).toHaveLength(0);
-  });
-
   it('should set pending state during deletion', async () => {
-    let resolveExecution: () => void;
-    mockFlowDeletion({
-      '/flow/execute': () =>
+    let resolveDeletion: () => void;
+    mockDeletion(
+      () =>
         new Promise((resolve) => {
-          resolveExecution = () => resolve({data: {flowStatus: 'COMPLETE'}});
+          resolveDeletion = () => resolve({data: {}});
         }),
-    });
+    );
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -248,7 +191,7 @@ describe('useDeleteApplication', () => {
       expect(result.current.isPending).toBe(true);
     });
 
-    resolveExecution!();
+    resolveDeletion!();
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -259,7 +202,7 @@ describe('useDeleteApplication', () => {
 
   it('should handle API error', async () => {
     const apiError = new Error('Failed to delete application');
-    mockFlowDeletion({'/flow/execute': apiError});
+    mockDeletion(apiError);
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -276,7 +219,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should not show a toast on error', async () => {
-    mockFlowDeletion({'/flow/execute': new Error('Failed to delete application')});
+    mockDeletion(new Error('Failed to delete application'));
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -292,7 +235,7 @@ describe('useDeleteApplication', () => {
 
   it('should handle network error', async () => {
     const networkError = new Error('Network request failed');
-    mockFlowDeletion({'/flow/execute': networkError});
+    mockDeletion(networkError);
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -309,7 +252,7 @@ describe('useDeleteApplication', () => {
 
   it('should handle 404 Not Found error', async () => {
     const notFoundError = new Error('Application not found');
-    mockFlowDeletion({'/flow/execute': notFoundError});
+    mockDeletion(notFoundError);
 
     const applicationId = 'non-existent-id';
     const {result} = renderHook(() => useDeleteApplication());
@@ -324,7 +267,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should remove application from cache on successful deletion', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result, queryClient} = renderHook(() => useDeleteApplication());
@@ -352,7 +295,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should invalidate applications list on successful deletion', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result, queryClient} = renderHook(() => useDeleteApplication());
@@ -393,7 +336,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should handle invalidateQueries rejection gracefully', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result, queryClient} = renderHook(() => useDeleteApplication());
@@ -410,7 +353,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should handle multiple sequential deletions', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const app1Id = 'app-1';
     const app2Id = 'app-2';
@@ -431,15 +374,15 @@ describe('useDeleteApplication', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    const executions = requestsTo('/flow/execute');
-    expect(executions).toHaveLength(2);
-    expect(executions[0].data).toEqual({flowId: FLOW_ID, inputs: {targetApplicationId: app1Id}});
-    expect(executions[1].data).toEqual({flowId: FLOW_ID, inputs: {targetApplicationId: app2Id}});
+    const deletions = requestsTo('/applications/');
+    expect(deletions).toHaveLength(2);
+    expect(deletions[0].url).toBe(`https://api.test.com/applications/${app1Id}`);
+    expect(deletions[1].url).toBe(`https://api.test.com/applications/${app2Id}`);
   });
 
   it('should handle permission error (403 Forbidden)', async () => {
     const forbiddenError = new Error('Permission denied');
-    mockFlowDeletion({'/flow/execute': forbiddenError});
+    mockDeletion(forbiddenError);
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -454,7 +397,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should use mutateAsync for promise-based deletion', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -470,7 +413,7 @@ describe('useDeleteApplication', () => {
 
   it('should reject mutateAsync on error', async () => {
     const apiError = new Error('Deletion failed');
-    mockFlowDeletion({'/flow/execute': apiError});
+    mockDeletion(apiError);
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -485,7 +428,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should not affect other cached applications on deletion', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const app1Id = 'app-1';
     const app2Id = 'app-2';
@@ -512,7 +455,7 @@ describe('useDeleteApplication', () => {
   });
 
   it('should handle concurrent deletion attempts', async () => {
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -527,17 +470,15 @@ describe('useDeleteApplication', () => {
 
     // Note: TanStack Query will handle the concurrent mutations
     // The second mutation will override the first one's state
-    expect(requestsTo('/flow/execute')).toHaveLength(2);
+    expect(requestsTo('/applications/')).toHaveLength(2);
   });
 
   it('should clear error state on successful retry', async () => {
     const apiError = new Error('Temporary error');
     let attempt = 0;
-    mockFlowDeletion({
-      '/flow/execute': () => {
-        attempt += 1;
-        return attempt === 1 ? Promise.reject(apiError) : Promise.resolve({data: {flowStatus: 'COMPLETE'}});
-      },
+    mockDeletion(() => {
+      attempt += 1;
+      return attempt === 1 ? Promise.reject(apiError) : Promise.resolve({data: {}});
     });
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
@@ -560,12 +501,12 @@ describe('useDeleteApplication', () => {
     });
 
     expect(result.current.error).toBeNull();
-    expect(requestsTo('/flow/execute')).toHaveLength(2);
+    expect(requestsTo('/applications/')).toHaveLength(2);
   });
 
   it('should handle server returning 204 No Content', async () => {
     // 204 No Content is the typical response for successful DELETE
-    mockFlowDeletion();
+    mockDeletion();
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -581,7 +522,7 @@ describe('useDeleteApplication', () => {
 
   it('should pass through server error messages', async () => {
     const serverError = new Error('Application has active users and cannot be deleted');
-    mockFlowDeletion({'/flow/execute': serverError});
+    mockDeletion(serverError);
 
     const applicationId = '550e8400-e29b-41d4-a716-446655440000';
     const {result} = renderHook(() => useDeleteApplication());
@@ -596,17 +537,10 @@ describe('useDeleteApplication', () => {
     expect(result.current.error?.message).toBe('Application has active users and cannot be deleted');
   });
 
-  // A console that holds configuration only has no tokens or sessions to end, so it deletes through
-  // the endpoint. The flow is not looked up at all: the mode decides, rather than the deletion
-  // discovering whether a flow happens to be configured.
+  // The server revokes what the application issued, so native and flow modes both use the endpoint.
   it('deletes through the endpoint when the console says native', async () => {
     administrationOperation = AdministrationModes.NATIVE;
-    // A flow *is* configured. Native has to ignore it rather than fall back to it.
-    routeHttp({
-      '/server-config/flow': flowConfiguredConfig,
-      '/flows': administrationFlows,
-      '/applications/': {},
-    });
+    mockDeletion();
 
     const {result} = renderHook(() => useDeleteApplication());
 
@@ -617,8 +551,6 @@ describe('useDeleteApplication', () => {
     });
 
     expect(requestsTo('/applications/')).toHaveLength(1);
-    expect(requestsTo('/flow/execute')).toHaveLength(0);
-    expect(requestsTo('/server-config/flow')).toHaveLength(0);
   });
 
   // A distributor can replace one operation without forking this package.

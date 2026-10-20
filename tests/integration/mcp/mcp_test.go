@@ -678,9 +678,6 @@ func (ts *MCPTestSuite) getJSON(url string, out any) {
 const (
 	appRevocationClientID    = "mcp-app-revocation-client"
 	appRevocationRedirectURI = "https://localhost:3000/mcp-app-revocation/callback"
-
-	applicationDeletionFlowHandle = "default-application-deletion-flow"
-	administrationFlowType        = "ADMINISTRATION"
 )
 
 // A token issued through an application is rejected at /mcp once that application is deleted, as it is
@@ -726,7 +723,7 @@ func (ts *MCPTestSuite) TestInitialize_DeletedApplicationToken_Rejected() {
 	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "the token must work before deletion: %s", string(body))
 	ts.Require().Equal(http.StatusOK, ts.restStatus(token), "the token must work at REST before deletion")
 
-	ts.runApplicationDeletionFlow(appID)
+	ts.Require().NoError(testutils.DeleteApplication(appID), "failed to delete the application")
 	deleted = true
 
 	ts.Require().Eventually(func() bool {
@@ -750,29 +747,6 @@ func (ts *MCPTestSuite) restStatus(token string) int {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode
-}
-
-// runApplicationDeletionFlow deletes the application through the shipped deletion flow, which revokes
-// its OAuth client before removing the record.
-func (ts *MCPTestSuite) runApplicationDeletionFlow(appID string) {
-	flowID, err := testutils.GetFlowIDByHandle(applicationDeletionFlowHandle, administrationFlowType)
-	ts.Require().NoError(err, "failed to resolve the application deletion flow")
-
-	adminToken, err := testutils.GetAccessToken()
-	ts.Require().NoError(err, "failed to obtain the admin token")
-
-	reqBody := `{"flowId":"` + flowID + `","inputs":{"targetApplicationId":"` + appID + `"}}`
-	req, err := http.NewRequest(http.MethodPost, testServerURL+"/flow/execute", bytes.NewBufferString(reqBody))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-
-	resp, err := ts.client.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "deletion flow failed: %s", string(body))
-	ts.Require().Containsf(string(body), `"COMPLETE"`, "deletion flow must complete: %s", string(body))
 }
 
 // mcpToolResult is the part of a tools/call response the tool tests read.

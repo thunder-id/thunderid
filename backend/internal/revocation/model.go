@@ -22,7 +22,7 @@ const (
 	ReasonSessionLogout                Reason = "session_logout"
 	ReasonCodeReplay                   Reason = "code_replay"
 	ReasonExplicitTokenFamily          Reason = "explicit_token_family"
-	ReasonApplicationDeleted           Reason = "application_deleted"
+	ReasonApplicationRemoved           Reason = "application_removed"
 	ReasonApplicationSecretRegenerated Reason = "application_secret_regenerated"
 	ReasonRoleAssignmentRemoved        Reason = "role_assignment_removed"
 	ReasonRolePermissionRemoved        Reason = "role_permission_removed"
@@ -101,6 +101,7 @@ type CriteriaRevocation struct {
 // all derive from this slice so they cannot disagree about whether a revocation is terminal.
 var boundaryReasons = []Reason{
 	ReasonIdentitySuspended,
+	ReasonApplicationRemoved,
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
 	ReasonRolePermissionRemoved,

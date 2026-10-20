@@ -626,6 +626,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
+	err = application.SetSystemFlowProvider(applicationService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,

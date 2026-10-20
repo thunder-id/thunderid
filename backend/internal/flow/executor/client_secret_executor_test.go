@@ -50,9 +50,9 @@ func (s *ClientSecretExecutorTestSuite) nodeContext(inputs, shared map[string]st
 // modeContext is nodeContext for the validator, whose action the node's revocation mode selects. It is
 // always the first node in its flow, so it carries no shared runtime data.
 func (s *ClientSecretExecutorTestSuite) modeContext(
-	mode revocation.Mode, inputs map[string]string) *providers.NodeContext {
+	mode string, inputs map[string]string) *providers.NodeContext {
 	ctx := s.nodeContext(inputs, nil)
-	ctx.ExecutorMode = string(mode)
+	ctx.ExecutorMode = mode
 	return ctx
 }
 
@@ -76,7 +76,7 @@ func (s *ClientSecretExecutorTestSuite) TestSecretRegenerationFlow() {
 	s.apps.EXPECT().ValidateCredentialAction(mock.Anything, "app-1", appmodel.CredentialActionRegenerate).Return(
 		&appmodel.ApplicationArtifactProfile{ClientKey: "client-1", MaxLifetimeSeconds: 86400}, nil)
 	pre, err := s.validator().Execute(
-		s.modeContext(revocation.ModeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
+		s.modeContext(ExecutorModeRevokeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, pre.Status)
 
@@ -108,7 +108,7 @@ func (s *ClientSecretExecutorTestSuite) TestSecretRegeneration_DoesNotDetachSess
 	s.apps.EXPECT().ValidateCredentialAction(mock.Anything, "app-1", appmodel.CredentialActionRegenerate).Return(
 		&appmodel.ApplicationArtifactProfile{ClientKey: "client-1"}, nil)
 	pre, err := s.validator().Execute(
-		s.modeContext(revocation.ModeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
+		s.modeContext(ExecutorModeRevokeBeforeAction, map[string]string{revocationInputApplication: "app-1"}))
 	s.Require().NoError(err)
 
 	sessions := sessionmock.NewServiceMock(s.T())
@@ -127,7 +127,7 @@ func (s *ClientSecretExecutorTestSuite) TestActingNodes_RejectAPlanForAnotherAct
 	s.apps.EXPECT().ValidateDeleteApplication(mock.Anything, "app-1").Return(
 		&appmodel.ApplicationArtifactProfile{ClientKey: "client-1"}, nil)
 	pre, err := s.validator().Execute(
-		s.modeContext(revocation.ModeAll, map[string]string{revocationInputApplication: "app-1"}))
+		s.modeContext(ExecutorModeRevokeBeforeRemoval, map[string]string{revocationInputApplication: "app-1"}))
 	s.Require().NoError(err)
 
 	_, err = s.secretExecutor().Execute(
