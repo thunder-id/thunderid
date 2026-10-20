@@ -172,6 +172,20 @@ describe('ExecutorInputsEditor', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith([{type: 'PASSWORD_INPUT', identifier: 'field', required: true}]);
     });
+
+    it('should offer USER_SELECT next to SELECT and store it as the type', async () => {
+      const user = userEvent.setup();
+      const inputs: FlowNodeInput[] = [{type: 'TEXT_INPUT', identifier: 'owner', required: false}];
+
+      render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+
+      expect(screen.getByText('flows:core.executions.inputs.types.select')).toBeInTheDocument();
+      await user.click(screen.getByText('flows:core.executions.inputs.types.userSelect'));
+
+      expect(mockOnChange).toHaveBeenCalledWith([{type: 'USER_SELECT', identifier: 'owner', required: false}]);
+    });
   });
 
   describe('Update Identifier', () => {

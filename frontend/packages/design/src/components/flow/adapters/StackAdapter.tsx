@@ -4,7 +4,7 @@
 import type {EmbeddedFlowComponent} from '@thunderid/react';
 import type {JSX} from 'react';
 import StackContainer from './StackContainer';
-import type {FlowComponent} from '../../../models/flow';
+import type {FlowComponent, RenderFlowField} from '../../../models/flow';
 import FlowComponentRenderer from '../FlowComponentRenderer';
 
 const STACK_IMAGE_MAX_SIZE = 80;
@@ -20,6 +20,8 @@ interface StackAdapterProps {
   onBlur?: (field: string) => void;
   onSubmit?: (action: EmbeddedFlowComponent, inputs: Record<string, string>) => void;
   onValidate?: (components: EmbeddedFlowComponent[]) => boolean;
+  renderField?: RenderFlowField;
+  isSubmitDisabled?: boolean;
 }
 
 export default function StackAdapter({
@@ -33,6 +35,8 @@ export default function StackAdapter({
   onBlur = undefined,
   onSubmit = () => null,
   onValidate = undefined,
+  renderField = undefined,
+  isSubmitDisabled = undefined,
 }: StackAdapterProps): JSX.Element {
   const nestedComponents = (component.components ?? []) as FlowComponent[];
 
@@ -52,6 +56,8 @@ export default function StackAdapter({
           onBlur={onBlur}
           onSubmit={onSubmit}
           onValidate={onValidate}
+          renderField={renderField}
+          isSubmitDisabled={isSubmitDisabled}
           maxImageSize={STACK_IMAGE_MAX_SIZE}
         />
       ))}

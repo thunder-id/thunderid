@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import type {BaseInviteUserRenderProps} from '@thunderid/react';
+import {
+  toUserSelectPage,
+  type BaseInviteUserRenderProps,
+  type SelectPage,
+  type SelectPageRequest,
+} from '@thunderid/react';
 import {act, render, screen, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {defaultAgentRoutePaths} from '../../hooks/useAgentRoutes';
-import type {AgentOnboardingFlowResolution} from '../../utils/resolveAgentOnboardingFlow';
-import {AgentOnboardingFlowProblem} from '../../utils/resolveAgentOnboardingFlow';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import AgentOnboardPage from '../AgentOnboardPage';
+import {defaultAgentRoutePaths} from '@/hooks/useAgentRoutes';
+import {AgentOnboardingFlowProblem, type AgentOnboardingFlowResolution} from '@/utils/resolveAgentOnboardingFlow';
 
 /** The props the page hands the flow driver, captured so a test can drive the page through them. */
 interface CapturedFlowProps {
@@ -27,20 +31,27 @@ const h = vi.hoisted(() => ({
   navigate: vi.fn(),
   pathname: {current: '/agents/create'},
   resetFlow: vi.fn(),
+  handleSubmit: vi.fn<(action: unknown, inputs?: Record<string, string>) => Promise<void>>(),
+  showToast: vi.fn<(message: string, severity?: string) => void>(),
   resolve: vi.fn<(http: unknown, serverUrl: string) => Promise<AgentOnboardingFlowResolution>>(),
   signedInUser: {current: null as {id?: string} | null},
   handleInputChange: vi.fn<(ref: string, value: string) => void>(),
+  fetchUsers: vi.fn<(request: SelectPageRequest) => Promise<SelectPage>>(),
+  fetchAuthFlows: vi.fn<(request: SelectPageRequest) => Promise<SelectPage>>(),
+  fetchUserTypes: vi.fn<(request: SelectPageRequest) => Promise<SelectPage>>(),
   users: {current: [] as {id: string; display?: string; attributes?: Record<string, unknown>}[]},
   step: {
     additionalData: {} as Record<string, unknown>,
     components: [] as Record<string, unknown>[],
+    fieldErrors: {} as Record<string, string>,
+    touched: {} as Record<string, boolean>,
     values: {} as Record<string, string>,
   },
 }));
 
-// Only the flow driver and the HTTP client are replaced. Everything the page renders through,
-// FlowComponentRenderer included, stays real, because what these tests are checking is that the
-// page draws a flow step correctly rather than that it calls a renderer.
+// Only the flow driver, the HTTP client and the management loaders are replaced. Everything the page
+// renders through, the design adapters included, stays real, because what these tests are checking is
+// that the page draws a flow step correctly rather than that it calls a renderer.
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
   BaseInviteUser: (props: CapturedFlowProps): ReactNode => {
@@ -49,29 +60,31 @@ vi.mock('@thunderid/react', async (importOriginal) => ({
     return props.children({
       additionalData: h.step.additionalData,
       components: h.step.components,
-      fieldErrors: {},
+      fieldErrors: h.step.fieldErrors,
       handleInputBlur: vi.fn(),
       handleInputChange: h.handleInputChange,
-      handleSubmit: vi.fn(),
+      handleSubmit: h.handleSubmit,
       isLoading: false,
       resetFlow: h.resetFlow,
-      touched: {},
+      touched: h.step.touched,
       values: h.step.values,
     } as unknown as BaseInviteUserRenderProps);
   },
+  useFetchAuthFlows: () => h.fetchAuthFlows,
+  useFetchUserTypes: () => h.fetchUserTypes,
+  useFetchUsers: () => h.fetchUsers,
   useThunderID: () => ({http: h.http, user: h.signedInUser.current}),
 }));
 
 // The resolver has its own tests; here it only decides which branch of the page renders.
-vi.mock('../../utils/resolveAgentOnboardingFlow', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../utils/resolveAgentOnboardingFlow')>()),
+vi.mock('@/utils/resolveAgentOnboardingFlow', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/resolveAgentOnboardingFlow')>()),
   default: h.resolve,
 }));
 
 vi.mock('@thunderid/configure-users', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-users')>()),
   useFlowTextResolver: () => (text?: string) => text,
-  useGetUsers: () => ({data: {users: h.users.current}}),
 }));
 
 // The OU picker fetches its own tree; the page only has to hand it the value and the change handler.
@@ -98,6 +111,11 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   ),
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useToast: () => ({showToast: h.showToast}),
+}));
+
 vi.mock('@thunderid/logger/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/logger/react')>()),
   useLogger: () => h.logger,
@@ -119,6 +137,7 @@ vi.mock('react-i18next', () => ({
         'agents:onboarding.errors.notConfigured.description': 'Configure an agent onboarding flow handle.',
         'agents:onboarding.errors.notConfigured.title': 'Onboarding flow not configured',
         'agents:onboarding.errors.unavailable.description': 'The agent onboarding flow could not be loaded.',
+        'agents:onboarding.errors.optionsFailed': 'Could not load the list. Try again.',
         'agents:onboarding.errors.unavailable.title': 'Onboarding unavailable',
         'agents:onboarding.addAnother': 'Add Another Agent',
         'agents:onboarding.selectPlaceholder': 'Select an option',
@@ -142,6 +161,26 @@ vi.mock('react-i18next', () => ({
 
 const progressValue = (): number => Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'));
 
+/** Serves `h.users` a page at a time, labelled the way the SDK's user loader labels them. */
+const serveUsers = ({limit, offset}: SelectPageRequest): Promise<SelectPage> => {
+  const users = h.users.current.slice(offset, offset + limit);
+
+  return Promise.resolve(
+    toUserSelectPage(
+      {count: users.length, links: [], startIndex: offset + 1, totalResults: h.users.current.length, users} as never,
+      offset,
+    ),
+  );
+};
+
+/** Builds a loader that serves one page of the given options. */
+const serveOptions = (options: {label: string; value: string}[]) => (): Promise<SelectPage> =>
+  Promise.resolve({nextOffset: null, options});
+
+/** The users of a directory, numbered from one. */
+const usersNumbered = (count: number): {display: string; id: string}[] =>
+  Array.from({length: count}, (_, index) => ({display: `User ${index + 1}`, id: `user-${index + 1}`}));
+
 /** Hands the page a step, the way the flow driver would after a server response. */
 const givenStep = (
   components: Record<string, unknown>[],
@@ -153,6 +192,18 @@ const givenStep = (
   h.step.values = values;
 };
 
+/** An input step as the flow builder shapes it: the inputs sit in a block together with the action that submits them. */
+const inBlock = (...inputs: Record<string, unknown>[]): Record<string, unknown>[] => [
+  {
+    components: [
+      ...inputs,
+      {eventType: 'SUBMIT', id: 'action_submit', label: 'Continue', type: 'ACTION', variant: 'PRIMARY'},
+    ],
+    id: 'block_step',
+    type: 'BLOCK',
+  },
+];
+
 /** Reports a flow status back to the page, the way the driver does on every response. */
 const flowReports = async (flowStatus: string): Promise<void> => {
   await act(async () => {
@@ -160,6 +211,10 @@ const flowReports = async (flowStatus: string): Promise<void> => {
     await Promise.resolve();
   });
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('AgentOnboardPage', () => {
   beforeEach(() => {
@@ -169,7 +224,11 @@ describe('AgentOnboardPage', () => {
     h.step.components = [];
     h.step.additionalData = {};
     h.step.values = {};
+    h.step.fieldErrors = {};
+    h.step.touched = {};
+    h.handleSubmit.mockResolvedValue(undefined);
     h.users.current = [];
+    h.fetchUsers.mockImplementation(serveUsers);
     h.resetFlow.mockClear();
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
     h.http.request.mockResolvedValue({data: {flowStatus: 'INCOMPLETE'}});
@@ -244,8 +303,8 @@ describe('AgentOnboardPage', () => {
   });
 
   describe('rendering a flow step', () => {
-    // The page draws every component itself rather than delegating, so each type the shipped flow
-    // uses needs its own case. The test tree mounts no DesignProvider, matching the console.
+    // Each type the shipped flow uses is drawn by the design adapter for it. The test tree mounts no
+    // DesignProvider, matching the console.
     it('should render text components', async () => {
       givenStep([{id: 'title', label: 'Name your agent', type: 'TEXT', variant: 'HEADING_1'}]);
 
@@ -320,14 +379,15 @@ describe('AgentOnboardPage', () => {
       expect(screen.getByDisplayValue('agent-client-secret')).toHaveAttribute('type', 'text');
     });
 
-    // USER_SELECT carries no options: the page fetches the candidates and shows each user the way
-    // the deployment names them, while the value submitted stays the identifier.
+    // USER_SELECT carries no options: the adapter loads the candidates with the signed-in user's token
+    // and shows each user the way the deployment names them, while the value submitted stays the
+    // identifier.
     it('should offer users by name and submit the identifier', async () => {
       h.users.current = [
         {display: 'Ada Lovelace', id: 'user-1'},
         {attributes: {username: 'grace'}, id: 'user-2'},
       ];
-      givenStep([{id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}]);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
 
       render(<AgentOnboardPage />);
 
@@ -343,7 +403,7 @@ describe('AgentOnboardPage', () => {
 
     it('should name a user by email, then by identifier, when there is no display name or username', async () => {
       h.users.current = [{attributes: {email: 'grace@example.com'}, id: 'user-2'}, {id: 'user-3'}];
-      givenStep([{id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}]);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
 
       render(<AgentOnboardPage />);
 
@@ -354,17 +414,159 @@ describe('AgentOnboardPage', () => {
       expect(options.map((option) => option.textContent)).toEqual(['Select an option', 'grace@example.com', 'user-3']);
     });
 
+    it('should request no users until the owner list is opened', async () => {
+      h.users.current = usersNumbered(3);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await screen.findByText('Owner');
+
+      expect(h.fetchUsers).not.toHaveBeenCalled();
+    });
+
+    it('should load users in pages of 30 from the first offset', async () => {
+      h.users.current = usersNumbered(3);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await screen.findByRole('option', {name: 'User 1'});
+
+      expect(h.fetchUsers).toHaveBeenCalledTimes(1);
+      expect(h.fetchUsers).toHaveBeenCalledWith(expect.objectContaining({limit: 30, offset: 0}));
+    });
+
+    // The shared test setup replaces IntersectionObserver with a no-op, so the end of the list is
+    // reported by hand here. Watching it is covered against a real browser in the design package.
+    it('should load the rest of the users once the end of the list is reached', async () => {
+      const observerCallbacks: ((entries: {isIntersecting: boolean}[]) => void)[] = [];
+      vi.stubGlobal(
+        'IntersectionObserver',
+        class {
+          constructor(callback: (entries: {isIntersecting: boolean}[]) => void) {
+            observerCallbacks.push(callback);
+          }
+
+          observe = vi.fn();
+
+          disconnect = vi.fn();
+        },
+      );
+      h.users.current = usersNumbered(45);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await screen.findByRole('option', {name: 'User 30'});
+      await waitFor(() => expect(observerCallbacks.length).toBeGreaterThan(0));
+      await act(async () => {
+        observerCallbacks[observerCallbacks.length - 1]([{isIntersecting: true}]);
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByRole('option', {name: 'User 45'})).toBeInTheDocument();
+      expect(h.fetchUsers).toHaveBeenCalledTimes(2);
+      expect(h.fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({limit: 30, offset: 30}));
+    });
+
+    // A picker has nowhere on the page to show a failed load, so without a toast the list would just look
+    // empty and the administrator could not tell a permission problem from a directory with no users.
+    it('should tell the administrator when a list cannot be loaded', async () => {
+      h.fetchUsers.mockRejectedValue(new Error('forbidden'));
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+
+      await waitFor(() => expect(h.showToast).toHaveBeenCalledWith('Could not load the list. Try again.', 'error'));
+      expect(h.showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not show the server message when a list cannot be loaded', async () => {
+      h.fetchUsers.mockRejectedValue(new Error('SQL logic error: no such column'));
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+
+      await waitFor(() => expect(h.showToast).toHaveBeenCalled());
+      expect(h.showToast.mock.calls[0][0]).not.toContain('SQL');
+    });
+
+    it('should not show a toast when the list loads', async () => {
+      h.users.current = usersNumbered(3);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await screen.findByRole('option', {name: 'User 1'});
+
+      expect(h.showToast).not.toHaveBeenCalled();
+    });
+
+    it('should submit the id of the user that is picked', async () => {
+      h.users.current = usersNumbered(3);
+      givenStep(inBlock({id: 'owner_input', label: 'Owner', ref: 'owner', required: false, type: 'USER_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await userEvent.click(await screen.findByRole('option', {name: 'User 2'}));
+
+      expect(h.handleInputChange).toHaveBeenCalledWith('owner', 'user-2');
+    });
+
+    it('should offer authentication flows by name and submit the flow id', async () => {
+      h.fetchAuthFlows.mockImplementation(
+        serveOptions([
+          {label: 'Default login', value: 'flow-1'},
+          {label: 'mfa-login', value: 'flow-2'},
+        ]),
+      );
+      givenStep(inBlock({id: 'flow_input', label: 'Authentication flow', ref: 'authFlowId', type: 'AUTH_FLOW_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await userEvent.click(await screen.findByRole('option', {name: 'mfa-login'}));
+
+      expect(h.handleInputChange).toHaveBeenCalledWith('authFlowId', 'flow-2');
+    });
+
+    it('should offer user types and submit the handle', async () => {
+      h.fetchUserTypes.mockImplementation(
+        serveOptions([
+          {label: 'employee', value: 'employee'},
+          {label: 'customer', value: 'customer'},
+        ]),
+      );
+      givenStep(inBlock({id: 'type_input', label: 'User type', ref: 'userType', type: 'USER_TYPE_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('combobox'));
+      await userEvent.click(await screen.findByRole('option', {name: 'customer'}));
+
+      expect(h.handleInputChange).toHaveBeenCalledWith('userType', 'customer');
+    });
+
     // SELECT options arrive either as {value, label} pairs or as bare values that double as labels.
     it('should offer the options a select carries, in either shape', async () => {
-      givenStep([
-        {
+      givenStep(
+        inBlock({
           id: 'tier_input',
           label: 'Tier',
           options: [{label: 'Gold', value: 'gold'}, 'silver'],
           ref: 'tier',
           type: 'SELECT',
-        },
-      ]);
+        }),
+      );
 
       render(<AgentOnboardPage />);
 
@@ -379,7 +581,7 @@ describe('AgentOnboardPage', () => {
 
     // OU_SELECT is the same contract: the picker sources its own tree, so the page only wires it up.
     it('should render the organization unit picker', async () => {
-      givenStep([{id: 'ou_selection_input', label: 'Organization Unit', ref: 'ouId', type: 'OU_SELECT'}]);
+      givenStep(inBlock({id: 'ou_selection_input', label: 'Organization Unit', ref: 'ouId', type: 'OU_SELECT'}));
 
       render(<AgentOnboardPage />);
 
@@ -387,7 +589,7 @@ describe('AgentOnboardPage', () => {
     });
 
     it('should root the organization unit picker where the flow says and record the chosen unit', async () => {
-      givenStep([{id: 'ou_selection_input', label: 'Organization Unit', ref: 'ouId', type: 'OU_SELECT'}], {
+      givenStep(inBlock({id: 'ou_selection_input', label: 'Organization Unit', ref: 'ouId', type: 'OU_SELECT'}), {
         rootOuId: 'ou-root-1',
       });
 
@@ -399,10 +601,152 @@ describe('AgentOnboardPage', () => {
       await userEvent.click(picker);
       expect(h.handleInputChange).toHaveBeenCalledWith('ouId', 'ou-child-1');
     });
+
+    it('should render nothing for an organization unit input that has no reference', async () => {
+      givenStep(inBlock({id: 'ou_selection_input', label: 'Organization Unit', type: 'OU_SELECT'}));
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('button', {name: 'Continue'})).toBeInTheDocument();
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    });
   });
 
-  // A flow that fails returns no components, so without this the screen simply goes blank and the
-  // only trace is a log line.
+  describe('components drawn by the shared flow renderer', () => {
+    it('should render a divider', async () => {
+      givenStep([{id: 'divider_1', type: 'DIVIDER', variant: 'HORIZONTAL'}]);
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('separator')).toBeInTheDocument();
+    });
+
+    it('should render an image', async () => {
+      givenStep([{id: 'image_1', type: 'IMAGE', src: 'https://example.com/logo.png', alt: 'Agent logo'}]);
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('img', {name: 'Agent logo'})).toBeInTheDocument();
+    });
+
+    it('should render actions side by side in a stack', async () => {
+      givenStep([
+        {
+          components: [
+            {
+              components: [
+                {eventType: 'SUBMIT', id: 'action_back', label: 'Back', type: 'ACTION', variant: 'SECONDARY'},
+                {eventType: 'SUBMIT', id: 'action_next', label: 'Next', type: 'ACTION', variant: 'PRIMARY'},
+              ],
+              direction: 'row',
+              id: 'stack_actions',
+              type: 'STACK',
+            },
+          ],
+          id: 'block_stack',
+          type: 'BLOCK',
+        },
+      ]);
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('button', {name: 'Back'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Next'})).toBeInTheDocument();
+    });
+
+    it('should run a trigger action that sits outside a block', async () => {
+      givenStep([{eventType: 'TRIGGER', id: 'action_help', label: 'Get help', type: 'ACTION'}]);
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('button', {name: 'Get help'}));
+
+      expect(h.handleSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_help'}), {});
+    });
+  });
+
+  describe('submitting a step', () => {
+    const nameStep = () =>
+      givenStep(
+        inBlock({id: 'name_input', label: 'Agent name', ref: 'name', required: true, type: 'TEXT_INPUT'}),
+        {},
+        {name: 'billing-agent'},
+      );
+
+    it('should submit the step values with the action that was pressed', async () => {
+      nameStep();
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.click(await screen.findByRole('button', {name: 'Continue'}));
+
+      expect(h.handleSubmit).toHaveBeenCalledTimes(1);
+      expect(h.handleSubmit).toHaveBeenCalledWith(expect.objectContaining({id: 'action_submit'}), {
+        name: 'billing-agent',
+      });
+    });
+
+    it('should submit with the Enter key from an input', async () => {
+      nameStep();
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.type(await screen.findByLabelText(/Agent name/), '{Enter}');
+
+      expect(h.handleSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not submit with the Enter key while a required input is empty', async () => {
+      nameStep();
+      h.step.values = {};
+
+      render(<AgentOnboardPage />);
+
+      await userEvent.type(await screen.findByLabelText(/Agent name/), '{Enter}');
+
+      expect(h.handleSubmit).not.toHaveBeenCalled();
+    });
+
+    it('should treat a value of only spaces as missing', async () => {
+      nameStep();
+      h.step.values = {name: '   '};
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByRole('button', {name: 'Continue'})).toBeDisabled();
+    });
+
+    it('should keep the inputs editable while the step is incomplete', async () => {
+      nameStep();
+      h.step.values = {};
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByLabelText(/Agent name/)).toBeEnabled();
+    });
+
+    // The SDK checks formats and declarative rules when a step is submitted and reports them by input.
+    it('should show a validation message the flow reports under its input', async () => {
+      nameStep();
+      h.step.fieldErrors = {name: 'Please enter a valid email address'};
+      h.step.touched = {name: true};
+
+      render(<AgentOnboardPage />);
+
+      expect(await screen.findByText('Please enter a valid email address')).toBeInTheDocument();
+    });
+
+    it('should not show a message for an input the user has not touched', async () => {
+      nameStep();
+      h.step.fieldErrors = {name: 'Please enter a valid email address'};
+
+      render(<AgentOnboardPage />);
+
+      await screen.findByLabelText(/Agent name/);
+      expect(screen.queryByText('Please enter a valid email address')).not.toBeInTheDocument();
+    });
+  });
+
   // A step that posts while missing something it asked for is refused by the engine, so the screen
   // silently does not move. Gating the action is what makes the requirement visible.
   describe('required inputs', () => {
@@ -523,6 +867,8 @@ describe('AgentOnboardPage', () => {
     });
   });
 
+  // A flow that fails returns no components, so without this the screen simply goes blank and the
+  // only trace is a log line.
   describe('flow failures', () => {
     it('should surface an error the flow reports', async () => {
       render(<AgentOnboardPage />);
@@ -615,6 +961,7 @@ describe('AgentOnboardPage breadcrumbs', () => {
     vi.clearAllMocks();
     h.pathname.current = '/agents/create';
     h.users.current = [];
+    h.fetchUsers.mockImplementation(serveUsers);
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
     givenStep([]);
   });
@@ -668,12 +1015,13 @@ describe('AgentOnboardPage owner default', () => {
     h.pathname.current = '/agents/create';
     h.signedInUser.current = null;
     h.users.current = [{display: 'Ada Lovelace', id: 'user-1'}];
+    h.fetchUsers.mockImplementation(serveUsers);
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
   });
 
   it('should preselect the signed-in user as the owner', async () => {
     h.signedInUser.current = {id: 'user-1'};
-    givenStep([ownerInput]);
+    givenStep(inBlock(ownerInput));
 
     render(<AgentOnboardPage />);
 
@@ -682,7 +1030,7 @@ describe('AgentOnboardPage owner default', () => {
 
   // The profile arrives from /users/me after the id token, so there is a render with no id yet.
   it('should not preselect before the signed-in user is known', async () => {
-    givenStep([ownerInput]);
+    givenStep(inBlock(ownerInput));
 
     render(<AgentOnboardPage />);
 
@@ -696,7 +1044,7 @@ describe('AgentOnboardPage owner default', () => {
       {display: 'Ada Lovelace', id: 'user-1'},
       {display: 'Grace Hopper', id: 'user-2'},
     ];
-    givenStep([ownerInput], {}, {owner: 'user-2'});
+    givenStep(inBlock(ownerInput), {}, {owner: 'user-2'});
 
     render(<AgentOnboardPage />);
 
@@ -704,10 +1052,25 @@ describe('AgentOnboardPage owner default', () => {
     expect(h.handleInputChange).not.toHaveBeenCalled();
   });
 
+  // The signed-in user may sit beyond the first page of a large directory, so their name is taken from
+  // their own profile instead of waiting for the page that holds them.
+  it('should name the signed-in user before the page that holds them has loaded', async () => {
+    h.signedInUser.current = {id: 'user-99', username: 'ada'} as {id?: string};
+    h.users.current = usersNumbered(3);
+    givenStep(inBlock(ownerInput), {}, {owner: 'user-99'});
+
+    render(<AgentOnboardPage />);
+
+    expect(await screen.findByRole('combobox')).toHaveTextContent('ada');
+    expect(h.fetchUsers).not.toHaveBeenCalled();
+  });
+
   // A user picker for anything other than the owner is not about the caller.
   it('should not preselect a user picker that is not the owner', async () => {
     h.signedInUser.current = {id: 'user-1'};
-    givenStep([{id: 'approver_input', label: 'Approver', ref: 'approver', required: false, type: 'USER_SELECT'}]);
+    givenStep(
+      inBlock({id: 'approver_input', label: 'Approver', ref: 'approver', required: false, type: 'USER_SELECT'}),
+    );
 
     render(<AgentOnboardPage />);
 

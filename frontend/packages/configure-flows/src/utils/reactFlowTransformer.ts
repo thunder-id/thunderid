@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {Edge, Node} from '@xyflow/react';
+import {INPUT_ELEMENT_TYPES} from './componentMutations';
 import generateResourceId from './generateResourceId';
 import {toApiInputType} from './inputTypeMapping';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
-import type {Element} from '../models/elements';
-import {ElementCategories, ElementTypes, ActionEventTypes, ButtonTypes} from '../models/elements';
-import type {StepAction, StepData} from '../models/steps';
-import {ExecutionTypes, StepTypes, StaticStepTypes} from '../models/steps';
+import {ElementCategories, ElementTypes, ActionEventTypes, ButtonTypes, type Element} from '../models/elements';
+import {ExecutionTypes, StepTypes, StaticStepTypes, type StepAction, type StepData} from '../models/steps';
 
 /**
  * Suffix used in edge sourceHandle to identify the connection point
@@ -154,22 +153,6 @@ const STEP_TO_NODE_TYPE_MAP: Record<string, string> = {
  *   credentials block would otherwise demand a username and password to fire.
  */
 const INPUTLESS_ACTION_TYPES = new Set<string>([ElementTypes.Resend, ElementTypes.RichText]);
-
-/**
- * Set of input element types for quick lookup
- */
-const INPUT_ELEMENT_TYPES = new Set<string>([
-  ElementTypes.TextInput,
-  ElementTypes.PasswordInput,
-  ElementTypes.EmailInput,
-  ElementTypes.PhoneInput,
-  ElementTypes.NumberInput,
-  ElementTypes.DateInput,
-  ElementTypes.OtpInput,
-  ElementTypes.Checkbox,
-  ElementTypes.Dropdown,
-  ElementTypes.Select,
-]);
 
 /**
  * Derives the eventType for ACTION category components based on buttonType

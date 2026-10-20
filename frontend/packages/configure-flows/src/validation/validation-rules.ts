@@ -5,12 +5,17 @@ import type {Edge, Node} from '@xyflow/react';
 import {createElement} from 'react';
 import {Trans} from 'react-i18next';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
-import {ActionEventTypes, BlockTypes, ElementCategories, ElementTypes, PromptActionTypes} from '../models/elements';
-import type {Element as FlowElement} from '../models/elements';
+import {
+  ActionEventTypes,
+  BlockTypes,
+  ElementCategories,
+  ElementTypes,
+  PromptActionTypes,
+  type Element as FlowElement,
+} from '../models/elements';
 import Notification, {NotificationType} from '../models/notification';
 import type {Resource} from '../models/resources';
-import {ExecutionTypes, StepTypes} from '../models/steps';
-import type {StepData} from '../models/steps';
+import {ExecutionTypes, StepTypes, type StepData} from '../models/steps';
 
 /** Placeholder a flow template carries until a sender is assigned. */
 const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
@@ -64,9 +69,9 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     ],
     generalMessageKey: 'flows:core.validation.fields.input.general',
   },
-  // Select
+  // Select and user select
   {
-    match: (r) => r.type === ElementTypes.Select,
+    match: (r) => r.type === ElementTypes.Select || r.type === ElementTypes.UserSelect,
     fields: [
       {name: 'label', errorMessageKey: 'flows:core.validation.fields.input.label'},
       {name: 'ref', errorMessageKey: 'flows:core.validation.fields.input.ref'},

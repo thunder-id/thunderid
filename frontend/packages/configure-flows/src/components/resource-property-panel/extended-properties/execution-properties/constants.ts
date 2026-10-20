@@ -226,6 +226,7 @@ export const INPUT_TYPES = [
   {value: 'PHONE_INPUT', translationKey: 'flows:core.executions.inputs.types.phone'},
   {value: 'CONSENT_INPUT', translationKey: 'flows:core.executions.inputs.types.consent'},
   {value: 'SELECT', translationKey: 'flows:core.executions.inputs.types.select'},
+  {value: 'USER_SELECT', translationKey: 'flows:core.executions.inputs.types.userSelect'},
 ] as const;
 
 /**

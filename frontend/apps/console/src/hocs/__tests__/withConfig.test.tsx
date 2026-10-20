@@ -52,6 +52,7 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests,
     sendIdTokenInLogoutRequest,
     discovery,
+    endpoints,
     /* eslint-enable react/require-default-props */
   }: {
     children: React.ReactNode;
@@ -65,6 +66,7 @@ vi.mock('@thunderid/react', () => ({
     sendCookiesInRequests?: boolean;
     sendIdTokenInLogoutRequest?: boolean;
     discovery?: Record<string, unknown>;
+    endpoints?: Record<string, string>;
   }) => {
     capturedProviderProps = {
       baseUrl,
@@ -77,6 +79,7 @@ vi.mock('@thunderid/react', () => ({
       sendCookiesInRequests,
       sendIdTokenInLogoutRequest,
       discovery,
+      endpoints,
     };
     return (
       <div
@@ -354,6 +357,53 @@ describe('withConfig (console)', () => {
 
       render(<WithConfigComponent />);
       expect(capturedProviderProps.sendCookiesInRequests).toBe(false);
+    });
+  });
+
+  // --- resource server endpoints ---
+
+  describe('resource server endpoints', () => {
+    it('points the management collections at the resource server when trusted_issuer is configured', () => {
+      mockConfig.trusted_issuer = {hostname: 'localhost', port: 8090, http_only: true};
+      mockGetServerUrl.mockReturnValue('http://localhost:9443/');
+      mockGetTrustedIssuerUrl.mockReturnValue('http://localhost:8090');
+      mockGetTrustedIssuerClientId.mockReturnValue('FEDERATED_CONSOLE');
+      mockGetClientUrl.mockReturnValue('http://localhost:9443/console');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toEqual({
+        flowExecute: 'http://localhost:9443/flow/execute',
+        flowMeta: 'http://localhost:9443/flow/meta',
+        usersMe: 'http://localhost:9443/users/me',
+        agents: 'http://localhost:9443/agents',
+        applications: 'http://localhost:9443/applications',
+        users: 'http://localhost:9443/users',
+        flows: 'http://localhost:9443/flows',
+        userTypes: 'http://localhost:9443/user-types',
+      });
+    });
+
+    it('does not set endpoints when trusted_issuer is not configured', () => {
+      mockGetServerUrl.mockReturnValue('https://server.example.com');
+      mockGetClientUrl.mockReturnValue('https://client.example.com');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toBeUndefined();
+    });
+
+    it('lets config.sdk.endpoints override a single endpoint and keeps the rest', () => {
+      mockConfig.trusted_issuer = {hostname: 'localhost', port: 8090, http_only: true};
+      mockConfig.sdk = {endpoints: {flows: 'https://flows.example.com/flows'}};
+      mockGetServerUrl.mockReturnValue('http://localhost:9443');
+      mockGetTrustedIssuerUrl.mockReturnValue('http://localhost:8090');
+      mockGetTrustedIssuerClientId.mockReturnValue('FEDERATED_CONSOLE');
+      mockGetClientUrl.mockReturnValue('http://localhost:9443/console');
+
+      render(<WithConfigComponent />);
+      expect(capturedProviderProps.endpoints).toMatchObject({
+        flows: 'https://flows.example.com/flows',
+        userTypes: 'http://localhost:9443/user-types',
+      });
     });
   });
 

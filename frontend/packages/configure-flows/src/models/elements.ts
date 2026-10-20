@@ -47,6 +47,7 @@ export const ElementTypes = {
   Checkbox: 'CHECKBOX',
   Dropdown: 'DROPDOWN',
   Select: 'SELECT',
+  UserSelect: 'USER_SELECT',
   Action: 'ACTION',
   Captcha: 'CAPTCHA',
   Divider: 'DIVIDER',

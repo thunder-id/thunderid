@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useConfig} from '@thunderid/contexts';
-import {ThunderIDProvider} from '@thunderid/react';
-import type {ThunderIDProviderProps} from '@thunderid/react';
+import {ThunderIDProvider, type ThunderIDProviderProps} from '@thunderid/react';
 import {merge} from '@thunderid/utils';
 import type {JSX, ComponentType} from 'react';
 
@@ -46,6 +45,8 @@ export default function withConfig<P extends object>(WrappedComponent: Component
               agents: `${resourceServerUrl}/agents`,
               applications: `${resourceServerUrl}/applications`,
               users: `${resourceServerUrl}/users`,
+              flows: `${resourceServerUrl}/flows`,
+              userTypes: `${resourceServerUrl}/user-types`,
             },
           }
         : {}),
