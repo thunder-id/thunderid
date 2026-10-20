@@ -6,14 +6,16 @@ control, and that holds the user's tokens there.
 
 ## Overview
 
-A ThunderID SDK is a public client. It runs in a browser tab, a mobile application, or a
-server process belonging to a third party, where it starts an authentication flow, completes
-it, holds the resulting tokens, attaches them to outbound requests, and clears them on
-sign-out. The runtime it is embedded in can observe everything it does, and on a compromised
-device can modify it. The SDK cannot defend its own execution, so its security depends on
+A ThunderID SDK runs in a browser tab, a mobile application, or a server process belonging
+to a third party. Browser and mobile clients are public clients. A server deployment may act
+as a confidential client when the host application supplies client credentials. The SDK starts
+authentication, holds resulting tokens, exposes them for outbound requests, and clears local
+state on sign-out. Optional agent and delegation helpers request tokens for an explicit
+resource and authorization context. The runtime can observe everything the SDK does and
+can modify it on a compromised device. The SDK cannot defend its own execution, so its security depends on
 getting the protocol right: binding the authorization request to the callback, keeping tokens
-in the strongest store the platform offers, and holding no credential longer than the call
-that submits it.
+in the strongest store the platform offers, and discarding user credentials after submission.
+Confidential client credentials remain host-provided configuration for the client lifetime.
 
 The entry points are the client surface in
 [spec.md](spec.md#client-surface), the redirect callback the SDK parses, the responses the
@@ -36,6 +38,8 @@ This model covers:
 - Sign-out, revocation, and clearing of local state.
 - Receipt of a back-channel logout token by an SDK that runs on a server, and the ending of the
   local sessions it names.
+- Client credentials supplied by a confidential host, explicit token exchange, and poll-mode
+  Client-Initiated Backchannel Authentication (CIBA) initiation and completion.
 - Configuration supplied by the host application, where it can weaken the above.
 
 Out of scope:
@@ -78,8 +82,11 @@ flowchart LR
 ```
 
 The trust boundary sits between the SDK and the server. Everything on the SDK's side of it is
-untrusted from the server's point of view, which is why the SDK is specified as a public
-client with PKCE mandatory and no client secret.
+untrusted from the server's point of view. Public clients have no secret, and redirect
+authorization always uses PKCE. A confidential host provisions its own client credential or
+private key; the SDK does not turn a public runtime into a confidential one. The host must
+protect those configured credentials for the lifetime of the client. User passwords and
+factor responses remain transient call inputs.
 
 ### Components
 
@@ -99,7 +106,8 @@ client with PKCE mandatory and no client secret.
 | Actor | Description | Roles or permissions |
 | --- | --- | --- |
 | End user | Authenticates through the SDK on their own device | Whatever the issued tokens carry |
-| Host application | Third-party code embedding the SDK | Full control of the runtime the SDK executes in |
+| Host application | Third-party code embedding the SDK, including a confidential agent host | Full control of the runtime and any credentials it supplies |
+| Human authorizer | Approves or denies a CIBA request through the server-selected authentication flow | Only the consent and permissions the server grants |
 | Co-resident code | Other scripts in the page, other applications on the device, browser extensions | Whatever the platform grants it |
 | Network attacker | Positioned between the device and the server | Observation, and modification absent TLS |
 | ThunderID server | Issues, validates, and revokes tokens | Authoritative |
@@ -117,11 +125,11 @@ client with PKCE mandatory and no client secret.
 
 | Dependency | Description |
 | --- | --- |
-| Platform secure store | Keychain, Keystore-backed encrypted preferences, OS credential store. Confidentiality of tokens at rest depends on it |
+| Platform secure store | Keychain, Keystore-backed encrypted preferences, OS credential store or keyring. A missing or insecure default backend fails closed; caller-selected memory storage is explicit. Confidentiality of tokens at rest depends on it |
 | Platform crypto | Random generation for PKCE verifiers and state, and SHA-256 for the challenge |
 | Platform browser or web view | Presents the authorization page and returns the callback. Owns cookie policy and cross-application isolation |
 | TLS stack | Transport confidentiality and integrity for every server call |
-| Package registries | npm, Swift Package Manager and CocoaPods, Maven coordinates, pub.dev. Distribution integrity of the SDK itself |
+| Package registries | npm, Swift Package Manager and CocoaPods, Maven coordinates, pub.dev, and proposed PyPI distribution. Distribution integrity of the SDK itself |
 
 ## Threats and mitigations
 
@@ -141,7 +149,12 @@ client with PKCE mandatory and no client secret.
 
 The SDK generates a PKCE verifier and a state value, builds an authorization request, hands
 the user to the authorization endpoint, and later parses the callback. It checks the returned
-state against the one it issued before doing anything with the code.
+state against the one it issued before doing anything with the code. A structured callback
+entry point accepts code/state/error scalars from the host instead of a complete URL. These
+forms are mutually exclusive. Structured completion uses the owned pending redirect URI,
+verifier, and nonce; it never accepts a replacement redirect URI. The application still owns
+its callback route and transport. The complete URL form checks the registered location and
+fixed query parameters before consuming state.
 
 **Assets involved**
 
@@ -458,6 +471,51 @@ sequenceDiagram
 | 10 | [Security Risk] | The SDK's session ends, but an access token already handed to a browser or another service keeps working until it expires | [Yes] | Ending the local session cannot recall a token in circulation. The server revokes the refresh token, so the window is the access token lifetime. Recorded as a residual |
 | 11 | [Security Risk] | A client configured for ID token encryption is sent an encrypted logout token the SDK cannot read, so its sessions are never ended | [Yes] | An SDK that cannot decrypt must document that back-channel logout is unsupported for such a client. Recorded as a residual |
 
+#### 07: Confidential agent tokens, delegation, and CIBA polling
+
+**Description**
+
+A confidential host supplies its client authentication to request machine tokens. A request
+on behalf of a human uses explicit token-exchange authorization or a CIBA request that the
+server binds to the client, resource, and approved scope. The SDK returns these token sets
+separately from its primary session. The server remains responsible for authorizing issuance;
+local decoding of a JWT never proves consent or delegation authority.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Agent host or human authorizer | SDK, HTTP and JWT libraries, OS keyring adapter | Token endpoint and backchannel authentication endpoint |
+
+The Python proposal introduces HTTPX for bounded TLS transport, PyJWT with cryptography for
+asymmetric JWT verification, and keyring for native OS credential storage. Dependency version
+constraints, reproducible locks for development and CI, and supported secure backend checks
+form part of its validation. These dependencies do not replace server-side client and consent
+policy. A custom storage adapter remains a host-controlled trust boundary. The Python proposal
+stores reusable agent-token values through that adapter, with lookup and expiry metadata
+kept separately in process memory. CIBA results cross into caller ownership; the SDK tracks
+provenance through weak references instead of retaining credentials. Transient call data and
+returned tokens necessarily exist in host memory, where further storage is the host
+application's responsibility. Lifecycle cleanup deletes auxiliary stored credentials and
+reports failures; a canceled write completes before deletion so it cannot leave a late entry.
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Spoofing] | An unrelated or imported token is presented as proof of local human authorization | [No] | Local session reuse requires live same-client provenance; owned CIBA tokens retain their original target. Explicit exchange delegates subject and actor authorization to the server. Decoded JWT claims establish no authority |
+| 2 | [Information Disclosure] | Client credentials or CIBA identifiers reach logs or an unintended endpoint | [No] | Static sanitized errors, credential-safe representations, endpoint origin checks, TLS verification, and redirect refusal or revalidation apply to every authenticated request |
+| 3 | [Denial of Service] | A pending CIBA request creates an unbounded or aggressive polling loop | [No] | Per-request serialization, server polling interval, increased interval on `slow_down`, monotonic expiry, caller timeout, cancellation, and terminal error handling bound the loop |
+| 4 | [Tampering] | A handle created for one client or resource is reused in another context | [No] | SDK-owned request identity and original resource binding are checked before polling or accepting the resulting authorization |
+| 5 | [Spoofing] | An in-flight completion restores authorization after local sign-out or reinitialization | [No] | Context invalidation clears caches and request ownership; stale completions cannot repopulate them. Interactive OBO refresh shares the session lock and rechecks lifecycle and family ownership after asynchronous work |
+| 6 | [Information Disclosure] | A keyring configuration silently selects an insecure persistence backend | [No] | The default adapter accepts supported native secure backends and otherwise fails closed. A caller-supplied adapter or explicit memory store is documented separately |
+
+CIBA user interaction and consent occur through the server's configured channel. Poll mode
+requires no new inbound endpoint at the SDK host. Push and ping modes are outside the initial
+Python proposal. Local cancellation ends polling; it does not cancel a request server-side or
+recall an access token already returned to the host. The host remains responsible for its own
+credential provisioning, resource authorization policy, and revocation of credentials it owns.
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -465,15 +523,15 @@ sequenceDiagram
 | # | Consideration | State | Comments |
 | --- | --- | --- | --- |
 | 1 | Are all inputs and outputs validated (syntactic and semantic)? | [Partial] | Inputs are covered: configuration is validated at initialization, and operation inputs before any network call. Outputs are covered where it matters most, in callback `state` comparison and full ID token claim validation, but the specification defines no general schema validation contract for every server response. Narrowing that gap is follow-up work |
-| 2 | Are rate limits in place where necessary? | [Partial] | Mostly a server-side concern: the SDK does not retry automatically, except for token refresh. The back-channel logout handler bounds its own JWKS re-fetch. Limiting requests to that endpoint is left to the application or its gateway |
-| 3 | Are permissions, roles, and entitlements defined on the principle of least privilege and business need? | [Yes] | Public client with no secret, scopes default to `openid`, tokens attached only to allowlisted hosts under isolated storage |
+| 2 | Are rate limits in place where necessary? | [Partial] | Mostly a server-side concern: automatic retry is bounded to token refresh and JWKS rotation handling. Explicit CIBA polling follows the request interval and deadline. The back-channel logout handler bounds its own JWKS re-fetch. Limiting requests to that endpoint is left to the application or its gateway |
+| 3 | Are permissions, roles, and entitlements defined on the principle of least privilege and business need? | [Yes] | Public clients have no secret; confidential hosts supply their own credentials. Scopes default to `openid`; delegation requires explicit authorization; isolated storage attaches tokens only to allowlisted hosts |
 | 4 | Are authentication and authorization validated at both the UI and API layers, front end and back end, before granting access to resources? | [Partial] | API authorization is enforced by the server and is out of the SDK's hands. What the SDK contributes is refusing to look like an authorization layer: `decodeJwtToken` is specified as unsafe for authorization decisions, and verified claims come from the server |
 | 5 | Are proper isolations in place between components to ensure least-privilege access and reduce the blast radius against lateral movement? | [Partial] | Isolated storage is available in the browser and the platform secure store on mobile. A host application that supplies its own storage adapter can weaken this by design |
 | 6 | Have any default credentials been changed, and are default superuser or root accounts not in use? | [N/A] | The SDK ships no credentials |
 | 7 | Has the implementation followed best-practice guidelines? | [Yes] | RFC 6749, RFC 7636, RFC 7009, RFC 8693, OIDC Core, and the OAuth 2.0 security best current practice |
 | 8 | Are secrets, credentials, and internal-only material kept out of the public source tree and its git history? | [Yes] | Samples are required to carry no hardcoded credentials or server URLs (AC6.5) |
 | 9 | Was a security-focused code review conducted for this change, and have the findings been addressed? | [N/A] | This change introduces documents, not code. It applies to the implementation work that follows |
-| 10 | Is Static Analysis (SAST) or IaC scanning conducted, and are findings addressed? | [Partial] | Each SDK repository runs lint and build in its pull request pipeline. Coverage is not uniform across the four repositories |
+| 10 | Is Static Analysis (SAST) or IaC scanning conducted, and are findings addressed? | [Partial] | Each SDK repository runs lint and build in its pull request pipeline. Coverage is not uniform across SDK repositories |
 | 11 | Is Software Composition Analysis (SCA) conducted or integrated into the repository, and are findings addressed? | [Partial] | Dependency scanning is not uniform across the four SDK repositories |
 | 12 | Is Dynamic (DAST) or API scanning conducted on a non-production setup, and are findings addressed? | [N/A] | The SDK is a client library. End-to-end suites run against a real server nightly |
 | 13 | Are audit logs generated in a standardized format for critical functionality? | [N/A] | Auditing is server-side. The SDK emits diagnostic logs only, sanitized |
@@ -567,3 +625,4 @@ identifiers a user supplies during authentication and recovery.
 |---|---|---|
 | 0.1 | 2026-09-10 | Initial threat model. |
 | 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |
+| 0.3 | 2026-10-17 | Model confidential hosts, proposed Python dependencies and OS keyring behavior, and optional agent, explicit delegation, and poll-mode CIBA interactions from SDK specification 0.6. |

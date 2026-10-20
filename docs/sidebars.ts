@@ -13,6 +13,7 @@ import javascriptSdkSidebar from './content/sdks-and-tools/javascript/sidebar';
 import nextjsSdkSidebar from './content/sdks-and-tools/nextjs/sidebar';
 import nodeSdkSidebar from './content/sdks-and-tools/node/sidebar';
 import nuxtSdkSidebar from './content/sdks-and-tools/nuxt/sidebar';
+import pythonSdkSidebar from './content/sdks-and-tools/python/sidebar';
 import reactSdkSidebar from './content/sdks-and-tools/react/sidebar';
 import reactRouterSdkSidebar from './content/sdks-and-tools/react-router/sidebar';
 import springSecurityIntegrationSidebar from './content/sdks-and-tools/spring-security/sidebar';
@@ -68,6 +69,7 @@ const sidebars: SidebarsConfig = {
             {type: 'doc', id: 'getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
             {type: 'doc', id: 'getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
             {type: 'doc', id: 'getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
+            {type: 'doc', id: 'sdks-and-tools/python/quickstart', label: 'Python', customProps: {icon: 'python'}},
             {type: 'doc', id: 'getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
             {type: 'doc', id: 'getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
             {type: 'doc', id: 'getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
@@ -1242,6 +1244,7 @@ const sidebars: SidebarsConfig = {
   reactRouterSdkSidebar,
   tanstackRouterSdkSidebar,
   nodeSdkSidebar,
+  pythonSdkSidebar,
   vueSdkSidebar,
   browserSdkSidebar,
   nextjsSdkSidebar,

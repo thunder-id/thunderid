@@ -1,13 +1,14 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.6
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
   [#3292](https://github.com/thunder-id/thunderid/discussions/3292),
   [#4065](https://github.com/thunder-id/thunderid/discussions/4065),
   [#5354](https://github.com/thunder-id/thunderid/discussions/5354),
+  [#5877](https://github.com/thunder-id/thunderid/discussions/5877),
   [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
@@ -17,7 +18,7 @@
 
 ## Summary
 
-ThunderID publishes client SDKs across four repositories and three ecosystems. Nothing today
+ThunderID publishes client SDKs across several repositories and ecosystems. Nothing today
 states what an SDK must implement, so each one is built to the conventions of whoever writes
 it. Without a stated contract, a developer moving between platforms cannot predict the
 surface, and a reviewer of a change in one repository has no way to tell whether the sibling
@@ -161,6 +162,7 @@ repository may contain several packages across several layers.
 | [`thunder-id/ios-sdks`](https://github.com/thunder-id/ios-sdks) | `ThunderID` (Agnostic and Platform) and `ThunderIDSwiftUI` (Core Lib) | Swift Package Manager and CocoaPods |
 | [`thunder-id/android-sdks`](https://github.com/thunder-id/android-sdks) | `dev.thunderid.android` (Agnostic and Platform) and `dev.thunderid.compose` (Core Lib) | Maven coordinates under `dev.thunderid` |
 | [`thunder-id/flutter-sdks`](https://github.com/thunder-id/flutter-sdks) | `thunderid_flutter` (Core Lib, bridged) | pub.dev |
+| Proposed `thunder-id/python-sdks` | Async Python package `thunderid`, combining Agnostic and Platform responsibilities, per [design discussion #5877](https://github.com/thunder-id/thunderid/discussions/5877) | Proposed PyPI distribution; not a publication claim |
 | [`thunder-id/thunderid`](https://github.com/thunder-id/thunderid) | This specification, the published documentation under `docs/`, and the minimal use-case samples that ship with the product | Not applicable |
 | [`thunder-id/samples`](https://github.com/thunder-id/samples) | Feature demos and showcases, organized by feature area | Not applicable |
 
@@ -220,6 +222,19 @@ release.
 | Apple | One Swift package exposing two products, plus a CocoaPods podspec for the Platform product | `ThunderID` covers Agnostic and Platform, `ThunderIDSwiftUI` covers Core Lib | iOS 16, macOS 13, Swift 5.9 |
 | Android | One Gradle library, consumed through JitPack | `dev.thunderid.android` covers Agnostic and Platform, `dev.thunderid.compose` covers Core Lib | minSdk 26, compileSdk 34, JVM target 17 |
 | Flutter | One pub.dev plugin package declaring an Android and an iOS platform implementation | Core Lib only, bridged | Flutter 3.19, Dart 3.3 |
+| Python (proposed) | One typed `thunderid` wheel and source distribution, with an async client | Agnostic and Platform, kept in separate modules | Python 3.11 |
+
+The Python proposal targets server and automation processes. Primary user sessions and reusable agent-token cache values use an OS keyring by
+default and MUST fail closed when a supported secure backend is unavailable. In-memory
+storage is an explicit caller choice. A client without an `instanceId` MUST use a unique
+session namespace so independent clients cannot share a user session accidentally. Framework
+integrations, synchronous wrappers, management operations, and back-channel logout are outside
+the initial proposal and MUST be documented as unsupported. Agent cache indexes contain only
+lookup keys and expiry metadata; retained token values use the configured secure adapter.
+CIBA and token-exchange responses are returned to the host without an SDK credential cache.
+CIBA ownership tracking MUST NOT keep an otherwise discarded response alive. Credentials
+necessarily exist in memory during a call and after return to the host; further host caching
+or persistence is the host application's responsibility.
 
 Rules that follow from this shape:
 
@@ -250,11 +265,14 @@ that keeps the application away from user credentials entirely.
 
 **Embedded mode**, also called app-native, drives the ThunderID Flow Execution API directly
 and keeps the user inside the application. The SDK posts to `/flow/execute` with an
-`applicationId` and a `flowType`, receives a `flowId` with a `flowStatus` of `PROMPT_ONLY` and
+`applicationId` and a `flowType`, receives an `executionId` with a `flowStatus` of `INCOMPLETE` and
 a description of the inputs or actions the step requires, and submits each step back with the
-`flowId`, the chosen action, and the collected inputs. A `flowStatus` of `COMPLETE` carries the
-assertion; `ERROR` carries a `failureReason` the SDK surfaces as an authentication failure.
-Multi-factor steps arrive as further `PROMPT_ONLY` steps and are surfaced to the application
+`executionId`, the chosen action, and the collected inputs. The optional request field
+`flowId` selects a flow definition; it is not the execution continuation identifier.
+A `flowStatus` of `COMPLETE` carries the
+assertion; `ERROR` carries structured error information the SDK surfaces as a sanitized
+authentication failure.
+Multi-factor steps arrive as further `INCOMPLETE` steps and are surfaced to the application
 the same way. It is the mode for native mobile and for any application that renders its own
 authentication UI.
 
@@ -378,7 +396,7 @@ return a different concept under the same name.
 | `signOut` | Terminates the session. Revokes the refresh token server-side, then clears local state. Succeeds silently when no session exists. When revocation cannot be reached, the SDK MUST still clear local state, and MUST report the failed revocation to the caller rather than reporting a clean sign-out. Leaving the user signed in locally because the network was down is not an option. |
 | `signUp` | Redirect mode sends the user to registration; embedded mode drives the registration flow. |
 | `isSignedIn` | Returns current authentication state. |
-| `handleRedirectCallback` | Completes a redirect flow from the callback URL. Required wherever the SDK does not handle the callback implicitly. |
+| `handleRedirectCallback` | Completes a redirect flow from either the complete callback URL or structured code/state/error inputs, exclusively. Structured completion uses the owned pending request's redirect URI, verifier, and nonce. State is required and exactly one code or error is accepted. Required wherever the SDK does not handle the callback implicitly. |
 
 **Tokens and session**
 
@@ -399,7 +417,7 @@ return a different concept under the same name.
 | `getUserSchema` | Returns the attribute schema that describes which profile fields exist, their types, and their mutability. |
 
 Operations beyond this set are permitted where a platform needs them, and are the usual origin
-of a parity gap. Silent sign-in, CIBA, passkey registration and authentication, platform
+of a parity gap. Silent sign-in, passkey registration and authentication, platform
 attestation, flow metadata retrieval, and account recovery all sit here: each is meaningful on
 some platforms and not on others. An SDK adding an operation in this position MUST follow
 [Cross-SDK parity and delivery](#cross-sdk-parity-and-delivery).
@@ -407,6 +425,47 @@ some platforms and not on others. An SDK adding an operation in this position MU
 Organization operations (listing, reading, and switching organizations) are a specification
 target and are deliberately not part of the required surface yet. An SDK MUST NOT ship a
 partial implementation of them ahead of a specification update.
+
+#### Agent, delegation, and backchannel operations
+
+Client-Initiated Backchannel Authentication (CIBA) separates the requesting client from the
+channel where a human authenticates. These capabilities are optional. An SDK that implements them MUST follow these contracts.
+Names follow the platform convention, such as `get_agent_token` in Python.
+
+| Operation | Contract |
+|---|---|
+| `getAgentToken(resource?, scopes?)` | Requests `client_credentials` tokens using the configured client authentication. Returns a token response without replacing the primary session or changing its configured grant. Any cache is scoped to client context, resource, and normalized scope set, stores retained credentials through the secure storage adapter, and serves only tokens with a known valid lifetime. |
+| `getOboToken(authorization, resource?, scopes?)` | Requires explicit authorization. The original session accepted through this client's authentication flow resolves to its current valid tokens, refreshing automatically when needed through the same serialized refresh path as `getAccessToken`, without changing their target. Only the original handle and the current session have this ownership; copies and superseded intermediate handles do not. New authentication, session import, clearing, sign-out, closing, or reinitialization ends the prior session family. Tokens produced by an owned CIBA request may be reused only for that request's resource and scopes. An explicit token-exchange authorization carrying a subject token and optional actor token delegates issuance to `exchangeToken`. Imported sessions, arbitrary token objects, and unverified JWT claims do not establish this provenance. |
+| `initiateBackchannelAuthentication(...)` | Starts one poll-mode CIBA request at the discovered or explicitly configured `backchannel_authentication_endpoint`. Accepts exactly one of `login_hint` or `id_token_hint`, scopes including `openid`, and optional resource, binding message, requested expiry, and ACR values. Returns an owned request handle with `auth_req_id`, `expires_in`, `interval`, and an absolute expiry. No automatic initiation retry is permitted. |
+| `pollBackchannelAuthentication(request)` | Waits for the request's next allowed poll, then performs at most one CIBA token request with its original resource. Returns a result with `success` and tokens, `authorization_pending`, `slow_down`, `access_denied`, or `expired_token`. Unexpected server or transport errors use the SDK error hierarchy. |
+| `awaitBackchannelAuthentication(request, timeout?)` | Polls until success or a terminal result. Returns a token response on success and raises a documented error on denial, expiry, or timeout. Propagates native cancellation. The wait and each network request are bounded by the earlier of the caller timeout and the request expiry. |
+
+CIBA polling is a caller-requested protocol operation, not an automatic retry of initiation.
+Polls MUST be serialized per request. The first poll waits for the advertised interval;
+`slow_down` increases subsequent intervals by at least 5 seconds. Expiry is enforced using a
+monotonic deadline, independently of wall-clock changes. Cancellation ends the local request.
+A handle from another client, a reconstructed handle, or a terminal request MUST be rejected.
+Successful tokens MUST be validated before use; an ID token request-binding claim, when
+present in poll mode, MUST match the owned `auth_req_id`. Login hints, request identifiers,
+client credentials, assertions, and tokens MUST NOT appear in logs or error messages.
+
+Sign-out, clearing the session, and successful reinitialization MUST invalidate local
+agent caches and pending CIBA ownership. Retained auxiliary credential-store entries MUST be
+deleted; cleanup failures MUST be reported without falling back to insecure storage. Results from already running calls MUST NOT restore
+that invalidated state. This local invalidation does not revoke tokens already handed to the
+application. Client credentials belong only in confidential runtimes; browser and other public
+clients MUST NOT accept a secret. Confidential client authentication MAY use
+`client_secret_basic`, `client_secret_post`, or `private_key_jwt`. The private assertion audience
+is the configured issuer, and each assertion has a fresh identifier and short lifetime.
+
+This is a proposed optional contract from [#5877](https://github.com/thunder-id/thunderid/discussions/5877),
+not a statement that existing SDKs ship it. Python is the initial implementation target.
+JavaScript server SDKs are applicable candidates for confidential agent and CIBA operations;
+public browser and mobile SDKs may expose delegation and CIBA only where the server permits
+public-client authentication. Apple, Android, and Flutter support requires a separate parity
+disposition and validation. No sibling implementation is claimed by this document; any delivery
+pull request MUST record implemented, deferred, or inapplicable status per
+[Cross-SDK parity and delivery](#cross-sdk-parity-and-delivery).
 
 #### Management operations
 
@@ -614,7 +673,8 @@ Requirements:
    across SDKs, and a new condition SHOULD reuse an existing code rather than coin a synonym.
 6. Automatic retry MUST NOT be performed. Two bounded exceptions apply: a token refresh, and
    the single JWKS re-fetch that [Security requirements](#security-requirements) requires after
-   a signature verification failure.
+   a signature verification failure. Explicit CIBA polling follows its bounded protocol
+   schedule and MUST NOT retry initiation or an unexpected transport failure.
 7. Input validation MUST fail before any network call is made.
 
 A shared catalogue of codes covering configuration, authentication, registration, recovery,
@@ -1104,6 +1164,33 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
   later request presents a matching session, then the request is treated as unauthenticated
   until that session could no longer be valid.
 
+### R10. Optional agent and poll-mode CIBA contracts
+
+For an SDK that implements these optional capabilities:
+
+- **AC10.1:** Agent requests preserve the primary session and configured grant. Cache entries
+  for different resources, scopes, or client instances cannot satisfy each other's requests.
+- **AC10.2:** Imported sessions, arbitrary tokens, and decoded claims cannot establish local
+  delegation provenance. An owned interactive session refreshes through the shared refresh
+  lock, preserving rotation and original-session ownership. Lifecycle and provenance checks
+  run after asynchronous work; an invalidated context cannot receive a refreshed token.
+  Explicit token exchange submits authorization to the server.
+- **AC10.3:** Foreign, reconstructed, completed, or canceled CIBA handles fail before a token
+  request. A successful result retains the original resource and scope ownership.
+- **AC10.4:** Polling obeys the initial interval, increases it on `slow_down`, and stops on
+  expiry, denial, cancellation, or caller timeout. Concurrent polls serialize. A stalled
+  network call cannot exceed the remaining authorization deadline.
+- **AC10.5:** Sign-out, clearing the session, and successful reinitialization invalidate local
+  agent caches and CIBA ownership. A completion already in flight cannot restore them.
+- **AC10.6:** Credential representations, logs, and raised errors contain no client secret,
+  private key, login hint, authentication request identifier, assertion, or token. Default
+  secure storage fails closed when a supported OS backend is unavailable.
+
+- **AC10.7:** URL and structured callback forms cannot be mixed. Structured inputs require
+  state and exactly one code or error. Both forms enforce pending state, expiry, PKCE, and
+  nonce; raw errors are never surfaced. URL callbacks also preserve the registered location
+  and fixed query parameters. A malformed callback cannot consume an unrelated request.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1113,3 +1200,4 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
 | 0.3 | 2026-09-26 | Management operations for applications, users, and agents added as an optional capability. |
 | 0.4 | 2026-10-06 | Back-channel logout handling added as an optional capability for SDKs with a server runtime. |
 | 0.5 | 2026-10-15 | `syncSession` replaced by a `session` object. The server does not implement OpenID Connect Session Management, so there is no check-session iframe for an SDK to synchronize with. `session.silentSignIn` configures silent sign-in from the SSO session instead. |
+| 0.6 | 2026-10-17 | Propose Python packaging and optional agent, explicit delegation, and poll-mode CIBA contracts from #5877; distinguish embedded `executionId` from flow definition `flowId`. |

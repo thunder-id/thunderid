@@ -1,0 +1,44 @@
+---
+title: Python SDK
+displayed_sidebar: pythonSdkSidebar
+docType: concept
+sidebar_position: 1
+sidebar_label: Overview
+description: Async Python client for interactive sign-in, machine tokens, explicit token exchange, and CIBA approval with isolated session contexts.
+---
+
+# Python SDK
+
+The <ProductName /> Python SDK is an async client for authentication and token handling in Python 3.11 or later. It supports humans, AI agents, and machines through explicit authorization operations.
+
+:::note
+The Python SDK is unreleased. Install the reviewed implementation from a local checkout. A public package installation command is not available yet.
+:::
+
+## Supported Operations
+
+| Operation | Behavior |
+| --- | --- |
+| Interactive sign-in | Authorization code flow with S256 PKCE, state, ID-token validation, and session refresh. Complete with a callback URL or structured code/state/error parameters. |
+| Machine identity | Client-credentials tokens cached separately by resource and scope set. |
+| On-behalf-of authorization | Automatic refresh of owned interactive tokens, or reuse of owned CIBA tokens. A different authorization target requires explicit RFC 8693 exchange. |
+| CIBA approval | Poll-mode initiation and polling with request ownership, polling intervals, cancellation, and deadlines. |
+| Embedded flows | Server-defined authentication and registration steps that return a verified flow assertion. |
+| User data | Current-user information, profile updates, and schema retrieval for an OAuth session. |
+
+## Session Boundaries
+
+Each client owns one session context. The default store uses a supported native OS credential store. An explicit `MemoryStorage()` adapter keeps session state in process memory without persistent protection.
+
+Reusable machine tokens use the configured storage adapter under separate keys. CIBA returns tokens directly to the caller; its ownership registry uses weak references without retaining discarded credentials. Neither operation replaces the interactive session.
+
+An embedded flow returns an assertion without creating an OAuth access-token session.
+
+## Current Limits
+
+The SDK has no synchronous client, framework integration, protected-API middleware, or backchannel logout handler. CIBA supports polling only. Encrypted ID tokens, DPoP, organization switching, and platform-specific APIs are unsupported.
+
+## Related
+
+- [Python SDK Quickstart](../quickstart)
+- [Python SDK Reference](../reference)

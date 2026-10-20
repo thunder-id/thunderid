@@ -1,0 +1,145 @@
+---
+title: Python SDK Reference
+displayed_sidebar: pythonSdkSidebar
+docType: reference
+sidebar_position: 3
+sidebar_label: Reference
+description: Configuration, async operations, delegation rules, returned models, storage adapters, and error codes for the unreleased Python SDK.
+---
+
+# Python API Reference
+
+Import the supported surface from `thunderid`. All network/storage methods are asynchronous. Use `async with AsyncThunderIDClient(config) as client`, or call `await client.initialize()` and `await client.aclose()`. A client belongs to one event loop and one session context. Calls before initialization raise `NOT_INITIALIZED`, except `is_loading()`, initialization, and closing. `transport=` accepts a caller-owned `httpx.AsyncBaseTransport` for tests; closing the client does not close that injected transport.
+
+## Configuration
+
+`ThunderIDConfig` is an immutable dataclass. Keyword names are snake case. Unknown keywords raise Python `TypeError`. `config.validate()` performs local checks; the client also validates configuration before use. Invalid supported values raise `INVALID_CONFIG`.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `base_url: str` | Required | Exact issuer URL. HTTPS required, except redirect-mode loopback development. Embedded mode requires HTTPS. |
+| `client_id: str \| None` | `None` | OAuth client identifier; required in redirect mode and for OAuth token operations. |
+| `client_secret: str \| None` | `None` | Confidential-client secret. Set an explicit secret authentication method when supplied. |
+| `application_id: str \| None` | `None` | Application identifier, required for embedded flows. |
+| `mode: str` | `"redirect"` | `redirect` or `embedded`. |
+| `grant_type: str` | `"authorization_code"` | `authorization_code` or `client_credentials`. In machine mode `get_access_token()` uses the machine-token cache; user/flow methods raise `UNSUPPORTED_OPERATION`. Explicit exchange/CIBA helpers remain independent. |
+| `instance_id: int \| None` | `None` | Explicit persisted-session namespace. Omit for a unique context per client. Reusing a value intentionally shares persisted session storage for matching issuer/client/mode. |
+| `after_sign_in_url: str \| None` | `None` | Registered callback URL, required when starting redirect authentication. |
+| `scopes: tuple[str, ...] \| str` | `("openid",)` | Interactive/OIDC scopes, normalized to a tuple. Set permission scopes explicitly for machine grants. |
+| `endpoints: Mapping[str, str]` | `{}` | Trusted endpoint overrides, listed below. |
+| `allowed_external_urls: tuple[str, ...]` | `()` | Explicit HTTPS endpoint trust extensions, matched by parsed origin and path boundary. This is not a bearer-token forwarding API. |
+| `discovery: bool` | `True` | Fetch `/.well-known/openid-configuration` and require exact issuer match. |
+| `storage: Storage \| None` | `None` | Defaults to `KeyringStorage`; custom adapter replaces persistence. |
+| `token_request: TokenRequestOptions` | See below | OAuth client authentication. |
+| `http: HttpOptions` | See below | TLS, response-size and timeout settings. |
+| `token_validation: TokenValidationOptions` | See below | Asymmetric ID-token validation policy. |
+| `token_lifecycle: TokenLifecycleOptions` | See below | Access-token refresh threshold. |
+| `sign_in_options: Mapping[str, Any]` | `{}` | Redirect authorize parameters, merged with per-call options. SDK-owned security parameters win. |
+| `sign_up_options: Mapping[str, Any]` | `{}` | Reserved redirect-registration options. Redirect registration is currently unsupported. |
+
+Endpoint keys are `authorization_endpoint`, `token_endpoint`, `revocation_endpoint`, `jwks_uri`, `userinfo_endpoint`, `backchannel_authentication_endpoint`, `flow`, `user_profile`, and `user_schema`. Overrides take precedence over discovery; each request rechecks URL trust. CIBA requires its advertised endpoint or an explicit trusted override. Other defaults follow <ProductName /> endpoint paths. Endpoint URLs must belong to the issuer origin or an explicitly trusted external URL.
+
+`TokenRequestOptions(auth_method="none", private_key=None, private_key_id=None, private_key_algorithm="RS256")` supports `none`, `client_secret_basic`, `client_secret_post`, and `private_key_jwt`. Basic/post require a client ID and secret. Private-key JWT requires a client ID and PEM signing key; optional `private_key_id` sets `kid`. Assertions use the issuer URL as audience, a random `jti`, and a 60-second lifetime. The server must trust the matching public key.
+
+`HttpOptions(timeout=30.0, verify=True, max_response_bytes=1048576)` uses seconds and bounds decoded response bytes. `verify` accepts `True`, a CA-bundle path, or a certificate-validating, hostname-checking `ssl.SSLContext`. `False` is rejected. Environment proxy/CA settings are not implicitly trusted. HTTP redirects and automatic request retries are disabled.
+
+`TokenValidationOptions(clock_tolerance=30.0, algorithms=("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "EdDSA"), jwks_cache_ttl=300.0, jwks_refetch_interval=30.0)` accepts only a subset of the listed asymmetric algorithms. Durations use seconds. Unknown keys/signature failures permit one rate-limited JWKS refetch. Signature, issuer, audience, expiry, issue time, subject, authorized-party rules, and callback nonce are enforced.
+
+`TokenLifecycleOptions(refresh_buffer=30.0)` refreshes session access tokens within that many seconds of expiry. There is no background refresh task or automatic API-error retry. Concurrent refreshes share a session lock; refresh-token rotation is persisted atomically. Machine cache entries use a 30-second reuse margin and are fetched again when the margin is reached.
+
+`await client.re_initialize(**changes) -> bool` applies validated mutable fields and refreshes discovery/transport. It rejects changes to mode, grant type, client/application identity, or instance ID with `IMMUTABLE_CONFIG`; base URL or storage changes always require a new client. Successful reinitialization invalidates pending authorization and delegation caches. `get_configuration() -> ThunderIDConfig` returns effective configuration. `is_loading() -> bool` reports initialization/refresh work.
+
+## Authentication, session and profile
+
+| Method | Return and behavior |
+| --- | --- |
+| `await sign_in(*, execution_id=None, action=None, inputs=None, challenge_token=None, flow_secret=None, options=None)` | `AuthorizationRequest` in redirect mode, `FlowResult` in embedded mode. Starts or advances authentication. `inputs` maps field identifiers to strings. |
+| `await sign_up(...)` | Same parameters as `sign_in`. Embedded mode starts registration and returns `FlowResult`. Redirect mode raises `UNSUPPORTED_OPERATION` because the server cannot route redirect registration yet. |
+| `await handle_redirect_callback(callback_url: str \| None = None, *, code: str \| None = None, state: str \| None = None, error: str \| None = None)` | `Session`. Accepts either a complete callback URL or structured code/state/error fields, exclusively. Structured completion requires state and exactly one nonempty code or error, and uses the pending request's registered redirect URI. The URL form also checks the registered callback location and fixed query parameters. Both consume a matching one-time state, exchange with PKCE, validate ID token/nonce, and store tokens. Pending requests expire after ten minutes; denials raise a sanitized authentication error. |
+| `await get_access_token()` | `str`. Obtains current session access token, refreshing near expiry or when its lifetime is unknown. Refuses a cached user token without a known future expiry. With machine grant configuration, obtains a machine token using configured scopes. |
+| `await is_signed_in()` | `bool`. Reports a session with a known lifetime and valid token/refresh capability, or an acquired machine cache entry with a known future expiry. This is local availability, not an API authorization decision. |
+| `await set_session(session: Session)` | `None`. Validates supplied token structure and any ID token, then stores it. Imported sessions do not gain OBO provenance. |
+| `await clear_session()` | `None`. Clears local primary state and pending/delegation contexts without server revocation. |
+| `await sign_out()` | `None`. Attempts primary refresh-token revocation (access token if no refresh token), clears local primary/delegation state even on failure, and propagates the revocation failure. No primary session succeeds silently. |
+| `await get_user()` | `dict[str, Any]` from the OIDC userinfo endpoint. |
+| `await get_user_profile()` | Profile `attributes` dictionary from the current-user endpoint. |
+| `await update_user_profile(attributes: dict[str, Any])` | Updated `attributes` dictionary; sends `{"attributes": attributes}`. |
+| `await get_user_schema()` | Current user's `schema` dictionary. |
+| `decode_jwt_token(token: str)` | Unverified payload dictionary. Unsafe for authentication or authorization; decoding does not verify signature, issuer, audience, or expiry. |
+| `await aclose()` / `await close()` | Closes HTTP resources and invalidates pending/delegation context. Does not revoke primary tokens or clear persisted session storage. |
+
+In embedded mode, `execution_id=None` starts a flow with the configured application ID; subsequent calls use `FlowResult.execution_id`. `action`, `inputs` and `challenge_token` advance a server-defined step. `flow_secret` is sent in the `Flow-Secret` header only when starting a flow. Render controls from `FlowResult.data`, using server field/action identifiers. `COMPLETE` returns a verified assertion with the application ID as audience. It does not install an OAuth session; profile/access-token methods require a separately established OAuth session.
+
+## Agent tokens, OBO and exchange
+
+`await get_agent_token(resource: str | None = None, scopes: tuple[str, ...] | list[str] | None = None) -> TokenResponse` uses client credentials. It keeps a separate per-client cache keyed by exact resource and normalized scope set, with concurrent fetches serialized. Reusable token values use the configured storage adapter; the in-process index holds only storage keys and expiry metadata. Client contexts stay separate even when an explicit `instance_id` matches. Unknown lifetimes and tokens within 30 seconds of expiry are returned without cache retention. Missing scopes mean no scope parameter; this helper does not inherit `config.scopes`. A resource is an absolute URI without a fragment. The resource is a token audience indicator, not a URL the SDK contacts. No method here replaces the primary session or mutates the configured grant.
+
+```python
+exchanged = await client.exchange_token(
+    subject_token,
+    subject_token_type="urn:ietf:params:oauth:token-type:jwt",
+    actor_token=None,
+    actor_token_type="urn:ietf:params:oauth:token-type:jwt",
+    resource=None,
+    scopes=None,
+    audience=None,
+    requested_token_type=None,
+)
+```
+
+This performs RFC 8693 token exchange and returns a distinct `TokenResponse`. Server policy validates subject/actor authority and allowed targets. The SDK never infers exchange authorization by decoding a JWT.
+
+`await get_obo_token(*, authorization, resource=None, scopes=None) -> TokenResponse` has three explicit authorization paths:
+
+- The original `Session` returned from this client's interactive authorization, or its current session, obtains the current family's known-unexpired tokens, refreshing automatically when needed. OBO and `get_access_token` share refresh serialization, deduplication, rotation, and secure storage. The original object stays usable across token refresh. Target/scope overrides are rejected; imported/restored sessions and copies lack current provenance. There is no implicit exchange or change of target.
+- A `TokenResponse` returned by this client's successful CIBA operation returns those existing tokens, provided their known expiry is in the future. An explicitly supplied resource or scope set must equal the original CIBA request binding. Copies or another client's tokens are rejected.
+- A `TokenExchangeAuthorization` explicitly invokes `exchange_token` with its subject/actor tokens and the requested resource/scopes.
+
+Use the original callback-returned `Session` directly for OBO after refresh. Only that original object and the current session object carry ownership; copies and superseded intermediate refresh objects are rejected. A new interactive result, imported session, sign-out, clearing, closing, or successful reinitialization ends the old family. Session provenance and lifecycle state are checked before refresh and after asynchronous work. An expired session without a refresh token, or a refreshed response without a known valid lifetime, fails. CIBA results do not acquire implicit refresh or exchange behavior. Do not construct a `Session` or decode a token to manufacture provenance.
+
+## CIBA polling
+
+`await initiate_backchannel_authentication(*, login_hint=None, id_token_hint=None, resource=None, scopes=None, binding_message=None, requested_expiry=None, acr_values=None) -> BackchannelAuthenticationRequest` starts poll-mode CIBA. Supply exactly one nonempty login/ID-token hint. Scopes default to configured scopes and must include `openid`. `requested_expiry` is a positive integer in seconds. Initiation is never retried automatically; `login_hint_token` and push/ping delivery are unsupported.
+
+`await poll_backchannel_authentication(request) -> BackchannelAuthenticationResult` waits until the earliest allowed polling time, then polls once. The request must be the same live object returned by this client. Results have status `authorization_pending`, `slow_down`, `access_denied`, `expired_token`, or `success`; success includes `tokens`. `slow_down` adds five seconds to subsequent intervals. Terminal/error/canceled requests cannot be reused. Polling is serialized per request and bounded by a monotonic deadline.
+
+`await await_backchannel_authentication(request, timeout: float | None = None) -> TokenResponse` waits without busy looping, using the shorter of the request lifetime and optional positive finite timeout. Timeout raises `AUTHENTICATION_TIMEOUT`; denial/expiry raises `ACCESS_DENIED`/`EXPIRED_TOKEN`. Task cancellation propagates `asyncio.CancelledError` and invalidates local request state. Neither cancellation nor local clearing cancels the remote authentication flow.
+
+Any returned ID token is verified. In poll mode the push-specific `urn:openid:params:jwt:claim:auth_req_id` claim is optional; if supplied it must match the owned request. Tokens remain separate from the primary session. Sign-out/clear/close invalidate local ownership; CIBA tokens already handed out are not remotely revoked by this release.
+
+## Public models and storage
+
+Models are frozen dataclasses; credential fields are excluded from their representations. Applications must still avoid logging model contents or serializing secrets.
+
+| Type | Fields |
+| --- | --- |
+| `TokenResponse` | `access_token: str`; `token_type="Bearer"`; optional `expires_in`, `refresh_token`, `id_token`, `scope`, `issued_token_type`, `expires_at`. `from_dict(mapping)` validates an untrusted token response and computes epoch expiry. |
+| `Session` | `tokens: TokenResponse`, optional `user: dict[str, Any]`, optional internal `context_id`. Callers must not fabricate context provenance. |
+| `AuthorizationRequest` | `url: str`, `state: str`. Keep both private; state is consumed by callback handling. |
+| `FlowResult` | `flow_id: str`, `flow_status: str`, `data: dict[str, Any]`, optional `assertion`. `execution_id` aliases `flow_id`. |
+| `BackchannelAuthenticationRequest` | `auth_req_id`, `expires_in`, `interval`, epoch `expires_at`, optional `resource`. Hand the original object back to the same client. |
+| `BackchannelAuthenticationResult` | `status: str`, optional `tokens: TokenResponse`. |
+| `TokenExchangeAuthorization` | `subject_token`, optional `actor_token`; subject/actor token types default to `urn:ietf:params:oauth:token-type:jwt`. |
+
+`Storage` is an async protocol: `read(key: str) -> Session | None`, `write(key: str, session: Session) -> None`, `clear(key: str) -> None`. Implement atomic complete-session writes. `KeyringStorage()` accepts native macOS, Windows, Secret Service, and supported KWallet backends; plaintext, composite, missing, and arbitrary third-party backends fail closed. `MemoryStorage()` is an explicit process-only alternative and copies values on read/write. Supplying custom storage makes persistence security the application's responsibility. Primary sessions and reusable machine-token cache values use this adapter under separate namespaced keys. The default therefore stores those retained credentials in the OS keyring. Machine lookup metadata is process local; auxiliary token keys are removed on expiry replacement, sign-out, clearing, closing, or successful reinitialization. Cleanup errors are reported and failed deletions are retained for retry. CIBA and exchange token responses are returned directly without SDK credential caching. CIBA provenance uses weak ownership references, so it does not keep an otherwise discarded token alive. Returned credentials necessarily cross into caller memory; the application controls their lifetime and further storage. Client secrets and private keys remain host-supplied configuration in memory.
+
+## Errors
+
+`ThunderIDError(code, message)` is the base class. `ThunderIDRuntimeError` reports local/configuration/transport failures. `ThunderIDAPIError(code, message, status_code, status_text)` reports HTTP rejection. All have `origin="thunderid"`, `code`, and `message`; API errors also have a numeric status and standard HTTP status text. SDK-generated messages exclude raw server descriptions, response bodies, URLs, credentials and underlying exception text. Catch the base class and branch on stable codes rather than message text.
+
+| Codes | Meaning |
+| --- | --- |
+| `INVALID_CONFIG`, `IMMUTABLE_CONFIG`, `UNTRUSTED_ENDPOINT`, `ISSUER_MISMATCH` | Invalid configuration, forbidden live identity change, untrusted target, or wrong discovery issuer. |
+| `NOT_INITIALIZED`, `UNSUPPORTED_OPERATION` | Client lifecycle or unavailable/incompatible capability. |
+| `INVALID_CALLBACK`, `STATE_MISMATCH`, `AUTHENTICATION_FAILED`, `AUTHENTICATION_IN_PROGRESS` | Malformed/unmatched callback, server authentication failure, or too many pending requests. |
+| `INVALID_SESSION`, `INVALID_TOKEN`, `INVALID_ID_TOKEN` | Invalid imported session, malformed/missing token, or failed identity-token verification. |
+| `NO_SESSION`, `SESSION_EXPIRED`, `TOKEN_EXPIRED` | Missing session, unavailable refresh, or direct OBO token lacks a known future expiry. |
+| `INVALID_REQUEST`, `INVALID_AUTHORIZATION`, `AUTHORIZATION_CANCELLED`, `AUTHENTICATION_TIMEOUT` | Invalid delegation input/context, ended lifecycle context, or CIBA deadline. |
+| `CLIENT_AUTH_ERROR` | Could not create a private-key client assertion. |
+| `SECURE_STORAGE_UNAVAILABLE`, `STORAGE_ERROR` | Unsupported credential-store backend or failed storage operation. |
+| `NETWORK_ERROR`, `REQUEST_TIMEOUT`, `REDIRECT_REFUSED`, `RESPONSE_TOO_LARGE`, `INVALID_RESPONSE` | Transport or response validation failure. |
+| `API_ERROR` | Unrecognized/non-OAuth HTTP rejection. |
+
+Known OAuth API errors preserve their protocol names as uppercase codes: `INVALID_REQUEST`, `INVALID_CLIENT`, `INVALID_GRANT`, `UNAUTHORIZED_CLIENT`, `UNSUPPORTED_GRANT_TYPE`, `INVALID_SCOPE`, `AUTHORIZATION_PENDING`, `SLOW_DOWN`, `ACCESS_DENIED`, `EXPIRED_TOKEN`, `INVALID_TARGET`, `TEMPORARILY_UNAVAILABLE`, and `SERVER_ERROR`. Single-poll CIBA converts the four documented pending/terminal outcomes into result statuses; other API errors propagate.
+
+Unsupported keys/capabilities include browser isolation/worker settings, logging callbacks, retry policies, silent sign-in, organization operations, synchronous APIs, automatic outbound token attachment, backchannel logout configuration/handlers, encrypted tokens, DPoP, framework components, and platform-specific/passkey APIs. Use the supported options above; unsupported constructor keys raise `TypeError`.

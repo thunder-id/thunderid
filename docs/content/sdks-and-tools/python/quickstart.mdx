@@ -1,0 +1,138 @@
+---
+title: Python SDK Quickstart
+docType: quickstart
+toc_progress: quickstart
+sidebar_position: 2
+sidebar_label: Quickstart
+description: Obtain a machine token with the unreleased async Python SDK, then complete interactive authorization using a registered redirect URI.
+---
+
+import Stepper from '@site/src/components/Stepper';
+
+# Python SDK Quickstart
+
+Use this guide to obtain an access token with the async Python SDK for <ProductName />.
+
+Prerequisites: Python 3.11 or later, a local checkout of the Python SDK implementation, and access to a <ProductName /> instance.
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start your instance using [Get <ProductName />](../../../getting-started/get-thunderid). Keep its issuer URL available as `THUNDERID_BASE_URL`.
+
+## Create an Application
+
+Register a confidential OAuth client with the `client_credentials` grant. Select `client_secret_basic` for client authentication. Follow [Client Credentials](../../../guides/protocols/oauth-oidc/client-credentials) to assign the roles or groups that grant the requested permissions.
+
+Keep the client ID and secret in your application's secret configuration. Set `THUNDERID_RESOURCE` to the target resource server identifier. Set `THUNDERID_PERMISSION_SCOPES` to its space-separated permission scopes.
+
+## Install from a Local Checkout
+
+The SDK is unreleased. Set `THUNDERID_PYTHON_SDK_PATH` to the reviewed checkout, then install it:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install "$THUNDERID_PYTHON_SDK_PATH"
+```
+
+Use the local path rather than installing an unverified package with the same name from a public registry.
+
+## Obtain a Machine Token
+
+Save the following code as `machine.py`. Provide `THUNDERID_BASE_URL`, `THUNDERID_CLIENT_ID`, `THUNDERID_CLIENT_SECRET`, and the resource settings through your runtime environment.
+
+```python
+import asyncio
+import os
+
+from thunderid import (
+    AsyncThunderIDClient,
+    HttpOptions,
+    ThunderIDConfig,
+    TokenRequestOptions,
+)
+
+
+async def main() -> None:
+    config = ThunderIDConfig(
+        base_url=os.environ["THUNDERID_BASE_URL"],
+        client_id=os.environ["THUNDERID_CLIENT_ID"],
+        client_secret=os.environ["THUNDERID_CLIENT_SECRET"],
+        grant_type="client_credentials",
+        scopes=(),
+        token_request=TokenRequestOptions(auth_method="client_secret_basic"),
+        http=HttpOptions(verify=os.environ.get("THUNDERID_CA_FILE") or True),
+    )
+    async with AsyncThunderIDClient(config) as client:
+        tokens = await client.get_agent_token(
+            resource=os.environ["THUNDERID_RESOURCE"],
+            scopes=os.environ.get("THUNDERID_PERMISSION_SCOPES", "").split(),
+        )
+        assert tokens.access_token
+        print("Machine token acquired.")
+        # Use tokens.access_token only with the intended API. Never log it.
+
+
+asyncio.run(main())
+```
+
+Run the sample:
+
+```bash
+python machine.py
+```
+
+The expected output is `Machine token acquired.` The default session adapter requires a supported native OS credential store. For an ephemeral sample, explicitly set `storage=MemoryStorage()` after importing `MemoryStorage`; this keeps state only in process memory. Set `THUNDERID_CA_FILE` to a trusted CA bundle when the instance uses a private certificate.
+
+## Add Interactive Sign-In
+
+Use an OAuth client with the authorization-code grant and a registered redirect URI. Set `THUNDERID_CLIENT_ID` to that client. Set `THUNDERID_CALLBACK_URL` to the exact registered URI.
+
+The following public-client sample opens the browser. After sign-in, copy the full redirect URI from the browser into the hidden prompt. A reachable redirect handler is not required for this manual sample.
+
+```python
+import asyncio
+from getpass import getpass
+import os
+import webbrowser
+
+from thunderid import AsyncThunderIDClient, AuthorizationRequest, HttpOptions, ThunderIDConfig
+
+
+async def main() -> None:
+    config = ThunderIDConfig(
+        base_url=os.environ["THUNDERID_BASE_URL"],
+        client_id=os.environ["THUNDERID_CLIENT_ID"],
+        after_sign_in_url=os.environ["THUNDERID_CALLBACK_URL"],
+        scopes=("openid",),
+        http=HttpOptions(verify=os.environ.get("THUNDERID_CA_FILE") or True),
+    )
+    async with AsyncThunderIDClient(config) as client:
+        request = await client.sign_in()
+        assert isinstance(request, AuthorizationRequest)
+        webbrowser.open(request.url)
+        callback = await asyncio.to_thread(getpass, "Full redirect URI (hidden): ")
+        session = await client.handle_redirect_callback(callback)
+        tokens = await client.get_obo_token(authorization=session)
+        assert tokens.access_token
+        print("Interactive authorization completed.")
+        await client.sign_out()
+
+
+asyncio.run(main())
+```
+
+Save this sample as `interactive.py`. Run `python interactive.py` in the same environment. The expected output after the hidden prompt is `Interactive authorization completed.` Keep the same live client until the redirect completes.
+
+A server callback handler can pass structured parameters with `await client.handle_redirect_callback(code=code, state=state, error=error)`. Supply state and exactly one nonempty code or error. Do not combine a callback URL with structured parameters. The SDK uses the pending request's registered redirect URI, verifier, and nonce.
+
+Keep the original returned `Session` when calling `await client.get_obo_token(authorization=session)`. The SDK refreshes owned interactive tokens when needed through the same serialized path as `get_access_token`; the application does not need to check expiry or refresh first. Imported sessions and copies do not establish OBO ownership.
+
+## What's Next
+
+- [Python SDK Reference](../reference) covers configuration, session methods, token exchange, CIBA, returned models, and errors.
+- [Python SDK Overview](../overview) describes supported operations and current limits.
+
+</Stepper>

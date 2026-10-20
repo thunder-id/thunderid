@@ -10,5 +10,7 @@ origin: official
 status: soon
 package:
   name: thunderid
-  manager: pip
-description: Python SDK for Django, FastAPI, and Flask back ends.
+description: Unreleased async Python SDK for interactive sign-in, machine tokens, token exchange, and CIBA approval.
+docs:
+  quickstart: /docs/next/sdks-and-tools/python/quickstart
+  apiReference: /docs/next/sdks-and-tools/python/reference
