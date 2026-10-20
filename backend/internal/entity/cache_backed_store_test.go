@@ -257,6 +257,21 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateSystemAttributes_Invalidates
 	s.False(ok)
 }
 
+// InvalidateEntityCache drops the cached copies without touching the store, so a caller can clear a
+// copy a concurrent read cached before its write committed.
+func (s *CacheBackedEntityStoreTestSuite) TestInvalidateEntityCache_DropsCachedCopies() {
+	entity := s.makeEntity(testEntityID, "client")
+	s.entityByIDData[entity.ID] = &entity
+	s.entityWithCredsByIDData[entity.ID] = &entityWithCredentials{Entity: &entity}
+
+	s.cachedStore.InvalidateEntityCache(context.Background(), entity.ID)
+
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+	_, ok = s.entityWithCredentialsByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
+}
+
 // GetEntityWithCredentials cache helper edge cases
 
 func (s *CacheBackedEntityStoreTestSuite) TestGetEntityWithCredentials_NilResult_DoesNotCache() {

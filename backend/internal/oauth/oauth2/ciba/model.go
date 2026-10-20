@@ -30,9 +30,14 @@ const (
 // UserID is empty at creation and populated by MarkAuthenticated once the user completes
 // authentication and the callback verifies the assertion.
 type CIBAAuthRequest struct {
-	AuthReqID        string
-	ClientID         string
-	UserID           string
+	AuthReqID string
+	ClientID  string
+	UserID    string
+	// SubjectID is the resource ID of the entity the user authenticated as, and SubjectCategory its
+	// category, both recorded from the assertion with UserID. UserID is the token subject, which the
+	// application may map to an attribute. Neither is emitted as a claim.
+	SubjectID        string
+	SubjectCategory  string
 	StandardScopes   string
 	AuthorizedScopes string
 	Resources        []string
@@ -76,6 +81,8 @@ type BackchannelAuthRequest struct {
 // assertionClaims represents the claims extracted from the flow assertion JWT.
 type assertionClaims struct {
 	userID                string
+	subjectID             string
+	subjectCategory       string
 	attributeCacheID      string
 	completedACR          string
 	sessionID             string

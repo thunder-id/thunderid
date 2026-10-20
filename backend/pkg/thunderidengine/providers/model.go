@@ -728,6 +728,9 @@ type Agent struct {
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	// ValidUntil is the RFC 3339 instant the agent's lifespan ends; nil registers an agent that does
+	// not expire.
+	ValidUntil *string `json:"validUntil,omitempty"`
 
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile

@@ -41,3 +41,23 @@ var (
 		},
 	}
 )
+
+// Actor provider errors. The runtime branches on these codes, so an ActorProvider implementation
+// must return them for the corresponding conditions.
+var (
+	// ErrorActorLookupNotSupported is the error an ActorProvider returns when it cannot look up
+	// entities at all, as when the entity provider is disabled. No entity, and so no agent, can then
+	// be resolved.
+	ErrorActorLookupNotSupported = common.ServiceError{
+		Type: common.ServerErrorType,
+		Code: "ACP-5001",
+		Error: common.I18nMessage{
+			Key:          "error.actor_lookup_not_supported",
+			DefaultValue: "Actor lookup not supported",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.actor_lookup_not_supported_description",
+			DefaultValue: "The entity provider does not support looking up entities",
+		},
+	}
+)

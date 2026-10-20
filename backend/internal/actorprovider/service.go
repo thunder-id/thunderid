@@ -186,6 +186,8 @@ func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommo
 	switch epErr.Code {
 	case entityprovider.ErrorCodeEntityNotFound:
 		return &ErrorEntityNotFound
+	case entityprovider.ErrorCodeNotImplemented:
+		return &providers.ErrorActorLookupNotSupported
 	default:
 		return &tidcommon.InternalServerError
 	}

@@ -15,6 +15,8 @@ const (
 	ComponentAuthHandler = "AuthHandler"
 	// ComponentBackchannelLogout identifies the back-channel logout dispatcher.
 	ComponentBackchannelLogout = "BackchannelLogout"
+	// ComponentAgentService identifies events from the agent management service.
+	ComponentAgentService = "AgentService"
 )
 
 // Authentication and Authorization Event Types
@@ -65,4 +67,24 @@ const (
 
 	// EventTypeFlowFailed is triggered when flow execution fails.
 	EventTypeFlowFailed providers.EventType = "FLOW_FAILED"
+)
+
+// Administration Event Types
+const (
+	// EventTypeAgentLifespanSet is triggered when an agent is registered with its lifespan.
+	EventTypeAgentLifespanSet providers.EventType = "AGENT_LIFESPAN_SET"
+
+	// EventTypeAgentLifespanExtended is triggered when an update moves an agent's lifespan end later,
+	// including to unbounded.
+	EventTypeAgentLifespanExtended providers.EventType = "AGENT_LIFESPAN_EXTENDED"
+
+	// EventTypeAgentLifespanReduced is triggered when an update moves an agent's lifespan end earlier.
+	EventTypeAgentLifespanReduced providers.EventType = "AGENT_LIFESPAN_REDUCED"
+
+	// EventTypeAgentReactivated is triggered when an update moves an expired agent's lifespan end into
+	// the future.
+	EventTypeAgentReactivated providers.EventType = "AGENT_REACTIVATED"
+
+	// EventTypeAgentLifespanUpdateFailed is triggered when a lifespan change is refused or fails.
+	EventTypeAgentLifespanUpdateFailed providers.EventType = "AGENT_LIFESPAN_UPDATE_FAILED"
 )

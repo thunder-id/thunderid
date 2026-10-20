@@ -501,4 +501,47 @@ var (
 				"and string-typed in an allowed agent type",
 		},
 	}
+
+	// ErrorInvalidLifespan is returned when validUntil is not a valid RFC 3339 instant.
+	ErrorInvalidLifespan = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan",
+			DefaultValue: "Invalid lifespan",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_lifespan_description",
+			DefaultValue: "validUntil must be an RFC 3339 date and time, or null for an agent that does not expire",
+		},
+	}
+
+	// ErrorLifespanNotInFuture is returned when validUntil is not later than the current time.
+	ErrorLifespanNotInFuture = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future",
+			DefaultValue: "Lifespan must end in the future",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.lifespan_not_in_future_description",
+			DefaultValue: "validUntil must be later than the current time",
+		},
+	}
+
+	// ErrorCannotChangeOwnLifespan is returned when an agent, as the subject or the actor of the
+	// caller's token, changes its own lifespan.
+	ErrorCannotChangeOwnLifespan = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.cannot_change_own_lifespan",
+			DefaultValue: "Cannot change own lifespan",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.cannot_change_own_lifespan_description",
+			DefaultValue: "An agent cannot change its own lifespan",
+		},
+	}
 )

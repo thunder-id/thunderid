@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -98,6 +99,11 @@ func (e *agentExporter) GetResourceByID(
 		if jsonErr := json.Unmarshal(a.Attributes, &attrs); jsonErr == nil {
 			a.AttributesYAML = attrs
 		}
+	}
+	// An unbounded lifespan is written as its sentinel rather than left out, since an import reads an
+	// absent validUntil as leaving the target agent's lifespan unchanged.
+	if a.Lifespan != nil && a.Lifespan.Phase == model.LifespanPhaseUnbounded {
+		a.ValidUntil = authnprovidercm.UnboundedValidUntil
 	}
 	return a, a.Display, nil
 }
@@ -263,10 +269,15 @@ func makeAgentEntityParser(
 			return nil, nil, nil, fmt.Errorf("failed to validate agent '%s': %v", req.ID, svcErr)
 		}
 
+		validUntil, err := resolveDeclarativeValidUntil(req.ValidUntil)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to validate agent '%s': %w", req.ID, err)
+		}
+
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret,
+			req.Description, req.Owner, clientID, clientSecret, validUntil,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)

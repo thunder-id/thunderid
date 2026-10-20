@@ -200,10 +200,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{

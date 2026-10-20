@@ -227,6 +227,8 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           record.UserID,
+		SubjectEntityID:   record.SubjectID,
+		SubjectCategory:   record.SubjectCategory,
 		Audiences:         accessTokenAudiences,
 		ClientID:          oauthApp.ClientID,
 		Scopes:            accessTokenScopes,
@@ -243,10 +245,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to generate access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate token")
 	}
 	// The refresh token preserves this single audience for continuity.
 	accessToken.OriginalAudiences = accessTokenAudiences
@@ -258,21 +257,20 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
 		idToken, idErr := h.tokenBuilder.BuildIDToken(ctx, &tokenservice.IDTokenBuildContext{
-			Subject:        record.UserID,
-			Audience:       oauthApp.ClientID,
-			Scopes:         accessTokenScopes,
-			UserAttributes: attrs,
-			AuthTime:       record.AuthTime.Unix(),
-			OAuthApp:       oauthApp,
-			CompletedACR:   record.CompletedACR,
-			SessionID:      record.SessionID,
+			Subject:         record.UserID,
+			Audience:        oauthApp.ClientID,
+			Scopes:          accessTokenScopes,
+			UserAttributes:  attrs,
+			AuthTime:        record.AuthTime.Unix(),
+			OAuthApp:        oauthApp,
+			CompletedACR:    record.CompletedACR,
+			SessionID:       record.SessionID,
+			SubjectEntityID: accessToken.SubjectID,
+			SubjectCategory: accessToken.SubjectCategory,
 		})
 		if idErr != nil {
 			h.logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to generate token",
-			}
+			return nil, tokenBuildErrorResponse(idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}

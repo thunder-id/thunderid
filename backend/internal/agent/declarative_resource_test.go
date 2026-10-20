@@ -132,6 +132,19 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), expected, resource)
 }
 
+// An unbounded lifespan is exported as its sentinel, so importing it onto an agent with a bound
+// removes the bound instead of leaving it in place.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsUnboundedLifespan() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(&model.AgentGetResponse{
+		ID: "agent1", Lifespan: &model.Lifespan{Phase: model.LifespanPhaseUnbounded},
+	}, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), "9999-12-31T23:59:59Z", resource.(*model.AgentGetResponse).ValidUntil)
+}
+
 func (s *AgentExporterTestSuite) TestGetResourceByID_Error() {
 	svcErr := &tidcommon.ServiceError{
 		Code:  "ERR_CODE",

@@ -43,6 +43,8 @@ type entityStoreInterface interface {
 		creds json.RawMessage) error
 	DeleteEntity(ctx context.Context, id string) error
 	LockEntity(ctx context.Context, id string) (providers.Entity, error)
+	// InvalidateEntityCache drops any cached copy of the entity. Stores without a cache do nothing.
+	InvalidateEntityCache(ctx context.Context, id string)
 
 	// Query
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
@@ -317,6 +319,9 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 
 	return es.resyncIdentifiers(ctx, dbClient, entityID)
 }
+
+// InvalidateEntityCache implements entityStoreInterface. The database store holds no cache.
+func (es *entityDBStore) InvalidateEntityCache(_ context.Context, _ string) {}
 
 // UpdateSystemAttributes updates only the system attributes of an entity and re-syncs all identifiers.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,

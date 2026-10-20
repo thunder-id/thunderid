@@ -33,3 +33,7 @@ var (
 	// request-validation failure.
 	ErrAuthorizationMappingUnavailable = errors.New("authorization mapping resolution unavailable")
 )
+
+// ErrLifespanEnded indicates the token builder refused issuance because the lifespan of an entity
+// the token is issued to or for has ended. Grant handlers map it to invalid_grant.
+var ErrLifespanEnded = errors.New("the lifespan of an entity involved in the token has ended")

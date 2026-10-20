@@ -964,6 +964,52 @@ func (_c *entityStoreInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// InvalidateEntityCache provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) InvalidateEntityCache(ctx context.Context, id string) {
+	_mock.Called(ctx, id)
+	return
+}
+
+// entityStoreInterfaceMock_InvalidateEntityCache_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InvalidateEntityCache'
+type entityStoreInterfaceMock_InvalidateEntityCache_Call struct {
+	*mock.Call
+}
+
+// InvalidateEntityCache is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *entityStoreInterfaceMock_Expecter) InvalidateEntityCache(ctx any, id any) *entityStoreInterfaceMock_InvalidateEntityCache_Call {
+	return &entityStoreInterfaceMock_InvalidateEntityCache_Call{Call: _e.mock.On("InvalidateEntityCache", ctx, id)}
+}
+
+func (_c *entityStoreInterfaceMock_InvalidateEntityCache_Call) Run(run func(ctx context.Context, id string)) *entityStoreInterfaceMock_InvalidateEntityCache_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_InvalidateEntityCache_Call) Return() *entityStoreInterfaceMock_InvalidateEntityCache_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_InvalidateEntityCache_Call) RunAndReturn(run func(ctx context.Context, id string)) *entityStoreInterfaceMock_InvalidateEntityCache_Call {
+	_c.Run(run)
+	return _c
+}
+
 // IsEntityDeclarative provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) IsEntityDeclarative(ctx context.Context, id string) (bool, error) {
 	ret := _mock.Called(ctx, id)

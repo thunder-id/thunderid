@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -19,6 +20,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -29,6 +31,7 @@ type tokenExchangeGrantHandler struct {
 	resourceService providers.ResourceServerProvider
 	authzService    providers.AuthorizationProvider
 	actorProvider   providers.ActorProvider
+	attrCache       attributecache.AttributeCacheServiceInterface
 	cfg             oauthconfig.Config
 }
 
@@ -39,6 +42,7 @@ func newTokenExchangeGrantHandler(
 	resourceService providers.ResourceServerProvider,
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
+	attrCache attributecache.AttributeCacheServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
@@ -47,6 +51,7 @@ func newTokenExchangeGrantHandler(
 		resourceService: resourceService,
 		authzService:    authzService,
 		actorProvider:   actorProvider,
+		attrCache:       attrCache,
 		cfg:             cfg,
 	}
 }
@@ -272,6 +277,11 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		actorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
 	}
 
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangeParties(ctx, subjectClaims, actorClaims, logger)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Determine final scopes
 	finalScopes, errResp := h.getScopes(
 		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
@@ -346,13 +356,12 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
 		TokenFamilyID:     exchangedTokenFamilyID,
+		SubjectEntityID:   subjectEntityID,
+		SubjectCategory:   subjectCategory,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
@@ -452,10 +461,7 @@ func (h *tokenExchangeGrantHandler) handleIDJAGGrant(ctx context.Context, tokenR
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate ID-JAG", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to generate token",
-		}
+		return nil, tokenBuildErrorResponse(err, "Failed to generate token")
 	}
 
 	return &model.TokenResponseDTO{
@@ -544,4 +550,80 @@ func (h *tokenExchangeGrantHandler) getScopes(
 	}
 
 	return validRequestedScopes, nil
+}
+
+// resolveExchangeParties names the subject and the actor by resource ID and category, so the token
+// builder caps the exchanged token at their lifespan even where the issuing application mapped sub to
+// an attribute, and skips reading them again. It returns the subject's and records the actor's on
+// actorClaims.
+func (h *tokenExchangeGrantHandler) resolveExchangeParties(ctx context.Context,
+	subjectClaims, actorClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	subjectEntityID, subjectCategory, errResp := h.resolveExchangedEntity(ctx, subjectClaims, "subject_token", logger)
+	if errResp != nil {
+		return "", "", errResp
+	}
+	if actorClaims != nil {
+		actorClaims.EntityID, actorClaims.EntityCategory, errResp =
+			h.resolveExchangedEntity(ctx, actorClaims, "actor_token", logger)
+		if errResp != nil {
+			return "", "", errResp
+		}
+	}
+	return subjectEntityID, subjectCategory, nil
+}
+
+// resolveExchangedEntity returns the resource ID and category of the entity a self-issued subject or
+// actor token names, and empty strings when the token is not self-issued or carries no attribute cache
+// entry. The category is empty when the attribute cache entry does not record it.
+// sub is the resource ID unless the issuing application mapped it to an attribute, in which case the
+// token's aci entry records the entity, as the refresh grant relies on. An entry that cannot be read,
+// or that records no entity, fails the exchange, so a mapped sub never yields a token the builder
+// cannot cap.
+func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
+	claims *tokenservice.SubjectTokenClaims, slot string, logger *log.Logger) (
+	string, string, *model.ErrorResponse) {
+	if claims.AttributeCacheID == "" || claims.Sub == "" {
+		return "", "", nil
+	}
+
+	entity, svcErr := h.actorProvider.GetActor(claims.Sub)
+	if svcErr == nil {
+		if entity == nil {
+			return claims.Sub, "", nil
+		}
+		return claims.Sub, string(entity.Category), nil
+	}
+	if svcErr.Code == providers.ErrorActorLookupNotSupported.Code {
+		return "", "", nil
+	}
+	if svcErr.Type != tidcommon.ClientErrorType {
+		logger.Error(ctx, "Failed to resolve the "+slot+" subject",
+			log.String("error", svcErr.Error.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+
+	entry, cacheErr := h.attrCache.GetAttributeCache(ctx, claims.AttributeCacheID)
+	if cacheErr != nil && cacheErr.Type != tidcommon.ClientErrorType {
+		logger.Error(ctx, "Failed to read the "+slot+" attribute cache entry",
+			log.String("error", cacheErr.ErrorDescription.DefaultValue))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to resolve the " + slot + " subject",
+		}
+	}
+	// An entry created before the subject's resource ID was recorded cannot name the entity, and the
+	// mapped sub names none, so the exchanged token could not be capped at its lifespan.
+	if cacheErr != nil || entry == nil || entry.SubjectID == "" {
+		logger.Debug(ctx, "Attribute cache entry of the "+slot+" not found or names no subject",
+			log.String("cache_id", claims.AttributeCacheID))
+		return "", "", &model.ErrorResponse{
+			Error:            constants.ErrorInvalidGrant,
+			ErrorDescription: "The " + slot + " can no longer be exchanged",
+		}
+	}
+	return entry.SubjectID, entry.SubjectCategory, nil
 }

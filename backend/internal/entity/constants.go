@@ -11,4 +11,5 @@ import authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/c
 var reservedSystemAttributes = []string{
 	authnprovidercm.SystemAttrCredentialUpdatedAt,
 	authnprovidercm.SystemAttrLinkedIDs,
+	authnprovidercm.SystemAttrValidUntil,
 }

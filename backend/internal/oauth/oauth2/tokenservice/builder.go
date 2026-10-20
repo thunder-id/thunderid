@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -17,6 +18,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -36,7 +38,8 @@ type tokenBuilder struct {
 	jweService   jwe.JWEServiceInterface
 	jwksResolver *jwksresolver.Resolver
 	// actorProvider resolves the token subject's entity so its category can be recorded on the token
-	// DTO. Optional: a nil provider leaves the category empty rather than failing issuance.
+	// DTO, and the entities involved in a token so it can be capped at their lifespan. Optional: a nil
+	// provider leaves the category empty and caps nothing, rather than failing issuance.
 	actorProvider providers.ActorProvider
 }
 
@@ -67,6 +70,10 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess, tokenCtx.ValidityPeriod)
+	validityPeriod, capErr := tb.capAtLifespan(tokenConfig.ValidityPeriod, accessTokenParties(tokenCtx)...)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -80,7 +87,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 
 	tokenDTO := &oauth2model.TokenDTO{
 		TokenType:        tokenType,
-		ExpiresIn:        tokenConfig.ValidityPeriod,
+		ExpiresIn:        validityPeriod,
 		Scopes:           tokenCtx.Scopes,
 		ClientID:         tokenCtx.ClientID,
 		UserAttributes:   tokenCtx.SubjectAttributes,
@@ -101,7 +108,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 		ctx,
 		tokenCtx.Subject,
 		tokenConfig.Issuer,
-		tokenConfig.ValidityPeriod,
+		validityPeriod,
 		jwtClaims,
 		jwt.TokenTypeAccessToken,
 		"",
@@ -167,6 +174,11 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 		return ""
 	}
 
+	// A grant that resolved the actor itself (token exchange, for a mapped actor_token sub) says so.
+	if tokenCtx.ActorClaims != nil && tokenCtx.ActorClaims.EntityID != "" {
+		return tokenCtx.ActorClaims.EntityID
+	}
+
 	// Grants that name the authenticated client as the actor (authorization_code, CIBA, refresh, and
 	// token exchange without an actor_token) already hold a resource ID, so no lookup is needed.
 	if tokenCtx.OAuthApp != nil && actorSub == tokenCtx.OAuthApp.ID {
@@ -193,6 +205,132 @@ func (tb *tokenBuilder) lookupCategory(entityID string) string {
 	return string(entity.Category)
 }
 
+// lifespanParty is an entity involved in an issuance: the token's subject, the client it is issued
+// to, or the actor. category is empty when the caller does not know it, in which case id may be a
+// mapped subject attribute rather than a resource ID.
+type lifespanParty struct {
+	id       string
+	category string
+}
+
+// accessTokenParties returns the entities involved in an access token. The client comes first so a
+// subject or actor that is the client itself is resolved with the category the client already carries.
+func accessTokenParties(tokenCtx *AccessTokenBuildContext) []lifespanParty {
+	parties := clientParty(tokenCtx.OAuthApp)
+	switch {
+	case tokenCtx.SubjectEntityID != "":
+		parties = append(parties, lifespanParty{id: tokenCtx.SubjectEntityID, category: tokenCtx.SubjectCategory})
+	case tokenCtx.Subject != "":
+		parties = append(parties, lifespanParty{id: tokenCtx.Subject})
+	}
+	if tokenCtx.ActorClaims != nil {
+		actor := lifespanParty{id: tokenCtx.ActorClaims.EntityID, category: tokenCtx.ActorClaims.EntityCategory}
+		if actor.id == "" {
+			actor = lifespanParty{id: tokenCtx.ActorClaims.Sub}
+		}
+		parties = append(parties, actor)
+	}
+	return parties
+}
+
+// refreshTokenParties returns the entities involved in a refresh token.
+func refreshTokenParties(tokenCtx *RefreshTokenBuildContext) []lifespanParty {
+	parties := clientParty(tokenCtx.OAuthApp)
+	subject := lifespanParty{id: tokenCtx.SubjectEntityID, category: tokenCtx.SubjectCategory}
+	if subject.id == "" {
+		subject = lifespanParty{id: tokenCtx.AccessTokenSubject}
+	}
+	return append(parties, subject, lifespanParty{id: tokenCtx.ActorSub})
+}
+
+// idjagParties returns the entities involved in an ID-JAG.
+func idjagParties(tokenCtx *IDJAGBuildContext) []lifespanParty {
+	return append(clientParty(tokenCtx.OAuthApp), lifespanParty{id: tokenCtx.Subject})
+}
+
+// idTokenParties returns the entities involved in an ID token.
+func idTokenParties(tokenCtx *IDTokenBuildContext) []lifespanParty {
+	parties := clientParty(tokenCtx.OAuthApp)
+	subject := lifespanParty{id: tokenCtx.SubjectEntityID, category: tokenCtx.SubjectCategory}
+	if subject.id == "" {
+		subject = lifespanParty{id: tokenCtx.Subject}
+	}
+	return append(parties, subject)
+}
+
+func clientParty(oauthApp *providers.OAuthClient) []lifespanParty {
+	if oauthApp == nil || oauthApp.ID == "" {
+		return nil
+	}
+	return []lifespanParty{{id: oauthApp.ID, category: string(oauthApp.EntityCategory)}}
+}
+
+// capAtLifespan returns validityPeriod shortened so the token expires no later than the earliest
+// validUntil of the agents involved, and ErrLifespanEnded when that instant has already been
+// reached. The JWT is stamped a moment after this check, possibly in the next second, so one second
+// is held back to keep exp at or before validUntil.
+func (tb *tokenBuilder) capAtLifespan(validityPeriod int64, parties ...lifespanParty) (int64, error) {
+	validUntil, bounded, err := tb.earliestValidUntil(parties)
+	if err != nil {
+		return 0, err
+	}
+	if !bounded {
+		return validityPeriod, nil
+	}
+	remaining := validUntil.Unix() - time.Now().Unix() - 1
+	if remaining <= 0 {
+		return 0, ErrLifespanEnded
+	}
+	return min(validityPeriod, remaining), nil
+}
+
+// earliestValidUntil returns the earliest lifespan end among the agents involved, with bounded false
+// when none of them has one. A party whose category is known is always read, and a failure to read it
+// fails issuance, so a lookup error never yields an uncapped token. A party of unknown category may be
+// a mapped subject attribute, so one that names no entity imposes no cap. An actor provider that cannot
+// look up entities at all holds no agents, so it imposes no cap either.
+func (tb *tokenBuilder) earliestValidUntil(parties []lifespanParty) (time.Time, bool, error) {
+	if tb.actorProvider == nil {
+		return time.Time{}, false, nil
+	}
+
+	var earliest time.Time
+	bounded := false
+	seen := make(map[string]bool, len(parties))
+	for _, party := range parties {
+		if party.id == "" || seen[party.id] {
+			continue
+		}
+		seen[party.id] = true
+		if party.category != "" && party.category != string(providers.EntityCategoryAgent) {
+			continue
+		}
+
+		entity, svcErr := tb.actorProvider.GetActor(party.id)
+		if svcErr != nil {
+			if svcErr.Code == providers.ErrorActorLookupNotSupported.Code ||
+				(party.category == "" && svcErr.Type == tidcommon.ClientErrorType) {
+				continue
+			}
+			return time.Time{}, false, fmt.Errorf("failed to resolve an entity involved in the token: %s",
+				svcErr.Error.DefaultValue)
+		}
+		if entity == nil || entity.Category != providers.EntityCategoryAgent {
+			continue
+		}
+
+		validUntil, ok, err := authnprovidercm.ValidUntilOf(entity.SystemAttributes)
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("failed to read the lifespan of an agent: %w", err)
+		}
+		if ok && (!bounded || validUntil.Before(earliest)) {
+			earliest = validUntil
+			bounded = true
+		}
+	}
+	return earliest, bounded, nil
+}
+
 // BuildIDJAG builds an Identity Assertion Authorization Grant (ID-JAG) JWT targeted at an external
 // resource authorization server (draft-ietf-oauth-identity-assertion-authz-grant). The token carries
 // typ=oauth-id-jag+jwt and is signed with the server's own key. token_type is "N_A" because the
@@ -209,6 +347,10 @@ func (tb *tokenBuilder) BuildIDJAG(
 	if tokenCtx.OAuthApp != nil && tokenCtx.OAuthApp.Token != nil && tokenCtx.OAuthApp.Token.IDJAG != nil &&
 		tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod > 0 {
 		validityPeriod = tokenCtx.OAuthApp.Token.IDJAG.ValidityPeriod
+	}
+	validityPeriod, capErr := tb.capAtLifespan(validityPeriod, idjagParties(tokenCtx)...)
+	if capErr != nil {
+		return nil, capErr
 	}
 
 	claims := map[string]interface{}{
@@ -397,6 +539,10 @@ func (tb *tokenBuilder) BuildRefreshToken(
 			return nil, fmt.Errorf("refresh token grant has reached its expiry")
 		}
 	}
+	validityPeriod, capErr := tb.capAtLifespan(validityPeriod, refreshTokenParties(tokenCtx)...)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	claims, claimsErr := tb.buildRefreshTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -495,11 +641,15 @@ func (tb *tokenBuilder) BuildIDToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeID, 0)
+	validityPeriod, capErr := tb.capAtLifespan(tokenConfig.ValidityPeriod, idTokenParties(tokenCtx)...)
+	if capErr != nil {
+		return nil, capErr
+	}
 
 	jwtClaims := tb.buildIDTokenClaims(tokenCtx)
 
 	tokenDTO := &oauth2model.TokenDTO{
-		ExpiresIn: tokenConfig.ValidityPeriod,
+		ExpiresIn: validityPeriod,
 		Scopes:    tokenCtx.Scopes,
 		ClientID:  tokenCtx.Audience,
 		Subject:   tokenCtx.Subject,
@@ -512,7 +662,7 @@ func (tb *tokenBuilder) BuildIDToken(
 		ctx,
 		tokenCtx.Subject,
 		tokenConfig.Issuer,
-		tokenConfig.ValidityPeriod,
+		validityPeriod,
 		jwtClaims,
 		jwt.TokenTypeJWT,
 		tokenConfig.SigningAlg,

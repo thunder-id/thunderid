@@ -84,6 +84,7 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
 		Attributes:  req.Attributes,
+		ValidUntil:  req.ValidUntil,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			RegistrationFlowID:        req.RegistrationFlowID,
@@ -274,6 +275,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code,
+			ErrorCannotChangeOwnLifespan.Code,
 			tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:

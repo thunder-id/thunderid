@@ -96,6 +96,12 @@ type RefreshTokenBuildContext struct {
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
 	ExpiresAt int64
+	// SubjectEntityID is the resource ID of the entity AccessTokenSubject refers to, when the grant
+	// already knows it, and SubjectCategory its category. Left empty the builder resolves
+	// AccessTokenSubject itself. Used only to cap the token at the subject's lifespan, which a known
+	// category other than agent skips without a lookup; neither is emitted as a claim.
+	SubjectEntityID string
+	SubjectCategory string
 }
 
 // IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
@@ -125,6 +131,12 @@ type IDTokenBuildContext struct {
 	// SessionID, when set, is emitted as the `sid` claim naming the SSO session this authentication
 	// belongs to. Empty when no session backs the grant, in which case the claim is omitted.
 	SessionID string
+	// SubjectEntityID is the resource ID of the entity Subject refers to, when the grant already knows
+	// it, and SubjectCategory its category. Left empty the builder resolves Subject itself. Used only
+	// to cap the token at the subject's lifespan, which a known category other than agent skips without
+	// a lookup; neither is emitted as a claim.
+	SubjectEntityID string
+	SubjectCategory string
 }
 
 const (
@@ -196,6 +208,15 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// AttributeCacheID is the attribute cache entry (aci) a self-issued token references, which names
+	// the token's subject when its sub is a mapped attribute rather than a resource ID. Empty for
+	// externally-issued tokens.
+	AttributeCacheID string
+	// EntityID is the resource ID of the entity Sub refers to, set by the grant handler once it has
+	// resolved Sub, and EntityCategory its category when known. Left empty the token builder resolves
+	// Sub itself.
+	EntityID       string
+	EntityCategory string
 	// Authorization is server-resolved context, not a claim from the token itself — see
 	// MappedAuthorization.
 	Authorization MappedAuthorization

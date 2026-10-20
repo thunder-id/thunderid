@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -714,14 +713,15 @@ func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_ProviderError() {
 
 // A system-attribute blob the server cannot parse must fail the credential write rather than silently
 // replacing the blob, which would drop the keys belonging to whichever service owns the entity.
-func (s *ServiceTestSuite) TestSetCredentialUpdatedAt_CorruptBlobErrors() {
-	_, err := setCredentialUpdatedAt(json.RawMessage(`not json`), time.Now().UTC())
+func (s *ServiceTestSuite) TestWithSystemAttribute_CorruptBlobErrors() {
+	_, err := withSystemAttribute(json.RawMessage(`not json`), authnprovidercm.SystemAttrCredentialUpdatedAt,
+		"2026-08-12T10:00:00Z")
 	s.Error(err)
 }
 
 // An absent blob is normal for an entity that has never carried system attributes.
-func (s *ServiceTestSuite) TestSetCredentialUpdatedAt_EmptyBlobStartsFresh() {
-	marked, err := setCredentialUpdatedAt(nil, time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC))
+func (s *ServiceTestSuite) TestWithSystemAttribute_EmptyBlobStartsFresh() {
+	marked, err := withSystemAttribute(nil, authnprovidercm.SystemAttrCredentialUpdatedAt, "2026-08-12T10:00:00Z")
 	s.Require().NoError(err)
 
 	var attrs map[string]interface{}
@@ -789,6 +789,55 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesLinkedAccounts() 
 	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
 	s.Equal(map[string]interface{}{"idp-a": map[string]interface{}{"sub-1": map[string]interface{}{}}},
 		attrs[authnprovidercm.SystemAttrLinkedIDs])
+}
+
+// An agent's lifespan is changed only through SetValidUntil, so a generic write keeps the stored
+// value whether it leaves validUntil out or sends another one.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesValidUntil() {
+	e := testEntity("e-preserve-lifespan")
+	e.SystemAttributes = json.RawMessage(`{"name":"Old","validUntil":"2027-03-31T00:00:00Z"}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	for _, incoming := range []string{`{"name":"New"}`, `{"name":"New","validUntil":"9999-12-31T23:59:59Z"}`} {
+		s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(incoming)))
+
+		var attrs map[string]interface{}
+		s.Require().NoError(json.Unmarshal(written, &attrs))
+		s.Equal("New", attrs["name"])
+		s.Equal("2027-03-31T00:00:00Z", attrs[authnprovidercm.SystemAttrValidUntil])
+	}
+}
+
+// SetValidUntil changes the lifespan alone and keeps every other key, reserved or not.
+func (s *ServiceTestSuite) TestSetValidUntil_ChangesOnlyValidUntil() {
+	e := testEntity("e-set-lifespan")
+	e.SystemAttributes = json.RawMessage(
+		`{"owner":"o-1","credentialUpdatedAt":"2026-08-12T10:00:00Z","validUntil":"2027-03-31T00:00:00Z"}`)
+	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.SetValidUntil(s.ctx, e.ID, "2028-01-01T00:00:00Z"))
+
+	s.JSONEq(`{"owner":"o-1","credentialUpdatedAt":"2026-08-12T10:00:00Z","validUntil":"2028-01-01T00:00:00Z"}`,
+		string(written))
+}
+
+func (s *ServiceTestSuite) TestSetValidUntil_Errors() {
+	s.store.On("LockEntity", mock.Anything, "e-missing").Return(providers.Entity{}, ErrEntityNotFound)
+	s.ErrorIs(s.svc.SetValidUntil(s.ctx, "e-missing", "2028-01-01T00:00:00Z"), ErrEntityNotFound)
+
+	corrupt := testEntity("e-corrupt-lifespan")
+	corrupt.SystemAttributes = json.RawMessage(`not json`)
+	s.store.On("LockEntity", mock.Anything, corrupt.ID).Return(*corrupt, nil)
+	s.Error(s.svc.SetValidUntil(s.ctx, corrupt.ID, "2028-01-01T00:00:00Z"))
+	s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A stored blob that does not parse may still hold reserved keys, so the replace fails rather than

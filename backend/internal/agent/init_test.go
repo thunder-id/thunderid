@@ -15,6 +15,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -98,7 +100,8 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 				Return(errors.New("entity load error")).Once()
 
 			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
-				newAllowAllAuthz(suite.T()), nil, nil)
+				newAllowAllAuthz(suite.T()), nil, nil,
+				newEntityDBProvider(suite.T()), nil)
 
 			suite.EqualError(err, "entity load error")
 			suite.Nil(svc)
@@ -128,7 +131,8 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
+				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil,
+				newEntityDBProvider(suite.T()), nil)
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -154,7 +158,8 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil,
+		newEntityDBProvider(suite.T()), nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -174,7 +179,8 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
+		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil,
+		newEntityDBProvider(suite.T()), nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -195,9 +201,17 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
 
 	svc, exporter, err := Initialize(
-		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil)
+		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil,
+		newEntityDBProvider(suite.T()), nil)
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)
 	suite.Nil(exporter)
+}
+
+// newEntityDBProvider returns a DB provider whose entity transactioner runs the work without a database.
+func newEntityDBProvider(t *testing.T) *providermock.DBProviderInterfaceMock {
+	dbProvider := providermock.NewDBProviderInterfaceMock(t)
+	dbProvider.On("GetEntityDBTransactioner").Return(transaction.NewNoOpTransactioner(), nil).Maybe()
+	return dbProvider
 }
