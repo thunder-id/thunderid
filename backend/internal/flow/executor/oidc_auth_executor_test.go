@@ -19,6 +19,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -29,6 +30,7 @@ type OIDCAuthExecutorTestSuite struct {
 	mockIDPService    *idpmock.IDPServiceInterfaceMock
 	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
 	mockAuthnProvider *managermock.AuthnProviderManagerMock
+	mockEntity        *entityprovidermock.EntityProviderInterfaceMock
 	executor          oidcAuthExecutorInterface
 }
 
@@ -41,6 +43,7 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
+	suite.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOIDCAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOIDCAuth, providers.ExecutorTypeAuthentication,
@@ -48,7 +51,7 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOIDCService,
-		suite.mockAuthnProvider, providers.IDPTypeOIDC)
+		suite.mockAuthnProvider, providers.IDPTypeOIDC, suite.mockEntity)
 }
 
 func newOIDCAuthenticatedUser() providers.AuthUser {
@@ -1175,6 +1178,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ServerError(
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
+<<<<<<< HEAD
 // The OIDC executor carries its own copy of the callback handling, so the code and state it consumed
 // must not survive into the next federated node either. See the OAuth executor's counterpart.
 func (suite *OIDCAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsumed() {
@@ -1210,4 +1214,14 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsu
 		"the consumed code must not survive into the next federated node")
 	assert.NotContains(suite.T(), ctx.UserInputs, userInputState,
 		"the consumed state must not survive into the next federated node")
+=======
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncsReturningUser() {
+	for _, tc := range federatedSignInSyncCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			runFederatedSignInSyncCase(suite.T(), tc, suite.mockAuthnProvider, suite.mockIDPService, suite.mockEntity,
+				suite.executor.ProcessAuthFlowResponse)
+		})
+	}
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }

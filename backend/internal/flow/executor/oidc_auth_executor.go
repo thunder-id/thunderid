@@ -15,6 +15,7 @@ import (
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -34,11 +35,20 @@ type oidcAuthExecutorInterface interface {
 // oidcAuthExecutor implements the OIDCAuthExecutorInterface for handling generic OIDC authentication flows.
 type oidcAuthExecutor struct {
 	oAuthExecutorInterface
+<<<<<<< HEAD
 	idpService    providers.IDPProvider
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
 	logger        *log.Logger
+=======
+	idpService     idp.IDPServiceInterface
+	authService    authnoidc.OIDCAuthnCoreServiceInterface
+	authnProvider  providers.AuthnProviderManager
+	idpType        providers.IDPType
+	entityProvider entityprovider.EntityProviderInterface
+	logger         *log.Logger
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }
 
 var _ providers.Executor = (*oidcAuthExecutor)(nil)
@@ -52,6 +62,7 @@ func newOIDCAuthExecutor(
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
+	entityProvider entityprovider.EntityProviderInterface,
 ) oidcAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOIDCAuth
@@ -65,7 +76,7 @@ func newOIDCAuthExecutor(
 	}
 
 	base := newOAuthExecutor(name, defaultInputs, prerequisites,
-		flowFactory, idpService, oauthSvcCast, authnProvider, idpType)
+		flowFactory, idpService, oauthSvcCast, authnProvider, idpType, entityProvider)
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,
@@ -73,6 +84,7 @@ func newOIDCAuthExecutor(
 		authService:            authService,
 		authnProvider:          authnProvider,
 		idpType:                idpType,
+		entityProvider:         entityProvider,
 		logger:                 logger,
 	}
 }
@@ -230,6 +242,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		return err
 	}
 
+<<<<<<< HEAD
 	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpDTO, federatedAttributes, logger)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
@@ -243,6 +256,11 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		if isRegistrationWithExistingUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
 		}
+=======
+	if ok, err := completeFederatedSignIn(ctx, execResp, o.idpService, o.entityProvider, o.authnProvider,
+		idpID, federatedAttributes, logger); !ok {
+		return err
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	}
 
 	execResp.Status = providers.ExecComplete

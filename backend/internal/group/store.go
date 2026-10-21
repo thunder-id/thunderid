@@ -40,6 +40,9 @@ type groupStoreInterface interface {
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) error
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	DeleteMembershipsByMember(ctx context.Context, memberType, memberID string) (int64, error)
+	GetMemberGroupIDs(ctx context.Context, memberType, memberID string) ([]string, error)
+	AddMemberToGroups(ctx context.Context, member Member, groupIDs []string) error
+	RemoveMemberFromGroups(ctx context.Context, member Member, groupIDs []string) error
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
 	GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
@@ -558,6 +561,64 @@ func (s *groupStore) DeleteMembershipsByMember(
 		return 0, fmt.Errorf("failed to delete memberships for member: %w", err)
 	}
 	return rowsAffected, nil
+}
+
+// GetMemberGroupIDs returns the IDs of the groups a member directly belongs to.
+func (s *groupStore) GetMemberGroupIDs(ctx context.Context, memberType, memberID string) ([]string, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryGetMemberGroupIDs, memberType, memberID, s.deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get member groups: %w", err)
+	}
+
+	groupIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		groupID, ok := row["group_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse group_id as string")
+		}
+		groupIDs = append(groupIDs, groupID)
+	}
+	return groupIDs, nil
+}
+
+// AddMemberToGroups adds a member to each of the given groups.
+func (s *groupStore) AddMemberToGroups(ctx context.Context, member Member, groupIDs []string) error {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	now := time.Now().UTC()
+	for _, groupID := range groupIDs {
+		if _, err := dbClient.ExecuteContext(
+			ctx, QueryAddMemberToGroup, groupID, member.Type, member.ID, s.deploymentID, now, now,
+		); err != nil {
+			return fmt.Errorf("failed to add member to group: %w", err)
+		}
+	}
+	return nil
+}
+
+// RemoveMemberFromGroups removes a member from each of the given groups.
+func (s *groupStore) RemoveMemberFromGroups(ctx context.Context, member Member, groupIDs []string) error {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	for _, groupID := range groupIDs {
+		if _, err := dbClient.ExecuteContext(
+			ctx, QueryDeleteGroupMember, groupID, member.Type, member.ID, s.deploymentID,
+		); err != nil {
+			return fmt.Errorf("failed to remove member from group: %w", err)
+		}
+	}
+	return nil
 }
 
 // GetGroupsByIDs retrieves groups by a list of IDs.

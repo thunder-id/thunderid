@@ -39,7 +39,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_RoleNameMatchGrants() {
 
 	config := authzDirectMapping("role_name", "", testutils.AuthorizationTargetRole, "")
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.Contains(authorized, "read", "the claim value should resolve the role by exact name")
 	s.NotContains(authorized, "write", "only the matched role's own permission should be authorized")
 }
@@ -51,7 +51,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_RoleNameNoMatchGrantsNoth
 
 	config := authzDirectMapping("role_name", "", testutils.AuthorizationTargetRole, "")
 
-	authorized := s.authorizeFederated(config, user, "read", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read", authzMappingResource)
 	s.Empty(authorized, "an unmatched role name should confer nothing")
 }
 
@@ -82,7 +82,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousRoleNameAcrossOU
 
 	config := authzDirectMapping("role_name", "", testutils.AuthorizationTargetRole, "")
 
-	authorized := s.authorizeFederated(config, user, "read", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read", authzMappingResource)
 	s.Empty(authorized, "a name matching more than one role should confer nothing, not pick one arbitrarily")
 }
 
@@ -94,7 +94,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_GroupNameMatchGrants() {
 
 	config := authzDirectMapping("group_name", "", testutils.AuthorizationTargetGroup, "")
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.Contains(authorized, "write", "the claim value should resolve the group by exact name")
 	s.NotContains(authorized, "read", "only the matched group's own role permission should be authorized")
 }
@@ -126,7 +126,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousGroupNameAcrossO
 
 	config := authzDirectMapping("group_name", "", testutils.AuthorizationTargetGroup, "")
 
-	authorized := s.authorizeFederated(config, user, "write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "write", authzMappingResource)
 	s.Empty(authorized, "a name matching more than one group should confer nothing, not pick one arbitrarily")
 }
 
@@ -144,7 +144,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_ListValuedClaimResolvesEa
 		},
 	}
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.ElementsMatch([]string{"read", "write"}, authorized,
 		"every element of the list claim should resolve independently, one against each target type")
 }
@@ -163,7 +163,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_DelimitedStringClaimSplit
 		},
 	}
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.ElementsMatch([]string{"read", "write"}, authorized,
 		"a delimited string claim should split into tokens the same way a native list claim does")
 }
@@ -191,7 +191,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_NonStringClaimValueIsStri
 
 	config := authzDirectMapping("is_admin", "", testutils.AuthorizationTargetRole, "")
 
-	authorized := s.authorizeFederated(config, user, "read", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read", authzMappingResource)
 	s.Contains(authorized, "read", `a boolean claim value should stringify to "true" and resolve a role literally named that`)
 }
 
@@ -203,7 +203,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_PermissionTargetGrantsOnl
 
 	config := authzDirectMapping("perms", "", testutils.AuthorizationTargetPermission, s.authzResourceServerID)
 
-	authorized := s.authorizeFederated(config, user, "read write delete", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write delete", authzMappingResource)
 	s.ElementsMatch([]string{"read", "write"}, authorized,
 		"only claim values that are valid permissions on the configured resource server should be granted")
 }
@@ -216,7 +216,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_PermissionTargetScopedToI
 
 	config := authzDirectMapping("perms", "", testutils.AuthorizationTargetPermission, s.authzOtherResourceServerID)
 
-	authorized := s.authorizeFederated(config, user, "read", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read", authzMappingResource)
 	s.Empty(authorized, "a permission target scoped to a different resource server must not grant access here")
 }
 
@@ -240,7 +240,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_CombinesWithRuleBasedMapp
 		},
 	}
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.ElementsMatch([]string{"read", "write"}, authorized,
 		"a direct mapping and a rule-based mapping configured together should combine their results")
 }
@@ -265,7 +265,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_SameRoleFromBothMechanism
 		},
 	}
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.ElementsMatch([]string{"read"}, authorized,
 		"the same role resolved by both mechanisms should grant its permission once, and not leak write")
 }
@@ -289,7 +289,7 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_SamePermissionFromBothMec
 		},
 	}
 
-	authorized := s.authorizeFederated(config, user, "read write", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read write", authzMappingResource)
 	s.ElementsMatch([]string{"read"}, authorized,
 		"the same permission resolved by both mechanisms should grant it once, and not leak write")
 }

@@ -890,6 +890,48 @@ type AttributeConfiguration struct {
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"           yaml:"accountLinking,omitempty"`                //nolint:lll
 	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"      yaml:"authorizationMapping,omitempty"`         //nolint:lll
+	Sync                      *SyncConfiguration         `json:"sync,omitempty"                      yaml:"sync,omitempty"`                         //nolint:lll
+}
+
+// SyncMode controls how a federated sign-in keeps the local account in line with the provider.
+type SyncMode string
+
+const (
+	// SyncModeNoSync writes the provider's data when the account is created, and never after.
+	SyncModeNoSync SyncMode = "no_sync"
+	// SyncModeSessionOnly applies the provider's data to the session and tokens without storing it.
+	SyncModeSessionOnly SyncMode = "session_only"
+	// SyncModeOverrideReceived overwrites the attributes the connection maps and the provider sends, and
+	// keeps the rest. Valid for attributes only.
+	SyncModeOverrideReceived SyncMode = "override_received"
+	// SyncModeOverrideAll sets the account's groups and roles to what the authorization mapping resolves,
+	// removals included. Valid for groups and roles only.
+	SyncModeOverrideAll SyncMode = "override_all"
+)
+
+// FederatedEntitySync is what a federated sign-in writes to a returning entity. A nil field leaves
+// that part unchanged.
+type FederatedEntitySync struct {
+	// AttributesByType holds the provider's values for the attributes to override, keyed by user type
+	// and then by local attribute. Only the entry for the entity's own type is written.
+	AttributesByType map[string]map[string]interface{}
+	Groups           *MembershipSync
+	Roles            *MembershipSync
+}
+
+// MembershipSync replaces an entity's direct groups or roles.
+type MembershipSync struct {
+	// IDs are the direct memberships after the sync.
+	IDs []string
+	// RetainIDs are kept when the entity already has them, even when not in IDs.
+	RetainIDs []string
+}
+
+// SyncConfiguration holds a connection's sync modes. An unset mode takes its default:
+// SyncModeOverrideReceived for attributes and SyncModeNoSync for groups and roles.
+type SyncConfiguration struct {
+	Attributes     SyncMode `json:"attributes,omitempty"     yaml:"attributes,omitempty"`
+	GroupsAndRoles SyncMode `json:"groupsAndRoles,omitempty" yaml:"groupsAndRoles,omitempty"`
 }
 
 // AuthorizationMapping holds a connection's authorization mapping configuration: explicit

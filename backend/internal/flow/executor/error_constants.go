@@ -1209,6 +1209,7 @@ var (
 			DefaultValue: "The user could not be deleted",
 		},
 	}
+<<<<<<< HEAD
 	// ErrApplicationDeletionNotAllowed is returned when the target application cannot be deleted.
 	ErrApplicationDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -1674,6 +1675,11 @@ var (
 
 	// ErrFederatedUserSyncFailed is returned when a federated user cannot be updated with
 	// the attributes received from the identity provider.
+=======
+
+	// ErrFederatedUserSyncFailed is returned when a returning federated user's account cannot be
+	// synced with the identity provider.
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	ErrFederatedUserSyncFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1120",

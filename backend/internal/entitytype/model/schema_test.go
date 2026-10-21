@@ -654,6 +654,7 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_UniqueOnlyAndType() {
 	s.Equal(TypeString, subjectCandidates[0].Type)
 }
 
+<<<<<<< HEAD
 // validatePayload compiles the definition and validates the payload against it.
 func (s *SchemaValidateTestSuite) validatePayload(definition, payload string) bool {
 	schema, err := CompileSchema(json.RawMessage(definition))
@@ -873,3 +874,29 @@ func (s *SchemaValidateTestSuite) TestContactRegex_InvalidDefinitionRejected() {
 		s.Error(err, definition)
 	}
 }
+=======
+func (s *SchemaValidateTestSuite) TestConvertToSchemaType() {
+	tests := []struct {
+		name          string
+		value         string
+		schemaType    string
+		expectedValue interface{}
+	}{
+		{"Checked box becomes true", "true", TypeBoolean, true},
+		{"Unchecked box becomes false", "false", TypeBoolean, false},
+		{"Boolean accepts alternate spellings", "TRUE", TypeBoolean, true},
+		{"Unparseable boolean is left for schema validation to reject", "yes", TypeBoolean, "yes"},
+		{"Number becomes a float", "42", TypeNumber, float64(42)},
+		{"Fractional number becomes a float", "1.5", TypeNumber, 1.5},
+		{"Unparseable number is left for schema validation to reject", "many", TypeNumber, "many"},
+		{"String attribute is untouched", "true", TypeString, "true"},
+		{"Unknown schema type is untouched", "true", "", "true"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expectedValue, ConvertToSchemaType(tt.value, tt.schemaType))
+		})
+	}
+}
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)

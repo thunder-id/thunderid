@@ -8,6 +8,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -624,6 +625,57 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Unp
 	result, _, _ := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
 
 	assert.Equal(suite.T(), "affirmative", result["active"])
+}
+
+// TestGetAttributesForProvisioning_SessionOnlyAttributes verifies that when the federated connection
+// keeps attributes to the session, only the subject identifier, required attributes and values the
+// user entered are kept, and other claims carried in RuntimeData are left out.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_SessionOnlyAttributes() {
+	schema := []model.AttributeInfo{
+		{Attribute: "username", Required: true},
+		{Attribute: attributeEmail},
+		{Attribute: "sub"},
+		{Attribute: "given_name"},
+		{Attribute: "mobile"},
+	}
+	runtimeData := map[string]string{
+		userTypeKey:    testUserType,
+		"username":     "fed-user",
+		attributeEmail: "fed@example.com",
+		"sub":          "fed-sub",
+		"given_name":   "Fed",
+	}
+
+	tests := []struct {
+		name     string
+		mode     providers.SyncMode
+		expected map[string]interface{}
+	}{
+		{"session only", providers.SyncModeSessionOnly, map[string]interface{}{
+			"username": "fed-user", "sub": "fed-sub", "mobile": "0771234567",
+		}},
+		{"override all", providers.SyncModeOverrideAll, map[string]interface{}{
+			"username": "fed-user", attributeEmail: "fed@example.com", "sub": "fed-sub", "given_name": "Fed",
+			"mobile": "0771234567",
+		}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+				model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).Return(schema, nil).Once()
+			data := maps.Clone(runtimeData)
+			data[common.RuntimeKeyAttributesSyncMode] = string(tc.mode)
+			ctx := &providers.NodeContext{
+				UserInputs:  map[string]string{"mobile": "0771234567"},
+				RuntimeData: data,
+			}
+
+			result, _, err := suite.executor.getAttributesForProvisioning(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, result)
+		})
+	}
 }
 
 // TestGetAttributesForProvisioning_SchemaEmpty_ReturnsEmpty verifies that when the schema
@@ -2667,9 +2719,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 	suite.mockGroupService.AssertExpectations(suite.T())
 }
 
-// Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
-// deduplicated, when both flags are enabled.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
+// Mapped groups and roles are stored on the new account by default. The fixed assignGroup/assignRole
+// lists are added strictly, and the mapped ones go through replace with the fixed lists kept.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_StoresMappedGroupsAndRoles() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -2696,10 +2748,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 			{Identifier: "username", Type: "string", Required: true},
 		},
 		NodeProperties: map[string]interface{}{
-			"assignGroup":           "static-group-id",
-			"assignRole":            "static-role-id",
-			"seedGroupsFromMapping": true,
-			"seedRolesFromMapping":  true,
+			"assignGroup": "static-group-id",
+			"assignRole":  "static-role-id",
 		},
 	}
 
@@ -2713,11 +2763,17 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 
 	suite.mockGroupService.On("AddMembersToGroups",
 		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}},
-		[]string{"static-group-id", "mapped-group-id"}).
+		[]string{"static-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockGroupService.On("AddEntityToGroups", mock.Anything, testNewUserID, providers.EntityCategoryUser,
+		[]string{"mapped-group-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
 		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}},
-		[]string{"static-role-id", "mapped-role-id"}).
+		[]string{"static-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddEntityToRoles", mock.Anything, testNewUserID, providers.EntityCategoryUser,
+		[]string{"mapped-role-id"}).
 		Return((*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -2728,9 +2784,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
-// fixed assignGroup/assignRole lists are applied.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
+// newMappedOnlyProvisioningContext returns a registration context whose only group and role
+// assignments come from the authorization mapping.
+func (suite *ProvisioningExecutorTestSuite) newMappedOnlyProvisioningContext() *providers.NodeContext {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -2738,6 +2794,81 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_
 	runtimeData := map[string]string{
 		ouIDKey:         testOUID,
 		categoryTypeKey: testUserType,
+	}
+	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetRole, ID: "deleted-role-id"},
+		{Type: providers.AuthorizationTargetGroup, ID: "deleted-group-id"},
+	}) {
+		runtimeData[k] = v
+	}
+
+	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+	suite.mockEntityProvider.On("CreateEntity", mock.Anything, mock.Anything).Return(&providers.Entity{
+		ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON,
+	}, nil)
+
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{"username": "newuser"},
+		RuntimeData: runtimeData,
+		NodeInputs: []providers.Input{
+			{Identifier: "username", Type: "string", Required: true},
+		},
+	}
+}
+
+// A mapping that targets a group or role deleted after it was saved doesn't fail provisioning: mapped
+// targets skip the strict add, which rejects missing IDs, and go only through the entity add, which
+// skips them.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_MappedTargetsSkipStrictAdd() {
+	ctx := suite.newMappedOnlyProvisioningContext()
+	suite.mockGroupService.On("AddEntityToGroups", mock.Anything, testNewUserID, providers.EntityCategoryUser,
+		[]string{"deleted-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddEntityToRoles", mock.Anything, testNewUserID, providers.EntityCategoryUser,
+		[]string{"deleted-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockGroupService.AssertNotCalled(suite.T(), "AddMembersToGroups", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockRoleAssignmentService.AssertNotCalled(suite.T(), "AddAssigneesToRoles",
+		mock.Anything, mock.Anything, mock.Anything)
+	suite.mockGroupService.AssertExpectations(suite.T())
+	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
+}
+
+// A failure writing mapped groups, other than a missing group, still fails provisioning.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_MappedGroupWriteFails() {
+	ctx := suite.newMappedOnlyProvisioningContext()
+	suite.mockGroupService.On("AddEntityToGroups", mock.Anything, testNewUserID, providers.EntityCategoryUser,
+		[]string{"deleted-group-id"}).
+		Return(&tidcommon.InternalServerError)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrProvisioningAssignmentFailed.Code, resp.Error.Code)
+	suite.mockRoleAssignmentService.AssertNotCalled(suite.T(), "AddEntityToRoles",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// With session only groups and roles, mapped targets carried in runtime data aren't stored: only the
+// fixed assignGroup/assignRole lists are applied.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SessionOnlyGroupsAndRoles_MappedTargetsNotStored() {
+	suite.expectSchemaForProvisioning()
+	attrs := map[string]interface{}{"username": "newuser"}
+	attrsJSON, _ := json.Marshal(attrs)
+
+	runtimeData := map[string]string{
+		ouIDKey:                                 testOUID,
+		userTypeKey:                             testUserType,
+		common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
 	}
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},

@@ -651,6 +651,7 @@ func (_c *IDPServiceInterfaceMock_GetIdentityProvidersByProperty_Call) RunAndRet
 	return _c
 }
 
+<<<<<<< HEAD
 // ResolveIdentityProviderOU provides a mock function for the type IDPServiceInterfaceMock
 func (_mock *IDPServiceInterfaceMock) ResolveIdentityProviderOU(ctx context.Context, idp1 *providers.IDPDTO) *common.ServiceError {
 	ret := _mock.Called(ctx, idp1)
@@ -683,6 +684,60 @@ func (_e *IDPServiceInterfaceMock_Expecter) ResolveIdentityProviderOU(ctx any, i
 }
 
 func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Run(run func(ctx context.Context, idp1 *providers.IDPDTO)) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+=======
+// ResolveDirectAuthorizationTargets provides a mock function for the type IDPServiceInterfaceMock
+func (_mock *IDPServiceInterfaceMock) ResolveDirectAuthorizationTargets(ctx context.Context, idp1 *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, idp1, claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveDirectAuthorizationTargets")
+	}
+
+	var r0 []providers.AuthorizationTarget
+	var r1 []providers.AuthorizationTarget
+	var r2 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, idp1, claims)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) []providers.AuthorizationTarget); ok {
+		r0 = returnFunc(ctx, idp1, claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.AuthorizationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.IDPDTO, map[string]interface{}) []providers.AuthorizationTarget); ok {
+		r1 = returnFunc(ctx, idp1, claims)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([]providers.AuthorizationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, *providers.IDPDTO, map[string]interface{}) *common.ServiceError); ok {
+		r2 = returnFunc(ctx, idp1, claims)
+	} else {
+		if ret.Get(2) != nil {
+			r2 = ret.Get(2).(*common.ServiceError)
+		}
+	}
+	return r0, r1, r2
+}
+
+// IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveDirectAuthorizationTargets'
+type IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call struct {
+	*mock.Call
+}
+
+// ResolveDirectAuthorizationTargets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp1 *providers.IDPDTO
+//   - claims map[string]interface{}
+func (_e *IDPServiceInterfaceMock_Expecter) ResolveDirectAuthorizationTargets(ctx interface{}, idp1 interface{}, claims interface{}) *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call {
+	return &IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call{Call: _e.mock.On("ResolveDirectAuthorizationTargets", ctx, idp1, claims)}
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call) Run(run func(ctx context.Context, idp1 *providers.IDPDTO, claims map[string]interface{})) *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call {
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -692,20 +747,40 @@ func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Run(run func(c
 		if args[1] != nil {
 			arg1 = args[1].(*providers.IDPDTO)
 		}
+<<<<<<< HEAD
 		run(
 			arg0,
 			arg1,
+=======
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 		)
 	})
 	return _c
 }
 
+<<<<<<< HEAD
 func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) Return(serviceError *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
 func (_c *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call) RunAndReturn(run func(ctx context.Context, idp1 *providers.IDPDTO) *common.ServiceError) *IDPServiceInterfaceMock_ResolveIdentityProviderOU_Call {
+=======
+func (_c *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call) Return(authorizationTargets []providers.AuthorizationTarget, authorizationTargets1 []providers.AuthorizationTarget, serviceError *common.ServiceError) *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call {
+	_c.Call.Return(authorizationTargets, authorizationTargets1, serviceError)
+	return _c
+}
+
+func (_c *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call) RunAndReturn(run func(ctx context.Context, idp1 *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *common.ServiceError)) *IDPServiceInterfaceMock_ResolveDirectAuthorizationTargets_Call {
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	_c.Call.Return(run)
 	return _c
 }

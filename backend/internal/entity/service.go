@@ -8,19 +8,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+<<<<<<< HEAD
 	"maps"
 	"slices"
+=======
+	"reflect"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"strings"
 	"time"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+<<<<<<< HEAD
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
+=======
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -101,8 +110,12 @@ type EntityServiceInterface interface {
 	// Config
 	LoadIndexedAttributes(attributes []string) error
 
-	// GroupMembershipProvider registration
+	// Federated sync
+	SyncFederatedEntity(ctx context.Context, entityID string, sync providers.FederatedEntitySync) error
+
+	// Membership provider registration
 	SetGroupMembershipProvider(provider GroupMembershipProvider)
+<<<<<<< HEAD
 
 	// Sharing registration
 	// RegisterSharedCategory makes entities of a category shareable under the given sharing resource
@@ -126,14 +139,26 @@ type EntityServiceInterface interface {
 	SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
 	ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.AccountHold,
 		suspendedAt string) (bool, error)
+=======
+	SetRoleMembershipProvider(provider RoleMembershipProvider)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }
 
-// GroupMembershipProvider resolves group memberships for entities. Implemented by the group
-// package's store and injected after group initialization to avoid a circular import.
+// GroupMembershipProvider resolves and replaces group memberships for entities. Implemented by the
+// group package and injected after group initialization to avoid a circular import.
 // Covers both DB-backed and declarative (YAML) group memberships.
 type GroupMembershipProvider interface {
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
+	ReplaceEntityGroups(ctx context.Context, entityID string, category providers.EntityCategory,
+		groupIDs, keepIDs []string) *tidcommon.ServiceError
+}
+
+// RoleMembershipProvider replaces an entity's direct role assignments. Implemented by the role
+// assignment service and injected after role initialization to avoid a circular import.
+type RoleMembershipProvider interface {
+	ReplaceEntityRoles(ctx context.Context, entityID string, category providers.EntityCategory,
+		roleIDs, keepIDs []string) *tidcommon.ServiceError
 }
 
 // entityService is the default implementation of EntityServiceInterface.
@@ -148,6 +173,7 @@ type entityService struct {
 	transactioner           providers.Transactioner
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
+	roleMembershipProvider  RoleMembershipProvider
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -776,11 +802,12 @@ func (s *entityService) GetEntityGroups(ctx context.Context, entityID string,
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
-// SetGroupMembershipProvider registers the group store used to resolve all group memberships.
+// SetGroupMembershipProvider registers the group provider used to resolve and replace group memberships.
 func (s *entityService) SetGroupMembershipProvider(provider GroupMembershipProvider) {
 	s.groupMembershipProvider = provider
 }
 
+<<<<<<< HEAD
 // RegisterSharedCategory makes entities of a category shareable under the given sharing resource type.
 // It is called while the server starts, before any page is read.
 func (s *entityService) RegisterSharedCategory(category providers.EntityCategory, resourceType sharing.ResourceType) {
@@ -791,6 +818,11 @@ func (s *entityService) RegisterSharedCategory(category providers.EntityCategory
 func (s *entityService) GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool) {
 	resourceType, ok := s.sharedTypes[category]
 	return resourceType, ok
+=======
+// SetRoleMembershipProvider registers the role assignment service used to replace an entity's direct roles.
+func (s *entityService) SetRoleMembershipProvider(provider RoleMembershipProvider) {
+	s.roleMembershipProvider = provider
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }
 
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
@@ -812,6 +844,138 @@ func (s *entityService) GetTransitiveGroupAncestors(
 		return []string{}, nil
 	}
 	return s.groupMembershipProvider.GetTransitiveAncestorGroups(ctx, groupID)
+}
+
+// SyncFederatedEntity writes what a federated sign-in syncs to a returning entity in one transaction.
+// Only the entity's own user type's attributes that differ from the stored ones are written, and a
+// read-only (declarative) entity's attributes are left unchanged. Roles live in another database, so
+// their transaction runs nested inside this one and commits first.
+func (s *entityService) SyncFederatedEntity(
+	ctx context.Context, entityID string, sync providers.FederatedEntitySync,
+) error {
+	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := s.store.GetEntity(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		if attributes := sync.AttributesByType[existing.Type]; len(attributes) > 0 && !existing.IsReadOnly {
+			if err := s.syncAttributes(txCtx, &existing, attributes); err != nil {
+				return err
+			}
+		}
+
+		if sync.Groups != nil {
+			if s.groupMembershipProvider == nil {
+				return errors.New("no group membership provider registered")
+			}
+
+			if svcErr := s.groupMembershipProvider.ReplaceEntityGroups(
+				txCtx, entityID, existing.Category, sync.Groups.IDs, sync.Groups.RetainIDs); svcErr != nil {
+				return syncWriteError("groups", svcErr)
+			}
+		}
+
+		if sync.Roles != nil {
+			if s.roleMembershipProvider == nil {
+				return errors.New("no role membership provider registered")
+			}
+
+			if svcErr := s.roleMembershipProvider.ReplaceEntityRoles(
+				txCtx, entityID, existing.Category, sync.Roles.IDs, sync.Roles.RetainIDs); svcErr != nil {
+				return syncWriteError("roles", svcErr)
+			}
+		}
+
+		return nil
+	})
+}
+
+// syncAttributes merges the received values of the entity type's non-credential attributes into the
+// stored attributes, when any of them differ.
+func (s *entityService) syncAttributes(
+	ctx context.Context, existing *providers.Entity, received map[string]interface{},
+) error {
+	if !usesEntityType(existing.Category) || s.entityTypeService == nil {
+		return nil
+	}
+
+	schemaAttrs, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategory(existing.Category),
+		existing.Type, entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return fmt.Errorf("failed to get schema attributes: %s", svcErr.ErrorDescription.DefaultValue)
+	}
+
+	current := make(map[string]interface{})
+	if len(existing.Attributes) > 0 {
+		if err := json.Unmarshal(existing.Attributes, &current); err != nil {
+			return fmt.Errorf("failed to read entity attributes: %w", err)
+		}
+	}
+
+	changed := false
+	for _, a := range schemaAttrs {
+		value := syncValue(received[a.Attribute], a.Type)
+		if value == nil || jsonEqual(value, current[a.Attribute]) {
+			continue
+		}
+
+		current[a.Attribute] = value
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	encoded, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("failed to encode entity attributes: %w", err)
+	}
+
+	return s.UpdateAttributes(ctx, existing.ID, encoded)
+}
+
+// syncWriteError wraps a group or role write failure, marking client errors with ErrSyncRejected.
+func syncWriteError(part string, svcErr *tidcommon.ServiceError) error {
+	if svcErr.Type == tidcommon.ClientErrorType {
+		return fmt.Errorf("%w: failed to sync %s: %s", ErrSyncRejected, part, svcErr.ErrorDescription.DefaultValue)
+	}
+
+	return fmt.Errorf("failed to sync %s: %s", part, svcErr.ErrorDescription.DefaultValue)
+}
+
+// syncValue returns the value a received attribute is stored as, or nil when none was received.
+// Arrays and objects keep their structure; other values are converted to the schema type.
+func syncValue(received interface{}, schemaType string) interface{} {
+	switch schemaType {
+	case entitytypemodel.TypeArray, entitytypemodel.TypeObject:
+		return received
+	}
+
+	value := sysutils.ConvertInterfaceValueToString(received)
+	if value == "" {
+		return nil
+	}
+
+	return entitytypemodel.ConvertToSchemaType(value, schemaType)
+}
+
+// jsonEqual reports whether a and b hold the same value once encoded, so a stored number and a
+// received one of a different Go type compare equal.
+func jsonEqual(a, b interface{}) bool {
+	normalize := func(v interface{}) interface{} {
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return nil
+		}
+
+		var out interface{}
+		_ = json.Unmarshal(encoded, &out)
+		return out
+	}
+
+	return reflect.DeepEqual(normalize(a), normalize(b))
 }
 
 // AuthenticateEntity authenticates an entity by combining identify and verify operations.

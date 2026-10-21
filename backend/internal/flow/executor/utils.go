@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+<<<<<<< HEAD
 	"maps"
 	"strconv"
 	"time"
@@ -18,6 +19,15 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+=======
+	"time"
+
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/group"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -212,23 +222,6 @@ func schemaTypeForInputType(inputType string) string {
 	}
 }
 
-// convertToSchemaType converts a collected input value, which the engine always carries as a string,
-// to the type declared by its schema attribute. Values that fail to parse are returned unchanged so
-// that schema validation reports them instead of a zero value being silently substituted.
-func convertToSchemaType(value string, schemaType string) interface{} {
-	switch schemaType {
-	case entitytypemodel.TypeBoolean:
-		if parsed, err := strconv.ParseBool(value); err == nil {
-			return parsed
-		}
-	case entitytypemodel.TypeNumber:
-		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
-			return parsed
-		}
-	}
-	return value
-}
-
 // isAuthenticationWithoutLocalUserAllowed returns the value of the AllowAuthenticationWithoutLocalUser
 // node property, defaulting to false if absent or not a bool.
 // This is used to determine if authentication flow can proceed without a local user account.
@@ -273,14 +266,48 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 }
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
+<<<<<<< HEAD
 // (via account linking) into the entityState runtime key. Several users holding the link is recorded
 // as ambiguous, for a later node to let the user pick between them.
+=======
+// (via account linking) into the entityState runtime key, and returns that user's ID, or "" when none.
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager) {
+	authnProvider providers.AuthnProviderManager) string {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+<<<<<<< HEAD
 
 	// An unauthenticated AuthUser names nobody, and GetEntityReference would log it as an error.
 	if !execResp.AuthUser.IsAuthenticated() {
+=======
+	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if svcErr == nil && entityRef != nil {
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+		return entityRef.EntityID
+	}
+	return ""
+}
+
+// reservedAuthorizationRuntimeKeys must never be overwritten by an external claim of the same name.
+var reservedAuthorizationRuntimeKeys = map[string]bool{
+	common.RuntimeKeyMappedRoleIDs:          true,
+	common.RuntimeKeyMappedGroupIDs:         true,
+	common.RuntimeKeyMappedPermissions:      true,
+	common.RuntimeKeyGroupsAndRolesSyncMode: true,
+	common.RuntimeKeyAttributesSyncMode:     true,
+	common.RuntimeKeySessionGroupIDs:        true,
+	common.RuntimeKeySessionRoleIDs:         true,
+	common.RuntimeKeyPendingFederatedSync:   true,
+}
+
+// copyFederatedAttributesToRuntimeData copies federatedAttributes into execResp.RuntimeData, skipping
+// reservedAuthorizationRuntimeKeys.
+func copyFederatedAttributesToRuntimeData(
+	execResp *providers.ExecutorResponse, federatedAttributes map[string]interface{},
+) {
+	if len(federatedAttributes) == 0 {
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 		return
 	}
 
@@ -316,6 +343,7 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 	return nil
 }
 
+<<<<<<< HEAD
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
 // unions their targets, and stores the result as runtime data for later executors. Logs and continues
@@ -333,8 +361,107 @@ func resolveAndSetMappedAuthorizationTargets(
 			log.String("idpId", idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
 	} else {
 		targets = append(targets, directTargets...)
+=======
+// completeFederatedSignIn records the connection's sync modes and authorization mapping as runtime
+// data, resolves the local user, and syncs a returning user's account as the connection configures.
+// Returns false when the sign-in failed on execResp.
+func completeFederatedSignIn(
+	ctx *providers.NodeContext, execResp *providers.ExecutorResponse, idpService idp.IDPServiceInterface,
+	entityProvider entityprovider.EntityProviderInterface, authnProvider providers.AuthnProviderManager,
+	idpID string, federatedAttributes map[string]interface{}, logger *log.Logger,
+) (bool, error) {
+	idpDTO, resolved, err := resolveAndSetMappedAuthorizationTargets(
+		ctx.Context, execResp, idpService, entityProvider, idpID, federatedAttributes, logger)
+	if err != nil {
+		return false, err
 	}
-	setMappedAuthorizationTargets(execResp, targets)
+
+	userID := setFederatedEntityState(ctx.Context, execResp, authnProvider)
+	sync := buildFederatedSync(idpDTO, resolved, federatedAttributes)
+
+	switch ctx.FlowType {
+	case providers.FlowTypeAuthentication:
+		if ok, err := syncOrDeferFederatedUser(ctx, execResp, entityProvider, userID, sync, logger); !ok {
+			return false, err
+		}
+		if isAuthenticationWithoutLocalUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+		}
+	case providers.FlowTypeRegistration:
+		if isRegistrationWithExistingUserAllowed(ctx) {
+			if ok, err := syncOrDeferFederatedUser(ctx, execResp, entityProvider, userID, sync, logger); !ok {
+				return false, err
+			}
+			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+		}
+	}
+	return true, nil
+}
+
+// resolveAndSetMappedAuthorizationTargets resolves the IDP's sync modes and authorization mapping
+// against federatedAttributes and stores them as runtime data for later executors. The mapped groups,
+// with their ancestors, and roles that apply to the session only are stored too. Continues with
+// the rule targets only when the direct targets can't be resolved.
+func resolveAndSetMappedAuthorizationTargets(
+	ctx context.Context, execResp *providers.ExecutorResponse,
+	idpService idp.IDPServiceInterface, entityProvider entityprovider.EntityProviderInterface,
+	idpID string, federatedAttributes map[string]interface{}, logger *log.Logger,
+) (*providers.IDPDTO, *idp.ResolvedAuthorizationMapping, error) {
+	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to retrieve identity provider %s: %s",
+			idpID, svcErr.ErrorDescription.String())
+	}
+
+	resolved, svcErr := idp.ResolveAuthorizationMapping(
+		ctx, idpDTO, federatedAttributes, idpService.ResolveDirectAuthorizationTargets)
+	if svcErr != nil {
+		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
+			log.String("idpId", idpID), log.String("error", svcErr.ErrorDescription.String()))
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
+	}
+
+	if execResp.RuntimeData == nil {
+		execResp.RuntimeData = make(map[string]string)
+	}
+	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(resolved.GroupsAndRolesSyncMode)
+	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(resolved.AttributesSyncMode)
+	setMappedAuthorizationTargets(execResp, resolved.Targets)
+
+	// A declarative-only store can't hold the mapped groups or roles, so they apply to the session
+	// whatever the sync mode.
+	sessionOnly := resolved.GroupsAndRolesSyncMode == providers.SyncModeSessionOnly
+	roleIDs, groupIDs, _ := idp.SplitAuthorizationTargets(resolved.Targets)
+	if len(groupIDs) > 0 && (sessionOnly || group.IsDeclarativeOnly()) {
+		execResp.RuntimeData[common.RuntimeKeySessionGroupIDs] = systemutils.StringifyStringArray(
+			expandMappedGroupAncestors(ctx, entityProvider, logger, groupIDs), " ")
+	}
+	if len(roleIDs) > 0 && (sessionOnly || role.IsDeclarativeOnly()) {
+		execResp.RuntimeData[common.RuntimeKeySessionRoleIDs] = systemutils.StringifyStringArray(roleIDs, " ")
+	}
+	return idpDTO, resolved, nil
+}
+
+// expandMappedGroupAncestors adds each mapped group's ancestor groups. Best-effort, like the rest of
+// authorization mapping at login.
+func expandMappedGroupAncestors(
+	ctx context.Context, entityProvider entityprovider.EntityProviderInterface, logger *log.Logger,
+	mappedGroupIDs []string,
+) []string {
+	if entityProvider == nil || len(mappedGroupIDs) == 0 {
+		return mappedGroupIDs
+	}
+	expanded := mappedGroupIDs
+	for _, groupID := range mappedGroupIDs {
+		ancestors, err := entityProvider.GetTransitiveGroupAncestors(groupID)
+		if err != nil {
+			logger.Warn(ctx, "Failed to resolve ancestors of a mapped group, continuing without them",
+				log.String("groupId", groupID), log.Error(err))
+			continue
+		}
+		expanded = systemutils.MergeUniqueStrings(expanded, ancestors)
+	}
+	return expanded
 }
 
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)

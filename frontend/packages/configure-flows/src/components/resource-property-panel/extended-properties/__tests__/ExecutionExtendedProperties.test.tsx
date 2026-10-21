@@ -88,6 +88,7 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   useConnectionInstances: () => ({data: [], isLoading: false, isSuccess: true, error: null, refetch: vi.fn()}),
 }));
 
+<<<<<<< HEAD:frontend/packages/configure-flows/src/components/resource-property-panel/extended-properties/__tests__/ExecutionExtendedProperties.test.tsx
 // Mock useGetNotificationTemplates, which backs the Email/SMS template pickers.
 interface TemplatesState {
   data: unknown[] | undefined;
@@ -119,6 +120,15 @@ const emailTemplates = [
 ];
 const smsTemplates = [{id: 'sms-1', handle: 'otp', displayName: 'OTP Verification', self: ''}];
 
+=======
+// Mock the flow's nodes
+const mockNodes = vi.fn<() => unknown[]>(() => []);
+vi.mock('@xyflow/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@xyflow/react')>()),
+  useStore: (selector: (state: {nodes: unknown[]}) => unknown) => selector({nodes: mockNodes()}),
+}));
+
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes):frontend/apps/console/src/features/flows/components/resource-property-panel/extended-properties/__tests__/ExecutionExtendedProperties.test.tsx
 describe('ExecutionExtendedProperties', () => {
   const mockOnChange = vi.fn();
 
@@ -1290,8 +1300,6 @@ describe('ExecutionExtendedProperties', () => {
           maxPerPrompt: 5,
           assignGroup: '',
           assignRole: '',
-          seedGroupsFromMapping: false,
-          seedRolesFromMapping: false,
         },
       },
     } as unknown as Resource;
@@ -1309,8 +1317,6 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.provisioning.maxPerPrompt.label')).toBeInTheDocument();
       expect(screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label')).toBeInTheDocument();
       expect(screen.getByLabelText('flows:core.executions.provisioning.assignRole.label')).toBeInTheDocument();
-      expect(screen.getByText('flows:core.executions.provisioning.seedGroupsFromMapping.label')).toBeInTheDocument();
-      expect(screen.getByText('flows:core.executions.provisioning.seedRolesFromMapping.label')).toBeInTheDocument();
     });
 
     it('should call onChange without debounce when allowCrossOUProvisioning checkbox is toggled', () => {
@@ -1391,6 +1397,43 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.provisioning.maxPerPrompt.label')).toHaveValue(0);
     });
 
+    describe('federated override warning', () => {
+      const warning = 'flows:core.executions.provisioning.federatedOverrideWarning';
+      const federatedNode = {id: 'oidc', data: {action: {executor: {name: ExecutionTypes.OIDCAuthExecutor}}}};
+      const withGroup = {
+        ...provisioningResource,
+        data: {...provisioningStepData, properties: {...provisioningStepData.properties, assignGroup: 'g1'}},
+      } as unknown as Resource;
+
+      it('shows when the flow has a federated executor and a group or role is assigned', () => {
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={withGroup} onChange={mockOnChange} />);
+        expect(screen.getByText(warning)).toBeInTheDocument();
+      });
+
+      it('shows when only a role is assigned', () => {
+        const withRole = {
+          ...provisioningResource,
+          data: {...provisioningStepData, properties: {...provisioningStepData.properties, assignRole: 'r1'}},
+        } as unknown as Resource;
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={withRole} onChange={mockOnChange} />);
+        expect(screen.getByText(warning)).toBeInTheDocument();
+      });
+
+      it('is hidden when nothing is assigned', () => {
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
+        expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      });
+
+      it('is hidden when the flow has no federated executor', () => {
+        mockNodes.mockReturnValue([]);
+        render(<ExecutionExtendedProperties resource={withGroup} onChange={mockOnChange} />);
+        expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      });
+    });
+
     it('should commit assignGroup on blur', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
@@ -1410,6 +1453,7 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignRole', 'editor-role', provisioningResource);
     });
+<<<<<<< HEAD:frontend/packages/configure-flows/src/components/resource-property-panel/extended-properties/__tests__/ExecutionExtendedProperties.test.tsx
 
     it('should call onChange without debounce when seedGroupsFromMapping checkbox is toggled', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
@@ -1430,6 +1474,8 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.seedRolesFromMapping', true, provisioningResource);
     });
+=======
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes):frontend/apps/console/src/features/flows/components/resource-property-panel/extended-properties/__tests__/ExecutionExtendedProperties.test.tsx
   });
 
   describe('Session Sign Out Executor', () => {

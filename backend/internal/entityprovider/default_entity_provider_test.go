@@ -305,6 +305,18 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateSystemCredentials() {
 	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestSyncFederatedEntity() {
+	sync := providers.FederatedEntitySync{Groups: &providers.MembershipSync{IDs: []string{"g1"}}}
+	suite.mockService.On("SyncFederatedEntity", mock.Anything, testEntityID, sync).Return(nil).Once()
+	suite.Nil(suite.provider.SyncFederatedEntity(testEntityID, sync))
+
+	suite.mockService.On("SyncFederatedEntity", mock.Anything, testEntityID, sync).
+		Return(entity.ErrSyncRejected).Once()
+	err := suite.provider.SyncFederatedEntity(testEntityID, sync)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeSyncRejected, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestMapEntityError() {
 	// Verifies the centralized error mapping helper.
 	cases := []struct {
@@ -317,6 +329,7 @@ func (suite *DefaultEntityProviderTestSuite) TestMapEntityError() {
 		{"SchemaValidationFailed", entity.ErrSchemaValidationFailed, ErrorCodeSchemaValidationFailed},
 		{"InvalidCredential", entity.ErrInvalidCredential, ErrorCodeInvalidRequestFormat},
 		{"BadAttributesInRequest", entity.ErrBadAttributesInRequest, ErrorCodeInvalidRequestFormat},
+		{"SyncRejected", entity.ErrSyncRejected, ErrorCodeSyncRejected},
 		{"Unknown", errors.New("unexpected"), ErrorCodeSystemError},
 	}
 	for _, tc := range cases {

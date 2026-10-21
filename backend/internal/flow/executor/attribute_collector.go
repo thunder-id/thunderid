@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -370,11 +371,15 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 		// External claims are only a fallback and must never take priority over runtime data.
 		value, exists := ctx.UserInputs[inputAttr.Identifier]
 		if exists {
-			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
+			attributesMap[inputAttr.Identifier] = entitytypemodel.ConvertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
+<<<<<<< HEAD
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
 		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(claimValue, schemaType)
+=======
+			attributesMap[inputAttr.Identifier] = entitytypemodel.ConvertToSchemaType(runtimeValue, schemaType)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 		}
 	}
 

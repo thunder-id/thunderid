@@ -751,6 +751,35 @@ func (suite *RoleServiceTestSuite) TestGetRolesByNames_StoreError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_DedupesInputAndSkipsMissing() {
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role-1", "missing"}).
+		Return([]Role{{ID: "role-1", Name: "admins"}}, nil)
+
+	result, err := suite.service.GetRolesByIDs(context.Background(), []string{"role-1", "missing", "role-1"})
+
+	suite.Nil(err)
+	suite.Len(result, 1)
+	suite.Equal("admins", result["role-1"].Name)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_EmptyInputReturnsEmptyMap() {
+	result, err := suite.service.GetRolesByIDs(context.Background(), nil)
+
+	suite.Nil(err)
+	suite.Empty(result)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRolesByIDs_StoreError() {
+	suite.mockStore.On("GetRolesByIDs", mock.Anything, []string{"role-1"}).
+		Return(nil, errors.New("database error"))
+
+	result, err := suite.service.GetRolesByIDs(context.Background(), []string{"role-1"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 // UpdateRole Tests
 func (suite *RoleServiceTestSuite) TestUpdateRole_MissingRoleID() {
 	request := RoleUpdateDetail{

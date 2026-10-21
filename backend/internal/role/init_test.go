@@ -21,6 +21,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
 
 // InitTestSuite contains tests for store initialization.
@@ -696,12 +697,16 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 		getDBProvider = originalGetDBProvider
 	}()
 
+	mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	mockEntityService.On("SetRoleMembershipProvider", mock.Anything).Once()
+
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	svc, assignmentSvc, _, exporter, err := Initialize(mux, mockEntityService, nil, nil, nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
 	suite.NotNil(exporter)
+	mockEntityService.AssertCalled(suite.T(), "SetRoleMembershipProvider", assignmentSvc)
 	mockProvider.AssertExpectations(suite.T())
 	mockClient.AssertExpectations(suite.T())
 }

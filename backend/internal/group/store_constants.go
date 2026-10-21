@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -278,6 +278,13 @@ var (
 		ID: "GRQ-GROUP_MGT-17",
 		Query: `DELETE FROM "GROUP_MEMBER_REFERENCE" ` +
 			`WHERE GROUP_ID = $1 AND MEMBER_TYPE = $2 AND MEMBER_ID = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// QueryGetMemberGroupIDs is the query to get the IDs of the groups a member directly belongs to.
+	QueryGetMemberGroupIDs = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-26",
+		Query: `SELECT GROUP_ID FROM "GROUP_MEMBER_REFERENCE" ` +
+			`WHERE MEMBER_TYPE = $1 AND MEMBER_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
 

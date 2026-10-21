@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package idp
@@ -1294,6 +1294,81 @@ func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ResolvedByClaim() {
 	s.Equal(employeeMappings, GetAttributeMappings(idpDTO, map[string]interface{}{"user_type": "staff"}))
 }
 
+func (s *IDPUtilsTestSuite) TestValidateSyncConfiguration() {
+	tests := []struct {
+		name    string
+		sync    *providers.SyncConfiguration
+		wantErr bool
+	}{
+		{"unset", nil, false},
+		{"empty modes", &providers.SyncConfiguration{}, false},
+		{"all attribute modes", &providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived}, false},
+		{"session only groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly}, false},
+		{"unknown attributes mode", &providers.SyncConfiguration{Attributes: "always"}, true},
+		{"override received for groups and roles",
+			&providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}, true},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			svcErr := validateSyncConfiguration(&providers.AttributeConfiguration{Sync: tc.sync})
+			if tc.wantErr {
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorInvalidAttributeConfiguration.Code, svcErr.Code)
+			} else {
+				s.Nil(svcErr)
+			}
+		})
+	}
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDP_SyncMode() {
+	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
+	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)
+	prop3, _ := cmodels.NewProperty(PropRedirectURI, "http://localhost/callback", false)
+	newDTO := func(sync providers.SyncConfiguration) *providers.IDPDTO {
+		return &providers.IDPDTO{
+			Name:                   "idp",
+			Type:                   providers.IDPTypeGitHub,
+			Properties:             []cmodels.Property{*prop1, *prop2, *prop3},
+			AttributeConfiguration: &providers.AttributeConfiguration{Sync: &sync},
+		}
+	}
+
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived})))
+	s.NoError(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideReceived})))
+	s.Error(ValidateIDP(newDTO(providers.SyncConfiguration{Attributes: providers.SyncModeOverrideAll})))
+
+	err := ValidateIDP(newDTO(providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideReceived}))
+	s.ErrorContains(err, "sync mode 'override_received' is not supported for 'groupsAndRoles'")
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributesSyncMode() {
+	s.Equal(providers.SyncModeOverrideReceived, getAttributesSyncMode(nil))
+	s.Equal(providers.SyncModeOverrideReceived, getAttributesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{Sync: &providers.SyncConfiguration{}},
+	}))
+	s.Equal(providers.SyncModeSessionOnly, getAttributesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{Attributes: providers.SyncModeSessionOnly},
+		},
+	}))
+}
+
+func (s *IDPUtilsTestSuite) TestGetGroupsAndRolesSyncMode() {
+	s.Equal(providers.SyncModeNoSync, getGroupsAndRolesSyncMode(nil))
+	s.Equal(providers.SyncModeNoSync, getGroupsAndRolesSyncMode(&providers.IDPDTO{}))
+	s.Equal(providers.SyncModeNoSync, getGroupsAndRolesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{Sync: &providers.SyncConfiguration{}},
+	}))
+	s.Equal(providers.SyncModeOverrideAll, getGroupsAndRolesSyncMode(&providers.IDPDTO{
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll},
+		},
+	}))
+}
+
 func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilIDP() {
 	s.Equal("", GetMappedUserType(nil, nil))
 }
@@ -1401,12 +1476,12 @@ func TestAuthorizationRuleMappingResolveTestSuite(t *testing.T) {
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestNilIDPReturnsNil() {
-	suite.Nil(GetRuleAuthorizationTargets(nil, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+	suite.Nil(getRuleAuthorizationTargets(nil, map[string]interface{}{"groups": []interface{}{"engineering"}}))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestNoAttributeConfigurationReturnsNil() {
 	idp := &providers.IDPDTO{}
-	suite.Nil(GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+	suite.Nil(getRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
 }
 
 // A list-valued claim must resolve every element, not the joined string. This is the array-parsing
@@ -1428,7 +1503,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestListValuedClaimResolv
 	}
 	claims := map[string]interface{}{"groups": []interface{}{"engineering", "platform-admins"}}
 
-	targets := GetRuleAuthorizationTargets(idp, claims)
+	targets := getRuleAuthorizationTargets(idp, claims)
 
 	suite.ElementsMatch(
 		[]providers.AuthorizationTarget{roleTarget("role-eng"), roleTarget("role-platform-admin")}, targets)
@@ -1450,7 +1525,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestSpaceDelimitedStringC
 	}
 	claims := map[string]interface{}{"scope": "orders.read orders.write"}
 
-	targets := GetRuleAuthorizationTargets(idp, claims)
+	targets := getRuleAuthorizationTargets(idp, claims)
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-orders-write")}, targets)
 }
@@ -1468,7 +1543,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestScalarStringClaimWith
 	}
 	claims := map[string]interface{}{"department": "platform"}
 
-	targets := GetRuleAuthorizationTargets(idp, claims)
+	targets := getRuleAuthorizationTargets(idp, claims)
 
 	suite.Equal([]providers.AuthorizationTarget{groupTarget("group-platform")}, targets)
 }
@@ -1487,7 +1562,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnmappedValueConfersN
 	}
 	claims := map[string]interface{}{"groups": []interface{}{"marketing"}}
 
-	suite.Empty(GetRuleAuthorizationTargets(idp, claims))
+	suite.Empty(getRuleAuthorizationTargets(idp, claims))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestMissingClaimConfersNothing() {
@@ -1502,7 +1577,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestMissingClaimConfersNo
 		},
 	}
 
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{}))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestDuplicateTargetsAcrossMappingsAreDeduped() {
@@ -1522,7 +1597,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestDuplicateTargetsAcros
 	}
 	claims := map[string]interface{}{"groups": []interface{}{"engineering"}, "department": "engineering"}
 
-	targets := GetRuleAuthorizationTargets(idp, claims)
+	targets := getRuleAuthorizationTargets(idp, claims)
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-eng")}, targets)
 }
@@ -1555,7 +1630,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotEqualsOperatorMatc
 	}
 	claims := map[string]interface{}{"groups": []interface{}{"guest", "engineering"}}
 
-	targets := GetRuleAuthorizationTargets(idp, claims)
+	targets := getRuleAuthorizationTargets(idp, claims)
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")}, targets)
 }
@@ -1585,10 +1660,10 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotIncludesRequiresWh
 	}
 
 	suite.Empty(
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"guest", "engineering"}}),
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"guest", "engineering"}}),
 		"not_includes must not grant when the excluded value is present in the set, even alongside others")
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}),
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}),
 		"not_includes must grant when the excluded value is absent from the set")
 }
 
@@ -1615,8 +1690,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestIncludesOperatorTests
 
 	claims := map[string]interface{}{"groups": []interface{}{"engineering", "platform-admins"}}
 	suite.Equal(
-		[]providers.AuthorizationTarget{roleTarget("role-platform-admin")}, GetRuleAuthorizationTargets(idp, claims))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
+		[]providers.AuthorizationTarget{roleTarget("role-platform-admin")}, getRuleAuthorizationTargets(idp, claims))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{"engineering"}}))
 }
 
 // includes/not_includes apply identically to a delimited string, the other declared shape
@@ -1643,8 +1718,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestIncludesOperatorTests
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-orders-write")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read orders.write"}))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read"}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read orders.write"}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"scope": "orders.read"}))
 }
 
 // A claim that is present but resolves to no tokens at all (an empty array, or an all-empty delimited
@@ -1669,7 +1744,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNotIncludesGrantsWhen
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-non-guest")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{}}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"groups": []interface{}{}}))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestGreaterThanOperatorGrantsForNumericClaim() {
@@ -1692,8 +1767,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestGreaterThanOperatorGr
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "10"}))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "3"}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"level": "10"}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"level": "3"}))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestBooleanValueTypeEquals() {
@@ -1716,8 +1791,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestBooleanValueTypeEqual
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "true"}))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "false"}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "true"}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": "false"}))
 }
 
 // A JSON-decoded claim carries a genuine float64, not a quoted string (encoding/json unmarshals every
@@ -1743,8 +1818,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberValueTypeMatche
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(10)}))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(3)}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(10)}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"level": float64(3)}))
 }
 
 // A JSON-decoded claim carries a genuine bool, not a quoted "true"/"false" string. The equals
@@ -1769,8 +1844,8 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestBooleanValueTypeMatch
 	}
 
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
-		GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": true}))
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": false}))
+		getRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": true}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"is_admin": false}))
 }
 
 // Whitespace around a number or boolean token is never significant, unlike a string comparison where
@@ -1798,7 +1873,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberBooleanComparis
 		},
 	}
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")},
-		GetRuleAuthorizationTargets(numberIDP, map[string]interface{}{"level": " 10 "}))
+		getRuleAuthorizationTargets(numberIDP, map[string]interface{}{"level": " 10 "}))
 
 	booleanIDP := &providers.IDPDTO{
 		AttributeConfiguration: &providers.AttributeConfiguration{
@@ -1818,7 +1893,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberBooleanComparis
 		},
 	}
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-admin")},
-		GetRuleAuthorizationTargets(booleanIDP, map[string]interface{}{"is_admin": " true "}))
+		getRuleAuthorizationTargets(booleanIDP, map[string]interface{}{"is_admin": " true "}))
 }
 
 // A list carrying a mix of parseable and unparseable elements still matches on the elements that do
@@ -1842,7 +1917,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNumberComparisonSkips
 		},
 	}
 
-	targets := GetRuleAuthorizationTargets(
+	targets := getRuleAuthorizationTargets(
 		idp, map[string]interface{}{"levels": []interface{}{"not-a-number", "10"}})
 	suite.Equal([]providers.AuthorizationTarget{roleTarget("role-senior")}, targets)
 }
@@ -1868,7 +1943,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestNonParseableNumericTo
 		},
 	}
 
-	suite.Empty(GetRuleAuthorizationTargets(idp, map[string]interface{}{"level": "not-a-number"}))
+	suite.Empty(getRuleAuthorizationTargets(idp, map[string]interface{}{"level": "not-a-number"}))
 }
 
 func (suite *AuthorizationRuleMappingResolveTestSuite) TestSplitAuthorizationTargets() {
@@ -1895,6 +1970,7 @@ func (suite *AuthorizationRuleMappingResolveTestSuite) TestUnionMappedPermission
 	suite.Equal([]string{"write", "read"}, result)
 }
 
+<<<<<<< HEAD
 func linkingOn(attrs ...string) *providers.AccountLinking {
 	return &providers.AccountLinking{Attributes: attrs}
 }
@@ -2165,4 +2241,63 @@ func (s *IDPUtilsTestSuite) TestValidateAccountLinking() {
 			s.Equal(tc.errKey, svcErr.ErrorDescription.Key)
 		})
 	}
+=======
+func (s *IDPUtilsTestSuite) TestResolveAuthorizationMapping() {
+	idpDTO := &providers.IDPDTO{AttributeConfiguration: &providers.AttributeConfiguration{
+		Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeOverrideAll},
+		AuthorizationMapping: &providers.AuthorizationMapping{
+			Rules: []providers.AuthorizationRuleMapping{{Claim: "dept", Values: []providers.AuthorizationRule{{
+				Operator: providers.AuthorizationOperatorEquals,
+				Value:    "eng",
+				Targets:  []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetGroup, ID: "g1"}},
+			}}}},
+			Direct: []providers.AuthorizationDirectMapping{
+				{Claim: "roles", TargetType: providers.AuthorizationTargetRole},
+			},
+		},
+	}}
+	claims := map[string]interface{}{"dept": "eng"}
+	direct := []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "r1"}}
+	ambiguous := []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "r2"}}
+
+	resolved, svcErr := ResolveAuthorizationMapping(context.Background(), idpDTO, claims,
+		func(context.Context, *providers.IDPDTO, map[string]interface{}) (
+			[]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
+			return direct, ambiguous, nil
+		})
+	s.Nil(svcErr)
+	s.Equal(providers.SyncModeOverrideReceived, resolved.AttributesSyncMode)
+	s.Equal(providers.SyncModeOverrideAll, resolved.GroupsAndRolesSyncMode)
+	s.True(resolved.Configured)
+	s.True(resolved.MapsGroups)
+	s.True(resolved.MapsRoles)
+	s.True(resolved.Complete)
+	s.Equal([]providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetGroup, ID: "g1"}, {Type: providers.AuthorizationTargetRole, ID: "r1"},
+	}, resolved.Targets)
+	s.Equal(ambiguous, resolved.Ambiguous)
+
+	resolved, svcErr = ResolveAuthorizationMapping(context.Background(), idpDTO, claims,
+		func(context.Context, *providers.IDPDTO, map[string]interface{}) (
+			[]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
+			return nil, nil, &tidcommon.InternalServerError
+		})
+	s.NotNil(svcErr)
+	s.False(resolved.Complete)
+	s.Equal([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetGroup, ID: "g1"}}, resolved.Targets)
+}
+
+func (s *IDPUtilsTestSuite) TestResolveAuthorizationMapping_NoMapping() {
+	resolved, svcErr := ResolveAuthorizationMapping(context.Background(), &providers.IDPDTO{}, nil,
+		func(context.Context, *providers.IDPDTO, map[string]interface{}) (
+			[]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
+			return nil, nil, nil
+		})
+	s.Nil(svcErr)
+	s.False(resolved.Configured)
+	s.False(resolved.MapsGroups)
+	s.False(resolved.MapsRoles)
+	s.True(resolved.Complete)
+	s.Equal(providers.SyncModeNoSync, resolved.GroupsAndRolesSyncMode)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }

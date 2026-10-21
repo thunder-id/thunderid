@@ -187,6 +187,7 @@ const (
 
 // Executor property keys
 const (
+<<<<<<< HEAD
 	propertyKeyAssignGroup           = "assignGroup"
 	propertyKeyAssignRole            = "assignRole"
 	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
@@ -198,6 +199,12 @@ const (
 	propertyKeyRequiredScopes = "requiredScopes"
 	propertyKeyEmailTemplate  = "emailTemplate"
 	propertyKeyBestEffort     = "bestEffort"
+=======
+	propertyKeyAssignGroup    = "assignGroup"
+	propertyKeyAssignRole     = "assignRole"
+	propertyKeyRequiredScopes = "requiredScopes"
+	propertyKeyEmailTemplate  = "emailTemplate"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"

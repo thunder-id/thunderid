@@ -4,6 +4,7 @@
 package group
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
@@ -246,4 +249,24 @@ func (s *GroupInitTestSuite) TestInitializeGroupStore_InvalidStoreMode() {
 	s.Nil(fileStore)
 	s.Nil(dbStore)
 	mockProvider.AssertExpectations(s.T())
+}
+
+func (s *GroupInitTestSuite) TestMembershipProvider_ReadsFromStoreAndReplacesThroughService() {
+	ctx := context.Background()
+	store := newGroupStoreInterfaceMock(s.T())
+	service := NewGroupServiceInterfaceMock(s.T())
+	store.On("GetTransitiveGroupsForEntity", ctx, "usr-001").
+		Return([]providers.EntityGroup{{ID: "grp-1"}}, nil).Once()
+	store.On("GetTransitiveAncestorGroups", ctx, "grp-1").Return([]string{"grp-parent"}, nil).Once()
+	service.On("ReplaceEntityGroups", ctx, "usr-001", providers.EntityCategoryUser,
+		[]string{"grp-1"}, []string{"grp-2"}).Return((*tidcommon.ServiceError)(nil)).Once()
+	p := membershipProvider{store: store, service: service}
+
+	groups, err := p.GetTransitiveGroupsForEntity(ctx, "usr-001")
+	s.NoError(err)
+	s.Equal([]providers.EntityGroup{{ID: "grp-1"}}, groups)
+	ancestors, err := p.GetTransitiveAncestorGroups(ctx, "grp-1")
+	s.NoError(err)
+	s.Equal([]string{"grp-parent"}, ancestors)
+	s.Nil(p.ReplaceEntityGroups(ctx, "usr-001", providers.EntityCategoryUser, []string{"grp-1"}, []string{"grp-2"}))
 }

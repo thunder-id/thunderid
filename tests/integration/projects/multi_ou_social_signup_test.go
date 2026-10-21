@@ -580,17 +580,7 @@ func (ts *MultiOUSocialSignupTestSuite) startMockProviders() {
 }
 
 func (ts *MultiOUSocialSignupTestSuite) createIDP(idpType, clientID, clientSecret, scopes string) string {
-	idpID, err := testutils.CreateIDP(testutils.IDP{
-		Name:        "Organizations Test " + idpType + " IDP",
-		Description: "Connection users of every organization sign in with",
-		Type:        idpType,
-		Properties: []testutils.IDPProperty{
-			{Name: "client_id", Value: clientID},
-			{Name: "client_secret", Value: clientSecret, IsSecret: true},
-			{Name: "redirect_uri", Value: "http://localhost:3000/callback"},
-			{Name: "scopes", Value: scopes},
-		},
-	})
+	idpID, err := testutils.CreateIDP(orgsIDP(idpType, clientID, clientSecret, scopes))
 	ts.Require().NoError(err, "Failed to create %s IDP", idpType)
 	ts.idpIDs = append(ts.idpIDs, idpID)
 	return idpID
@@ -728,6 +718,71 @@ func (ts *MultiOUSocialSignupTestSuite) TestSelfSignedUpUserInvitedToExistingOrg
 	}
 }
 
+// TestSignInToOneOfTwoAccountsSyncsOnlyThatAccount invites one identity to two organizations, and
+// changes the name it sends after the accounts exist. Signing in to one organization syncs the mapped
+// name to that account only, once the login flow resolves which account the identity meant.
+func (ts *MultiOUSocialSignupTestSuite) TestSignInToOneOfTwoAccountsSyncsOnlyThatAccount() {
+	user := googleUser("google-synced-user", "synced@gmail.test", "Synced User")
+	ts.mockGoogle.AddUser(&testutils.GoogleUserInfo{
+		Sub: user.sub, Email: user.email, EmailVerified: true, Name: user.name,
+	})
+	ts.T().Cleanup(func() {
+		accounts, err := findUsersBySub(user.sub)
+		if err != nil {
+			ts.T().Logf("cleanup: failed to find users for %s: %v", user.email, err)
+			return
+		}
+		for _, account := range accounts {
+			if err := testutils.DeleteUser(account.ID); err != nil {
+				ts.T().Logf("cleanup: failed to delete user %s: %v", account.ID, err)
+			}
+		}
+	})
+
+	ts.inviteUser(user, orgA)
+	ts.inviteUser(user, orgB)
+
+	googleIDPID := ts.idpIDs[0]
+	mapped := orgsIDP("GOOGLE", googleClientID, googleClientSecret, "openid email profile")
+	mapped.AttributeConfiguration = &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: customerTypeName},
+		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
+			UserType:   customerTypeName,
+			Attributes: []testutils.AttributeMapping{{ExternalAttribute: "name", LocalAttribute: "name"}},
+		}},
+	}
+	ts.Require().NoError(testutils.UpdateIDP(googleIDPID, mapped), "Failed to add the attribute mapping")
+	ts.T().Cleanup(func() {
+		if err := testutils.UpdateIDP(googleIDPID,
+			orgsIDP("GOOGLE", googleClientID, googleClientSecret, "openid email profile")); err != nil {
+			ts.T().Logf("cleanup: failed to remove the attribute mapping: %v", err)
+		}
+	})
+	ts.mockGoogle.AddUser(&testutils.GoogleUserInfo{
+		Sub: user.sub, Email: user.email, EmailVerified: true, Name: "Renamed User",
+	})
+
+	accounts, err := findUsersBySub(user.sub)
+	ts.Require().NoError(err)
+	ts.Require().Len(accounts, 2, "Expected one account per organization")
+
+	step := ts.signIn(user)
+	ts.requireOrganizationPicker(step, orgA.Handle, orgB.Handle)
+	step = ts.continueFlow(step, map[string]string{"ouHandle": orgA.Handle}, selectOUAction)
+	ts.requireSignedInTo(step, orgA, userInOU(accounts, orgA.ID))
+
+	accounts, err = findUsersBySub(user.sub)
+	ts.Require().NoError(err)
+	names := map[string]string{}
+	for _, account := range accounts {
+		attributes, err := testutils.GetUserAttributes(account)
+		ts.Require().NoError(err, "Failed to read the account in %s", account.OUID)
+		names[account.OUID], _ = attributes["name"].(string)
+	}
+	ts.Equal("Renamed User", names[orgA.ID], "The account signed in to should take the new name")
+	ts.Equal("Synced User", names[orgB.ID], "The other account should keep its name")
+}
+
 // inviteUser runs the user onboarding flow for an organization: the admin enters the invitee's
 // email, the invitation is sent by email, and the invitee accepts it by signing up with their
 // provider.
@@ -858,6 +913,21 @@ func (ts *MultiOUSocialSignupTestSuite) requireSignedInTo(step *common.FlowStep,
 	ts.Require().NoError(err, "Unexpected assertion")
 	if userID != "" {
 		ts.Require().Equal(userID, claims.Sub, "Expected the assertion for the selected account")
+	}
+}
+
+// orgsIDP builds the connection users of every organization sign in with.
+func orgsIDP(idpType, clientID, clientSecret, scopes string) testutils.IDP {
+	return testutils.IDP{
+		Name:        "Organizations Test " + idpType + " IDP",
+		Description: "Connection users of every organization sign in with",
+		Type:        idpType,
+		Properties: []testutils.IDPProperty{
+			{Name: "client_id", Value: clientID},
+			{Name: "client_secret", Value: clientSecret, IsSecret: true},
+			{Name: "redirect_uri", Value: "http://localhost:3000/callback"},
+			{Name: "scopes", Value: scopes},
+		},
 	}
 }
 

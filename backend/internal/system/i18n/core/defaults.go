@@ -1007,10 +1007,14 @@ var defaultMessages = map[string]string{
 	"error.idpservice.attribute_configuration_duplicate_user_type_description": "user type '{{param(userType)}}' is configured more than once",
 	"error.idpservice.attribute_configuration_empty_claim_description": "attribute mapping must not contain empty attribute names",
 	"error.idpservice.attribute_configuration_entry_user_type_required_description": "each user type attributes entry requires an user type",
+<<<<<<< HEAD
 	"error.idpservice.attribute_configuration_linking_empty_description": "account linking attributes must not be empty",
 	"error.idpservice.attribute_configuration_linking_reserved_description": "'{{param(attribute)}}' is reserved and cannot be used for account linking",
 	"error.idpservice.attribute_configuration_linking_too_many_lookups_description": "account linking attributes combine into {{param(count)}} lookups for user type '{{param(userType)}}', more than the {{param(max)}} allowed",
 	"error.idpservice.attribute_configuration_linking_unmatchable_description": "'{{param(attribute)}}' must be mapped to a local attribute for every user type, since only names made of letters, digits and underscores match by name",
+=======
+	"error.idpservice.attribute_configuration_invalid_sync_mode_description": "sync mode '{{param(mode)}}' is not supported for '{{param(setting)}}'",
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"error.idpservice.attribute_configuration_resolution_default_required_description": "claim-driven user type resolution requires a default user type as the fallback",
 	"error.idpservice.attribute_configuration_resolution_empty_mapping_description": "user type resolution value mapping must not contain empty values",
 	"error.idpservice.attribute_configuration_resolution_mapping_without_external_description": "user type resolution value mapping requires an external attribute",
@@ -1762,6 +1766,7 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.email_provider_not_configured_desc": "The email notification provider has not been configured",
 	"flows.executor.errors.email_recipient_missing": "Email recipient is required",
 	"flows.executor.errors.email_recipient_missing_desc": "An email recipient must be provided to send the notification",
+<<<<<<< HEAD
 	"flows.executor.errors.entity_already_exists": "The {{param(entity)}} already exists",
 	"flows.executor.errors.entity_already_exists_desc": "The provided attributes already belong to an existing {{param(entity)}}",
 	"flows.executor.errors.entity_already_exists_in_target_ou": "The {{param(entity)}} already exists in the target organization",
@@ -1790,6 +1795,16 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.group_membership_removal_failed_desc": "The member may already be removed, or the caller may no longer change the group's members",
 	"flows.executor.errors.group_membership_removal_not_allowed": "Group membership removal not allowed",
 	"flows.executor.errors.group_membership_removal_not_allowed_desc": "The principal is not a direct member, the group is read-only, or the caller may not change its members",
+=======
+	"flows.executor.errors.email_send_failed": "Failed to send email",
+	"flows.executor.errors.email_send_failed_desc": "An error occurred while sending the email",
+	"flows.executor.errors.email_service_not_configured": "Email service is not configured",
+	"flows.executor.errors.email_service_not_configured_desc": "The email notification service has not been configured",
+	"flows.executor.errors.failed_to_identify_user": "Failed to identify user",
+	"flows.executor.errors.failed_to_identify_user_desc": "Unable to identify the user with the provided information",
+	"flows.executor.errors.federated_user_sync_failed": "Failed to sync user",
+	"flows.executor.errors.federated_user_sync_failed_desc": "The account could not be updated with the details from the identity provider",
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"flows.executor.errors.http_request_config_invalid": "Configuration error",
 	"flows.executor.errors.http_request_config_invalid_desc": "The HTTP request executor configuration is invalid",
 	"flows.executor.errors.http_request_failed": "HTTP request executor failed",

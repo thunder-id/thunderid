@@ -1,23 +1,37 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package executor
 
 import (
+<<<<<<< HEAD
 	"encoding/json"
+=======
+	"context"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+<<<<<<< HEAD
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+=======
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -124,31 +138,6 @@ func (s *UtilsTestSuite) TestSchemaTypeForInputType() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.Equal(tt.expectedType, schemaTypeForInputType(tt.inputType))
-		})
-	}
-}
-
-func (s *UtilsTestSuite) TestConvertToSchemaType() {
-	tests := []struct {
-		name          string
-		value         string
-		schemaType    string
-		expectedValue interface{}
-	}{
-		{"Checked box becomes true", "true", entitytypemodel.TypeBoolean, true},
-		{"Unchecked box becomes false", "false", entitytypemodel.TypeBoolean, false},
-		{"Boolean accepts alternate spellings", "TRUE", entitytypemodel.TypeBoolean, true},
-		{"Unparseable boolean is left for schema validation to reject", "yes", entitytypemodel.TypeBoolean, "yes"},
-		{"Number becomes a float", "42", entitytypemodel.TypeNumber, float64(42)},
-		{"Fractional number becomes a float", "1.5", entitytypemodel.TypeNumber, 1.5},
-		{"Unparseable number is left for schema validation to reject", "many", entitytypemodel.TypeNumber, "many"},
-		{"String attribute is untouched", "true", entitytypemodel.TypeString, "true"},
-		{"Unknown schema type is untouched", "true", "", "true"},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			s.Equal(tt.expectedValue, convertToSchemaType(tt.value, tt.schemaType))
 		})
 	}
 }
@@ -888,6 +877,7 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 	}
 }
 
+<<<<<<< HEAD
 // externalIdentityEntry encodes an external identity the way the federated executors set it.
 func externalIdentityEntry(idpID, sub string, claims map[string]interface{}) string {
 	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
@@ -1000,10 +990,103 @@ func (s *UtilsTestSuite) TestSetFederatedEntityState() {
 			setFederatedEntityState(s.T().Context(), execResp, authnProvider)
 
 			s.Equal(tc.wantState, execResp.RuntimeData[common.RuntimeKeyEntityState])
+=======
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_SetsSyncModes() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+		ID: "idp-123",
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly},
+		},
+	}, (*tidcommon.ServiceError)(nil))
+	mockIDPService.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, (*tidcommon.ServiceError)(nil))
+	execResp := &providers.ExecutorResponse{}
+
+	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		nil, "idp-123", nil, log.GetLogger())
+
+	s.NoError(err)
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+	s.Equal(string(providers.SyncModeOverrideReceived), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+}
+
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_ExpandsSessionGroupsOnce() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+		ID: "idp-123",
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly},
+		},
+	}, (*tidcommon.ServiceError)(nil))
+	mockIDPService.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetGroup, ID: "child"}}, nil,
+			(*tidcommon.ServiceError)(nil))
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+	mockEntityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+	execResp := &providers.ExecutorResponse{}
+
+	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		mockEntityProvider, "idp-123", nil, log.GetLogger())
+
+	s.NoError(err)
+	s.Equal("child", execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs])
+	s.Equal("child parent", execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+}
+
+// A declarative-only store can't hold mapped memberships, so outside session only its mapped groups or
+// roles are kept to the session instead.
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_DeclarativeStoresKeepToSession() {
+	tests := []struct {
+		name            string
+		groupStore      string
+		roleStore       string
+		expectedGroups  string
+		expectedRoles   string
+		expandsAncestor bool
+	}{
+		{"mutable stores", "mutable", "mutable", "", "", false},
+		{"declarative groups", "declarative", "mutable", "child parent", "", true},
+		{"declarative roles", "mutable", "declarative", "", "role-1", false},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{
+				Group: config.GroupConfig{Store: tc.groupStore},
+				Role:  config.RoleConfig{Store: tc.roleStore},
+			}))
+			defer config.ResetServerRuntime()
+
+			mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+			mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+				ID: "idp-123",
+				AttributeConfiguration: &providers.AttributeConfiguration{
+					Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeNoSync},
+				},
+			}, (*tidcommon.ServiceError)(nil))
+			mockIDPService.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+				Return([]providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetGroup, ID: "child"},
+					{Type: providers.AuthorizationTargetRole, ID: "role-1"},
+				}, nil, (*tidcommon.ServiceError)(nil))
+			mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
+			if tc.expandsAncestor {
+				mockEntityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+			}
+			execResp := &providers.ExecutorResponse{}
+
+			_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+				mockEntityProvider, "idp-123", nil, log.GetLogger())
+
+			s.NoError(err)
+			s.Equal(tc.expectedGroups, execResp.RuntimeData[common.RuntimeKeySessionGroupIDs])
+			s.Equal(tc.expectedRoles, execResp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 		})
 	}
 }
 
+<<<<<<< HEAD
 func (s *UtilsTestSuite) TestStatedHold_StatesOnlyTheManagerHoldCodes() {
 	s.Nil(statedHold(nil))
 	s.Nil(statedHold(&tidcommon.ErrorUnauthorized))
@@ -1017,4 +1100,129 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+=======
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_ContinuesWithoutDirectTargets() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&providers.IDPDTO{ID: "idp-123"}, (*tidcommon.ServiceError)(nil))
+	mockIDPService.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType})
+	execResp := &providers.ExecutorResponse{}
+
+	_, resolved, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		nil, "idp-123", nil, log.GetLogger())
+
+	s.NoError(err)
+	s.False(resolved.Complete)
+}
+
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_FailsWhenIDPUnresolved() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(nil, &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Error: tidcommon.I18nMessage{DefaultValue: "store unavailable"},
+	})
+	execResp := &providers.ExecutorResponse{}
+
+	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		nil, "idp-123", nil, log.GetLogger())
+
+	s.Error(err)
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyAttributesSyncMode)
+}
+
+func (s *UtilsTestSuite) TestCopyFederatedAttributesToRuntimeData_SkipsSyncModes() {
+	execResp := &providers.ExecutorResponse{}
+
+	copyFederatedAttributesToRuntimeData(execResp, map[string]interface{}{
+		common.RuntimeKeyGroupsAndRolesSyncMode: "no_sync",
+		common.RuntimeKeyAttributesSyncMode:     "no_sync",
+		"email":                                 "user@example.com",
+	})
+
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyGroupsAndRolesSyncMode)
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyAttributesSyncMode)
+	s.Equal("user@example.com", execResp.RuntimeData["email"])
+}
+
+// federatedSignInSyncCase is a returning user's federated sign-in through an OAuth or OIDC executor.
+type federatedSignInSyncCase struct {
+	name       string
+	flowType   providers.FlowType
+	idpErr     *tidcommon.ServiceError
+	syncErr    *entityprovider.EntityProviderError
+	wantSync   bool
+	wantStatus providers.ExecutorStatus
+	wantErr    bool
+}
+
+var federatedSignInSyncCases = []federatedSignInSyncCase{
+	{name: "sign-in syncs the returning user", flowType: providers.FlowTypeAuthentication,
+		wantSync: true, wantStatus: providers.ExecComplete},
+	{name: "registration that finds the user syncs it", flowType: providers.FlowTypeRegistration,
+		wantSync: true, wantStatus: providers.ExecComplete},
+	{name: "a rejected sync fails sign-in", flowType: providers.FlowTypeAuthentication, wantSync: true,
+		syncErr:    entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", ""),
+		wantStatus: providers.ExecFailure},
+	{name: "a server error during sync is returned", flowType: providers.FlowTypeAuthentication, wantSync: true,
+		syncErr: entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "System error", ""),
+		wantErr: true},
+	{name: "an unresolved IDP is returned", flowType: providers.FlowTypeAuthentication,
+		idpErr: &tidcommon.ServiceError{Type: tidcommon.ServerErrorType}, wantErr: true},
+}
+
+// runFederatedSignInSyncCase signs in a returning user whose provider sends a mapped email, through
+// process, and checks the account is synced as tc expects.
+func runFederatedSignInSyncCase(
+	t *testing.T, tc federatedSignInSyncCase, authn *managermock.AuthnProviderManagerMock,
+	idps *idpmock.IDPServiceInterfaceMock, entities *entityprovidermock.EntityProviderInterfaceMock,
+	process func(*providers.NodeContext, *providers.ExecutorResponse) error,
+) {
+	authUser := newOAuthAuthenticatedUser()
+	authn.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(authUser, providers.AuthenticatedClaims{
+		"sub": "existing-user-sub", "email": "new@example.com",
+	}, (*tidcommon.ServiceError)(nil))
+	idps.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+		ID: "idp-123",
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			UserTypeResolution: &providers.UserTypeResolution{Default: "Person"},
+			UserTypeAttributeMappings: []providers.UserTypeAttributeMapping{{
+				UserType: "Person", Attributes: []providers.AttributeMapping{
+					{ExternalAttribute: "email", LocalAttribute: "email"},
+				},
+			}},
+		},
+	}, tc.idpErr)
+	if tc.idpErr == nil {
+		expectEntityReferenceResolved(authn, authUser)
+		idps.On("ResolveDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil, (*tidcommon.ServiceError)(nil))
+	}
+	if tc.wantSync {
+		entities.On("SyncFederatedEntity", "local-user-123", providers.FederatedEntitySync{
+			AttributesByType: map[string]map[string]interface{}{"Person": {"email": "new@example.com"}},
+		}).Return(tc.syncErr).Once()
+	}
+	ctx := &providers.NodeContext{
+		Context:        context.Background(),
+		ExecutionID:    "flow-123",
+		FlowType:       tc.flowType,
+		UserInputs:     map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{"idpId": "idp-123", "allowRegistrationWithExistingUser": true},
+	}
+	execResp := &providers.ExecutorResponse{AdditionalData: map[string]string{}, RuntimeData: map[string]string{}}
+
+	err := process(ctx, execResp)
+
+	if tc.wantErr {
+		assert.Error(t, err)
+		return
+	}
+	assert.NoError(t, err)
+	assert.Equal(t, tc.wantStatus, execResp.Status)
+	if tc.wantStatus == providers.ExecFailure {
+		assert.Equal(t, &ErrFederatedUserSyncFailed, execResp.Error)
+	}
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 }

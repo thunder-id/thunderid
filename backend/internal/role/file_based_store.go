@@ -227,6 +227,27 @@ func (f *fileBasedStore) GetRolesByNames(ctx context.Context, names []string) ([
 	return roles, nil
 }
 
+// GetRolesByIDs returns the roles with the given IDs. IDs with no matching role are skipped.
+func (f *fileBasedStore) GetRolesByIDs(ctx context.Context, ids []string) ([]Role, error) {
+	roles := make([]Role, 0, len(ids))
+	for _, id := range ids {
+		role, err := f.GetRole(ctx, id)
+		if errors.Is(err, ErrRoleNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		roles = append(roles, Role{
+			ID:          role.ID,
+			Name:        role.Name,
+			Description: role.Description,
+			OUID:        role.OUID,
+		})
+	}
+	return roles, nil
+}
+
 // IsRoleExist checks if a role exists in the file-based store.
 func (f *fileBasedStore) IsRoleExist(ctx context.Context, id string) (bool, error) {
 	_, err := f.GenericFileBasedStore.Get(id)
@@ -378,6 +399,16 @@ func (f *fileBasedStore) AddAssignments(ctx context.Context, id string, assignme
 // RemoveAssignments is not supported in file-based store.
 func (f *fileBasedStore) RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return errors.New("RemoveAssignments is not supported in file-based store")
+}
+
+// AddAssigneeToRoles is not supported in file-based store.
+func (f *fileBasedStore) AddAssigneeToRoles(_ context.Context, _ RoleAssignment, _ []string) error {
+	return errors.New("AddAssigneeToRoles is not supported in file-based store")
+}
+
+// RemoveAssigneeFromRoles is not supported in file-based store.
+func (f *fileBasedStore) RemoveAssigneeFromRoles(_ context.Context, _ RoleAssignment, _ []string) error {
+	return errors.New("RemoveAssigneeFromRoles is not supported in file-based store")
 }
 
 // CheckRoleNameExists checks if a role with the given name exists in the file-based store.

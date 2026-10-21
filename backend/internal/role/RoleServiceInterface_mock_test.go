@@ -641,6 +641,76 @@ func (_c *RoleServiceInterfaceMock_GetRoleWithPermissions_Call) RunAndReturn(run
 	return _c
 }
 
+// GetRolesByIDs provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) GetRolesByIDs(ctx context.Context, ids []string) (map[string]*Role, *common.ServiceError) {
+	ret := _mock.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRolesByIDs")
+	}
+
+	var r0 map[string]*Role
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) (map[string]*Role, *common.ServiceError)); ok {
+		return returnFunc(ctx, ids)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) map[string]*Role); ok {
+		r0 = returnFunc(ctx, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]*Role)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ids)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_GetRolesByIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRolesByIDs'
+type RoleServiceInterfaceMock_GetRolesByIDs_Call struct {
+	*mock.Call
+}
+
+// GetRolesByIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ids []string
+func (_e *RoleServiceInterfaceMock_Expecter) GetRolesByIDs(ctx interface{}, ids interface{}) *RoleServiceInterfaceMock_GetRolesByIDs_Call {
+	return &RoleServiceInterfaceMock_GetRolesByIDs_Call{Call: _e.mock.On("GetRolesByIDs", ctx, ids)}
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByIDs_Call) Run(run func(ctx context.Context, ids []string)) *RoleServiceInterfaceMock_GetRolesByIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByIDs_Call) Return(stringToRole map[string]*Role, serviceError *common.ServiceError) *RoleServiceInterfaceMock_GetRolesByIDs_Call {
+	_c.Call.Return(stringToRole, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByIDs_Call) RunAndReturn(run func(ctx context.Context, ids []string) (map[string]*Role, *common.ServiceError)) *RoleServiceInterfaceMock_GetRolesByIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRolesByNames provides a mock function for the type RoleServiceInterfaceMock
 func (_mock *RoleServiceInterfaceMock) GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *common.ServiceError) {
 	ret := _mock.Called(ctx, names)

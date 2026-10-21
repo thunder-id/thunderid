@@ -36,6 +36,7 @@ type RoleServiceInterface interface {
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *tidcommon.ServiceError)
+	GetRolesByIDs(ctx context.Context, ids []string) (map[string]*Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
@@ -331,6 +332,30 @@ func (rs *roleService) GetRolesByNames(
 	result := make(map[string][]*Role, len(roles))
 	for i := range roles {
 		result[roles[i].Name] = append(result[roles[i].Name], &roles[i])
+	}
+
+	return result, nil
+}
+
+// GetRolesByIDs retrieves roles by a list of IDs, keyed by ID. IDs with no matching role are absent
+// from the result.
+func (rs *roleService) GetRolesByIDs(
+	ctx context.Context, ids []string,
+) (map[string]*Role, *tidcommon.ServiceError) {
+	if len(ids) == 0 {
+		return map[string]*Role{}, nil
+	}
+
+	roles, err := rs.roleStore.GetRolesByIDs(ctx, utils.UniqueStrings(ids))
+	if err != nil {
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+		logger.Error(ctx, "Failed to get roles by IDs", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	result := make(map[string]*Role, len(roles))
+	for i := range roles {
+		result[roles[i].ID] = &roles[i]
 	}
 
 	return result, nil

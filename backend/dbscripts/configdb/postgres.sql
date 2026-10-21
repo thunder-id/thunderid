@@ -60,6 +60,9 @@ CREATE TABLE "ROLE_ASSIGNMENT" (
     PRIMARY KEY (ROLE_ID, DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID)
 );
 
+-- Composite index for looking up the roles assigned to an assignee
+CREATE INDEX idx_role_assignment_assignee ON "ROLE_ASSIGNMENT" (DEPLOYMENT_ID, ASSIGNEE_TYPE, ASSIGNEE_ID);
+
 -- Table to store theme configurations.
 CREATE TABLE "THEME" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

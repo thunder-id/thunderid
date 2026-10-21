@@ -292,6 +292,21 @@ func (suite *RoleFileBasedStoreTestSuite) TestImmutability() {
 	suite.Error(err)
 }
 
+func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs_SkipsMissing() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Admin", OUID: "ou1"})
+
+	roles, err := suite.store.GetRolesByIDs(context.Background(), []string{"role1", "missing"})
+
+	suite.NoError(err)
+	suite.Equal([]Role{{ID: "role1", Name: "Admin", OUID: "ou1"}}, roles)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestAssigneeToRoles_NotSupported() {
+	assignee := RoleAssignment{ID: "user1", Type: assigneeTypeEntity}
+	suite.Error(suite.store.AddAssigneeToRoles(context.Background(), assignee, []string{"role1"}))
+	suite.Error(suite.store.RemoveAssigneeFromRoles(context.Background(), assignee, []string{"role1"}))
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestIsRoleDeclarative() {
 	// Seed a role
 	suite.seedRole(RoleWithPermissionsAndAssignments{

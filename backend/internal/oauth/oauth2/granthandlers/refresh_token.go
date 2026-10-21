@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -26,6 +27,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // refreshTokenGrantHandler handles the refresh token grant type.
@@ -192,6 +194,34 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 	audiences := []string{audience}
 
+	// Get user attributes from attribute cache.
+	// cacheEntry is kept so its current TTLSeconds can be compared later.
+	attrs := make(map[string]interface{})
+	var sessionGrants *attributecache.SessionGrants
+	var cacheEntry *attributecache.AttributeCache
+	var fetchErr *tidcommon.ServiceError
+	if refreshTokenClaims.AttributeCacheID != "" {
+		cacheEntry, fetchErr = h.attrCacheService.GetAttributeCache(ctx, refreshTokenClaims.AttributeCacheID)
+		if fetchErr != nil {
+			logger.Error(ctx, "Failed to get user attributes from attribute cache",
+				log.String("error", fetchErr.ErrorDescription.DefaultValue))
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to get user attributes from attribute cache",
+			}
+		}
+		if cacheEntry == nil {
+			logger.Error(ctx, "Attribute cache entry not found for cache ID",
+				log.String("cache_id", refreshTokenClaims.AttributeCacheID))
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to get user attributes from attribute cache",
+			}
+		}
+		attrs = cacheEntry.Attributes
+		sessionGrants = cacheEntry.SessionGrants
+	}
+
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
 	if audience == tokenRequest.ClientID {
@@ -219,39 +249,13 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			return nil, scopeErr
 		}
 		authorizedNonOidc, authzErr := h.reauthorizeScopes(
-			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, logger)
+			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, sessionGrants, logger)
 		if authzErr != nil {
 			return nil, authzErr
 		}
 		newTokenScopes = make([]string, 0, len(oidcScopes)+len(authorizedNonOidc))
 		newTokenScopes = append(newTokenScopes, oidcScopes...)
 		newTokenScopes = append(newTokenScopes, authorizedNonOidc...)
-	}
-
-	// Get user attributes from attribute cache.
-	// cacheEntry is kept so its current TTLSeconds can be compared later.
-	attrs := make(map[string]interface{})
-	var cacheEntry *attributecache.AttributeCache
-	var fetchErr *tidcommon.ServiceError
-	if refreshTokenClaims.AttributeCacheID != "" {
-		cacheEntry, fetchErr = h.attrCacheService.GetAttributeCache(ctx, refreshTokenClaims.AttributeCacheID)
-		if fetchErr != nil {
-			logger.Error(ctx, "Failed to get user attributes from attribute cache",
-				log.String("error", fetchErr.ErrorDescription.DefaultValue))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to get user attributes from attribute cache",
-			}
-		}
-		if cacheEntry == nil {
-			logger.Error(ctx, "Attribute cache entry not found for cache ID",
-				log.String("cache_id", refreshTokenClaims.AttributeCacheID))
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorServerError,
-				ErrorDescription: "Failed to get user attributes from attribute cache",
-			}
-		}
-		attrs = cacheEntry.Attributes
 	}
 
 	userSubConfig := oauthApp.UserAccessTokenConfig()
@@ -667,9 +671,11 @@ func credentialChangedSince(ctx context.Context, entity *providers.Entity, iat i
 }
 
 // reauthorizeScopes re-evaluates the subject's permission scopes against their current role and group
-// assignments, dropping the ones they no longer hold.
+// assignments, and the authorization the sign-in granted for the session only, dropping the ones they no
+// longer hold.
 func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjectEntity *providers.Entity,
-	resourceServerID string, scopes []string, logger *log.Logger) ([]string, *model.ErrorResponse) {
+	resourceServerID string, scopes []string, sessionGrants *attributecache.SessionGrants,
+	logger *log.Logger) ([]string, *model.ErrorResponse) {
 	// An unresolved subject (a mapped sub) would authorize nothing and strip every scope.
 	if len(scopes) == 0 || h.authzService == nil || subjectEntity == nil || subjectEntity.ID == "" {
 		return scopes, nil
@@ -694,9 +700,21 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 		}
 	}
 
+	var roleIDs []string
+	var mappedPermissions []providers.AuthorizationTarget
+	if sessionGrants != nil {
+		groupIDs = utils.MergeUniqueStrings(groupIDs, sessionGrants.GroupIDs)
+		roleIDs = sessionGrants.RoleIDs
+		mappedPermissions = sessionGrants.Permissions
+	}
+
 	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
+<<<<<<< HEAD
 		tokenservice.BuildAccessEvaluationsRequest(
 			subject, subjectEntity.Category.String(), groupIDs, nil, scopes, resourceServerID))
+=======
+		tokenservice.BuildAccessEvaluationsRequest(subject, groupIDs, roleIDs, scopes, resourceServerID))
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),
@@ -708,6 +726,8 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	}
 
 	authorizedScopes := tokenservice.FilterAuthorizedScopes(scopes, authzResp.Evaluations)
+	authorizedScopes = idp.UnionMappedPermissionTargets(authorizedScopes, scopes, mappedPermissions,
+		resourceServerID)
 	if len(authorizedScopes) != len(scopes) {
 		logger.Debug(ctx, "Dropped permission scopes the subject is no longer authorized for",
 			log.MaskedString(log.LoggerKeyUserID, subject),

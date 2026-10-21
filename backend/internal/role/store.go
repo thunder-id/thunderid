@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -27,6 +28,7 @@ type roleStoreInterface interface {
 	CreateRole(ctx context.Context, id string, role RoleCreationDetail) error
 	GetRole(ctx context.Context, id string) (RoleWithPermissions, error)
 	GetRolesByNames(ctx context.Context, names []string) ([]Role, error)
+	GetRolesByIDs(ctx context.Context, ids []string) ([]Role, error)
 	IsRoleExist(ctx context.Context, id string) (bool, error)
 	GetRoleAssignments(ctx context.Context, id string, limit, offset int) ([]RoleAssignment, error)
 	GetRoleAssignmentsByType(ctx context.Context, id string,
@@ -39,6 +41,8 @@ type roleStoreInterface interface {
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
+	AddAssigneeToRoles(ctx context.Context, assignee RoleAssignment, roleIDs []string) error
+	RemoveAssigneeFromRoles(ctx context.Context, assignee RoleAssignment, roleIDs []string) error
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
 	CheckRoleNameExistsExcludingID(ctx context.Context, ouID, name, excludeRoleID string) (bool, error)
 	GetAuthorizedPermissionsByResourceServer(
@@ -240,7 +244,20 @@ func (s *roleStore) GetRole(ctx context.Context, id string) (RoleWithPermissions
 
 // GetRolesByNames retrieves roles by a list of names, regardless of organization unit.
 func (s *roleStore) GetRolesByNames(ctx context.Context, names []string) ([]Role, error) {
-	if len(names) == 0 {
+	return s.getRolesBy(ctx, names, buildGetRolesByNamesQuery)
+}
+
+// GetRolesByIDs retrieves roles by a list of IDs. IDs with no matching role are skipped.
+func (s *roleStore) GetRolesByIDs(ctx context.Context, ids []string) ([]Role, error) {
+	return s.getRolesBy(ctx, ids, buildGetRolesByIDsQuery)
+}
+
+// getRolesBy runs a role lookup query built from values and parses the result rows.
+func (s *roleStore) getRolesBy(
+	ctx context.Context, values []string,
+	buildQuery func([]string, string) (dbmodel.DBQuery, []interface{}, error),
+) ([]Role, error) {
+	if len(values) == 0 {
 		return []Role{}, nil
 	}
 
@@ -249,9 +266,13 @@ func (s *roleStore) GetRolesByNames(ctx context.Context, names []string) ([]Role
 		return nil, err
 	}
 
+<<<<<<< HEAD
 	query, args, err := buildGetRolesByNamesQuery(names, s.scope(ctx))
+=======
+	query, args, err := buildQuery(values, s.deploymentID)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build get roles by names query: %w", err)
+		return nil, fmt.Errorf("failed to build get roles query: %w", err)
 	}
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
@@ -520,6 +541,38 @@ func (s *roleStore) RemoveAssignments(ctx context.Context, id string, assignment
 			ctx, queryDeleteRoleAssignmentsByIDs, id, assignment.Type, assignment.ID, s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to remove assignment from role: %w", err)
+		}
+	}
+	return nil
+}
+
+// AddAssigneeToRoles assigns one assignee to each of the given roles.
+func (s *roleStore) AddAssigneeToRoles(ctx context.Context, assignee RoleAssignment, roleIDs []string) error {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return err
+	}
+
+	for _, roleID := range roleIDs {
+		if _, err := dbClient.ExecuteContext(
+			ctx, queryCreateRoleAssignment, roleID, assignee.Type, assignee.ID, s.deploymentID); err != nil {
+			return fmt.Errorf("failed to add assignee to role: %w", err)
+		}
+	}
+	return nil
+}
+
+// RemoveAssigneeFromRoles removes one assignee from each of the given roles.
+func (s *roleStore) RemoveAssigneeFromRoles(ctx context.Context, assignee RoleAssignment, roleIDs []string) error {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return err
+	}
+
+	for _, roleID := range roleIDs {
+		if _, err := dbClient.ExecuteContext(
+			ctx, queryDeleteRoleAssignmentsByIDs, roleID, assignee.Type, assignee.ID, s.deploymentID); err != nil {
+			return fmt.Errorf("failed to remove assignee from role: %w", err)
 		}
 	}
 	return nil

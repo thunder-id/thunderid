@@ -69,6 +69,11 @@ func (p *disabledEntityProvider) UpdateAttributes(_ string,
 	return errNotImplemented
 }
 
+func (p *disabledEntityProvider) SyncFederatedEntity(_ string,
+	_ providers.FederatedEntitySync) *EntityProviderError {
+	return errNotImplemented
+}
+
 func (p *disabledEntityProvider) UpdateSystemAttributes(_ string,
 	_ json.RawMessage) *EntityProviderError {
 	return errNotImplemented

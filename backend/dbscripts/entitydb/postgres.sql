@@ -80,6 +80,9 @@ CREATE TABLE "GROUP_MEMBER_REFERENCE" (
     PRIMARY KEY (GROUP_ID, MEMBER_TYPE, MEMBER_ID, DEPLOYMENT_ID)
 );
 
+-- Composite index for looking up the groups a member belongs to
+CREATE INDEX idx_group_member_lookup ON "GROUP_MEMBER_REFERENCE" (DEPLOYMENT_ID, MEMBER_TYPE, MEMBER_ID);
+
 -- Table to store indexed entity identifiers for fast lookups (authentication, identification)
 -- An entity may hold multiple values for the same NAME (e.g. more than one email address).
 CREATE TABLE "ENTITY_IDENTIFIER" (

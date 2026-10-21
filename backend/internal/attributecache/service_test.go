@@ -205,6 +205,49 @@ func (suite *AttributeCacheServiceTestSuite) TestGetAttributeCache_Success() {
 	assert.Equal(suite.T(), suite.testAttributes, result.Attributes)
 }
 
+func (suite *AttributeCacheServiceTestSuite) TestAttributeCache_SessionGrantsRoundTrip() {
+	grants := &SessionGrants{GroupIDs: []string{"g1"}, RoleIDs: []string{"r1"}}
+	var stored []byte
+	suite.mockStore.On("CreateAttributeCache", suite.ctx, nonEmptyID(), mock.Anything, int64(3600)).
+		Run(func(args mock.Arguments) { stored = args.Get(2).([]byte) }).Return(nil).Once()
+
+	_, err := suite.service.CreateAttributeCache(suite.ctx, &AttributeCache{
+		Attributes:    map[string]interface{}{"email": "a@example.com", sessionGrantsKey: "forged"},
+		TTLSeconds:    3600,
+		SessionGrants: grants,
+	})
+	suite.Require().Nil(err)
+
+	suite.mockStore.On("GetAttributeCache", suite.ctx, suite.testID).Return(stored, nil).Once()
+	result, err := suite.service.GetAttributeCache(suite.ctx, suite.testID)
+
+	suite.Require().Nil(err)
+	assert.Equal(suite.T(), map[string]interface{}{"email": "a@example.com"}, result.Attributes)
+	assert.Equal(suite.T(), grants, result.SessionGrants)
+}
+
+func (suite *AttributeCacheServiceTestSuite) TestGetAttributeCache_DropsForgedSessionGrantsAttribute() {
+	suite.mockStore.On("CreateAttributeCache", suite.ctx, nonEmptyID(),
+		[]byte(`{"email":"a@example.com"}`), int64(3600)).Return(nil).Once()
+
+	_, err := suite.service.CreateAttributeCache(suite.ctx, &AttributeCache{
+		Attributes: map[string]interface{}{"email": "a@example.com", sessionGrantsKey: "forged"},
+		TTLSeconds: 3600,
+	})
+
+	suite.Nil(err)
+}
+
+func (suite *AttributeCacheServiceTestSuite) TestGetAttributeCache_InvalidSessionGrants() {
+	suite.mockStore.On("GetAttributeCache", suite.ctx, suite.testID).
+		Return([]byte(`{"__session_grants":"not an object"}`), nil).Once()
+
+	result, err := suite.service.GetAttributeCache(suite.ctx, suite.testID)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
+}
+
 func (suite *AttributeCacheServiceTestSuite) TestGetAttributeCache_EmptyID() {
 	result, err := suite.service.GetAttributeCache(suite.ctx, "")
 

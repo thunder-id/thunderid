@@ -1149,6 +1149,7 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Cross-OU provisioning:** When `allowCrossOUProvisioning` is set and the user exists in a different OU, the executor creates the user in the target OU instead of failing.
 
+<<<<<<< HEAD
 **Federated registration:** A federated identity finds existing users only through its recorded links. In a registration flow, and in a user onboarding flow where an invitee accepts with a federated account, the users linked to the identity decide the outcome before any attribute is collected:
 
 | Linked users that count | Result |
@@ -1161,6 +1162,9 @@ Creates a new user record in the user store. This executor persists the user's i
 Without `allowCrossOUProvisioning`, every linked user counts. With it, only linked users in the target OU count, so registering into an OU where nobody holds the link creates a second user with the same link.
 
 **Seeding from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, `seedGroupsFromMapping` and `seedRolesFromMapping` assign whatever groups and roles that mapping resolves for the asserted attributes, as ordinary direct assignments at account-creation time, alongside anything named in `assignGroup`/`assignRole`. This is a one-time snapshot: it does not keep the account in sync with the provider afterward the way the mapping does on every subsequent sign-in, and it has nothing to resolve when the executor runs outside a federated context.
+=======
+**Groups and roles from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, the groups and roles that mapping resolves are assigned when the account is created, alongside anything named in `assignGroup`/`assignRole`. They're not assigned when the connection's groups and roles sync is session only. The connection's [Sync](../../identity-providers/add-oidc-provider#sync) settings decide whether they're updated on later sign-ins.
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 
 **Executor properties:**
 
@@ -1172,8 +1176,6 @@ Without `allowCrossOUProvisioning`, every linked user counts. With it, only link
 | `includeOptional` | - | No | `false` | Whether to prompt for optional (non-credential) schema attributes |
 | `includeOptionalCredentials` | Include Optional Credentials | No | `false` | Whether to prompt for optional credential attributes |
 | `maxPerPrompt` | - | No | `0` (all at once) | Maximum number of missing inputs to forward per prompt cycle |
-| `seedGroupsFromMapping` | Seed Groups From Authorization Mapping | No | `false` | Assign groups the connection's authorization mapping resolved for this subject |
-| `seedRolesFromMapping` | Seed Roles From Authorization Mapping | No | `false` | Assign roles the connection's authorization mapping resolved for this subject |
 
 **Input Configuration:** Required user attributes are dynamically determined from the user type schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. Attributes that define a fixed set of allowed values (`enum`) in the user type schema are always forwarded as `SELECT` inputs that list those values as options. A prompt node that declares the attribute as a `SELECT` input receives the same options, and a prompt node that declares it with another type keeps that type. In a prompt node that this executor doesn't forward inputs to, define the options in the flow definition. See [Input Types](#input-types) for valid types.
 

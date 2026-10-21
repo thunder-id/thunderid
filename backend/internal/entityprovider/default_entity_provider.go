@@ -153,6 +153,17 @@ func (p *defaultEntityProvider) UpdateAttributes(
 	return nil
 }
 
+// SyncFederatedEntity writes what a federated sign-in syncs to a returning entity.
+func (p *defaultEntityProvider) SyncFederatedEntity(
+	entityID string, sync providers.FederatedEntitySync,
+) *EntityProviderError {
+	ctx := security.WithRuntimeContext(context.Background())
+	if err := p.entitySvc.SyncFederatedEntity(ctx, entityID, sync); err != nil {
+		return mapEntityError(err)
+	}
+	return nil
+}
+
 // UpdateSystemAttributes updates system-managed attributes for an entity.
 func (p *defaultEntityProvider) UpdateSystemAttributes(
 	entityID string, attributes json.RawMessage,
@@ -309,6 +320,8 @@ func mapEntityError(err error) *EntityProviderError {
 		return NewEntityProviderError(ErrorCodeSchemaValidationFailed, "Schema validation failed", err.Error())
 	case errors.Is(err, entity.ErrInvalidCredential):
 		return NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid credential", err.Error())
+	case errors.Is(err, entity.ErrSyncRejected):
+		return NewEntityProviderError(ErrorCodeSyncRejected, "Sync rejected", err.Error())
 	case errors.Is(err, entity.ErrBadAttributesInRequest):
 		return NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request", err.Error())
 	default:

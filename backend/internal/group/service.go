@@ -10,7 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+<<<<<<< HEAD
 	"strconv"
+=======
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -63,8 +66,15 @@ type GroupServiceInterface interface {
 	GetGroupsByNames(ctx context.Context, names []string) (map[string][]*Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
+<<<<<<< HEAD
 	// ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 	ValidateRemoveGroupMembers(ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError
+=======
+	ReplaceEntityGroups(ctx context.Context, entityID string, category providers.EntityCategory,
+		groupIDs, keepIDs []string) *tidcommon.ServiceError
+	AddEntityToGroups(ctx context.Context, entityID string, category providers.EntityCategory,
+		groupIDs []string) *tidcommon.ServiceError
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1272,6 +1282,112 @@ func (gs *groupService) AddMembersToGroups(
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to add members to groups", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// ReplaceEntityGroups sets the entity's direct group memberships to exactly groupIDs. Groups that
+// no longer exist are skipped, and a membership in keepIDs is never removed. Nothing is written in
+// declarative mode, since the declarative store holds no writable memberships.
+func (gs *groupService) ReplaceEntityGroups(
+	ctx context.Context, entityID string, category providers.EntityCategory, groupIDs, keepIDs []string,
+) *tidcommon.ServiceError {
+	return gs.writeEntityGroups(ctx, entityID, category, groupIDs, keepIDs, true)
+}
+
+// AddEntityToGroups adds the entity to groupIDs, keeping its other memberships. Groups that no longer
+// exist are skipped. Nothing is written in declarative mode, since the declarative store holds no
+// writable memberships.
+func (gs *groupService) AddEntityToGroups(
+	ctx context.Context, entityID string, category providers.EntityCategory, groupIDs []string,
+) *tidcommon.ServiceError {
+	return gs.writeEntityGroups(ctx, entityID, category, groupIDs, nil, false)
+}
+
+// writeEntityGroups adds the entity to groupIDs and, when removeOthers is set, removes its other direct
+// memberships except those in keepIDs.
+func (gs *groupService) writeEntityGroups(
+	ctx context.Context, entityID string, category providers.EntityCategory, groupIDs, keepIDs []string,
+	removeOthers bool,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	if isGroupDeclarativeModeEnabled() {
+		logger.Debug(ctx, "Skipping entity group write in declarative-only mode")
+		return nil
+	}
+
+	member := Member{ID: entityID, Type: MemberType(category)}
+	if svcErr := validateMemberTypes([]Member{member}); svcErr != nil {
+		return svcErr
+	}
+	storedMember := normalizeMembers([]Member{member})[0]
+
+	var capturedSvcErr *tidcommon.ServiceError
+	err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		currentIDs, err := gs.groupStore.GetMemberGroupIDs(txCtx, string(storedMember.Type), entityID)
+		if err != nil {
+			return fmt.Errorf("failed to get current groups: %w", err)
+		}
+
+		var toAdd, toRemove []string
+		for _, gid := range groupIDs {
+			if !slices.Contains(currentIDs, gid) && !slices.Contains(toAdd, gid) {
+				toAdd = append(toAdd, gid)
+			}
+		}
+		for _, gid := range currentIDs {
+			if removeOthers && !slices.Contains(groupIDs, gid) && !slices.Contains(keepIDs, gid) {
+				toRemove = append(toRemove, gid)
+			}
+		}
+		if len(toAdd) == 0 && len(toRemove) == 0 {
+			return nil
+		}
+
+		if svcErr := gs.validateEntityMembers(txCtx, []Member{member}, security.ActionUpdateGroup); svcErr != nil {
+			capturedSvcErr = svcErr
+			return errors.New("rollback for invalid member")
+		}
+
+		groups, err := gs.groupStore.GetGroupsByIDs(txCtx, append(slices.Clone(toAdd), toRemove...))
+		if err != nil {
+			return fmt.Errorf("failed to get groups: %w", err)
+		}
+		existing := make(map[string]bool, len(groups))
+		for _, g := range groups {
+			if svcErr := gs.checkGroupAccess(txCtx, security.ActionUpdateGroup, g.OUID, g.ID); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New("rollback for unauthorized access")
+			}
+			if svcErr := gs.authzService.CanGrantMembership(
+				txCtx, sysauthz.PrincipalTypeGroup, g.ID,
+			); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New("rollback for disallowed grant")
+			}
+			existing[g.ID] = true
+		}
+		isMissing := func(gid string) bool { return !existing[gid] }
+		toAdd = slices.DeleteFunc(toAdd, isMissing)
+		toRemove = slices.DeleteFunc(toRemove, isMissing)
+
+		if len(toAdd) > 0 {
+			if err := gs.groupStore.AddMemberToGroups(txCtx, storedMember, toAdd); err != nil {
+				return err
+			}
+		}
+		if len(toRemove) > 0 {
+			return gs.groupStore.RemoveMemberFromGroups(txCtx, storedMember, toRemove)
+		}
+		return nil
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		logger.Error(ctx, "Failed to write entity groups",
+			log.MaskedString("entityID", entityID), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 	return nil

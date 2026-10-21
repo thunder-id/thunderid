@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
@@ -83,8 +84,6 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: propertyKeyAssignGroup},
 				{Property: propertyKeyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 			},
 		})
@@ -873,9 +872,17 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extId
 // getAttributesForProvisioning collects entity attributes from context in a single schema pass,
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
+<<<<<<< HEAD
 // Values are resolved from non-empty UserInputs then non-empty RuntimeData. Non-credential values
 // are converted from the engine's string representation to the type declared by the schema
 // attribute.
+=======
+// Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
+// Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
+// from the engine's string representation to the type declared by the schema attribute. When the
+// federated connection keeps attributes to the session, only the subject identifier and required
+// attributes are taken from RuntimeData.
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext, category entitytype.TypeCategory,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
@@ -891,7 +898,11 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		return identifyingAttrs, credentialAttrs, nil
 	}
 
+<<<<<<< HEAD
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+=======
+	sessionOnly := ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] == string(providers.SyncModeSessionOnly)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 	for _, a := range schemaAttrs {
 		if a.Credential {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
@@ -902,12 +913,18 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		} else {
 			// External claims are only a fallback and must never take priority over runtime data.
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
+				identifyingAttrs[a.Attribute] = entitytypemodel.ConvertToSchemaType(value, a.Type)
+			} else if sessionOnly && !a.Required && a.Attribute != userAttributeSub {
+				continue
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
+<<<<<<< HEAD
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
 				claimValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
+=======
+				identifyingAttrs[a.Attribute] = entitytypemodel.ConvertToSchemaType(runtimeValue, a.Type)
+>>>>>>> 2b18ce8b0 (Sync federated users with per-connection sync modes)
 			}
 		}
 	}
@@ -1177,19 +1194,15 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
-		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
-		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
-		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
+	// Groups and roles the federated login's authorization mapping resolved are stored on the new
+	// account, alongside the fixed lists above, unless the connection keeps them to the session.
+	var mappedGroupIDs, mappedRoleIDs []string
+	if ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] != string(providers.SyncModeSessionOnly) {
+		mappedGroupIDs = systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+		mappedRoleIDs = systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
 	}
 
-	if len(groupIDs) == 0 && len(roleIDs) == 0 {
+	if len(groupIDs) == 0 && len(roleIDs) == 0 && len(mappedGroupIDs) == 0 && len(mappedRoleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
 	}
@@ -1197,7 +1210,9 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Assigning groups and roles to the provisioned entity",
 		log.MaskedString(log.LoggerKeyEntityID, entityID),
 		log.String("groupIDs", strings.Join(groupIDs, ",")),
-		log.String("roleIDs", strings.Join(roleIDs, ",")))
+		log.String("roleIDs", strings.Join(roleIDs, ",")),
+		log.String("mappedGroupIDs", strings.Join(mappedGroupIDs, ",")),
+		log.String("mappedRoleIDs", strings.Join(mappedRoleIDs, ",")))
 
 	if len(groupIDs) > 0 {
 		if svcErr := p.groupService.AddMembersToGroups(ctx.Context,
@@ -1213,31 +1228,25 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 		}
 	}
 
+	// Mapped targets skip groups and roles that no longer exist, so a stale mapping doesn't fail sign-in.
+	// Nothing is written when the store is declarative-only.
+	if len(mappedGroupIDs) > 0 {
+		if svcErr := p.groupService.AddEntityToGroups(
+			ctx.Context, userID, providers.EntityCategoryUser, mappedGroupIDs); svcErr != nil {
+			return fmt.Errorf("mapped group assignment failed: %s", svcErr.Error.DefaultValue)
+		}
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		if svcErr := p.roleAssignmentService.AddEntityToRoles(
+			ctx.Context, userID, providers.EntityCategoryUser, mappedRoleIDs); svcErr != nil {
+			return fmt.Errorf("mapped role assignment failed: %s", svcErr.Error.DefaultValue)
+		}
+	}
+
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
-}
-
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.

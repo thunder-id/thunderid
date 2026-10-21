@@ -4,6 +4,7 @@
 package federated
 
 import (
+	"encoding/json"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -60,6 +61,30 @@ func (s *FederatedMappingSuite) TestAuthenticationFlowWithoutLocalUserProceedsWh
 	provisioned, err := testutils.GetUserFromAssertion(step.Assertion)
 	s.Require().NoError(err, "the allowance should have provisioned a user for %s", user.Sub)
 	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
+}
+
+// With session only attributes, provisioning stores the subject identifier and the required attributes
+// only. The given name the provider sends, mapped onto an optional attribute, is not stored.
+func (s *FederatedMappingSuite) TestSessionOnlyAttributesStoreOnlyIdentifierAndRequired() {
+	user := s.baseUser(s.nextSubject())
+	config := mapping(fedPersonType.Name,
+		pair("email", "email"), pair("email", "username"), pair("given_name", "firstName"))
+	config.Sync = &testutils.SyncConfiguration{Attributes: "session_only"}
+
+	step, err := s.authenticate(s.authAppID, config, user)
+
+	s.Require().NoError(err, "the identity should be provisioned")
+	s.Require().Equal("COMPLETE", step.FlowStatus, "the identity should have been provisioned, got %+v", step)
+
+	provisioned, err := testutils.FindUserByAttribute("sub", user.Sub)
+	s.Require().NoError(err, "failed to look up the provisioned user")
+	s.Require().NotNil(provisioned, "a user should have been provisioned for %s", user.Sub)
+	s.config.CreatedUserIDs = append(s.config.CreatedUserIDs, provisioned.ID)
+
+	var attributes map[string]interface{}
+	s.Require().NoError(json.Unmarshal(provisioned.Attributes, &attributes))
+	s.Equal(map[string]interface{}{"sub": user.Sub, "username": user.Email, "email": user.Email}, attributes,
+		"only the identifier and required attributes should be stored")
 }
 
 // BA3: the same identity against a flow whose federated node does not set the property. Without a local

@@ -37,7 +37,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ReservedKeyClaimIsNotTrusted() 
 
 	config := mapping(fedPersonType.Handle, pair("email", "email"), pair("email", "username"))
 
-	authorized := s.authorizeFederated(config, user, "delete", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "delete", authzMappingResource)
 	s.NotContains(authorized, "delete",
 		"a claim named like the reserved runtime key must not grant the role it names")
 }
@@ -68,7 +68,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_ReservedKeyClaimNotTrustedWhenM
 		"platform-admins": {roleTarget(s.authzMappedRoleID)},
 	})
 
-	authorized := s.authorizeFederated(config, user, "read delete", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "read delete", authzMappingResource)
 	s.NotContains(authorized, "read", "the unmatched claim value should not authorize the mapped role")
 	s.NotContains(authorized, "delete",
 		"a claim named like the reserved runtime key must not grant the role it names")
@@ -122,7 +122,7 @@ func (s *FederatedMappingSuite) TestAuthzMapping_MappedChildGroupGrantsParentGro
 		"engineering": {groupTarget(childGroupID)},
 	})
 
-	authorized := s.authorizeFederated(config, user, "delete", "federated-authz-mapping-api")
+	authorized := s.authorizeFederated(config, user, "delete", authzMappingResource)
 	s.Contains(authorized, "delete",
 		"a role granted to the mapped group's ancestor should be authorized, same as a real member")
 }

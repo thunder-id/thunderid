@@ -295,3 +295,19 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_File
 	suite.Error(err)
 	suite.Equal(testErr, err)
 }
+
+func (suite *CompositeGroupStoreTestSuite) TestMemberGroupWrites_DelegateToDBStore() {
+	ctx := context.Background()
+	member := Member{ID: "user1", Type: memberTypeEntity}
+	suite.mockDBStore.On("GetMemberGroupIDs", ctx, string(memberTypeEntity), "user1").
+		Return([]string{"grp1"}, nil).Once()
+	suite.mockDBStore.On("AddMemberToGroups", ctx, member, []string{"grp2"}).Return(nil).Once()
+	suite.mockDBStore.On("RemoveMemberFromGroups", ctx, member, []string{"grp1"}).Return(nil).Once()
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(ctx, string(memberTypeEntity), "user1")
+	suite.NoError(err)
+	suite.Equal([]string{"grp1"}, groupIDs)
+	suite.NoError(suite.store.AddMemberToGroups(ctx, member, []string{"grp2"}))
+	suite.NoError(suite.store.RemoveMemberFromGroups(ctx, member, []string{"grp1"}))
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetMemberGroupIDs", mock.Anything, mock.Anything, mock.Anything)
+}
