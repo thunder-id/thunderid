@@ -1,0 +1,177 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: environmentvalues.apps.thunderid.io
+spec:
+  group: apps.thunderid.io
+  names:
+    kind: EnvironmentValues
+    listKind: EnvironmentValuesList
+    plural: environmentvalues
+    singular: environmentvalues
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.secretName
+      name: Secret
+      type: string
+    - jsonPath: .status.synced
+      name: Synced
+      type: boolean
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          EnvironmentValues mirrors spec.env into a Secret of the same name, then masks each synced key's
+          value in place (see EnvironmentValuesSpec.Env) — see environment_controller.go. The object is never
+          deleted: it stays gettable forever, just with masked values, so a developer who doesn't know
+          this becomes a Secret never hits a surprise NotFound. The Secret it produces is deliberately
+          not owned by this object (no controller
+          reference) — nothing here ever deletes this object, but keeping them decoupled means a future
+          change to one can't accidentally cascade-delete the other. Do NOT put this CRD under GitOps
+          (Flux) management: a continuously reconciling GitOps tool enforces live-must-match-Git and
+          will fight the masking forever (reverting it back to plaintext every reconcile) — see the
+          GitOps (Flux) section of README.md.
+
+          Labeling this object with InstanceRefLabel (thunderid.io/instance: <name>, same label a
+          ThunderIDResource uses) makes that ThunderIDInstance auto-discover this EnvironmentValues's Secret and mount
+          it whole via envFrom — see findEnvironment in env_secret.go. There is no field on
+          ThunderIDInstanceSpec naming it the other way around: the reference lives here, on the
+          EnvironmentValues, not on the instance. The label is optional — an unlabeled EnvironmentValues still syncs
+          its Secret exactly the same, it's simply not wired into any instance's envFrom. Exactly one
+          EnvironmentValues should carry a given instance's label;
+          more than one is a config error the instance surfaces as an InvalidSpec event rather than
+          picking one arbitrarily. A hand-written Secret with no matching EnvironmentValues object can still be
+          discovered the same way: create a thin EnvironmentValues with that Secret's name, the label, and no
+          spec.env (or spec.env omitted) — its reconcile then adopts the existing Secret without touching
+          its contents (see upsertSecret's "adopted" path in environment_controller.go). The Secret must
+          also carry EnvironmentValuesAdoptLabel (thunderid.io/environment-values: <this name>) or
+          adoption is refused — matching by Secret name alone would let anyone who can create an
+          EnvironmentValues overwrite keys in any same-named Secret in the namespace, including ones they
+          have no RBAC permission to edit directly.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: EnvironmentValuesSpec defines the desired state of EnvironmentValues.
+            properties:
+              env:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Env holds this environment's key-value pairs, mirrored into the generated Secret's Data.
+                  Plaintext only until the next reconcile: the controller overwrites each key's value here
+                  with a masked marker ("thunderid-masked:<up to 3 leading chars>**********") once it's
+                  synced to the Secret, so only a short prefix (never the rest of the raw value, and never
+                  its real length either) is visible via `kubectl get/describe environmentvalues` past that
+                  point — see the controller. To change a key's value later, re-apply a manifest naming only
+                  that key with `kubectl apply --server-side --force-conflicts`: the controller's own masking
+                  write already owns every synced key's field, so plain `kubectl apply` is refused (see the
+                  controller) and a server-side apply needs --force-conflicts to retake ownership of the one
+                  key being changed.
+                type: object
+            type: object
+          status:
+            description: EnvironmentValuesStatus defines the observed state of EnvironmentValues.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              keys:
+                description: |-
+                  Keys lists the currently-synced key names only (never values) — for a developer checking
+                  "did my key actually get picked up" without needing to know this becomes a Secret.
+                items:
+                  type: string
+                type: array
+              phase:
+                type: string
+              secretName:
+                description: SecretName is always the EnvironmentValues's own name
+                  — the generated Secret is 1:1 with it.
+                type: string
+              synced:
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

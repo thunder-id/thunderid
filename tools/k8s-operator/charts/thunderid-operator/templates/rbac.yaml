@@ -1,0 +1,379 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- /*
+Manager permissions. With watchNamespaces empty they are granted cluster-wide through a
+ClusterRole; otherwise the same rules are granted through a Role in each listed namespace and the
+manager only watches those namespaces (--watch-namespaces), so it can't read or write Secrets,
+or anything else, outside them.
+*/}}
+{{- define "thunderid-operator.managerRules" }}
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - persistentvolumeclaims
+  - secrets
+  - services
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - environmentvalues
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidresources
+  - thunderidinstances
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - environmentvalues/status
+  - thunderidresources/status
+  - thunderidinstances/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- end }}
+{{- if not .Values.watchNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-manager-role
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+{{- include "thunderid-operator.managerRules" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "thunderid-operator.fullname" . }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "thunderid-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- else }}
+{{- range $ns := .Values.watchNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "thunderid-operator.fullname" $ }}-manager-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "thunderid-operator.labels" $ | nindent 4 }}
+rules:
+{{- include "thunderid-operator.managerRules" $ }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "thunderid-operator.fullname" $ }}-manager-rolebinding
+  namespace: {{ $ns }}
+  labels:
+    {{- include "thunderid-operator.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "thunderid-operator.fullname" $ }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "thunderid-operator.serviceAccountName" $ }}
+  namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-leader-election-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-leader-election-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "thunderid-operator.fullname" . }}-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "thunderid-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-metrics-reader
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- nonResourceURLs:
+  - "/metrics"
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-metrics-auth-role
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-metrics-auth-rolebinding
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "thunderid-operator.fullname" . }}-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "thunderid-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.rbac.helperRoles }}
+---
+# The following three ClusterRoles are not used by the operator itself.
+# They let a cluster admin delegate admin/editor/viewer access over
+# apps.thunderid.io resources to end users.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-thunderidinstance-admin-role
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances
+  - thunderidresources
+  - environmentvalues
+  verbs:
+  - '*'
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances/status
+  - thunderidresources/status
+  - environmentvalues/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-thunderidinstance-editor-role
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances
+  - thunderidresources
+  - environmentvalues
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances/status
+  - thunderidresources/status
+  - environmentvalues/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "thunderid-operator.fullname" . }}-thunderidinstance-viewer-role
+  labels:
+    {{- include "thunderid-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances
+  - thunderidresources
+  - environmentvalues
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps.thunderid.io
+  resources:
+  - thunderidinstances/status
+  - thunderidresources/status
+  - environmentvalues/status
+  verbs:
+  - get
+{{- end }}
