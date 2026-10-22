@@ -216,17 +216,17 @@ func (ts *UserAPITestSuite) TearDownSuite() {
 		}
 	}
 
-	if entityTypeID != "" {
-		if err := testutils.DeleteUserType(entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete user type during teardown: %v", err)
-		}
-	}
-
 	// Delete the test organization unit
 	if testOUID != "" {
 		err := deleteOrganizationUnit(testOUID)
 		if err != nil {
 			ts.T().Logf("Failed to delete organization unit during teardown: %v", err)
+		}
+	}
+
+	if entityTypeID != "" {
+		if err := testutils.DeleteUserType(entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
 	}
 }

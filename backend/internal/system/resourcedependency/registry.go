@@ -75,8 +75,6 @@ const (
 	ResourceTypeLayout               = "layout"
 	ResourceTypeFlow                 = "flow"
 	ResourceTypeUser                 = "user"
-	ResourceTypeUserType             = "userType"
-	ResourceTypeAgentType            = "agentType"
 	ResourceTypeApplication          = "application"
 	ResourceTypeAgent                = "agent"
 	ResourceTypeGroup                = "group"

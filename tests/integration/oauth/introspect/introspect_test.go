@@ -199,14 +199,14 @@ func (ts *IntrospectionTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete test user: %v", err)
 		}
 	}
-	if ts.entityTypeID != "" {
-		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type: %v", err)
-		}
-	}
 	if ts.ouID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit: %v", err)
+		}
+	}
+	if ts.entityTypeID != "" {
+		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type: %v", err)
 		}
 	}
 }

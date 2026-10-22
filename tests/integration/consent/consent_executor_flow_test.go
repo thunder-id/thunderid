@@ -712,15 +712,15 @@ func (ts *ConsentExecutorFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	if consentExecFlowEntityTypeID != "" {
-		if err := testutils.DeleteUserType(consentExecFlowEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
-		}
-	}
-
 	if consentExecFlowOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(consentExecFlowOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
+	if consentExecFlowEntityTypeID != "" {
+		if err := testutils.DeleteUserType(consentExecFlowEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
 		}
 	}
 

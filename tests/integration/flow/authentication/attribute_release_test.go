@@ -215,14 +215,14 @@ func (ts *AttributeReleaseBranchTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete flow during teardown: %v", err)
 		}
 	}
-	if ts.userTypeID != "" {
-		if err := testutils.DeleteUserType(ts.userTypeID); err != nil {
-			ts.T().Logf("Failed to delete user type during teardown: %v", err)
-		}
-	}
 	if ts.ouID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete organization unit during teardown: %v", err)
+		}
+	}
+	if ts.userTypeID != "" {
+		if err := testutils.DeleteUserType(ts.userTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
 	}
 }

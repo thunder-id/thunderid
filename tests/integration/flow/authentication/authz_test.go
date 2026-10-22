@@ -314,15 +314,15 @@ func (ts *FlowAuthzTestSuite) TearDownSuite() {
 		}
 	}
 
-	if authzEntityTypeID != "" {
-		if err := testutils.DeleteUserType(authzEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete user type during teardown: %v", err)
-		}
-	}
-
 	if authzTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(authzTestOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
+	if authzEntityTypeID != "" {
+		if err := testutils.DeleteUserType(authzEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type during teardown: %v", err)
 		}
 	}
 }

@@ -389,16 +389,16 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	if promptActionsEntityTypeID != "" {
-		if err := testutils.DeleteUserType(promptActionsEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
-		}
-	}
-
 	// Delete test organization unit
 	if promptActionsTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(promptActionsTestOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
+	if promptActionsEntityTypeID != "" {
+		if err := testutils.DeleteUserType(promptActionsEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
 		}
 	}
 }

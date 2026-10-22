@@ -18,7 +18,6 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -81,8 +80,6 @@ type EntityTypeServiceInterface interface {
 	GetEntityTypeSchema(
 		ctx context.Context, category TypeCategory, handle string,
 	) (*EntityType, *tidcommon.ServiceError)
-	GetResourceDependencies(
-		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
@@ -523,44 +520,6 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	}
 
 	return nil
-}
-
-// GetResourceDependencies implements resourcedependency.Provider. It reports the user types and agent
-// types that belong to the given organization unit, which block the organization unit's deletion (an
-// entity type cannot exist without its organization unit). Only organization unit targets are handled;
-// other resource types have no entity type dependencies. The number of entity types scanned per
-// category is bounded by MaxCompositeStoreRecords.
-func (us *entityTypeService) GetResourceDependencies(
-	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
-	if resourceType != resourcedependency.ResourceTypeOU {
-		return []resourcedependency.ResourceDependency{}, nil
-	}
-
-	categoryResourceTypes := []struct {
-		category     TypeCategory
-		resourceType string
-	}{
-		{TypeCategoryUser, resourcedependency.ResourceTypeUserType},
-		{TypeCategoryAgent, resourcedependency.ResourceTypeAgentType},
-	}
-
-	deps := make([]resourcedependency.ResourceDependency, 0)
-	for _, c := range categoryResourceTypes {
-		entityTypes, err := us.entityTypeStore.GetEntityTypeListByOUIDs(
-			ctx, c.category, []string{id}, serverconst.MaxCompositeStoreRecords, 0)
-		if err != nil {
-			return nil, err
-		}
-		for _, et := range entityTypes {
-			deps = append(deps, resourcedependency.ResourceDependency{
-				ResourceType:     c.resourceType,
-				ID:               et.ID,
-				DisplayName:      et.DisplayName,
-				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
-			})
-		}
-	}
-	return deps, nil
 }
 
 // ValidateEntity validates entity attributes against the schema for the given category and entity type.

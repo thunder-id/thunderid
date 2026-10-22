@@ -437,17 +437,17 @@ func (ts *SMSAuthFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete test user type
-	if smsAuthEntityTypeID != "" {
-		if err := testutils.DeleteUserType(smsAuthEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
-		}
-	}
-
 	// Delete test organization unit
 	if smsAuthTestOU.ID != "" {
 		if err := testutils.DeleteOrganizationUnit(smsAuthTestOU.ID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
+	// Delete test user type
+	if smsAuthEntityTypeID != "" {
+		if err := testutils.DeleteUserType(smsAuthEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete test user type during teardown: %v", err)
 		}
 	}
 }

@@ -11,8 +11,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 )
 
 // InlineStubEntityTypeService satisfies the service interface contract cleanly.
@@ -124,12 +122,6 @@ func (s *InlineStubEntityTypeService) GetEntityTypeSchema(
 	ctx context.Context, cat TypeCategory, name string,
 ) (*EntityType, *tidcommon.ServiceError) {
 	return &EntityType{Handle: name, Category: cat}, nil
-}
-
-func (s *InlineStubEntityTypeService) GetResourceDependencies(
-	ctx context.Context, resourceType, id string,
-) ([]resourcedependency.ResourceDependency, error) {
-	return nil, nil
 }
 
 // --- POST ENDPOINT TESTS ---

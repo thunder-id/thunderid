@@ -565,13 +565,6 @@ func (ts *OURegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// delete user type
-	if ts.entityTypeID != "" {
-		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
-			ts.T().Logf("Failed to delete dynamic user type during teardown: %v", err)
-		}
-	}
-
 	// Delete test organization units
 	if ts.smsFlowTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.smsFlowTestOUID); err != nil {
@@ -581,6 +574,13 @@ func (ts *OURegistrationFlowTestSuite) TearDownSuite() {
 	if ts.basicFlowTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.basicFlowTestOUID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
+	// delete user type
+	if ts.entityTypeID != "" {
+		if err := testutils.DeleteUserType(ts.entityTypeID); err != nil {
+			ts.T().Logf("Failed to delete dynamic user type during teardown: %v", err)
 		}
 	}
 }

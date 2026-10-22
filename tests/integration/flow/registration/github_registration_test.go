@@ -414,6 +414,13 @@ func (ts *GithubRegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
+	// Delete test organization unit
+	if githubRegTestOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(githubRegTestOUID); err != nil {
+			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
+		}
+	}
+
 	// Clean up any remaining users
 	if len(ts.config.CreatedUserIDs) > 0 {
 		if err := testutils.CleanupUsers(ts.config.CreatedUserIDs); err != nil {
@@ -423,13 +430,6 @@ func (ts *GithubRegistrationFlowTestSuite) TearDownSuite() {
 
 	if ts.entityTypeID != "" {
 		_ = testutils.DeleteUserType(ts.entityTypeID)
-	}
-
-	// Delete test organization unit
-	if githubRegTestOUID != "" {
-		if err := testutils.DeleteOrganizationUnit(githubRegTestOUID); err != nil {
-			ts.T().Logf("Failed to delete test organization unit during teardown: %v", err)
-		}
 	}
 
 	// Stop mock server

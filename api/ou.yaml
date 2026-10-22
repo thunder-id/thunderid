@@ -403,7 +403,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:
@@ -970,7 +970,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, or sharing policies it issued"
         "404":
           description: Organization unit not found
           content:

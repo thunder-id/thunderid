@@ -148,20 +148,20 @@ func (ts *UserFilterTestSuite) TearDownSuite() {
 		}
 	}
 
+	// Delete the filter test organization unit
+	if filterTestOUID != "" {
+		err := deleteOrganizationUnit(filterTestOUID)
+		if err != nil {
+			ts.T().Logf("Failed to delete filter test organization unit during teardown: %v", err)
+		}
+	}
+
 	for _, schemaID := range filterTestSchemaIDs {
 		if schemaID == "" {
 			continue
 		}
 		if err := testutils.DeleteUserType(schemaID); err != nil {
 			ts.T().Logf("Failed to delete filter test user type during teardown: %v", err)
-		}
-	}
-
-	// Delete the filter test organization unit
-	if filterTestOUID != "" {
-		err := deleteOrganizationUnit(filterTestOUID)
-		if err != nil {
-			ts.T().Logf("Failed to delete filter test organization unit during teardown: %v", err)
 		}
 	}
 }

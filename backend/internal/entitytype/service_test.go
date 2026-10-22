@@ -20,9 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 
@@ -570,84 +568,6 @@ func TestUpdateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 	require.NotNil(t, capturedCtx)
 	require.False(t, security.IsRuntimeContext(capturedCtx),
 		"API path must propagate the caller's context (not runtime) so ou:read is enforced")
-}
-
-func TestGetResourceDependenciesReportsEntityTypesInOU(t *testing.T) {
-	storeMock := newEntityTypeStoreInterfaceMock(t)
-	storeMock.
-		On("GetEntityTypeListByOUIDs", context.Background(), TypeCategoryUser, []string{"ou-1"},
-			serverconst.MaxCompositeStoreRecords, 0).
-		Return([]EntityTypeListItem{{ID: "ut-1", DisplayName: "Employee"}}, nil).
-		Once()
-	storeMock.
-		On("GetEntityTypeListByOUIDs", context.Background(), TypeCategoryAgent, []string{"ou-1"},
-			serverconst.MaxCompositeStoreRecords, 0).
-		Return([]EntityTypeListItem{{ID: "at-1", DisplayName: "Default"}}, nil).
-		Once()
-
-	service := &entityTypeService{entityTypeStore: storeMock}
-
-	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
-
-	require.NoError(t, err)
-	require.Equal(t, []resourcedependency.ResourceDependency{
-		{
-			ResourceType:     resourcedependency.ResourceTypeUserType,
-			ID:               "ut-1",
-			DisplayName:      "Employee",
-			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
-		},
-		{
-			ResourceType:     resourcedependency.ResourceTypeAgentType,
-			ID:               "at-1",
-			DisplayName:      "Default",
-			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
-		},
-	}, deps)
-}
-
-func TestGetResourceDependenciesReturnsEmptyWhenOUHasNoEntityTypes(t *testing.T) {
-	storeMock := newEntityTypeStoreInterfaceMock(t)
-	storeMock.
-		On("GetEntityTypeListByOUIDs", context.Background(), mock.Anything, []string{"ou-1"},
-			serverconst.MaxCompositeStoreRecords, 0).
-		Return([]EntityTypeListItem{}, nil).
-		Twice()
-
-	service := &entityTypeService{entityTypeStore: storeMock}
-
-	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
-
-	require.NoError(t, err)
-	require.Empty(t, deps)
-}
-
-func TestGetResourceDependenciesIgnoresNonOUResourceTypes(t *testing.T) {
-	storeMock := newEntityTypeStoreInterfaceMock(t)
-
-	service := &entityTypeService{entityTypeStore: storeMock}
-
-	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
-
-	require.NoError(t, err)
-	require.Empty(t, deps)
-	storeMock.AssertNotCalled(t, "GetEntityTypeListByOUIDs")
-}
-
-func TestGetResourceDependenciesReturnsStoreError(t *testing.T) {
-	storeMock := newEntityTypeStoreInterfaceMock(t)
-	storeMock.
-		On("GetEntityTypeListByOUIDs", context.Background(), TypeCategoryUser, []string{"ou-1"},
-			serverconst.MaxCompositeStoreRecords, 0).
-		Return(nil, errors.New("db failure")).
-		Once()
-
-	service := &entityTypeService{entityTypeStore: storeMock}
-
-	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
-
-	require.Error(t, err)
-	require.Nil(t, deps)
 }
 
 func TestGetEntityTypeByHandleReturnsSchema(t *testing.T) {

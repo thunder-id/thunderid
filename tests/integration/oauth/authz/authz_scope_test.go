@@ -405,15 +405,15 @@ func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
 		}
 	}
 
-	if scopeEntityTypeID != "" {
-		if err := testutils.DeleteUserType(scopeEntityTypeID); err != nil {
-			ts.T().Logf("Failed to delete user type: %v", err)
-		}
-	}
-
 	if scopeTestOUID != "" {
 		if err := testutils.DeleteOrganizationUnit(scopeTestOUID); err != nil {
 			ts.T().Logf("Failed to delete organization unit: %v", err)
+		}
+	}
+
+	if scopeEntityTypeID != "" {
+		if err := testutils.DeleteUserType(scopeEntityTypeID); err != nil {
+			ts.T().Logf("Failed to delete user type: %v", err)
 		}
 	}
 }

@@ -475,12 +475,12 @@ func (ts *AssuranceTestSuite) TearDownSuite() {
 		_ = testutils.DeleteNotificationSender(senderID)
 	}
 
-	if assuranceEntityTypeID != "" {
-		_ = testutils.DeleteUserType(assuranceEntityTypeID)
-	}
-
 	if assuranceTestOU.ID != "" {
 		_ = testutils.DeleteOrganizationUnit(assuranceTestOU.ID)
+	}
+
+	if assuranceEntityTypeID != "" {
+		_ = testutils.DeleteUserType(assuranceEntityTypeID)
 	}
 }
 

@@ -1179,7 +1179,7 @@ var defaultMessages = map[string]string{
 	"error.ouservice.organization_unit_handle_conflict": "Organization unit handle conflict",
 	"error.ouservice.organization_unit_handle_conflict_description": "An organization unit with the same handle already exists under the same parent",
 	"error.ouservice.organization_unit_has_children": "Organization unit has children",
-	"error.ouservice.organization_unit_has_children_description": "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, or sharing policies it issued",
+	"error.ouservice.organization_unit_has_children_description": "Cannot delete an organization unit that has child organization units, users, groups, or sharing policies it issued",
 	"error.ouservice.organization_unit_name_conflict": "Organization unit name conflict",
 	"error.ouservice.organization_unit_name_conflict_description": "An organization unit with the same name exists under the same parent",
 	"error.ouservice.organization_unit_not_found": "Organization unit not found",
