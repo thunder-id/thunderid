@@ -1,36 +1,111 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package governance checks the accountAccess and notification sections, and the events their writes
-// publish, against a running server.
+// Package governance checks the account lock behaviour against a running server.
 // Tests check stated behaviour, not the implementation that satisfies it.
 package governance
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
 	testServerURL = testutils.TestServerURL
 
+	// subjectInput is the input an administration flow names its target with.
+	subjectInput = "subject"
+
 	// pristineDeploymentPath is the deployment the harness copies in at start-up, relative to this
 	// package. Restoring it is how a deployment change this package makes is undone.
 	pristineDeploymentPath = "../resources/deployment.yaml"
+
+	// shippedUserLockThreshold is the user lock threshold in default.json's account_access section.
+	shippedUserLockThreshold = 5
 )
 
-// The policy this package applies through deployment.yaml or a declarative document: short values for
-// the section tests.
+// The shipped administration flows, addressed by handle so the tests do not depend on a seeded id.
+// Applications have no unlock flow because an application never locks.
 const (
-	lockThreshold     = 3
-	firstRungSeconds  = 8
-	secondRungSeconds = 30
-	failureWindowSecs = 600
-	lockDecaySeconds  = 3600
+	unlockFlowHandle = "default-user-unlock-flow"
+
+	agentUnlockFlowHandle = "default-agent-unlock-flow"
+)
+
+// The shipped sign-in, registration and recovery flows: their handle, and the action the shipped
+// sign-in prompt submits the username and password with.
+const (
+	defaultFlowHandle   = "default-flow"
+	shippedSignInAction = "action_001"
+)
+
+// The management collections a governed identity is read back through. The effective status is
+// public API on each.
+const (
+	userCollection  = "users"
+	agentCollection = "agents"
+)
+
+// The policy this package runs under, written to the section's writable layer for a suite's duration.
+// Smaller than the shipped defaults so lockouts are quick and a rung lapses in seconds; the
+// second rung is longer than the first so escalation is observable.
+const (
+	lockThreshold      = 3
+	firstRungSeconds   = 8
+	secondRungSeconds  = 30
+	failureWindowSecs  = 600
+	lockDecaySeconds   = 3600
+	rungLapseTolerance = 3 * time.Second
+)
+
+// The rungs of longRungLockoutPolicy, for suites that never wait for a lock to lapse: the first rung
+// outlasts every test, and the second is far from it, so the rung a lock serves is told apart.
+const (
+	longFirstRungSeconds  = 300
+	longSecondRungSeconds = 900
+)
+
+// Stated holds, as the direct authentication endpoints answer them.
+const (
+	statedLockCode       = "AUTHN-1011"
+	statedSuspensionCode = "AUTHN-1012"
+)
+
+// Stated holds, as the flow executors answer them.
+const (
+	flowStatedSuspensionCode = "FET-1114"
+	flowStatedLockCode       = "FET-1113"
+)
+
+const (
+	// deliveryTimeout bounds the wait for a message the server is expected to send.
+	deliveryTimeout = 5 * time.Second
+
+	// statusPollInterval is how often a wait on a status read reads it again.
+	statusPollInterval = 250 * time.Millisecond
+)
+
+var (
+	// governanceRefusal is the answer a lifecycle step gives when the authority refuses it.
+	governanceRefusal = flowAnswer{status: http.StatusOK, flowStatus: "ERROR", code: "FET-1112"}
+
+	// stringAttribute is a plain string attribute in a user type schema.
+	stringAttribute = map[string]interface{}{"type": "string"}
+
+	// heldRefusalLeak matches what a stated hold must never say: a date, or a count of seconds, minutes
+	// or attempts, which would tell when the lock ends, which rung it serves or how many attempts remain.
+	heldRefusalLeak = regexp.MustCompile(`\d{4}-\d{2}-\d{2}|\d+ (second|minute|attempt)`)
 )
 
 // lockoutPolicy is this package's accountAccess policy. Every sign-in method counts under its own key
@@ -48,6 +123,131 @@ func lockoutPolicy() map[string]interface{} {
 			},
 		},
 	}
+}
+
+// lockoutPolicyWith is this package's policy with override laid over it.
+func lockoutPolicyWith(override map[string]interface{}) map[string]interface{} {
+	return mergeJSONObjects(lockoutPolicy(), override)
+}
+
+// userDefaults is an override of the user category's default policy fields.
+func userDefaults(fields map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{"user": map[string]interface{}{"default": fields}}
+}
+
+// longRungLockoutPolicy is the package policy with rungs that do not lapse during a test.
+func longRungLockoutPolicy() map[string]interface{} {
+	return lockoutPolicyWith(userDefaults(map[string]interface{}{
+		"lockDurationsSeconds": []int{longFirstRungSeconds, longSecondRungSeconds},
+	}))
+}
+
+// nonExpiringRung is a user policy override whose one rung never lapses.
+func nonExpiringRung() map[string]interface{} {
+	return map[string]interface{}{"lockDurationsSeconds": []int{0}}
+}
+
+// authResult is everything an authentication attempt returns that a criterion can be written about.
+type authResult struct {
+	status int
+	body   string
+}
+
+// succeeded reports whether the attempt was admitted.
+func (r authResult) succeeded() bool { return r.status == http.StatusOK }
+
+// authenticate presents one password to the atomic credentials endpoint.
+func authenticate(t *testing.T, identifierKey, identifierValue, credential string) authResult {
+	t.Helper()
+
+	status, body, err := testutils.AuthenticateWithCredentialRaw(identifierKey, identifierValue, "password",
+		credential)
+	require.NoError(t, err, "authentication request failed")
+	return authResult{status: status, body: string(body)}
+}
+
+// requireStatedHold checks a held account's refusal against a wrong secret's on an unheld one: both
+// are refused with the same status, and the held one states the hold by code. It also requires the
+// refusal to name neither the method nor when the lock ends: not the method's identifier, not
+// "unlock", no date, and no count of seconds, minutes or attempts.
+func requireStatedHold(t *testing.T, wrong, held authResult, code, method string) {
+	t.Helper()
+	require.NotEqual(t, http.StatusOK, wrong.status, "the comparison is only meaningful against a refusal")
+	require.False(t, held.succeeded(), "a held account must be refused")
+	require.Equal(t, wrong.status, held.status, "a stated hold keeps the status a refused sign-in has")
+	require.Contains(t, held.body, code, "the refusal must state the hold: %s", held.body)
+	require.NotContains(t, held.body, method, "the refusal must not name the %s method", method)
+	require.NotContains(t, held.body, "unlock", "the refusal must not say when the lock ends")
+	require.NotRegexp(t, heldRefusalLeak, held.body, "the refusal must not give a time, a rung or a count")
+}
+
+// failAuthentication presents a wrong secret count times, requires every attempt to be refused and
+// returns the refusals.
+func failAuthentication(t *testing.T, identifierKey, identifierValue string, count int) []authResult {
+	t.Helper()
+	refusals := make([]authResult, 0, count)
+	for i := range count {
+		res := authenticate(t, identifierKey, identifierValue, "DefinitelyNotTheSecret!"+fmt.Sprint(i))
+		require.False(t, res.succeeded(), "attempt %d was expected to be refused", i+1)
+		refusals = append(refusals, res)
+	}
+	return refusals
+}
+
+// failHeldAuthentication presents a wrong secret count times to a held account and requires every
+// attempt to state the hold by code, as the correct secret's refusal does.
+func failHeldAuthentication(t *testing.T, identifierKey, identifierValue string, count int, code string) {
+	t.Helper()
+	for i, res := range failAuthentication(t, identifierKey, identifierValue, count) {
+		require.Contains(t, res.body, code, "wrong secret %d on a held account must state the hold: %s",
+			i+1, res.body)
+	}
+}
+
+// runtimeRevision returns the revision of the entity's runtime row. Every runtime write, a counted
+// failure included, moves it.
+func runtimeRevision(t *testing.T, entityID string) string {
+	t.Helper()
+	revision, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT REVISION FROM "ENTITY_RUNTIME_DATA" WHERE ENTITY_ID = '%s';`, entityID))
+	require.NoError(t, err, "failed to read the runtime row")
+	require.NotEmpty(t, revision, "the entity must have a runtime row")
+	return revision
+}
+
+// servedRung returns the duration of the lock the runtime row holds for a method ("entity" for the
+// entity-wide entry): its unlock time less the failure that formed it, both written from one clock
+// reading, so the answer does not depend on how long the test took to read it.
+func servedRung(t *testing.T, entityID, method string) time.Duration {
+	t.Helper()
+	raw, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT RUNTIME_ATTRIBUTES FROM "ENTITY_RUNTIME_DATA" WHERE ENTITY_ID = '%s';`, entityID))
+	require.NoError(t, err, "failed to read the runtime row")
+
+	type lockEntry struct {
+		UnlockAt     string `json:"unlockAt"`
+		LastFailedAt string `json:"lastFailedAt"`
+	}
+	var row struct {
+		AccessState struct {
+			Lock struct {
+				Entity                *lockEntry           `json:"entity"`
+				AuthenticationMethods map[string]lockEntry `json:"authenticationMethods"`
+			} `json:"lock"`
+		} `json:"accessState"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &row), "unreadable runtime row: %s", raw)
+
+	entry, recorded := row.AccessState.Lock.AuthenticationMethods[method]
+	if method == "entity" && row.AccessState.Lock.Entity != nil {
+		entry, recorded = *row.AccessState.Lock.Entity, true
+	}
+	require.True(t, recorded, "the runtime row must hold a %s lock: %s", method, raw)
+	unlockAt, err := time.Parse(time.RFC3339, entry.UnlockAt)
+	require.NoError(t, err, "the %s lock must have a finite unlock time: %s", method, raw)
+	failedAt, err := time.Parse(time.RFC3339, entry.LastFailedAt)
+	require.NoError(t, err, "the %s lock must record the failure that formed it: %s", method, raw)
+	return unlockAt.Sub(failedAt)
 }
 
 // getManagement reads one management resource as the administrator, requires it to be answered and
@@ -68,6 +268,190 @@ func getManagement(t *testing.T, path string) []byte {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "an administrator must be able to read %s: %s",
 		path, string(body))
 	return body
+}
+
+// statusReport is the effective access status a management read carries.
+type statusReport testutils.AccessStatus
+
+// readStatus returns the effective status a management read of the user reports.
+func readStatus(t *testing.T, userID string) statusReport {
+	t.Helper()
+	return readEntityStatus(t, userCollection, userID)
+}
+
+// readEntityStatus is readStatus for any governed category; the status object has the same shape on
+// a user, an agent and an application. Every governed read carries a status, ACTIVE included, so an
+// absent one is a regression rather than an active account.
+func readEntityStatus(t *testing.T, collection, entityID string) statusReport {
+	t.Helper()
+
+	status, err := testutils.GetAccessStatus(collection, entityID)
+	require.NoError(t, err, "an administrator must be able to read the %s's status", collection)
+	if status.Details != nil {
+		for _, locked := range status.Details.LockedMethods {
+			if locked.ExpiresAt != "" {
+				_, err := time.Parse(time.RFC3339Nano, locked.ExpiresAt)
+				require.NoError(t, err, "the %s lock reports an unreadable expiry", locked.Method)
+			}
+		}
+	}
+	return statusReport(*status)
+}
+
+// lockedMethods names every authentication method currently locked, in the order the read reported them.
+func (s statusReport) lockedMethods() []string {
+	if s.Details == nil {
+		return nil
+	}
+	methods := make([]string, 0, len(s.Details.LockedMethods))
+	for _, locked := range s.Details.LockedMethods {
+		methods = append(methods, locked.Method)
+	}
+	return methods
+}
+
+// expiryOf returns the reported expiry of one locked method, and whether it was reported at all.
+func (s statusReport) expiryOf(method string) (time.Time, bool) {
+	if s.Details == nil {
+		return time.Time{}, false
+	}
+	for _, locked := range s.Details.LockedMethods {
+		if locked.Method != method || locked.ExpiresAt == "" {
+			continue
+		}
+		// readEntityStatus has already required the expiry to parse.
+		at, _ := time.Parse(time.RFC3339Nano, locked.ExpiresAt)
+		return at, true
+	}
+	return time.Time{}, false
+}
+
+// awaitLapse polls the user's status until the lock that ends at expiry has lapsed, and fails the test
+// if it is still held tolerance after expiry. A status read writes nothing, so polling cannot move the
+// lock.
+func awaitLapse(t *testing.T, userID string, expiry time.Time, tolerance time.Duration) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		status, err := testutils.GetAccessStatus(userCollection, userID)
+		return err == nil && status.Value == "ACTIVE"
+	}, max(time.Until(expiry), 0)+tolerance, statusPollInterval, "the lock must lapse by its reported expiry")
+}
+
+// flowAnswer is what one flow execution answered: the HTTP status, the flow status if a step ran, and
+// the error code from either the step or the engine.
+type flowAnswer struct {
+	status     int
+	flowStatus string
+	code       string
+}
+
+// answerOf reads a flow answer from a raw /flow/execute response.
+func answerOf(status int, raw string) flowAnswer {
+	var read struct {
+		FlowStatus string `json:"flowStatus"`
+		Code       string `json:"code"`
+		Error      *struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(raw), &read)
+	answer := flowAnswer{status: status, flowStatus: read.FlowStatus, code: read.Code}
+	if read.Error != nil {
+		answer.code = read.Error.Code
+	}
+	return answer
+}
+
+// postFlow posts one request to /flow/execute and returns the status and the raw answer whatever they
+// are.
+func postFlow(t *testing.T, body map[string]interface{}) (int, string) {
+	t.Helper()
+	status, raw, err := testutils.ExecuteFlowRaw("", body)
+	require.NoError(t, err, "the flow request must reach the server")
+	return status, string(raw)
+}
+
+// submitSignIn starts the application's sign-in flow and submits a username and password with action,
+// returning the raw answer whatever it is, since a stated refusal and a fault are the subject.
+func submitSignIn(t *testing.T, appID, action, username, password string) (int, string) {
+	t.Helper()
+
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	require.NoError(t, err, "failed to initiate the sign-in flow")
+	require.Equal(t, "INCOMPLETE", step.FlowStatus)
+
+	return postFlow(t, map[string]interface{}{
+		"executionId":    step.ExecutionID,
+		"challengeToken": step.ChallengeToken,
+		"inputs":         map[string]string{"username": username, "password": password},
+		"action":         action,
+	})
+}
+
+// flowStepOf requires a flow answer to have been given and returns the step it carries.
+func flowStepOf(t *testing.T, status int, body string) *common.FlowStep {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, status, body)
+	var step common.FlowStep
+	require.NoError(t, json.Unmarshal([]byte(body), &step), body)
+	return &step
+}
+
+// requireRepromptedWith checks a sign-in step stayed on the credentials prompt and carries the stated
+// hold.
+func requireRepromptedWith(t *testing.T, step *common.FlowStep, code string) {
+	t.Helper()
+
+	require.Equal(t, "INCOMPLETE", step.FlowStatus, "a stated hold must stay on the prompt: %+v", step)
+	require.Empty(t, step.Data.RedirectURL, "a stated hold must not leave the sign-in page")
+	require.NotNil(t, step.Error, "the prompt must state the hold: %+v", step)
+	require.Equal(t, code, step.Error.Code, "the prompt must state the hold")
+	require.True(t, common.HasInput(step.Data.Inputs, "password"),
+		"the prompt must ask for the credentials again: %+v", step)
+}
+
+// attemptAdministrationFlowAs executes one shipped governance flow as the operator the token names.
+func attemptAdministrationFlowAs(t *testing.T, token, handle string, inputs map[string]string) flowAnswer {
+	t.Helper()
+	status, raw, err := testutils.ExecuteAdministrationFlowWithToken(token, handle, inputs)
+	require.NoError(t, err, "failed to execute %s", handle)
+	return answerOf(status, string(raw))
+}
+
+// runAdministrationFlow executes one shipped governance flow as the administrator and requires it to
+// complete. Use it where the operation is a precondition rather than the thing under test.
+func runAdministrationFlow(t *testing.T, handle, subject string) {
+	t.Helper()
+	token, err := testutils.GetAccessToken()
+	require.NoError(t, err, "the administrator must hold a token")
+	answer := attemptAdministrationFlowAs(t, token, handle, map[string]string{subjectInput: subject})
+	require.Equal(t, http.StatusOK, answer.status, "%s was refused at the transport: %+v", handle, answer)
+	require.Equal(t, "COMPLETE", answer.flowStatus, "%s did not complete: %+v", handle, answer)
+}
+
+// applyLockoutPolicy installs this package's policy through the accountAccess section.
+func applyLockoutPolicy(t *testing.T) {
+	t.Helper()
+	applyPolicy(t, lockoutPolicy())
+}
+
+// applyPolicy writes a policy into the section's writable layer, which applies without a restart, and
+// puts the layer back as it was when t ends.
+func applyPolicy(t *testing.T, policy interface{}) {
+	t.Helper()
+
+	original, err := testutils.GetWritableServerConfig(accountAccessSection)
+	require.NoError(t, err, "failed to read the accountAccess section")
+	t.Cleanup(func() {
+		if err := testutils.PutWritableServerConfig(accountAccessSection, original); err != nil {
+			t.Errorf("cleanup: failed to restore the accountAccess section: %v", err)
+		}
+	})
+	body, err := json.Marshal(policy)
+	require.NoError(t, err)
+	require.NoError(t, testutils.PutWritableServerConfig(accountAccessSection, body),
+		"failed to apply the lockout policy")
 }
 
 // applyDeclarativePolicy installs a declarative accountAccess document, which locks the section and
@@ -133,6 +517,137 @@ func restoreShippedPolicy(t *testing.T) {
 	}
 }
 
+// mergeJSONObjects lays override over base, recursing into nested objects; any other value in override
+// replaces the base's. Neither argument is modified.
+func mergeJSONObjects(base, override map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(base))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		baseChild, baseIsObject := merged[key].(map[string]interface{})
+		overrideChild, overrideIsObject := value.(map[string]interface{})
+		if baseIsObject && overrideIsObject {
+			merged[key] = mergeJSONObjects(baseChild, overrideChild)
+			continue
+		}
+		merged[key] = value
+	}
+	return merged
+}
+
+// uniqueSuffix keeps every account in this package distinct, so no test can lock out another's user.
+func uniqueSuffix() string {
+	return strings.ReplaceAll(fmt.Sprintf("%d", time.Now().UnixNano()), "-", "")
+}
+
+// userFixture is an organization unit and user types of its own, and the accounts created in them. It
+// deletes them when the test that built it ends, after the suite's own teardown.
+type userFixture struct {
+	name     string
+	suffix   string
+	ouID     string
+	userType string
+	typeIDs  []string
+	userIDs  []string
+}
+
+// newUserFixture creates the organization unit governance_<name>_ou and, in it, the user type
+// governance_<name>_user as userType describes it.
+func newUserFixture(t *testing.T, name string, userType testutils.UserType) *userFixture {
+	t.Helper()
+
+	f := &userFixture{name: name, suffix: uniqueSuffix(), userType: "governance_" + name + "_user"}
+	t.Cleanup(func() { f.tearDown(t) })
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:      "governance_" + name + "_ou",
+		Name:        "Governance " + name + " OU",
+		Description: "Organization unit for the " + name + " governance tests",
+	})
+	require.NoError(t, err, "failed to create the test organization unit")
+	f.ouID = ouID
+
+	userType.Handle = f.userType
+	f.addUserType(t, userType)
+	return f
+}
+
+// addUserType creates a further user type in the fixture's organization unit.
+func (f *userFixture) addUserType(t *testing.T, userType testutils.UserType) {
+	t.Helper()
+
+	userType.DisplayName = userType.Handle
+	userType.OUID = f.ouID
+	typeID, err := testutils.CreateUserType(userType)
+	require.NoError(t, err, "failed to create user type %s", userType.Handle)
+	f.typeIDs = append(f.typeIDs, typeID)
+}
+
+// newUser creates an account of the fixture's type that no other test touches, named after label,
+// with a password and any extra attributes, and returns its id, username and password.
+func (f *userFixture) newUser(t *testing.T, label string, extra map[string]interface{}) (
+	userID, username, password string) {
+	t.Helper()
+	return f.newUserOfType(t, f.userType, label, extra)
+}
+
+// newUserOfType is newUser for another of the fixture's user types.
+func (f *userFixture) newUserOfType(t *testing.T, userType, label string, extra map[string]interface{}) (
+	userID, username, password string) {
+	t.Helper()
+
+	username = f.usernameFor(label)
+	password = "Correct-Horse-" + label + "1!"
+	attributes := map[string]interface{}{"username": username, "password": password}
+	for key, value := range extra {
+		attributes[key] = value
+	}
+	raw, err := json.Marshal(attributes)
+	require.NoError(t, err)
+
+	userID, err = testutils.CreateUser(testutils.User{Type: userType, OUID: f.ouID, Attributes: raw})
+	require.NoError(t, err, "failed to create %s", username)
+	f.userIDs = append(f.userIDs, userID)
+	return userID, username, password
+}
+
+// usernameFor is the username newUser gives the account it creates under label.
+func (f *userFixture) usernameFor(label string) string {
+	return fmt.Sprintf("%s_%s_%s", f.name, label, f.suffix)
+}
+
+// tearDown deletes what the fixture created, logging rather than failing.
+func (f *userFixture) tearDown(t *testing.T) {
+	t.Helper()
+	for _, userID := range f.userIDs {
+		if err := testutils.DeleteUser(userID); err != nil {
+			t.Logf("teardown: failed to delete user %s: %v", userID, err)
+		}
+	}
+	for _, typeID := range f.typeIDs {
+		if err := testutils.DeleteUserType(typeID); err != nil {
+			t.Logf("teardown: failed to delete user type %s: %v", typeID, err)
+		}
+	}
+	if f.ouID != "" {
+		if err := testutils.DeleteOrganizationUnit(f.ouID); err != nil {
+			t.Logf("teardown: failed to delete organization unit: %v", err)
+		}
+	}
+}
+
+// credentialsSchema is a user type schema with a username and a password, plus any extra attributes.
+func credentialsSchema(extra map[string]interface{}) map[string]interface{} {
+	schema := map[string]interface{}{
+		"username": map[string]interface{}{"type": "string"},
+		"password": map[string]interface{}{"type": "string", "credential": true},
+	}
+	for key, value := range extra {
+		schema[key] = value
+	}
+	return schema
+}
+
 // putSection writes a server-config section's writable layer and returns the status and body, for a
 // write whose refusal is the subject rather than an error.
 func putSection(t *testing.T, section, body string) (int, string) {
@@ -140,4 +655,104 @@ func putSection(t *testing.T, section, body string) (int, string) {
 	status, response, err := testutils.PutWritableServerConfigWithStatus(section, []byte(body))
 	require.NoError(t, err, "the %s write must be answered", section)
 	return status, string(response)
+}
+
+// copyShippedFlowWithSender creates a copy of a shipped flow under its own handle, with senderID named
+// on one of its email nodes as an operator must name one, since a flow email node has no default
+// sender. calls maps a CALL node's ID to the flow the copy calls there instead, so the copy can serve
+// an application whose flows must reference one another. The shipped flow is left as it is, and the
+// copy is deleted when t ends. It returns the copy's ID and handle.
+func copyShippedFlowWithSender(t *testing.T, handle, flowType, nodeID, senderID string,
+	calls map[string]string) (flowID, copyHandle string) {
+	t.Helper()
+
+	shippedID, err := testutils.GetFlowIDByHandle(handle, flowType)
+	require.NoError(t, err, "the %s %s flow must ship", handle, flowType)
+	var flow testutils.Flow
+	require.NoError(t, json.Unmarshal(getManagement(t, "/flows/"+shippedID), &flow))
+	require.NoError(t, testutils.SetFlowNodeProperty(&flow, nodeID, "senderId", senderID),
+		"flow %s must carry a %s node", handle, nodeID)
+	for callNodeID, calledFlowID := range calls {
+		require.NoError(t, testutils.ModifyFlowNode(&flow, callNodeID, func(node map[string]interface{}) {
+			node["flow"] = map[string]interface{}{"ref": calledFlowID}
+		}), "flow %s must carry a %s node", handle, callNodeID)
+	}
+
+	flow.Name += " with a sender"
+	flow.Handle = handle + "-with-sender"
+	flowID, err = testutils.CreateFlow(flow)
+	require.NoError(t, err, "failed to copy the %s flow", handle)
+	t.Cleanup(func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			t.Logf("teardown: failed to delete the copy of %s: %v", handle, err)
+		}
+	})
+	return flowID, flow.Handle
+}
+
+// putManagement writes one management resource as the administrator and returns the status and the
+// body, whatever they are.
+func putManagement(t *testing.T, path string, body interface{}) (int, string) {
+	t.Helper()
+
+	payload, err := json.Marshal(body)
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodPut, testServerURL+path, bytes.NewReader(payload))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	require.NoError(t, err, "the write of %s failed", path)
+	defer resp.Body.Close()
+	response, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, string(response)
+}
+
+// newShippedFlowApp creates an application in the fixture's organization unit that signs in, registers
+// and recovers through the shipped default flows, which call one another, so it names all three. It
+// is deleted when t ends, before the fixture.
+func newShippedFlowApp(t *testing.T, users *userFixture, name string) string {
+	t.Helper()
+
+	shipped := make(map[string]string, 3)
+	for _, flowType := range []string{"AUTHENTICATION", "REGISTRATION", "RECOVERY"} {
+		flowID, err := testutils.GetFlowIDByHandle(defaultFlowHandle, flowType)
+		require.NoError(t, err, "the default %s flow must ship", flowType)
+		shipped[flowType] = flowID
+	}
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      users.ouID,
+		Name:                      "Governance " + name + " Shipped Flows App",
+		Description:               "Application that runs the shipped default flows",
+		IsRegistrationFlowEnabled: true,
+		IsRecoveryFlowEnabled:     true,
+		ClientID:                  "governance_" + name + "_shipped_client",
+		ClientSecret:              "governance_" + name + "_shipped_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{users.userType},
+		AuthFlowID:                shipped["AUTHENTICATION"],
+		RegistrationFlowID:        shipped["REGISTRATION"],
+		RecoveryFlowID:            shipped["RECOVERY"],
+	})
+	require.NoError(t, err, "failed to create the %s application", name)
+	t.Cleanup(func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			t.Logf("teardown: failed to delete application %s: %v", appID, err)
+		}
+	})
+	return appID
+}
+
+// awaitDelivered polls take until it hands back a message, and fails the test if none arrives within
+// deliveryTimeout.
+func awaitDelivered[M any](t *testing.T, take func() *M, msg string) *M {
+	t.Helper()
+
+	var got *M
+	require.Eventually(t, func() bool {
+		got = take()
+		return got != nil
+	}, deliveryTimeout, 100*time.Millisecond, msg)
+	return got
 }

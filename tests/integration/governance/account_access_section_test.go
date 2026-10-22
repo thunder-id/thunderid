@@ -21,6 +21,7 @@ import (
 // restart, the section overlays the defaults, and a misspelled key is refused.
 type AccountAccessSectionTestSuite struct {
 	suite.Suite
+	users *userFixture
 
 	// originalWritable is the writable layer as the suite found it: the bootstrap stores the lock
 	// email templates there, so it is put back rather than cleared.
@@ -31,9 +32,13 @@ func TestAccountAccessSectionTestSuite(t *testing.T) {
 	suite.Run(t, new(AccountAccessSectionTestSuite))
 }
 
-// sectionThreshold differs from the package's lockThreshold, so a merged threshold of this value came
-// from the section's writable layer.
+// sectionThreshold is lower than the deployment's lockThreshold, so an account locked at this count
+// was locked by the section.
 const sectionThreshold = 2
+
+// sectionWindowPause outlasts a one-second failure window whatever second a failure falls in, since
+// the window is compared at second precision.
+const sectionWindowPause = 2 * time.Second
 
 func (ts *AccountAccessSectionTestSuite) SetupSuite() {
 	applyDeploymentLockoutPolicy(ts.T())
@@ -41,6 +46,8 @@ func (ts *AccountAccessSectionTestSuite) SetupSuite() {
 	ts.originalWritable, err = testutils.GetWritableServerConfig(accountAccessSection)
 	ts.Require().NoError(err, "failed to read the accountAccess section")
 	ts.clearSection()
+
+	ts.users = newUserFixture(ts.T(), "policy_section", testutils.UserType{Schema: credentialsSchema(nil)})
 }
 
 // SetupTest empties the writable layer, which is stored and outlives a restart, so one test's policy
@@ -58,8 +65,27 @@ func (ts *AccountAccessSectionTestSuite) TearDownSuite() {
 	}
 }
 
-// The writable section keeps fields supplied by the deployment defaults.
+// The section is served, and a threshold written through it takes effect without a restart.
+func (ts *AccountAccessSectionTestSuite) TestAThresholdWrittenThroughTheSectionTakesEffectAtOnce() {
+	ts.Require().Contains(ts.sectionNames(), accountAccessSection,
+		"the account-lock policy must be one of the sections an operator can edit")
+
+	userID, username, _ := ts.users.newUser(ts.T(), "section_threshold", nil)
+
+	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection,
+		userThresholdSection(sectionThreshold)), "the section must accept a threshold")
+
+	failAuthentication(ts.T(), "username", username, sectionThreshold)
+
+	ts.Equal("LOCKED", readStatus(ts.T(), userID).Value,
+		"the written threshold must be in force on the very next attempt, with no restart")
+}
+
+// The writable section keeps fields supplied by the deployment defaults. Checked at the read and
+// at the behaviour, since a threshold with no window is treated as disabled.
 func (ts *AccountAccessSectionTestSuite) TestTheSectionOverlaysTheDeploymentRatherThanReplacingIt() {
+	userID, username, password := ts.users.newUser(ts.T(), "section_overlay", nil)
+
 	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection,
 		userThresholdSection(sectionThreshold)), "the section must accept a threshold")
 
@@ -69,6 +95,14 @@ func (ts *AccountAccessSectionTestSuite) TestTheSectionOverlaysTheDeploymentRath
 		"a window the write did not mention must still come from the deployment defaults")
 	ts.Equal([]int{firstRungSeconds, secondRungSeconds}, merged.LockDurationsSeconds,
 		"the ladder the write did not mention must still come from the deployment defaults")
+
+	failAuthentication(ts.T(), "username", username, sectionThreshold)
+	ts.Require().Equal("LOCKED", readStatus(ts.T(), userID).Value,
+		"a threshold with no window locks nobody, so a lock here is the merge working")
+
+	// The deployment defaults supply the finite rung.
+	ts.False(authenticate(ts.T(), "username", username, password).succeeded(),
+		"the correct secret must be refused while the lock stands")
 }
 
 // A write that names only the user category leaves the agent policy the defaults give.
@@ -94,6 +128,11 @@ func (ts *AccountAccessSectionTestSuite) TestAMisspelledSettingIsRefusedAndPersi
 	ts.Require().NoError(err)
 	ts.NotContains(string(writable), "lockThreshold",
 		"a refused write must not have persisted")
+
+	userID, username, _ := ts.users.newUser(ts.T(), "section_misspelled", nil)
+	failAuthentication(ts.T(), "username", username, sectionThreshold)
+	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value,
+		"the deployment threshold must still be the one in force")
 }
 
 // Settings the section no longer defines are refused like any unknown key: a per-method `methods`
@@ -151,12 +190,47 @@ func (ts *AccountAccessSectionTestSuite) TestInvalidValuesAreRefusedAndChangeNot
 		"a duration at the bound must be accepted")
 }
 
+// A window of zero never resets the failure count on time. Under a one-second window the pause
+// restarts the count; under a zero window the second failure locks.
+func (ts *AccountAccessSectionTestSuite) TestAZeroWindowKeepsCountingFailuresAcrossAPause() {
+	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection,
+		[]byte(fmt.Sprintf(`{"user":{"default":{"threshold":%d,"failureWindowSeconds":1}}}`, sectionThreshold))),
+		"the section must accept a one-second window")
+	resetID, resetName, _ := ts.users.newUser(ts.T(), "section_window_reset", nil)
+	failAuthentication(ts.T(), "username", resetName, 1)
+	time.Sleep(sectionWindowPause)
+	failAuthentication(ts.T(), "username", resetName, 1)
+	ts.Equal("ACTIVE", readStatus(ts.T(), resetID).Value,
+		"a failure older than the window must restart the count")
+
+	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection,
+		[]byte(fmt.Sprintf(`{"user":{"default":{"threshold":%d,"failureWindowSeconds":0}}}`, sectionThreshold))),
+		"the section must accept a zero window")
+	ts.Equal(0, readMergedDefault(ts.T(), "user").FailureWindowSeconds, "the zero must be kept, not dropped")
+	keptID, keptName, _ := ts.users.newUser(ts.T(), "section_window_never", nil)
+	failAuthentication(ts.T(), "username", keptName, 1)
+	time.Sleep(sectionWindowPause)
+	failAuthentication(ts.T(), "username", keptName, 1)
+	ts.Equal("LOCKED", readStatus(ts.T(), keptID).Value,
+		"under a zero window the earlier failure must still count")
+}
+
 // clearSection empties the writable layer; a suite that starts on somebody else's policy is not
 // testing what it says.
 func (ts *AccountAccessSectionTestSuite) clearSection() {
 	ts.T().Helper()
 	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection, []byte(`{}`)),
 		"failed to clear the %s section", accountAccessSection)
+}
+
+// sectionNames lists the server-config sections an operator can edit.
+func (ts *AccountAccessSectionTestSuite) sectionNames() []string {
+	ts.T().Helper()
+
+	body := getManagement(ts.T(), "/server-config")
+	var names []string
+	ts.Require().NoError(json.Unmarshal(body, &names), "unreadable section list: %s", string(body))
+	return names
 }
 
 // AccountAccessDeclarativeLockTestSuite checks that a declarative accountAccess document wins over

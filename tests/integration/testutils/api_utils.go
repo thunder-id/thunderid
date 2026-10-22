@@ -2687,6 +2687,23 @@ func DeleteNotificationSender(senderID string) error {
 // AuthenticateWithCredential authenticates a user via the credentials endpoint.
 // Returns (true, nil) on success, (false, nil) on auth failure, (false, err) on request error.
 func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, credentialValue string) (bool, error) {
+	status, body, err := AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusOK {
+		return true, nil
+	}
+	if status == http.StatusUnauthorized || status == http.StatusBadRequest {
+		return false, nil
+	}
+	return false, fmt.Errorf("unexpected auth status %d: %s", status, string(body))
+}
+
+// AuthenticateWithCredentialRaw presents one identifier and one credential to the credentials
+// endpoint and returns the HTTP status and the response body, whatever they are.
+func AuthenticateWithCredentialRaw(identifierKey, identifierValue, credentialKey, credentialValue string) (
+	int, []byte, error) {
 	reqBody := map[string]interface{}{
 		"identifiers": map[string]interface{}{
 			identifierKey: identifierValue,
@@ -2698,65 +2715,39 @@ func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, c
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/auth/credentials/authenticate", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
+		bytes.NewReader(bodyBytes))
 	if err != nil {
-		return false, fmt.Errorf("failed to create auth request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := GetHTTPClient()
-	resp, err := client.Do(req)
+	resp, err := GetHTTPClient().Do(req)
 	if err != nil {
-		return false, fmt.Errorf("auth request failed: %w", err)
+		return 0, nil, fmt.Errorf("auth request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		return true, nil
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read auth response: %w", err)
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
-		return false, nil
-	}
-	body, _ := io.ReadAll(resp.Body)
-	return false, fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, string(body))
+	return resp.StatusCode, body, nil
 }
 
 // ObtainAuthAssertion authenticates a user with a password and returns the auth assertion from the
 // response. Enrolling a credential requires an assertion proving the target user, so suites that
 // bootstrap a passkey through the direct API need the user to hold another credential first.
 func ObtainAuthAssertion(username, password string) (string, error) {
-	reqBody := map[string]interface{}{
-		"identifiers": map[string]interface{}{"username": username},
-		"credentials": map[string]interface{}{"password": password},
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	status, responseBody, err := AuthenticateWithCredentialRaw("username", username, "password", password)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal auth request: %w", err)
+		return "", err
 	}
-
-	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
-		bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create auth request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := GetHTTPClient().Do(req)
-	if err != nil {
-		return "", fmt.Errorf("auth request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read auth response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, responseBody)
+	if status != http.StatusOK {
+		return "", fmt.Errorf("unexpected auth status %d: %s", status, responseBody)
 	}
 
 	var authResponse AuthenticationResponse
@@ -2972,4 +2963,64 @@ func DeleteResource(resourceServerID, resourceID string) error {
 		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
+}
+
+// ExecuteAdministrationFlowWithToken executes an ADMINISTRATION flow, addressed by handle, as the
+// operator the bearer token names, and returns the HTTP status and the raw answer, for a caller that
+// reads an error code.
+func ExecuteAdministrationFlowWithToken(token, handle string, inputs map[string]string) (int, []byte, error) {
+	flowID, err := GetFlowIDByHandle(handle, "ADMINISTRATION")
+	if err != nil {
+		return 0, nil, err
+	}
+	return ExecuteFlowRaw(token, map[string]interface{}{"flowId": flowID, "inputs": inputs})
+}
+
+// ExecuteFlowRaw posts one request to /flow/execute and returns the HTTP status and the raw answer,
+// whatever they are. It goes through the raw client, since the shared clients treat /flow/execute as
+// public, and sends the bearer token when one is given.
+func ExecuteFlowRaw(token string, body map[string]interface{}) (int, []byte, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/flow/execute", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := GetRawHTTPClient().Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.StatusCode, raw, nil
+}
+
+// GetAccessStatus returns the effective access status a management read reports for a governed
+// identity; collection is users, agents or applications. A read without a status is an error, since
+// every governed read carries one, ACTIVE included.
+func GetAccessStatus(collection, entityID string) (*AccessStatus, error) {
+	body, err := getJSON(fmt.Sprintf("%s/%s/%s", TestServerURL, collection, entityID))
+	if err != nil {
+		return nil, err
+	}
+	var read struct {
+		Status *AccessStatus `json:"status"`
+	}
+	if err := json.Unmarshal(body, &read); err != nil {
+		return nil, fmt.Errorf("failed to parse the %s read: %w", collection, err)
+	}
+	if read.Status == nil {
+		return nil, fmt.Errorf("the %s read carries no status: %s", collection, string(body))
+	}
+	return read.Status, nil
 }
