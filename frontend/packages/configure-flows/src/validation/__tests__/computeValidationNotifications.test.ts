@@ -503,6 +503,74 @@ describe('computeValidationNotifications', () => {
       expect(result.get('email-step-1_EMAIL_NO_SENDER')!.getType()).toBe(NotificationType.ERROR);
     });
 
+    const executorWithInputs = (inputs: Record<string, unknown>[], extra: Record<string, unknown> = {}) => [
+      createNode({
+        id: 'exec-step-1',
+        data: {action: {executor: {name: 'ProvisioningExecutor', inputs}}, ...extra} as unknown as StepData,
+      }),
+    ];
+    const inputsField = 'exec-step-1_data.action.executor.inputs';
+
+    it.each([
+      ['no default', {}],
+      ['an empty default', {defaultValue: ''}],
+    ])('should report a constant executor input with %s as an error', (_label, extra) => {
+      const nodes = executorWithInputs([
+        {type: 'TEXT_INPUT', identifier: 'locale', required: false, constant: true, ...extra},
+      ]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      const notification = result.get('exec-step-1_REQUIRED_FIELD_ERROR');
+      expect(notification?.getType()).toBe(NotificationType.ERROR);
+      expect(notification?.getResourceFieldNotification(inputsField)).toBe(
+        'flows:core.validation.fields.executor.inputs',
+      );
+    });
+
+    it.each([
+      ['a constant with a default', {constant: true, defaultValue: 'en-US'}],
+      ['a default that is not constant', {defaultValue: 'en-US'}],
+      ['neither', {}],
+    ])('should not report an executor input with %s', (_label, extra) => {
+      const nodes = executorWithInputs([{type: 'TEXT_INPUT', identifier: 'locale', required: false, ...extra}]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('exec-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
+    it('should not report an executor whose inputs are not a list', () => {
+      const nodes = executorWithInputs('invalid' as unknown as Record<string, unknown>[]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('exec-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
+    it('should report the inputs and another missing field of the same executor in one notification', () => {
+      const nodes = [
+        createNode({
+          id: 'sms-step-1',
+          data: {
+            action: {
+              executor: {
+                name: 'SMSExecutor',
+                inputs: [{type: 'TEXT_INPUT', identifier: 'locale', required: false, constant: true}],
+              },
+            },
+            properties: {},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      const notification = result.get('sms-step-1_REQUIRED_FIELD_ERROR');
+      expect(notification?.hasResourceFieldNotification('sms-step-1_data.properties.senderId')).toBe(true);
+      expect(notification?.hasResourceFieldNotification('sms-step-1_data.action.executor.inputs')).toBe(true);
+    });
+
     it('should not report an email executor with a provider selected', () => {
       const nodes = [
         createNode({
@@ -940,6 +1008,62 @@ describe('computeValidationNotifications', () => {
       const edges = [edge('linking', 'linking_INCOMPLETE', 'link_prompt'), edge('linking', 'failure', 'linking')];
 
       expect(run(baseNodes(), edges).has('linking_LINKING_FAILURE_LOOP')).toBe(true);
+    });
+  });
+
+  describe('Prompt input held constant rule', () => {
+    const NOTIFICATION_ID = 'input_faculty_INPUT_HELD_CONSTANT';
+
+    const executorNode = (inputs: Record<string, unknown>[]): Node =>
+      createNode({
+        id: 'exec_1',
+        data: {action: {executor: {name: 'ProvisioningExecutor', inputs}}} as unknown as StepData,
+      });
+    const promptNode = (input: Record<string, unknown>): Node =>
+      createElementNode('prompt_1', [
+        {
+          id: 'block_1',
+          type: 'BLOCK',
+          category: 'BLOCK',
+          components: [{type: 'TEXT_INPUT', category: 'FIELD', ...input}],
+        },
+      ]);
+    const compute = (nodes: Node[]) =>
+      computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, []);
+
+    const constantFaculty = {
+      type: 'TEXT_INPUT',
+      identifier: 'faculty',
+      required: false,
+      defaultValue: 'Eng',
+      constant: true,
+    };
+
+    it('should report a prompt input an executor holds constant', () => {
+      const result = compute([executorNode([constantFaculty]), promptNode({id: 'input_faculty', ref: 'faculty'})]);
+
+      const notification = result.get(NOTIFICATION_ID)!;
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.ERROR);
+      expect(notification.hasResource('input_faculty')).toBe(true);
+    });
+
+    it('should match the input by its name before its ref', () => {
+      const result = compute([
+        executorNode([constantFaculty]),
+        promptNode({id: 'input_faculty', name: 'faculty', ref: 'department'}),
+      ]);
+
+      expect(result.has(NOTIFICATION_ID)).toBe(true);
+    });
+
+    it.each([
+      ['the executor input is not constant', {...constantFaculty, constant: false}],
+      ['the constant is for another input', {...constantFaculty, identifier: 'department'}],
+    ])('should accept the flow when %s', (_, executorInput) => {
+      const result = compute([executorNode([executorInput]), promptNode({id: 'input_faculty', ref: 'faculty'})]);
+
+      expect(result.has(NOTIFICATION_ID)).toBe(false);
     });
   });
 

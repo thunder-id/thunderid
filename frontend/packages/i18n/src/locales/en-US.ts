@@ -4746,6 +4746,16 @@ const translations = {
     'core.executions.inputs.identifierLabel': 'Identifier',
     'core.executions.inputs.identifierPlaceholder': 'e.g., username, email',
     'core.executions.inputs.required': 'Required',
+    'core.executions.inputs.defaultLabel': 'Default value',
+    'core.executions.inputs.defaultHint':
+      'Used when the flow has no value for this input yet. A value that is already available is kept.',
+    'core.executions.inputs.defaultPlaceholder': 'Enter a value',
+    'core.executions.inputs.defaultNotSet': 'Not set',
+    'core.executions.inputs.defaultTrue': 'True',
+    'core.executions.inputs.defaultFalse': 'False',
+    'core.executions.inputs.constant': 'Constant',
+    'core.executions.inputs.constantHint':
+      'Replaces a submitted or available value with the default value when this step runs, unless the step reads that value from an earlier step. Needs a default value.',
     'core.executions.inputs.add': 'Add input',
     'core.executions.inputs.remove': 'Remove input',
     'core.executions.inputs.empty': 'No custom inputs configured. The executor will use its default inputs.',
@@ -4756,6 +4766,7 @@ const translations = {
     'core.executions.inputs.types.phone': 'Phone',
     'core.executions.inputs.types.consent': 'Consent',
     'core.executions.inputs.types.select': 'Select',
+    'core.executions.inputs.types.boolean': 'Boolean',
 
     // Execution steps - tooltips and messages
     // No-config executors
@@ -4791,6 +4802,7 @@ const translations = {
 
     // Validation messages - executor
     'core.validation.fields.executor.general': 'The executor <0>{{id}}</0> is not properly configured.',
+    'core.validation.fields.executor.inputs': 'One or more inputs are not properly configured.',
 
     // Validation messages - call
     'core.validation.fields.call.general': 'The Call node <0>{{id}}</0> has no referenced flow.',
@@ -4860,6 +4872,8 @@ const translations = {
       'SSO check <code>{{id}}</code> does not reference a session checkpoint. Select one in its properties, or remove the step.',
     'core.validation.sso.invalidCheckpointRef':
       'SSO check <code>{{id}}</code> references a session step that no longer exists. Select a valid session checkpoint in its properties.',
+    'core.validation.inputs.heldConstant':
+      'The input <code>{{id}}</code> asks for a value that an executor holds constant, so the value entered here would be replaced. Remove the input from this screen or remove the constant.',
     'core.validation.sso.orphanSession':
       'Session step <code>{{id}}</code> is not referenced by any SSO check. Add an SSO check that uses it, or remove the step.',
 

@@ -35,6 +35,7 @@ type GraphInterface interface {
 	SetInterceptors(resolved map[providers.InterceptorMode][]InterceptorUnitInterface)
 	GetVersion() int
 	SetVersion(version int)
+	IsConstantInput(identifier string) bool
 }
 
 // graph implements the GraphInterface for the flow execution
@@ -47,6 +48,9 @@ type graph struct {
 	segments     []Segment
 	interceptors map[providers.InterceptorMode][]InterceptorUnitInterface
 	version      int
+
+	constantInputs map[string]struct{}
+	plainInputs    map[string]struct{}
 }
 
 // GetID returns the unique ID of the graph
@@ -66,7 +70,16 @@ func (g *graph) AddNode(node NodeInterface) error {
 	}
 
 	g.nodes[node.GetID()] = node
+	g.recordInputs(node)
 	return nil
+}
+
+// IsConstantInput reports whether an executor node fixes the input's value and no node in the graph asks
+// for it as an ordinary input.
+func (g *graph) IsConstantInput(identifier string) bool {
+	_, constant := g.constantInputs[identifier]
+	_, plain := g.plainInputs[identifier]
+	return constant && !plain
 }
 
 // GetNode retrieves a node by its ID
@@ -339,4 +352,24 @@ func (g *graph) ToJSON() (string, error) {
 	}
 
 	return string(jsonBytes), nil
+}
+
+// recordInputs notes which inputs the node holds constant and which it asks for as ordinary inputs.
+func (g *graph) recordInputs(node NodeInterface) {
+	var inputs []providers.Input
+	if execNode, ok := node.(ExecutorBackedNodeInterface); ok {
+		inputs = execNode.GetInputs()
+	} else if promptNode, ok := node.(PromptNodeInterface); ok {
+		for _, prompt := range promptNode.GetPrompts() {
+			inputs = append(inputs, prompt.Inputs...)
+		}
+	}
+
+	for _, input := range inputs {
+		if input.Constant {
+			g.constantInputs[input.Identifier] = struct{}{}
+		} else {
+			g.plainInputs[input.Identifier] = struct{}{}
+		}
+	}
 }

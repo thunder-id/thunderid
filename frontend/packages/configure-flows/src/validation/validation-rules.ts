@@ -11,6 +11,8 @@ import Notification, {NotificationType} from '../models/notification';
 import type {Resource} from '../models/resources';
 import {ExecutionTypes, StepTypes} from '../models/steps';
 import type {StepData} from '../models/steps';
+import {getExecutorInputs, hasInvalidInputConfig} from '../utils/executorInputs';
+import {getInputIdentifier, INPUT_ELEMENT_TYPES} from '../utils/inputTypeMapping';
 
 /** Placeholder a flow template carries until a sender is assigned. */
 const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
@@ -23,6 +25,11 @@ export interface RequiredFieldRule {
   name: string;
   /** i18n key for the per-field error message. */
   errorMessageKey: string;
+  /**
+   * Replaces the non-empty check for a field that must also satisfy a condition. Returns true when the
+   * field is not configured correctly.
+   */
+  isInvalid?: (resource: Resource) => boolean;
 }
 
 /**
@@ -215,6 +222,18 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
   {
     match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.OTPExecutor,
     fields: [],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
+  // Executor inputs: every input's default and constant settings must be applicable
+  {
+    match: (r) => getExecutorInputs(r).length > 0,
+    fields: [
+      {
+        name: 'data.action.executor.inputs',
+        errorMessageKey: 'flows:core.validation.fields.executor.inputs',
+        isInvalid: (r) => getExecutorInputs(r).some(hasInvalidInputConfig),
+      },
+    ],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
   // OpenID4VP verify executor
@@ -684,9 +703,53 @@ export const richTextActionWiringRule: GraphValidationRule = (nodes: Node[], edg
 };
 
 /**
+ * Collects the input elements of a step, including ones nested inside containers such as a form block.
+ */
+function collectInputElements(elements: FlowElement[] | undefined): FlowElement[] {
+  if (!elements) {
+    return [];
+  }
+
+  return elements.flatMap((element) => [
+    ...(INPUT_ELEMENT_TYPES.has(element.type) ? [element] : []),
+    ...collectInputElements(element.components),
+  ]);
+}
+
+/**
+ * Mirrors the backend rule that a prompt cannot ask for an input an executor holds constant.
+ */
+export const promptInputHeldConstantRule: GraphValidationRule = (nodes: Node[]): Notification[] => {
+  const constantIdentifiers = new Set(
+    nodes
+      .flatMap((node) => getExecutorInputs(node as unknown as Resource))
+      .filter((input) => input.constant === true)
+      .map((input) => input.identifier),
+  );
+  if (constantIdentifiers.size === 0) {
+    return [];
+  }
+
+  return nodes
+    .flatMap((node) => collectInputElements((node.data as StepData | undefined)?.components))
+    .filter((element) => constantIdentifiers.has(getInputIdentifier(element)))
+    .map((element) =>
+      createGraphElementNotification(
+        `${element.id}_INPUT_HELD_CONSTANT`,
+        'flows:core.validation.inputs.heldConstant',
+        element,
+        NotificationType.ERROR,
+      ),
+    );
+};
+
+/**
  * Rules that apply to every flow type.
  */
-export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [richTextActionWiringRule];
+export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
+  richTextActionWiringRule,
+  promptInputHeldConstantRule,
+];
 
 export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
   ssoPairingRule,

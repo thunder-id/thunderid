@@ -175,6 +175,16 @@ func resolveInputIdentifierByType(ctx *providers.NodeContext, inputType string, 
 	return fallback
 }
 
+// isConstantNodeInput reports whether the running node holds the input constant.
+func isConstantNodeInput(ctx *providers.NodeContext, identifier string) bool {
+	for _, input := range ctx.NodeInputs {
+		if input.Identifier == identifier {
+			return input.Constant
+		}
+	}
+	return false
+}
+
 // findInputByType returns the first input in the given slice whose Type matches inputType.
 func findInputByType(inputs []providers.Input, inputType string) (providers.Input, bool) {
 	for _, input := range inputs {

@@ -1026,6 +1026,26 @@ func (suite *EmailExecutorTestSuite) TestResolveRecipientEmail_UserInputWinsOver
 	suite.Equal("claimed@example.com", recipient)
 }
 
+func (suite *EmailExecutorTestSuite) TestResolveRecipientEmail_ConstantWinsOverEarlierValues() {
+	ctx := &providers.NodeContext{
+		NodeInputs:    []providers.Input{{Identifier: "email", Type: providers.InputTypeEmail, Constant: true}},
+		UserInputs:    map[string]string{"email": "constant@example.com"},
+		RuntimeData:   map[string]string{"email": "runtime@example.com"},
+		ForwardedData: map[string]interface{}{"email": "forwarded@example.com"},
+	}
+
+	recipient, err := suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+
+	suite.NoError(err)
+	suite.Equal("constant@example.com", recipient)
+
+	ctx.NodeInputs[0].Constant = false
+	recipient, err = suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+
+	suite.NoError(err)
+	suite.Equal("forwarded@example.com", recipient)
+}
+
 func (suite *EmailExecutorTestSuite) TestResolveTemplateData_ExternalClaims() {
 	ctx := &providers.NodeContext{
 		Application: providers.Application{Name: "MyApp"},
