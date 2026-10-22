@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/attributecache"
@@ -187,6 +188,7 @@ type ExecutorDependencies struct {
 	CriteriaRevoker       revocation.CriteriaRevoker
 	ResourceMgtService    resource.ResourceServiceInterface
 	IdentityGovernance    providers.IdentityGovernanceProvider
+	TokenLeeway           time.Duration
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -266,7 +268,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
-				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
+				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
@@ -277,7 +279,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			}
 			reg.RegisterExecutor(ExecutorNameIdentifying, newIdentifyingExecutor(
 				"", identifyingInputs, []providers.Input{}, deps.FlowFactory, deps.EntityProvider,
-				deps.AuthnProvider))
+				deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameConsent: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameConsent, newConsentExecutor(
@@ -303,7 +305,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSession: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSession, newSessionExecutor(
-				deps.FlowFactory, deps.SessionService, deps.AuthnProvider))
+				deps.FlowFactory, deps.SessionService, deps.AuthnProvider,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameSessionSignOut: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionSignOut, newSessionSignOutExecutor(
@@ -354,6 +357,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameIdentityGovernance,
 				newIdentityGovernanceExecutor(deps.FlowFactory, deps.IdentityGovernance))
+		},
+		ExecutorNamePreSuspend: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreSuspend,
+				newPreSuspendExecutor(deps.FlowFactory, deps.IdentityGovernance, deps.TokenLeeway))
 		},
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
@@ -466,6 +473,7 @@ type applicationAdminProvider interface {
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
 		string, *tidcommon.ServiceError)
+	GetOAuthClientID(ctx context.Context, entityID string) (string, *tidcommon.ServiceError)
 }
 
 // roleAdminProvider is the role seam the access change validator and the role executor consume.

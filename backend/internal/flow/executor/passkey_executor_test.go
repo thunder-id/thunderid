@@ -641,6 +641,39 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ServiceErro
 	assert.Contains(suite.T(), inputIDs, inputAttestationObject)
 }
 
+// The start fails the step; the finish re-prompts, as a failed registration does.
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterStatesASuspension() {
+	start := createPasskeyNodeContext(passkeyExecutorModeRegStart, providers.FlowTypeRegistration)
+	start.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.mockAuthnProvider.On("InitiateEnrollment", mock.Anything, passkey.CredentialType,
+		mock.Anything, mock.Anything).Return(nil, &authnprovidermgr.ErrorAccountSuspended).Once()
+
+	resp, err := suite.executor.Execute(start)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+
+	finish := createPasskeyNodeContext(passkeyExecutorModeRegFinish, providers.FlowTypeRegistration)
+	finish.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	finish.RuntimeData[runtimePasskeySessionToken] = testSessionToken
+	finish.UserInputs = map[string]string{
+		inputCredentialID:      testCredentialIDValue,
+		inputClientDataJSON:    "client-data",
+		inputAttestationObject: "attestation",
+	}
+	suite.mockAuthnProvider.On("Enroll", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return(
+		providers.AuthUser{}, nil, &authnprovidermgr.ErrorAccountSuspended).Once()
+
+	resp, err = suite.executor.Execute(finish)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.NotEmpty(resp.Inputs)
+}
+
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ServiceError_Server() {
 	ctx := createPasskeyNodeContext(passkeyExecutorModeRegFinish, providers.FlowTypeRegistration)
 	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID

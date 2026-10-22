@@ -96,7 +96,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameIdentityGovernance: {
-		SupportedModes:     []string{ExecutorModeUnlock},
+		SupportedModes:     []string{ExecutorModeUnlock, ExecutorModeSuspend, ExecutorModeUnsuspend},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY"},
 	},
 	ExecutorNameInviteExecutor: {
@@ -168,6 +168,9 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePreDelete: {
 		DefaultMode:        "revoke_all",
 		SupportedModes:     []string{"revoke_all"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
+	},
+	ExecutorNamePreSuspend: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
 	ExecutorNameProvisioning: {

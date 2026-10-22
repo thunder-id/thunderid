@@ -371,6 +371,14 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
 	// Start passkey registration
 	initResponse, svcErr := p.authnProvider.InitiateEnrollment(ctx.Context, passkey.CredentialType, regReq, nil)
 	if svcErr != nil {
+		// A stated hold fails the step with its own error.
+		if stated := statedHold(svcErr); stated != nil {
+			logger.Debug(ctx.Context, "Passkey registration refused by a stated hold",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey registration",
 				log.MaskedString(log.LoggerKeyUserID, userID),
@@ -469,6 +477,15 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message, as a failed registration does.
+		if stated := statedHold(svcErr); stated != nil {
+			logger.Debug(ctx.Context, "Passkey registration refused by a stated hold",
+				log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = allInputs
+			execResp.Error = stated
+			return execResp, nil
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey registration failed",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))

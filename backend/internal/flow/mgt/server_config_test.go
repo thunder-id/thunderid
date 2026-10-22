@@ -265,14 +265,26 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_LifecycleHandlesCheckedAgainst
 		return true
 	})
 	cfg := flowconfig.FlowSectionConfig{
-		UserUnlockFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "user-unlock"},
-		AgentUnlockFlow: flowconfig.FlowTypeConfig{DefaultHandle: "agent-unlock"},
+		UserUnlockFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "user-unlock"},
+		UserSuspendFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "user-suspend"},
+		UserUnsuspendFlow:        flowconfig.FlowTypeConfig{DefaultHandle: "user-unsuspend"},
+		AgentUnlockFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "agent-unlock"},
+		AgentSuspendFlow:         flowconfig.FlowTypeConfig{DefaultHandle: "agent-suspend"},
+		AgentUnsuspendFlow:       flowconfig.FlowTypeConfig{DefaultHandle: "agent-unsuspend"},
+		ApplicationSuspendFlow:   flowconfig.FlowTypeConfig{DefaultHandle: "application-suspend"},
+		ApplicationUnsuspendFlow: flowconfig.FlowTypeConfig{DefaultHandle: "application-unsuspend"},
 	}
 
 	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
 	s.Equal(map[string]providers.FlowType{
-		"user-unlock":  providers.FlowTypeAdministration,
-		"agent-unlock": providers.FlowTypeAdministration,
+		"user-unlock":           providers.FlowTypeAdministration,
+		"user-suspend":          providers.FlowTypeAdministration,
+		"user-unsuspend":        providers.FlowTypeAdministration,
+		"agent-unlock":          providers.FlowTypeAdministration,
+		"agent-suspend":         providers.FlowTypeAdministration,
+		"agent-unsuspend":       providers.FlowTypeAdministration,
+		"application-suspend":   providers.FlowTypeAdministration,
+		"application-unsuspend": providers.FlowTypeAdministration,
 	}, gotTypes)
 }
 
@@ -309,7 +321,13 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		GroupMembershipRemovalFlow: handle("group-membership-removal"),
 		ActionDeletionFlow:         handle("action-deletion"),
 		UserUnlockFlow:             handle("user-unlock"),
+		UserSuspendFlow:            handle("user-suspend"),
+		UserUnsuspendFlow:          handle("user-unsuspend"),
 		AgentUnlockFlow:            handle("agent-unlock"),
+		AgentSuspendFlow:           handle("agent-suspend"),
+		AgentUnsuspendFlow:         handle("agent-unsuspend"),
+		ApplicationSuspendFlow:     handle("application-suspend"),
+		ApplicationUnsuspendFlow:   handle("application-unsuspend"),
 	}
 }
 

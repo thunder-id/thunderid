@@ -89,7 +89,7 @@ func newProvisioningExecutor(
 		})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil)
+		[]providers.Input{}, []providers.Input{}, flowFactory, entityProvider, nil, nil)
 
 	return &provisioningExecutor{
 		Executor:                     base,

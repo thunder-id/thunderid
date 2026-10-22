@@ -247,7 +247,7 @@ func (f *federatedFixture) signInWithCode(t *testing.T, email, code string) flow
 	_, state, err := testutils.SimulateFederatedOAuthFlow(step.Data.RedirectURL)
 	require.NoError(t, err, "failed to authorize at the IdP")
 
-	return answerOf(postFlow(t, map[string]interface{}{
+	return answerOf(postFlow(t, nil, "", map[string]interface{}{
 		"executionId":    step.ExecutionID,
 		"inputs":         map[string]string{"code": code, "state": state},
 		"challengeToken": step.ChallengeToken,

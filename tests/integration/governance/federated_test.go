@@ -17,9 +17,9 @@ import (
 var federatedHolderSchema = credentialsSchema(map[string]interface{}{"email": stringAttribute})
 
 // FederatedHoldTestSuite checks, under authentication method granularity, that a federated
-// sign-in to a linked account ignores a lock on another authentication method. Where several users
-// hold the identity, the one a sign-in picks or a registration completes as is bound by ID and held
-// the same way.
+// sign-in to a linked account obeys the account's suspension and entity-wide lock, and ignores a lock
+// on another authentication method. Where several users hold the identity, the one a sign-in picks or
+// a registration completes as is bound by ID and held the same way.
 type FederatedHoldTestSuite struct {
 	suite.Suite
 	users             *userFixture
@@ -62,6 +62,31 @@ func (ts *FederatedHoldTestSuite) TestAPasswordLockDoesNotHoldAFederatedSignIn()
 		"the password must stay locked")
 }
 
+// A suspended linked account is refused, and the suspension is stated.
+func (ts *FederatedHoldTestSuite) TestASuspendedLinkedAccountIsRefused() {
+	userID, _, _, email := ts.newLinkedUser("suspended")
+	ts.Require().True(ts.federated.signedIn(ts.T(), email), "the linked account must sign in first")
+
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+
+	ts.federated.requireRefusedWithStatedHold(ts.T(), email, flowStatedSuspensionCode, "suspended")
+}
+
+// The entity-wide lock an unsuspend leaves holds a federated sign-in, and unlock releases it.
+func (ts *FederatedHoldTestSuite) TestTheLockAnUnsuspendLeavesHoldsAFederatedSignIn() {
+	userID, _, _, email := ts.newLinkedUser("unsuspended")
+
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+	runAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
+	ts.Require().Equal([]string{"entity"}, readStatus(ts.T(), userID).lockedMethods(),
+		"unsuspend must land on an entity-wide lock")
+
+	ts.federated.requireRefusedWithStatedHold(ts.T(), email, flowStatedLockCode, "unsuspended")
+
+	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
+	ts.True(ts.federated.signedIn(ts.T(), email), "unlock must release the federated sign-in")
+}
+
 // A code the IdP never issued fails at the exchange, before any account is resolved, so the failure
 // names nobody. The password locking afterwards shows the policy was in force.
 func (ts *FederatedHoldTestSuite) TestAFailedCodeExchangeLocksNobody() {
@@ -98,6 +123,32 @@ func (ts *FederatedHoldTestSuite) newLinkedUser(name string) (userID, username, 
 	return userID, username, password, email
 }
 
+// A suspended link holder the user picks is refused with the suspension stated, and the other
+// holder's sign-in is unaffected.
+func (ts *FederatedHoldTestSuite) TestAPickedLinkHolderThatIsSuspendedIsRefused() {
+	email, held, other := ts.newHeldIdentity("pick_suspended", ts.users)
+	runAdministrationFlow(ts.T(), suspendFlowHandle, held.id)
+
+	refused := ts.federated.signInAndPick(ts.T(), ts.pickerApp(), email, held.username)
+	requireStatedHoldStep(ts.T(), refused, flowStatedSuspensionCode, "suspended holder")
+
+	ts.requireSignedInAs(ts.federated.signInAndPick(ts.T(), ts.pickerApp(), email, other.username), other.id,
+		"precondition: the other holder of the same identity must sign in")
+}
+
+// A link holder held by an account-wide lock is refused when picked, with the lock stated: the bind is
+// a federated sign-in, which an account-wide lock holds.
+func (ts *FederatedHoldTestSuite) TestAPickedLinkHolderWithAnAccountWideLockIsRefused() {
+	email, held, _ := ts.newHeldIdentity("pick_entity_lock", ts.users)
+	runAdministrationFlow(ts.T(), suspendFlowHandle, held.id)
+	runAdministrationFlow(ts.T(), unsuspendFlowHandle, held.id)
+	ts.Require().Equal([]string{"entity"}, readStatus(ts.T(), held.id).lockedMethods(),
+		"unsuspend must land on an account-wide lock")
+
+	refused := ts.federated.signInAndPick(ts.T(), ts.pickerApp(), email, held.username)
+	requireStatedHoldStep(ts.T(), refused, flowStatedLockCode, "account-wide locked holder")
+}
+
 // The pick does not release the password lock.
 func (ts *FederatedHoldTestSuite) TestAPickedLinkHolderWithAPasswordLockSignsIn() {
 	email, held, _ := ts.newHeldIdentity("pick_password_lock", ts.users)
@@ -109,6 +160,16 @@ func (ts *FederatedHoldTestSuite) TestAPickedLinkHolderWithAPasswordLockSignsIn(
 		"a password lock must not hold the picked holder's federated sign-in")
 	ts.Equal([]string{"credential"}, readStatus(ts.T(), held.id).lockedMethods(),
 		"the federated sign-in must not release the password lock")
+}
+
+// A registration that completes as the one holder in its organization unit is refused with the
+// suspension stated when that holder is suspended.
+func (ts *FederatedHoldTestSuite) TestARegistrationAsASuspendedLinkHolderIsRefused() {
+	email, held, _ := ts.newHeldIdentity("register_suspended", ts.others)
+	runAdministrationFlow(ts.T(), suspendFlowHandle, held.id)
+
+	refused := ts.federated.register(ts.T(), ts.registrationApp(), email)
+	requireStatedHoldStep(ts.T(), refused, flowStatedSuspensionCode, "registration as a suspended holder")
 }
 
 // The registration leaves the holder's password lock in place.

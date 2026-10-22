@@ -95,6 +95,13 @@ paths:
                     description:
                       key: "error.authnservice.assertion_subject_mismatch_description"
                       defaultValue: "The subject in the assertion does not match the authenticated user"
+        "401":
+          description: >
+            Unauthorized: The account is suspended (`AUTHN-1012`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:

@@ -4,10 +4,12 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -30,6 +32,7 @@ func newIdentityGovernanceExecutor(factory core.FlowFactoryInterface,
 	base := factory.CreateExecutor(ExecutorNameIdentityGovernance, providers.ExecutorTypeUtility,
 		[]providers.Input{
 			{Identifier: revocationInputSubject, Type: providers.InputTypeText, Required: true},
+			{Identifier: governanceInputOperatorNote, Type: providers.InputTypeText, Required: false},
 		}, nil, &providers.ExecutorMeta{
 			// Execute refuses every mode but unlock in a recovery flow.
 			SupportedFlowTypes: []providers.FlowType{
@@ -37,7 +40,7 @@ func newIdentityGovernanceExecutor(factory core.FlowFactoryInterface,
 			},
 			// No default mode, so a flow that omits the mode cannot be saved.
 			SupportedModes: []string{
-				ExecutorModeUnlock,
+				ExecutorModeUnlock, ExecutorModeSuspend, ExecutorModeUnsuspend,
 			},
 		})
 	return &identityGovernanceExecutor{
@@ -49,40 +52,46 @@ func newIdentityGovernanceExecutor(factory core.FlowFactoryInterface,
 	}
 }
 
-// Execute applies the node's mode to the resolved subject.
+// Execute runs the lifecycle operation the node's mode names.
 func (e *identityGovernanceExecutor) Execute(
 	ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
+	switch ctx.ExecutorMode {
+	case ExecutorModeUnlock:
+		return e.executeUnlock(ctx)
+	case ExecutorModeSuspend:
+		return e.executeSuspend(ctx)
+	case ExecutorModeUnsuspend:
+		return e.executeUnsuspend(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported identity governance mode: %s", ctx.ExecutorMode)
+	}
+}
+
+// executeUnlock releases every automatic lock on the subject: the subject input in an administration
+// flow, and the proven subject in a recovery flow.
+func (e *identityGovernanceExecutor) executeUnlock(
+	ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	mode := ctx.ExecutorMode
-	execResp := &providers.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
 	selfService := ctx.FlowType != providers.FlowTypeAdministration
-	if selfService && mode != ExecutorModeUnlock {
-		return nil, fmt.Errorf("identity governance mode %s is not available in a recovery flow", mode)
-	}
-	if e.governance == nil && !selfService {
-		return nil, fmt.Errorf("identity governance provider is not configured")
-	}
-	if !e.HasRequiredInputs(ctx, execResp) {
-		execResp.Status = providers.ExecUserInputRequired
-		return execResp, nil
+	if !selfService {
+		return e.executeAdministration(ctx, logger,
+			func(callCtx context.Context, subject, _ string) *tidcommon.ServiceError {
+				return e.governance.Unlock(callCtx, subject)
+			})
 	}
 
-	subject, err := e.resolveSubject(ctx, selfService)
-	if err != nil {
-		return nil, err
-	}
+	execResp := newIdentityGovernanceResponse()
+	// A recovery flow never trusts a subject input; it is consumed so it is not re-prompted.
+	ctx.ConsumeInput(revocationInputSubject)
+	subject := ctx.SharedRuntimeData[common.RuntimeKeyProvenSubject]
 	if subject == "" {
 		logger.Debug(ctx.Context, "Release node reached with no proof of control recorded",
-			log.String("mode", mode))
+			log.String("mode", ctx.ExecutorMode))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrIdentityGovernanceFailed
 		return execResp, nil
 	}
+	ctx.ConsumeInput(governanceInputOperatorNote)
 
 	// A recovery completes without governance, as there is no lock to release.
 	if e.governance == nil {
@@ -91,11 +100,64 @@ func (e *identityGovernanceExecutor) Execute(
 		return execResp, nil
 	}
 
-	// A PermissionValidator node gates the flow; the provider checks the operator's boundary.
-	svcErr, err := e.apply(ctx, mode, subject, selfService)
+	svcErr := e.governance.Unlock(security.WithRuntimeContext(ctx.Context), subject)
+	return e.complete(ctx, logger, execResp, subject, svcErr, true)
+}
+
+// executeSuspend places the administrative hold on the target of the plan a PreSuspendExecutor
+// published.
+func (e *identityGovernanceExecutor) executeSuspend(
+	ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
+	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+	return e.executeAdministration(ctx, logger,
+		func(callCtx context.Context, subject, operatorNote string) *tidcommon.ServiceError {
+			return e.governance.Suspend(callCtx, subject, operatorNote)
+		})
+}
+
+// executeUnsuspend lifts the administrative hold on the subject input.
+func (e *identityGovernanceExecutor) executeUnsuspend(
+	ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
+	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+	return e.executeAdministration(ctx, logger,
+		func(callCtx context.Context, subject, _ string) *tidcommon.ServiceError {
+			return e.governance.Unsuspend(callCtx, subject)
+		})
+}
+
+// executeAdministration runs an operation in an administration flow, in the operator's context. A
+// PermissionValidator node gates the flow; the provider checks the operator's boundary.
+func (e *identityGovernanceExecutor) executeAdministration(ctx *providers.NodeContext, logger *log.Logger,
+	operation func(callCtx context.Context, subject, operatorNote string) *tidcommon.ServiceError,
+) (*providers.ExecutorResponse, error) {
+	if ctx.FlowType != providers.FlowTypeAdministration {
+		return nil, fmt.Errorf("identity governance mode %s is administration-only", ctx.ExecutorMode)
+	}
+	if e.governance == nil {
+		return nil, fmt.Errorf("identity governance provider is not configured")
+	}
+	execResp := newIdentityGovernanceResponse()
+	if !e.HasRequiredInputs(ctx, execResp) {
+		execResp.Status = providers.ExecUserInputRequired
+		return execResp, nil
+	}
+
+	subject, err := e.resolveAdministrationSubject(ctx)
 	if err != nil {
 		return nil, err
 	}
+	// Consumed on every mode, since the engine re-prompts an unconsumed input.
+	operatorNote, _ := ctx.ConsumeInput(governanceInputOperatorNote)
+
+	return e.complete(ctx, logger, execResp, subject, operation(ctx.Context, subject, operatorNote), false)
+}
+
+// complete maps the provider's answer to the node's outcome. A refused release does not undo a
+// recovery, which completes and releases nothing.
+func (e *identityGovernanceExecutor) complete(ctx *providers.NodeContext, logger *log.Logger,
+	execResp *providers.ExecutorResponse, subject string, svcErr *tidcommon.ServiceError,
+	selfService bool) (*providers.ExecutorResponse, error) {
+	mode := ctx.ExecutorMode
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, fmt.Errorf("identity governance %s failed: %s", mode, svcErr.Error.DefaultValue)
@@ -103,7 +165,6 @@ func (e *identityGovernanceExecutor) Execute(
 		logger.Debug(ctx.Context, "Identity governance operation refused",
 			log.String("mode", mode), log.String("errorCode", svcErr.Code),
 			log.MaskedString(log.LoggerKeyEntityID, subject))
-		// A refused release does not undo the recovery, which completes and releases nothing.
 		if selfService {
 			execResp.Status = providers.ExecComplete
 			return execResp, nil
@@ -122,11 +183,12 @@ func (e *identityGovernanceExecutor) Execute(
 	return execResp, nil
 }
 
-// HasRequiredInputs prompts for the required inputs in an administration flow, where the node reads
-// its subject from them. A recovery flow takes the subject from the recorded proof.
+// HasRequiredInputs prompts for the required inputs where the node reads its subject from them: an
+// administration unlock or unsuspend. A suspend takes the subject from the plan and a recovery flow
+// from the recorded proof.
 func (e *identityGovernanceExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) bool {
-	if ctx.FlowType != providers.FlowTypeAdministration {
+	if ctx.FlowType != providers.FlowTypeAdministration || ctx.ExecutorMode == ExecutorModeSuspend {
 		return true
 	}
 	complete := true
@@ -142,36 +204,28 @@ func (e *identityGovernanceExecutor) HasRequiredInputs(ctx *providers.NodeContex
 	return complete
 }
 
-// apply calls the provider method the mode names. An administration flow keeps the operator's
-// context; a recovery release runs with runtime privilege.
-func (e *identityGovernanceExecutor) apply(ctx *providers.NodeContext,
-	mode, subject string, selfService bool) (*tidcommon.ServiceError, error) {
-	callCtx := ctx.Context
-	if selfService {
-		callCtx = security.WithRuntimeContext(callCtx)
+// resolveAdministrationSubject returns who an administration node acts on: the plan's target for a
+// suspend, otherwise the subject input.
+func (e *identityGovernanceExecutor) resolveAdministrationSubject(ctx *providers.NodeContext) (string, error) {
+	if ctx.ExecutorMode == ExecutorModeSuspend {
+		ctx.ConsumeInput(revocationInputSubject)
+		plan, err := revocationPlanFor(ctx.SharedRuntimeData, revocation.ReasonIdentitySuspended)
+		if err != nil {
+			return "", fmt.Errorf("suspend requires the plan a PreSuspendExecutor publishes: %w", err)
+		}
+		return plan.TargetID, nil
 	}
-
-	switch mode {
-	case ExecutorModeUnlock:
-		return e.governance.Unlock(callCtx, subject), nil
-	default:
-		return nil, fmt.Errorf("unsupported identity governance mode: %s", mode)
+	subject, ok := ctx.ConsumeInput(revocationInputSubject)
+	if !ok || subject == "" {
+		return "", fmt.Errorf("subject is required")
 	}
+	return subject, nil
 }
 
-// resolveSubject returns who the node acts on: the subject input in an administration flow, and the
-// proven subject in a recovery flow, empty when nothing was proven.
-func (e *identityGovernanceExecutor) resolveSubject(ctx *providers.NodeContext,
-	selfService bool) (string, error) {
-	if !selfService {
-		subject, ok := ctx.ConsumeInput(revocationInputSubject)
-		if !ok || subject == "" {
-			return "", fmt.Errorf("subject is required")
-		}
-		return subject, nil
+// newIdentityGovernanceResponse builds an empty executor response.
+func newIdentityGovernanceResponse() *providers.ExecutorResponse {
+	return &providers.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
 	}
-
-	// A recovery flow never trusts a subject input; it is consumed so it is not re-prompted.
-	ctx.ConsumeInput(revocationInputSubject)
-	return ctx.SharedRuntimeData[common.RuntimeKeyProvenSubject], nil
 }

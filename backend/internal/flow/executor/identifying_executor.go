@@ -37,6 +37,7 @@ type identifyingExecutor struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -52,6 +53,7 @@ func newIdentifyingExecutor(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	accessGuard *accessGuard,
 ) *identifyingExecutor {
 	if name == "" {
 		name = ExecutorNameIdentifying
@@ -71,6 +73,7 @@ func newIdentifyingExecutor(
 		Executor:       base,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
+		accessGuard:    accessGuard,
 		logger:         logger,
 	}
 }
@@ -227,6 +230,34 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		}
 		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
+	}
+
+	// A recovery flow never reaches the assertion check, so a held account is refused here.
+	if ctx.FlowType == providers.FlowTypeRecovery {
+		held, stated, fault := i.accessGuard.heldAt(ctx.Context, *userID, providers.AccessPlaneRecovery, "",
+			logger)
+		if fault != nil {
+			// Answered as a failed account lookup.
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+			return execResp, nil
+		}
+		if held {
+			// A refusal that names no hold takes the unknown-user branch.
+			if stated != nil {
+				execResp.Status = providers.ExecFailure
+				execResp.Error = stated
+				return execResp, nil
+			}
+			if loginHintAttr == "" {
+				execResp.Status = providers.ExecUserInputRequired
+				execResp.Inputs = i.GetRequiredInputs(ctx)
+			} else {
+				execResp.Status = providers.ExecFailure
+			}
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
+			return execResp, nil
+		}
 	}
 
 	execResp.RuntimeData[userAttributeUserID] = *userID

@@ -170,6 +170,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		UserMgtProvider:    engineCtx.userMgtProvider,
 		AgentMgtProvider:   engineCtx.agentMgtProvider,
 		IdentityGovernance: engineCtx.identityGovernance,
+		TokenLeeway:        time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,

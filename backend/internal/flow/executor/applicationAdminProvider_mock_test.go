@@ -181,6 +181,74 @@ func (_c *applicationAdminProviderMock_DeleteApplication_Call) RunAndReturn(run 
 	return _c
 }
 
+// GetOAuthClientID provides a mock function for the type applicationAdminProviderMock
+func (_mock *applicationAdminProviderMock) GetOAuthClientID(ctx context.Context, entityID string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOAuthClientID")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// applicationAdminProviderMock_GetOAuthClientID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOAuthClientID'
+type applicationAdminProviderMock_GetOAuthClientID_Call struct {
+	*mock.Call
+}
+
+// GetOAuthClientID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *applicationAdminProviderMock_Expecter) GetOAuthClientID(ctx any, entityID any) *applicationAdminProviderMock_GetOAuthClientID_Call {
+	return &applicationAdminProviderMock_GetOAuthClientID_Call{Call: _e.mock.On("GetOAuthClientID", ctx, entityID)}
+}
+
+func (_c *applicationAdminProviderMock_GetOAuthClientID_Call) Run(run func(ctx context.Context, entityID string)) *applicationAdminProviderMock_GetOAuthClientID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *applicationAdminProviderMock_GetOAuthClientID_Call) Return(s string, serviceError *common.ServiceError) *applicationAdminProviderMock_GetOAuthClientID_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *applicationAdminProviderMock_GetOAuthClientID_Call) RunAndReturn(run func(ctx context.Context, entityID string) (string, *common.ServiceError)) *applicationAdminProviderMock_GetOAuthClientID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateCredentialAction provides a mock function for the type applicationAdminProviderMock
 func (_mock *applicationAdminProviderMock) ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (*model.ApplicationArtifactProfile, *common.ServiceError) {
 	ret := _mock.Called(ctx, appID, action)

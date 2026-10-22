@@ -50,9 +50,11 @@ var queryInsertRevocationCriterion = dbmodel.DBQuery{
 }
 
 // revocationCriteriaUpsertClause never weakens a terminal reason, moves a cutoff back, or shortens an expiry.
+// A boundary reason stays with the cutoff it was written with.
 var revocationCriteriaUpsertClause = fmt.Sprintf(
 	`ON CONFLICT (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE) DO UPDATE SET `+
 		`REASON = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
+		`OR (excluded.REASON IN (%s) AND "REVOCATION_CRITERIA".REVOKED_AT > excluded.REVOKED_AT) `+
 		`THEN "REVOCATION_CRITERIA".REASON `+
 		`ELSE excluded.REASON END, `+
 		`REVOKED_AT = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
@@ -61,7 +63,7 @@ var revocationCriteriaUpsertClause = fmt.Sprintf(
 		`ELSE excluded.REVOKED_AT END, `+
 		`EXPIRY_TIME = CASE WHEN "REVOCATION_CRITERIA".EXPIRY_TIME > excluded.EXPIRY_TIME `+
 		`THEN "REVOCATION_CRITERIA".EXPIRY_TIME ELSE excluded.EXPIRY_TIME END`,
-	boundaryReasonSQLList(), boundaryReasonSQLList())
+	boundaryReasonSQLList(), boundaryReasonSQLList(), boundaryReasonSQLList())
 
 // criteriaRevokedQueryID identifies the criteria deny-list existence check. The query text varies
 // with the number of criteria supplied, so it is built per call rather than declared as a constant.

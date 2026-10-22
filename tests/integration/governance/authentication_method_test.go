@@ -185,11 +185,13 @@ func (ts *AuthenticationMethodTestSuite) TestALockedOneTimePasswordRefusesTheCor
 	requireStatedHold(ts.T(), wrong, held, statedLockCode, "otp")
 }
 
-// The wrong code is not counted, so the runtime row is not written.
+// Neither wrong code is counted, so neither runtime row is written.
 func (ts *AuthenticationMethodTestSuite) TestAWrongCodeOnAHeldAccountStatesTheHold() {
+	suspendedID, _, suspendedMobile, _ := ts.newUser("otp_wrong_suspended", 13)
 	lockedID, _, lockedMobile, _ := ts.newUser("otp_wrong_locked", 14)
 	_, _, liveMobile, _ := ts.newUser("otp_wrong_live", 15)
 
+	runAdministrationFlow(ts.T(), suspendFlowHandle, suspendedID)
 	ts.failOTP(lockedMobile, lockThreshold)
 	ts.Require().Equal([]string{"otp"}, readStatus(ts.T(), lockedID).lockedMethods(),
 		"the one-time-password method must be the locked one")
@@ -198,14 +200,21 @@ func (ts *AuthenticationMethodTestSuite) TestAWrongCodeOnAHeldAccountStatesTheHo
 	ts.Require().Equal(http.StatusOK, status, "the direct send must accept the request")
 	wrong := verifyDirectOTP(ts.T(), liveSession, wrongCodeFor(liveCode))
 
-	session, code, status := sendDirectOTP(ts.T(), ts.mockServer, ts.senderID, lockedMobile)
-	ts.Require().Equal(http.StatusOK, status, "the direct send must accept the request")
-	revision := runtimeRevision(ts.T(), lockedID)
+	for _, held := range []struct{ name, id, mobile, code, other string }{
+		{"suspended", suspendedID, suspendedMobile, statedSuspensionCode, statedLockCode},
+		{"locked", lockedID, lockedMobile, statedLockCode, statedSuspensionCode},
+	} {
+		session, code, status := sendDirectOTP(ts.T(), ts.mockServer, ts.senderID, held.mobile)
+		ts.Require().Equal(http.StatusOK, status, "%s: the direct send must accept the request", held.name)
+		revision := runtimeRevision(ts.T(), held.id)
 
-	refused := verifyDirectOTP(ts.T(), session, wrongCodeFor(code))
-	requireStatedHold(ts.T(), wrong, refused, statedLockCode, "otp")
-	ts.NotContains(refused.body, statedSuspensionCode, "the refusal must state the hold the account has")
-	ts.Equal(revision, runtimeRevision(ts.T(), lockedID), "the wrong code must not be counted")
+		refused := verifyDirectOTP(ts.T(), session, wrongCodeFor(code))
+		requireStatedHold(ts.T(), wrong, refused, held.code, "otp")
+		ts.NotContains(refused.body, held.other, "%s: the refusal must state the hold the account has",
+			held.name)
+		ts.Equal(revision, runtimeRevision(ts.T(), held.id), "%s: the wrong code must not be counted",
+			held.name)
+	}
 }
 
 // The one-time password is failed to one short of its threshold, so any cross-counting would lock it.

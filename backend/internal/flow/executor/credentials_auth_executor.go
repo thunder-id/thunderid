@@ -53,7 +53,7 @@ func newCredentialsAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameCredentialsAuth))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []providers.Input{},
-		flowFactory, entityProvider, nil)
+		flowFactory, entityProvider, nil, nil)
 	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, providers.ExecutorTypeAuthentication,
 		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{})
 

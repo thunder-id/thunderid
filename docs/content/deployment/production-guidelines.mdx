@@ -534,6 +534,8 @@ Back up the state required to recover the same deployment:
 - The Direct Auth Secret and other secrets that cannot be recreated safely.
 - Declarative resources and reviewed deployment configuration.
 
+Restore the `entity` and `runtime_persistent` databases to the same recovery point. Account suspensions and sign-in locks are stored in `runtime_persistent`, so restoring it to an earlier point than `entity` lifts any suspension placed after that point.
+
 Define a separate recovery policy for `runtime_transient`. Restoring old authorization codes, requests, and nonces can reintroduce expired or consumed state. A recovery plan may instead discard this database and require in-flight sign-in operations to restart.
 
 Encrypt backups and restrict access to recovery operators. Keep cryptographic material associated with the database recovery point it protects.

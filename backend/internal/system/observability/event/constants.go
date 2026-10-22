@@ -37,6 +37,10 @@ const (
 	// EventTypeTokenRevoked is triggered when a token is revoked (RFC 7009).
 	EventTypeTokenRevoked providers.EventType = "TOKEN_REVOKED" //nolint:gosec
 
+	// EventTypeTokenRevocationFailed is triggered when a criteria revocation cannot be stored. A boundary
+	// revocation that fails this way stops the flow it belongs to, such as a suspension.
+	EventTypeTokenRevocationFailed providers.EventType = "TOKEN_REVOCATION_FAILED" //nolint:gosec
+
 	// EventTypeRuntimePersistentDBUnavailable is triggered when the runtime persistent database backing the
 	// deny-list (revocation) check becomes unavailable and enforcement fails closed.
 	EventTypeRuntimePersistentDBUnavailable providers.EventType = "RUNTIME_PERSISTENT_DB_UNAVAILABLE"

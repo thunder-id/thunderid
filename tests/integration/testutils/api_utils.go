@@ -2965,6 +2965,30 @@ func DeleteResource(resourceServerID, resourceID string) error {
 	return nil
 }
 
+// RunAdministrationFlow executes an ADMINISTRATION flow, addressed by handle, as the admin and
+// returns the HTTP status and the flow status. It is how a test suspends, unsuspends or unlocks an
+// identity.
+func RunAdministrationFlow(handle string, inputs map[string]string) (int, string, error) {
+	token, err := GetAccessToken()
+	if err != nil {
+		return 0, "", err
+	}
+	return RunAdministrationFlowWithToken(token, handle, inputs)
+}
+
+// RunAdministrationFlowWithToken is RunAdministrationFlow as the operator the bearer token names.
+func RunAdministrationFlowWithToken(token, handle string, inputs map[string]string) (int, string, error) {
+	status, body, err := ExecuteAdministrationFlowWithToken(token, handle, inputs)
+	if err != nil {
+		return 0, "", err
+	}
+	var step struct {
+		FlowStatus string `json:"flowStatus"`
+	}
+	_ = json.Unmarshal(body, &step)
+	return status, step.FlowStatus, nil
+}
+
 // ExecuteAdministrationFlowWithToken executes an ADMINISTRATION flow, addressed by handle, as the
 // operator the bearer token names, and returns the HTTP status and the raw answer, for a caller that
 // reads an error code.
@@ -2973,13 +2997,14 @@ func ExecuteAdministrationFlowWithToken(token, handle string, inputs map[string]
 	if err != nil {
 		return 0, nil, err
 	}
-	return ExecuteFlowRaw(token, map[string]interface{}{"flowId": flowID, "inputs": inputs})
+	return ExecuteFlowRaw(nil, token, map[string]interface{}{"flowId": flowID, "inputs": inputs})
 }
 
 // ExecuteFlowRaw posts one request to /flow/execute and returns the HTTP status and the raw answer,
-// whatever they are. It goes through the raw client, since the shared clients treat /flow/execute as
-// public, and sends the bearer token when one is given.
-func ExecuteFlowRaw(token string, body map[string]interface{}) (int, []byte, error) {
+// whatever they are. It goes through client when one is given, such as a browser's carrying its
+// cookies, and otherwise through the raw client, since the shared clients treat /flow/execute as
+// public; it sends the bearer token when one is given.
+func ExecuteFlowRaw(client *http.Client, token string, body map[string]interface{}) (int, []byte, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return 0, nil, err
@@ -2993,7 +3018,10 @@ func ExecuteFlowRaw(token string, body map[string]interface{}) (int, []byte, err
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := GetRawHTTPClient().Do(req)
+	if client == nil {
+		client = GetRawHTTPClient()
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}

@@ -18,15 +18,20 @@ import (
 // Event types and data keys this file asserts. They mirror the server's event package, which a
 // separate module cannot import; the names are the contract an event consumer reads.
 const (
-	eventIdentityUnlocked         = "IDENTITY_UNLOCKED"
-	eventIdentitySelfUnlocked     = "IDENTITY_SELF_UNLOCKED"
-	eventIdentityLocked           = "IDENTITY_LOCKED"
-	eventServerConfigUpdated      = "SERVER_CONFIG_UPDATED"
-	eventServerConfigUpdateFailed = "SERVER_CONFIG_UPDATE_FAILED"
+	eventIdentitySuspended          = "IDENTITY_SUSPENDED"
+	eventIdentityUnsuspended        = "IDENTITY_UNSUSPENDED"
+	eventIdentityUnlocked           = "IDENTITY_UNLOCKED"
+	eventIdentityUnsuspensionFailed = "IDENTITY_UNSUSPENSION_FAILED"
+	eventIdentitySuspensionFailed   = "IDENTITY_SUSPENSION_FAILED"
+	eventIdentitySelfUnlocked       = "IDENTITY_SELF_UNLOCKED"
+	eventIdentityLocked             = "IDENTITY_LOCKED"
+	eventServerConfigUpdated        = "SERVER_CONFIG_UPDATED"
+	eventServerConfigUpdateFailed   = "SERVER_CONFIG_UPDATE_FAILED"
 
 	eventKeySubject       = "sub"
 	eventKeySubjectType   = "sub_type"
 	eventKeyActorSub      = "act_sub"
+	eventKeyNoteRecorded  = "operator_note_recorded"
 	eventKeyError         = "error"
 	eventKeyConfigName    = "config_name"
 	eventKeyLockMethod    = "lock_method"
@@ -35,9 +40,9 @@ const (
 	eventKeyUnlockAt      = "unlock_at"
 )
 
-// GovernanceEventsTestSuite checks what a lock, an unlock and an accountAccess write publish, read back
-// from the observability file sink: the operator and the target, a refused write's error code, and
-// never the written value.
+// GovernanceEventsTestSuite checks what the lifecycle operations and an accountAccess write publish,
+// read back from the observability file sink: the operator and the target, the outcome and its
+// failure class, and never the operator note or the written value.
 type GovernanceEventsTestSuite struct {
 	suite.Suite
 	fixture  *heldRecoveryFixture
@@ -67,6 +72,80 @@ func (ts *GovernanceEventsTestSuite) SetupSuite() {
 
 	ts.reader = testutils.NewEventLogReader(logPath)
 	ts.fixture = newHeldRecoveryFixture(t, "events")
+}
+
+// The operator note is published only as whether one was given.
+func (ts *GovernanceEventsTestSuite) TestLifecycleOperationsArePublishedWithTheOperatorAndTarget() {
+	userID, _, _ := ts.fixture.newUser(ts.T(), "lifecycle", nil)
+	note := "events-note-" + ts.fixture.suffix
+	ts.Require().NoError(ts.reader.Reset())
+
+	runAdministrationFlowWithInputs(ts.T(), suspendFlowHandle,
+		map[string]string{subjectInput: userID, operatorNoteInput: note})
+	suspended := ts.awaitEvent(eventIdentitySuspended, userID)
+	ts.Equal(ts.adminSub, suspended.Str(eventKeyActorSub), "the operator must be act_sub")
+	ts.Equal("user", suspended.Str(eventKeySubjectType), "the target's category must be published")
+	ts.Equal("success", suspended.Status)
+	ts.Equal(true, suspended.Data[eventKeyNoteRecorded], "whether a note was given is published")
+
+	runAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
+	unsuspended := ts.awaitEvent(eventIdentityUnsuspended, userID)
+	ts.Equal(ts.adminSub, unsuspended.Str(eventKeyActorSub), "the operator must be act_sub")
+
+	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
+	unlocked := ts.awaitEvent(eventIdentityUnlocked, userID)
+	ts.Equal(ts.adminSub, unlocked.Str(eventKeyActorSub), "the operator must be act_sub")
+
+	// The unlock is a later request than the suspend and unsuspend, so every event they published has
+	// been read by now.
+	events, err := ts.reader.Read()
+	ts.Require().NoError(err)
+	for _, evt := range events {
+		ts.NotContains(evt.Raw, note, "the operator note must never be published")
+	}
+}
+
+func (ts *GovernanceEventsTestSuite) TestARefusedOperationIsPublishedWithItsFailureClass() {
+	userID, _, _ := ts.fixture.newUser(ts.T(), "refused", nil)
+	ts.Require().NoError(ts.reader.Reset())
+
+	answer := attemptAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
+	ts.Require().Equal(governanceRefusal, answer, "unsuspend of an active account must be refused")
+
+	failed := ts.awaitEvent(eventIdentityUnsuspensionFailed, userID)
+	ts.Equal("failure", failed.Status)
+	ts.Equal("not_applicable", failed.Str(eventKeyError), "the failure class must be published")
+	ts.Equal(ts.adminSub, failed.Str(eventKeyActorSub), "a refusal must name the operator too")
+}
+
+func (ts *GovernanceEventsTestSuite) TestASuspendRefusedAtItsPreCheckIsPublishedAndRevokesNothing() {
+	ts.Require().NoError(ts.reader.Reset())
+
+	answer := attemptAdministrationFlow(ts.T(), suspendFlowHandle, ts.adminSub)
+	ts.Require().Equal(governanceRefusal, answer, "an operator suspending themselves must be refused")
+
+	failed := ts.awaitEvent(eventIdentitySuspensionFailed, ts.adminSub)
+	ts.Equal("failure", failed.Status)
+	ts.Equal("not_authorized", failed.Str(eventKeyError), "the failure class must be published")
+	ts.Equal(ts.adminSub, failed.Str(eventKeyActorSub), "a refusal must name the operator too")
+
+	// A later suspension's revocation, once the REST API enforces it, shows the deny list was refreshed
+	// past anything the refused attempt could have written.
+	witnessID, witnessName, witnessPassword := ts.fixture.newUser(ts.T(), "precheck_witness", nil)
+	witness, err := testutils.GetHTTPClientForUser(witnessName, witnessPassword)
+	ts.Require().NoError(err, "the witness must sign in")
+	witnessStatus := func() int {
+		status, _ := getWith(ts.T(), witness, "/users/me")
+		return status
+	}
+	ts.Require().Equal(http.StatusOK, witnessStatus(), "the witness's token must work before its suspension")
+	runAdministrationFlow(ts.T(), suspendFlowHandle, witnessID)
+	ts.Require().Eventually(func() bool { return witnessStatus() == http.StatusUnauthorized },
+		denyListRefreshWait, 250*time.Millisecond, "the witness's suspension must reach the REST API")
+
+	status, body := getWith(ts.T(), testutils.GetHTTPClient(), "/users/"+ts.adminSub)
+	ts.Equal(http.StatusOK, status, "a refused pre-check must revoke none of the operator's tokens: %s", body)
+	ts.Equal("ACTIVE", readStatus(ts.T(), ts.adminSub).Value, "a refused suspend must hold nothing")
 }
 
 func (ts *GovernanceEventsTestSuite) TestARecoveryReleaseIsPublishedAsSelfService() {

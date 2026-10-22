@@ -53,6 +53,7 @@ type ApplicationServiceInterface interface {
 		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
 		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
+	GetOAuthClientID(ctx context.Context, entityID string) (string, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
 		string, *tidcommon.ServiceError)
 	GetResourceDependencies(
@@ -851,6 +852,24 @@ func (as *applicationService) ValidateCredentialAction(
 		return nil, &ErrorApplicationHasNoClientSecret
 	}
 	return as.artifactProfileForClient(clientID, client), nil
+}
+
+// GetOAuthClientID returns the client ID of the OAuth client an entity owns, or "" when it owns none.
+func (as *applicationService) GetOAuthClientID(ctx context.Context, entityID string) (
+	string, *tidcommon.ServiceError) {
+	if entityID == "" {
+		return "", &ErrorInvalidApplicationID
+	}
+	client, err := as.inboundClientService.GetOAuthClientByEntityID(ctx, entityID)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to resolve the entity's OAuth client",
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if client == nil {
+		return "", nil
+	}
+	return client.ClientID, nil
 }
 
 // ApplyCredentialAction performs the action and returns the new credential value. The secret is

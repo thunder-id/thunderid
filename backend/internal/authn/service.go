@@ -857,10 +857,7 @@ func (as *authenticationService) StartPasskeyRegistration(
 
 	result, svcErr := as.authnProvider.InitiateEnrollment(ctx, passkey.CredentialType, req, nil)
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
-		}
-		return nil, &ErrorPasskeyEnrollmentFailed
+		return nil, passkeyEnrollmentError(svcErr)
 	}
 	return result, nil
 }
@@ -885,10 +882,7 @@ func (as *authenticationService) FinishPasskeyRegistration(
 	authUser, _, svcErr := as.authnProvider.Enroll(
 		ctx, nil, credentials, nil, nil, providers.AuthUser{})
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ServerErrorType {
-			return nil, &tidcommon.InternalServerError
-		}
-		return nil, &ErrorPasskeyEnrollmentFailed
+		return nil, passkeyEnrollmentError(svcErr)
 	}
 
 	return as.buildPasskeyAuthenticationResponse(ctx, authUser, skipAssertion, existingAssertion, logger)
@@ -1007,4 +1001,19 @@ func (as *authenticationService) refuseIfHeld(ctx context.Context, entityID stri
 		}
 	}
 	return nil
+}
+
+// passkeyEnrollmentError maps a passkey enrolment error. A stated hold keeps its meaning, and any other
+// client error is an enrolment failure.
+func passkeyEnrollmentError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr.Type == tidcommon.ServerErrorType {
+		return &tidcommon.InternalServerError
+	}
+	switch svcErr.Code {
+	case authnprovidermgr.ErrorAccountLocked.Code:
+		return &common.ErrorAccountLocked
+	case authnprovidermgr.ErrorAccountSuspended.Code:
+		return &common.ErrorAccountSuspended
+	}
+	return &ErrorPasskeyEnrollmentFailed
 }

@@ -340,7 +340,12 @@ func (m *authnProviderManager) InitiateEnrollment(ctx context.Context, credentia
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	result, svcErr := selectedProvider.InitiateEnrollment(ctx, credentialType, initData, metadata)
+	if stated := statedHold(svcErr); stated != nil {
+		m.logger.Debug(ctx, "enrollment initiation refused by a stated hold", log.String("errorCode", stated.Code))
+		return nil, stated
+	}
+	return result, svcErr
 }
 
 // Enroll routes a credential to the matching provider to complete enrollment and merges
@@ -370,6 +375,9 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			m.logger.Debug(ctx, "enrollment failed with invalid request error from provider",
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &ErrorInvalidRequest
+		case authnprovidercm.ErrorCodeAccountLocked, authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "enrollment refused by a stated hold", log.String("errorCode", svcErr.Code))
+			return authUser, nil, statedHold(svcErr)
 		default:
 			m.logger.Debug(ctx, "enrollment failed with client error from provider",
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
@@ -700,4 +708,18 @@ func isEntityRefsEqual(ref1, ref2 *providers.EntityReference) bool {
 	}
 	// EntityCategory is intentionally excluded — it's optional and may be missing.
 	return true
+}
+
+// statedHold maps a provider's hold code to this package's error, or returns nil for any other error.
+func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr == nil || svcErr.Type != tidcommon.ClientErrorType {
+		return nil
+	}
+	switch svcErr.Code {
+	case authnprovidercm.ErrorCodeAccountLocked:
+		return &ErrorAccountLocked
+	case authnprovidercm.ErrorCodeAccountSuspended:
+		return &ErrorAccountSuspended
+	}
+	return nil
 }

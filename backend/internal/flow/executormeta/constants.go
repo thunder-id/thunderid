@@ -54,6 +54,7 @@ const (
 	ExecutorNameGroup                        = "GroupExecutor"
 	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
 	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
+	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 )
 
 // Executor mode constants
@@ -75,5 +76,7 @@ const (
 	ExecutorModeRevoke        = "revoke"
 	ExecutorModeAdvanceCutoff = "advance_cutoff"
 
-	ExecutorModeUnlock = "unlock"
+	ExecutorModeUnlock    = "unlock"
+	ExecutorModeSuspend   = "suspend"
+	ExecutorModeUnsuspend = "unsuspend"
 )

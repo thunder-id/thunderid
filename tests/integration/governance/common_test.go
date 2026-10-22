@@ -1,16 +1,20 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package governance checks the account lock behaviour against a running server.
+// Package governance checks the account lock and suspension behaviour against a running server.
 // Tests check stated behaviour, not the implementation that satisfies it.
 package governance
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -22,10 +26,15 @@ import (
 )
 
 const (
-	testServerURL = testutils.TestServerURL
+	testServerURL          = testutils.TestServerURL
+	administrationFlowType = "ADMINISTRATION"
 
 	// subjectInput is the input an administration flow names its target with.
 	subjectInput = "subject"
+
+	// operatorNoteInput is the optional free text a suspend flow may carry. Optional at every layer, so a
+	// request that omits it suspends with no note recorded.
+	operatorNoteInput = "operatorNote"
 
 	// pristineDeploymentPath is the deployment the harness copies in at start-up, relative to this
 	// package. Restoring it is how a deployment change this package makes is undone.
@@ -38,9 +47,16 @@ const (
 // The shipped administration flows, addressed by handle so the tests do not depend on a seeded id.
 // Applications have no unlock flow because an application never locks.
 const (
-	unlockFlowHandle = "default-user-unlock-flow"
+	unlockFlowHandle    = "default-user-unlock-flow"
+	suspendFlowHandle   = "default-user-suspend-flow"
+	unsuspendFlowHandle = "default-user-unsuspend-flow"
 
-	agentUnlockFlowHandle = "default-agent-unlock-flow"
+	agentUnlockFlowHandle    = "default-agent-unlock-flow"
+	agentSuspendFlowHandle   = "default-agent-suspend-flow"
+	agentUnsuspendFlowHandle = "default-agent-unsuspend-flow"
+
+	applicationSuspendFlowHandle   = "default-application-suspend-flow"
+	applicationUnsuspendFlowHandle = "default-application-unsuspend-flow"
 )
 
 // The shipped sign-in, registration and recovery flows: their handle, and the action the shipped
@@ -50,11 +66,22 @@ const (
 	shippedSignInAction = "action_001"
 )
 
+// suspensionCutoffLeeway is jwt.leeway as every suite in this package runs it, shorter than the shipped
+// 30 seconds so the waits past a suspension's cutoff stay short, yet long enough for a release and a
+// sign-in to fit inside it on a slow runner. A suspension's revocation cutoff is its pre-suspend time
+// plus this allowance.
+const suspensionCutoffLeeway = 15 * time.Second
+
+// denyListRefreshWait bounds how long a native API takes to refuse a revoked token: the deployment
+// refreshes its copy of the deny list every two seconds.
+const denyListRefreshWait = 10 * time.Second
+
 // The management collections a governed identity is read back through. The effective status is
-// public API on each.
+// public API on all three.
 const (
-	userCollection  = "users"
-	agentCollection = "agents"
+	userCollection        = "users"
+	agentCollection       = "agents"
+	applicationCollection = "applications"
 )
 
 // The policy this package runs under, written to the section's writable layer for a suite's duration.
@@ -88,6 +115,10 @@ const (
 	flowStatedLockCode       = "FET-1113"
 )
 
+// ssoCookiePrefix is the per-flow SSO handle cookie the session transport mints. Its presence is how a
+// test tells "the session was established" from "the flow happened to complete".
+const ssoCookiePrefix = "tid_sso_"
+
 const (
 	// deliveryTimeout bounds the wait for a message the server is expected to send.
 	deliveryTimeout = 5 * time.Second
@@ -97,6 +128,9 @@ const (
 )
 
 var (
+	// serverFault is the answer a flow gives when a node faults.
+	serverFault = flowAnswer{status: http.StatusInternalServerError, code: "SSE-5000"}
+
 	// governanceRefusal is the answer a lifecycle step gives when the authority refuses it.
 	governanceRefusal = flowAnswer{status: http.StatusOK, flowStatus: "ERROR", code: "FET-1112"}
 
@@ -363,10 +397,11 @@ func answerOf(status int, raw string) flowAnswer {
 }
 
 // postFlow posts one request to /flow/execute and returns the status and the raw answer whatever they
-// are.
-func postFlow(t *testing.T, body map[string]interface{}) (int, string) {
+// are. It goes through client when one is given, a browser's carrying its cookies, and sends the
+// bearer token when one is given.
+func postFlow(t *testing.T, client *http.Client, token string, body map[string]interface{}) (int, string) {
 	t.Helper()
-	status, raw, err := testutils.ExecuteFlowRaw("", body)
+	status, raw, err := testutils.ExecuteFlowRaw(client, token, body)
 	require.NoError(t, err, "the flow request must reach the server")
 	return status, string(raw)
 }
@@ -380,7 +415,7 @@ func submitSignIn(t *testing.T, appID, action, username, password string) (int, 
 	require.NoError(t, err, "failed to initiate the sign-in flow")
 	require.Equal(t, "INCOMPLETE", step.FlowStatus)
 
-	return postFlow(t, map[string]interface{}{
+	return postFlow(t, nil, "", map[string]interface{}{
 		"executionId":    step.ExecutionID,
 		"challengeToken": step.ChallengeToken,
 		"inputs":         map[string]string{"username": username, "password": password},
@@ -411,6 +446,15 @@ func requireRepromptedWith(t *testing.T, step *common.FlowStep, code string) {
 		"the prompt must ask for the credentials again: %+v", step)
 }
 
+// attemptAdministrationFlow executes one shipped governance flow against a subject as the
+// administrator, and returns its answer whatever it is.
+func attemptAdministrationFlow(t *testing.T, handle, subject string) flowAnswer {
+	t.Helper()
+	token, err := testutils.GetAccessToken()
+	require.NoError(t, err, "the administrator must hold a token")
+	return attemptAdministrationFlowAs(t, token, handle, map[string]string{subjectInput: subject})
+}
+
 // attemptAdministrationFlowAs executes one shipped governance flow as the operator the token names.
 func attemptAdministrationFlowAs(t *testing.T, token, handle string, inputs map[string]string) flowAnswer {
 	t.Helper()
@@ -419,15 +463,66 @@ func attemptAdministrationFlowAs(t *testing.T, token, handle string, inputs map[
 	return answerOf(status, string(raw))
 }
 
-// runAdministrationFlow executes one shipped governance flow as the administrator and requires it to
-// complete. Use it where the operation is a precondition rather than the thing under test.
+// runAdministrationFlow executes one shipped governance flow and requires it to complete. Use it
+// where the operation is a precondition rather than the thing under test.
 func runAdministrationFlow(t *testing.T, handle, subject string) {
+	t.Helper()
+	runAdministrationFlowWithInputs(t, handle, map[string]string{subjectInput: subject})
+}
+
+// runAdministrationFlowWithInputs runs a flow that carries more than the subject, and requires it to
+// complete.
+func runAdministrationFlowWithInputs(t *testing.T, handle string, inputs map[string]string) {
 	t.Helper()
 	token, err := testutils.GetAccessToken()
 	require.NoError(t, err, "the administrator must hold a token")
-	answer := attemptAdministrationFlowAs(t, token, handle, map[string]string{subjectInput: subject})
+	runAdministrationFlowAs(t, token, handle, inputs)
+}
+
+// runAdministrationFlowAs runs a flow as the operator the token names, and requires it to complete.
+func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[string]string) {
+	t.Helper()
+	answer := attemptAdministrationFlowAs(t, token, handle, inputs)
 	require.Equal(t, http.StatusOK, answer.status, "%s was refused at the transport: %+v", handle, answer)
 	require.Equal(t, "COMPLETE", answer.flowStatus, "%s did not complete: %+v", handle, answer)
+}
+
+// TestMain runs the package with jwt.leeway shortened once, so no suite restarts the server for it,
+// and puts the harness deployment back afterwards.
+func TestMain(m *testing.M) {
+	os.Exit(runWithCutoffLeeway(m))
+}
+
+// runWithCutoffLeeway runs the package's tests with the shortened leeway and returns their exit code.
+func runWithCutoffLeeway(m *testing.M) int {
+	// Restored even when setup fails part way, so the next package starts on the shipped deployment.
+	defer func() {
+		if err := testutils.UpdateDeploymentConfig(pristineDeploymentPath); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup: failed to restore the deployment config: %v\n", err)
+			return
+		}
+		if err := testutils.RestartServer(); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup: server did not restart after restoring the deployment: %v\n", err)
+			return
+		}
+		if err := testutils.ObtainAdminAccessToken(); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup: failed to re-obtain the admin token: %v\n", err)
+		}
+	}()
+
+	if err := setCutoffLeeway(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to shorten jwt.leeway: %v\n", err)
+		return 1
+	}
+	if err := testutils.RestartServer(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to restart with the shortened leeway: %v\n", err)
+		return 1
+	}
+	if err := testutils.ObtainAdminAccessToken(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to re-obtain the admin token: %v\n", err)
+		return 1
+	}
+	return m.Run()
 }
 
 // applyLockoutPolicy installs this package's policy through the accountAccess section.
@@ -466,6 +561,21 @@ func applyDeclarativePolicy(t *testing.T, policy interface{}) {
 	require.NoError(t, testutils.ObtainAdminAccessToken(), "failed to re-obtain the admin token")
 }
 
+// setCutoffLeeway sets jwt.leeway to suspensionCutoffLeeway. PatchDeploymentConfig replaces a top-level
+// key whole, so the jwt section is read and only its leeway changed.
+func setCutoffLeeway() error {
+	raw, err := testutils.ReadDeploymentConfigKey("jwt")
+	if err != nil {
+		return err
+	}
+	jwtSection, _ := raw.(map[string]interface{})
+	if jwtSection == nil {
+		jwtSection = make(map[string]interface{})
+	}
+	jwtSection["leeway"] = int64(suspensionCutoffLeeway / time.Second)
+	return testutils.PatchDeploymentConfig(map[string]interface{}{"jwt": jwtSection})
+}
+
 // deploymentLockoutPatch is lockoutPolicy in the deployment file's snake_case form.
 func deploymentLockoutPatch() map[string]interface{} {
 	return map[string]interface{}{
@@ -485,7 +595,7 @@ func deploymentLockoutPatch() map[string]interface{} {
 }
 
 // applyDeploymentLockoutPolicy installs this package's policy through deployment.yaml, which is the
-// base the section overlays and leaves it writable.
+// base the section overlays and leaves it writable. The leeway is kept.
 func applyDeploymentLockoutPolicy(t *testing.T) {
 	t.Helper()
 
@@ -497,8 +607,8 @@ func applyDeploymentLockoutPolicy(t *testing.T) {
 }
 
 // restoreShippedPolicy removes the declarative accountAccess document and restores the harness
-// deployment. Each step runs even if an earlier one failed, and a failure fails the test: a policy
-// left behind would show up as unrelated failures in the next package.
+// deployment with the package's leeway. Each step runs even if an earlier one failed, and a failure
+// fails the test: a policy left behind would show up as unrelated failures in the next package.
 func restoreShippedPolicy(t *testing.T) {
 	t.Helper()
 
@@ -507,6 +617,9 @@ func restoreShippedPolicy(t *testing.T) {
 	}
 	if err := testutils.UpdateDeploymentConfig(pristineDeploymentPath); err != nil {
 		t.Errorf("cleanup: failed to restore the deployment config: %v", err)
+	}
+	if err := setCutoffLeeway(); err != nil {
+		t.Errorf("cleanup: failed to restore jwt.leeway: %v", err)
 	}
 	if err := testutils.RestartServer(); err != nil {
 		t.Errorf("cleanup: server did not restart cleanly after restoring the policy: %v", err)
@@ -648,6 +761,171 @@ func credentialsSchema(extra map[string]interface{}) map[string]interface{} {
 	return schema
 }
 
+// browser signs in as a browser does, through one OAuth client: a cookie jar carries the SSO cookie
+// between calls, and redirects are not followed so the gate's Location header can be read.
+type browser struct {
+	t            *testing.T
+	client       *http.Client
+	clientID     string
+	clientSecret string
+	redirectURI  string
+}
+
+// newBrowser returns a browser for one OAuth client with an empty cookie jar.
+func newBrowser(t *testing.T, clientID, clientSecret, redirectURI string) *browser {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err, "failed to create a cookie jar")
+	return &browser{
+		t: t,
+		client: &http.Client{
+			Jar:       jar,
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		redirectURI:  redirectURI,
+	}
+}
+
+// authorize starts an authorization code flow and returns the authId and executionId the gate
+// redirect carries.
+func (b *browser) authorize(state string) (authID, executionID string) {
+	b.t.Helper()
+
+	params := url.Values{}
+	params.Set("client_id", b.clientID)
+	params.Set("redirect_uri", b.redirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid")
+	params.Set("state", state)
+
+	resp, err := b.client.Get(testServerURL + "/oauth2/authorize?" + params.Encode())
+	require.NoError(b.t, err, "the authorize request failed")
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	require.Equal(b.t, http.StatusFound, resp.StatusCode, "authorize must redirect to the gate")
+	authID, executionID, err = testutils.ExtractAuthData(resp.Header.Get("Location"))
+	require.NoError(b.t, err, "failed to read the gate redirect")
+	return authID, executionID
+}
+
+// step posts one flow step through the browser, so the SSO cookie is both carried and updated, and
+// requires a flow answer.
+func (b *browser) step(body map[string]interface{}) *testutils.FlowStep {
+	b.t.Helper()
+
+	status, raw := postFlow(b.t, b.client, "", body)
+	require.Equal(b.t, http.StatusOK, status, "flow execute failed: %s", raw)
+	var step testutils.FlowStep
+	require.NoError(b.t, json.Unmarshal([]byte(raw), &step), "unreadable flow step: %s", raw)
+	return &step
+}
+
+// signIn authorizes and takes the first step. With credentials, that step must prompt and is
+// answered with them; without, the first step is all a live session needs. It returns the authId and
+// the last step.
+func (b *browser) signIn(state string, credentials map[string]string) (string, *testutils.FlowStep) {
+	b.t.Helper()
+
+	authID, executionID := b.authorize(state)
+	step := b.step(map[string]interface{}{"executionId": executionID})
+	if credentials == nil {
+		return authID, step
+	}
+	require.NotEqual(b.t, "COMPLETE", step.FlowStatus, "a first sign-in must prompt for credentials")
+	return authID, b.step(map[string]interface{}{
+		"executionId":    executionID,
+		"inputs":         credentials,
+		"action":         signInAction,
+		"challengeToken": step.ChallengeToken,
+	})
+}
+
+// signInForCode drives a first-time sign-in up to the authorization code, without redeeming it.
+func (b *browser) signInForCode(username, password, state string) string {
+	b.t.Helper()
+
+	authID, step := b.signIn(state, map[string]string{"username": username, "password": password})
+	require.Equal(b.t, "COMPLETE", step.FlowStatus, "the credential sign-in must complete the flow")
+	require.NotEmpty(b.t, step.Assertion, "the sign-in must yield an assertion")
+
+	payload, err := json.Marshal(map[string]string{"authId": authID, "assertion": step.Assertion})
+	require.NoError(b.t, err)
+	resp, err := b.client.Post(testServerURL+"/oauth2/auth/callback", "application/json",
+		bytes.NewReader(payload))
+	require.NoError(b.t, err, "the auth callback request failed")
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(b.t, err)
+	require.Equal(b.t, http.StatusOK, resp.StatusCode, "the auth callback failed: %s", string(body))
+
+	var authz testutils.AuthorizationResponse
+	require.NoError(b.t, json.Unmarshal(body, &authz), "unreadable authorization response")
+	code, err := testutils.ExtractAuthorizationCode(authz.RedirectURI)
+	require.NoError(b.t, err, "failed to extract the authorization code")
+	return code
+}
+
+// redeem swaps an authorization code for tokens and returns the status and body as they came.
+func (b *browser) redeem(code string) (int, string) {
+	b.t.Helper()
+
+	result, err := testutils.RequestToken(b.clientID, b.clientSecret, code, b.redirectURI, "authorization_code")
+	require.NoError(b.t, err, "the token request failed")
+	return result.StatusCode, string(result.Body)
+}
+
+// login drives a first-time sign-in to completion and returns its tokens. The first step must
+// prompt, proving the session was established by this login.
+func (b *browser) login(username, password, state string) *testutils.TokenResponse {
+	b.t.Helper()
+
+	status, body := b.redeem(b.signInForCode(username, password, state))
+	require.Equal(b.t, http.StatusOK, status, "the token request failed: %s", body)
+	var token testutils.TokenResponse
+	require.NoError(b.t, json.Unmarshal([]byte(body), &token), "unreadable token response")
+	return &token
+}
+
+// sessionSatisfiesAuthorize reports whether the browser's SSO session is still live: a new authorize
+// that completes on its first step was satisfied by it; a prompt means it has ended.
+func (b *browser) sessionSatisfiesAuthorize(state string) bool {
+	b.t.Helper()
+	_, step := b.signIn(state, nil)
+	return step.FlowStatus == "COMPLETE" && step.Assertion != ""
+}
+
+// ssoCookieNames reports the per-flow SSO cookies the browser currently holds.
+func (b *browser) ssoCookieNames() []string {
+	parsed, err := url.Parse(testServerURL)
+	require.NoError(b.t, err)
+
+	var names []string
+	for _, cookie := range b.client.Jar.Cookies(parsed) {
+		if strings.HasPrefix(cookie.Name, ssoCookiePrefix) {
+			names = append(names, cookie.Name)
+		}
+	}
+	return names
+}
+
+// clientCredentials requests the client's own token with the client_credentials grant, for the
+// resource when one is given, and returns the answer whatever it is.
+func clientCredentials(t *testing.T, clientID, clientSecret, resource string) *testutils.TokenHTTPResult {
+	t.Helper()
+
+	result, err := testutils.RequestTokenWithResource(clientID, clientSecret, "", "", "client_credentials",
+		resource)
+	require.NoError(t, err, "the token request itself must reach the server")
+	return result
+}
+
 // putSection writes a server-config section's writable layer and returns the status and body, for a
 // write whose refusal is the subject rather than an error.
 func putSection(t *testing.T, section, body string) (int, string) {
@@ -655,6 +933,25 @@ func putSection(t *testing.T, section, body string) (int, string) {
 	status, response, err := testutils.PutWritableServerConfigWithStatus(section, []byte(body))
 	require.NoError(t, err, "the %s write must be answered", section)
 	return status, string(response)
+}
+
+// getWith sends a GET through client and returns the status and the body.
+func getWith(t *testing.T, client *http.Client, path string) (int, string) {
+	t.Helper()
+	resp, err := client.Get(testServerURL + path)
+	require.NoError(t, err, "the read of %s must reach the server", path)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, string(body)
+}
+
+// tokenActive reports whether introspection, as the client, finds the token active.
+func tokenActive(t *testing.T, token, clientID, clientSecret string) bool {
+	t.Helper()
+	active, err := testutils.IntrospectToken(token, clientID, clientSecret)
+	require.NoError(t, err, "introspection itself must answer")
+	return active
 }
 
 // copyShippedFlowWithSender creates a copy of a shipped flow under its own handle, with senderID named

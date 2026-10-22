@@ -354,7 +354,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize runtime store")
 
 	// Initialize passkey service
-	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider)
+	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider, governanceService)
 
 	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
 	// share JTI replay protection.
@@ -441,6 +441,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			CriteriaRevoker:       revocationSvc,
 			ResourceMgtService:    resourceService,
 			IdentityGovernance:    governanceProvider,
+			TokenLeeway:           time.Duration(runtime.Config.JWT.Leeway) * time.Second,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

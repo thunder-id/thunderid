@@ -15,8 +15,9 @@ import (
 )
 
 // AgentLockTestSuite checks that an agent signing in with a password locks under the agent policy,
-// states the lock, and that the shipped agent unlock flow releases it. The shared `default` agent type
-// gains a username and a password for the suite's duration, in the OU it already points at.
+// states the lock, keeps it under a suspension, and that the shipped agent unlock flow releases it. The
+// shared `default` agent type gains a username and a password for the suite's duration, in the OU it
+// already points at.
 type AgentLockTestSuite struct {
 	suite.Suite
 	agentTypeSnapshot *testutils.AgentTypeSnapshot
@@ -91,6 +92,33 @@ func (ts *AgentLockTestSuite) TestAWrongSecretOnALockedAgentStatesTheLock() {
 		requireStatedHold(ts.T(), wrong, held, statedLockCode, "credential")
 	}
 	ts.Equal(revision, runtimeRevision(ts.T(), agentID), "a wrong secret during the lock must not be counted")
+}
+
+// A suspension placed over an agent's lock is reported in its place, and the agent's unsuspend, which
+// adds no hold of its own, leaves the lock where it was.
+func (ts *AgentLockTestSuite) TestAnAgentLockOutlivesASuspension() {
+	agentID, username, password := ts.newAgent("suspended")
+	_, liveName, _ := ts.newAgent("suspended_live")
+	ts.lockPassword(agentID, username)
+	expiry, reported := readEntityStatus(ts.T(), agentCollection, agentID).expiryOf("credential")
+	ts.Require().True(reported, "the lock must report its expiry")
+
+	runAdministrationFlow(ts.T(), agentSuspendFlowHandle, agentID)
+	ts.Equal("SUSPENDED", readEntityStatus(ts.T(), agentCollection, agentID).Value,
+		"the suspension must be reported over the lock")
+	wrong := authenticate(ts.T(), "agent_username", liveName, "Not-The-Agent-Secret-2!")
+	requireStatedHold(ts.T(), wrong, authenticate(ts.T(), "agent_username", username, password),
+		statedSuspensionCode, "credential")
+
+	runAdministrationFlow(ts.T(), agentUnsuspendFlowHandle, agentID)
+	status := readEntityStatus(ts.T(), agentCollection, agentID)
+	ts.Equal("LOCKED", status.Value, "the unsuspended agent must still be locked")
+	ts.Equal([]string{"credential"}, status.lockedMethods(), "the lock must be the password's, as formed")
+	after, reported := status.expiryOf("credential")
+	ts.Require().True(reported, "the lock must still report its expiry")
+	ts.Equal(expiry, after, "the suspension must leave the lock as it was")
+	requireStatedHold(ts.T(), wrong, authenticate(ts.T(), "agent_username", username, password),
+		statedLockCode, "credential")
 }
 
 func (ts *AgentLockTestSuite) TestAnUpdateReportsTheAgentLock() {

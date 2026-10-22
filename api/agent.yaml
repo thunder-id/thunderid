@@ -2982,12 +2982,13 @@ components:
             `ACTIVE`, `LOCKED` or `SUSPENDED`. When the agent is both suspended and locked,
             `SUSPENDED` is reported.
 
-            `SUSPENDED` is an administrative hold. `LOCKED` is an automatic hold after repeated
-            failed authentication attempts with the `credential` or `otp` authentication method,
-            reported under the `accountAccess` policy in force. Automatic locking is enabled for
-            agents by default. The agent's OAuth client secret is never locked. A lock does not expire
-            when its duration is `0` or it forms at `maxConsecutiveFailures`; other locks expire
-            on their own.
+            `SUSPENDED` is an administrative hold. The suspend flow places it and the unsuspend
+            flow removes it, returning the agent to `ACTIVE`.
+
+            `LOCKED` is an automatic hold after repeated failed sign-ins with the `credential` or
+            `otp` authentication method. Automatic locking is enabled for agents by default. The
+            agent's OAuth client secret is never locked. A lock does not expire when its duration
+            is `0` or it forms at `maxConsecutiveFailures`; other locks expire on their own.
           example: "ACTIVE"
         details:
           type: object
@@ -3005,8 +3006,8 @@ components:
               enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION]
               description: |
                 What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
-                authentication attempts. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an
-                operator. One reason covers every entry in `lockedMethods`.
+                sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator. One
+                reason covers every entry in `lockedMethods`.
               example: "FAILED_ATTEMPTS"
             since:
               type: string

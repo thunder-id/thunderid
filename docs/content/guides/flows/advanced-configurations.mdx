@@ -371,6 +371,10 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | - |
 | **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | - |
+| **Validate and Plan Suspension** | Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. | Administration flows only |
+| **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Validate and Plan Suspension must have run |
+| **Unsuspend Identity** | Lifts a suspension. A user is left locked until recovery or an unlock. | Administration flows only |
+| **Unlock Identity** | Clears every automatic lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
 | **User Consent** | Records explicit user consent for defined scopes or terms. | - |
@@ -554,7 +558,7 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 - User not found in the user store
 - Credential update failed
 
-**Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an `IdentityGovernanceExecutor` node in `unlock` mode right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.
+**Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an **Unlock Identity** node (`IdentityGovernanceExecutor` in `unlock` mode) right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.
 
 ```json
 {
@@ -1747,6 +1751,73 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 - An OU with the same handle already exists: re-prompts the user to change the handle
 - Specified `parentOuId` does not exist
 - OU service error
+
+</details>
+
+#### Account Lifecycle
+
+These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow.
+
+<details>
+<summary>Validate and Plan Suspension</summary>
+
+Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. It runs before anything is revoked, so a refused suspension touches no token or session.
+
+**When to use:** In a suspend administration flow, after **Validate Permission** and before **Revoke Tokens**, **Revoke Sessions**, and **Suspend Identity**.
+
+**Input Configuration:**
+- `subject` (required): the ID of the user, agent, or application to suspend. When it is missing, the flow asks for it.
+
+**Example:**
+
+```json
+{
+  "id": "pre_suspend",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "PreSuspendExecutor" },
+  "onSuccess": "revoke_tokens"
+}
+```
+
+**Failure conditions:**
+- The administrator may not suspend the account, or the account does not exist
+
+</details>
+
+<details>
+<summary>Suspend, Unsuspend, and Unlock Identity</summary>
+
+One executor, `IdentityGovernanceExecutor`, applies one lifecycle operation, selected by the node `mode`. The mode has no default, so a node without one fails flow validation.
+
+| Mode | Console label | What it does |
+|---|---|---|
+| `suspend` | **Suspend Identity** | Suspends the account that **Validate and Plan Suspension** planned. Suspending an account that is already suspended changes nothing. |
+| `unsuspend` | **Unsuspend Identity** | Lifts a suspension. A user is left locked on every sign-in method until recovery or an unlock. |
+| `unlock` | **Unlock Identity** | Clears every automatic lock and its history. It does not lift a suspension. |
+
+**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow, only `unlock` runs, right after **Set Credentials**.
+
+**Input Configuration:**
+- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored.
+- `operatorNote` (optional): a note recorded with a suspension and returned on management reads. Other modes accept and ignore it.
+
+**Example:**
+
+```json
+{
+  "id": "access_governance",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "IdentityGovernanceExecutor", "mode": "unsuspend" },
+  "onSuccess": "end"
+}
+```
+
+**Failure conditions:**
+- The administrator may not manage the account, or the account does not exist
+- The operation does not apply, such as unsuspending an account that is not suspended
+- In a recovery flow, no earlier step proved control of the account
+
+Every refusal fails the flow with `FET-1112`, which does not name the cause. The server logs the cause at debug level. In a recovery flow, a refused release, or one with identity governance turned off, completes the step without releasing the lock.
 
 </details>
 

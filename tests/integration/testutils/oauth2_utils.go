@@ -494,16 +494,34 @@ func RequestClientCredentialsToken(clientID, clientSecret, scope, resource strin
 
 // IntrospectToken reports whether the introspection endpoint considers the token active.
 func IntrospectToken(token, clientID, clientSecret string) (bool, error) {
+	result, err := IntrospectTokenResult(token, clientID, clientSecret, false)
+	if err != nil {
+		return false, err
+	}
+	return result.Active, nil
+}
+
+// IntrospectTokenResult introspects the token as the client and returns the answer. The client
+// authenticates with HTTP Basic, or in the request body when credentialsInBody is set, as a
+// client_secret_post client must.
+func IntrospectTokenResult(token, clientID, clientSecret string, credentialsInBody bool) (
+	*IntrospectionResult, error) {
 	introspectData := url.Values{}
 	introspectData.Set("token", token)
+	if credentialsInBody {
+		introspectData.Set("client_id", clientID)
+		introspectData.Set("client_secret", clientSecret)
+	}
 
 	req, err := http.NewRequest("POST", TestServerURL+"/oauth2/introspect",
 		bytes.NewBufferString(introspectData.Encode()))
 	if err != nil {
-		return false, fmt.Errorf("failed to create introspection request: %w", err)
+		return nil, fmt.Errorf("failed to create introspection request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(clientID, clientSecret)
+	if !credentialsInBody {
+		req.SetBasicAuth(clientID, clientSecret)
+	}
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -513,26 +531,24 @@ func IntrospectToken(token, clientID, clientSecret string) (bool, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("failed to send introspection request: %w", err)
+		return nil, fmt.Errorf("failed to send introspection request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("introspection returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("introspection returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result struct {
-		Active bool `json:"active"`
-	}
+	var result IntrospectionResult
 	if err := json.Unmarshal(body, &result); err != nil {
-		return false, fmt.Errorf("failed to unmarshal introspection response %s: %w", string(body), err)
+		return nil, fmt.Errorf("failed to unmarshal introspection response %s: %w", string(body), err)
 	}
 
-	return result.Active, nil
+	return &result, nil
 }
 
 // ExtractAuthorizationCode extracts the authorization code from the redirect URI

@@ -31,13 +31,27 @@ func admitAllAccess(t interface {
 	mock.TestingT
 }) providers.IdentityGovernanceProvider {
 	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)
+	governance.EXPECT().EvaluateAccess(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
 	governance.EXPECT().AdmitSignIn(mock.Anything, mock.Anything).
 		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
 	return governance
 }
 
-// expectSignIn is a governance provider that expects one completing sign-in check of the entity, and
-// answers it with the decision and fault.
+// expectAccess is a governance provider that expects one check of the entity at the plane and method,
+// and answers it with the decision and fault.
+func expectAccess(t interface {
+	Cleanup(func())
+	mock.TestingT
+}, entityID string, plane providers.AccessPlane, method providers.AuthenticationMethod,
+	decision providers.AccessDecision,
+	fault *tidcommon.ServiceError) *identitygovernanceprovidermock.IdentityGovernanceProviderMock {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)
+	governance.EXPECT().EvaluateAccess(mock.Anything, entityID, plane, method).Return(decision, fault).Once()
+	return governance
+}
+
+// expectSignIn is expectAccess for a completing sign-in.
 func expectSignIn(t interface {
 	Cleanup(func())
 	mock.TestingT
@@ -56,11 +70,86 @@ func decided(t *testing.T) func(*tidcommon.ServiceError, error) *tidcommon.Servi
 	}
 }
 
+// A refusal that names no hold answers as a wrong secret does, so the two cannot be told apart.
+func (s *AccessGuardTestSuite) TestAccessGuardRefusesWithTheIndistinguishableCode() {
+	guard := newAccessGuard(expectAccess(s.T(), "held-1", providers.AccessPlaneSession, "",
+		providers.AccessDecision{}, nil))
+
+	svcErr := decided(s.T())(guard.refuseIfHeld(context.Background(), "held-1",
+		providers.AccessPlaneSession, "", log.GetLogger()))
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrInvalidCredentials.Code, svcErr.Code)
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardAdmits() {
+	guard := newAccessGuard(admitAllAccess(s.T()))
+
+	s.Nil(decided(s.T())(guard.refuseIfHeld(context.Background(), "u1",
+		providers.AccessPlaneSession, "", log.GetLogger())))
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardReportsAFaultWhenTheAuthorityFails() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, "u1", providers.AccessPlaneAuthentication,
+		providers.AuthenticationMethodCredential).
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	governance.EXPECT().AdmitSignIn(mock.Anything, "u1").
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	guard := newAccessGuard(governance)
+
+	svcErr, err := guard.refuseIfHeld(context.Background(), "u1",
+		providers.AccessPlaneAuthentication, providers.AuthenticationMethodCredential, log.GetLogger())
+	s.Error(err)
+	s.Nil(svcErr)
+
+	svcErr, err = guard.refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())
+	s.Error(err)
+	s.Nil(svcErr)
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardPassesThePlaneAndMethodThrough() {
+	governance := expectAccess(s.T(), "u1", providers.AccessPlaneDispatch, providers.AuthenticationMethodOTP,
+		providers.AccessDecision{Admitted: true}, nil)
+
+	s.Nil(decided(s.T())(newAccessGuard(governance).refuseIfHeld(context.Background(), "u1",
+		providers.AccessPlaneDispatch, providers.AuthenticationMethodOTP, log.GetLogger())))
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardStatesTheHold() {
+	for name, test := range map[string]struct {
+		reason providers.AccessRefusalReason
+		want   string
+	}{
+		"suspension": {providers.AccessRefusalReasonSuspended, ErrAccountSuspended.Code},
+		"lock":       {providers.AccessRefusalReasonLocked, ErrAccountLocked.Code},
+	} {
+		s.Run(name, func() {
+			governance := expectAccess(s.T(), "held-1", providers.AccessPlaneAuthentication, "",
+				providers.AccessDecision{Reason: test.reason}, nil)
+
+			svcErr := decided(s.T())(newAccessGuard(governance).refuseIfHeld(context.Background(), "held-1",
+				providers.AccessPlaneAuthentication, "", log.GetLogger()))
+			s.Require().NotNil(svcErr)
+			s.Equal(test.want, svcErr.Code)
+		})
+	}
+}
+
+// The decision returned beside a fault is not used, even when it names a hold.
+func (s *AccessGuardTestSuite) TestAccessGuardStatesNothingWhenTheAuthorityFails() {
+	governance := expectAccess(s.T(), "u1", providers.AccessPlaneSession, "",
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, &tidcommon.ServiceError{Code: "boom"})
+
+	svcErr, err := newAccessGuard(governance).refuseIfHeld(context.Background(), "u1",
+		providers.AccessPlaneSession, "", log.GetLogger())
+	s.Require().Error(err)
+	s.Nil(svcErr)
+}
+
 func (s *AccessGuardTestSuite) TestAccessGuardChecksASignInThroughAdmitSignIn() {
 	governance := expectSignIn(s.T(), "u1", providers.AccessDecision{Admitted: true}, nil)
 
-	guard := newAccessGuard(governance)
-	s.Nil(decided(s.T())(guard.refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())))
+	s.Nil(decided(s.T())(newAccessGuard(governance).refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())))
 	governance.AssertNotCalled(s.T(), "EvaluateAccess", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -90,9 +179,14 @@ func (s *AccessGuardTestSuite) TestAccessGuardWithNoSubjectOrProviderChecksNothi
 	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
 	guard := newAccessGuard(governance)
 
+	s.Nil(decided(s.T())(guard.refuseIfHeld(context.Background(), "", providers.AccessPlaneSession, "",
+		log.GetLogger())))
 	s.Nil(decided(s.T())(guard.refuseSignInIfHeld(context.Background(), "", log.GetLogger())))
+	governance.AssertNotCalled(s.T(), "EvaluateAccess", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	governance.AssertNotCalled(s.T(), "AdmitSignIn", mock.Anything, mock.Anything)
 
 	noGovernance := newAccessGuard(nil)
+	s.Nil(decided(s.T())(noGovernance.refuseIfHeld(context.Background(), "u1", providers.AccessPlaneSession, "",
+		log.GetLogger())))
 	s.Nil(decided(s.T())(noGovernance.refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())))
 }

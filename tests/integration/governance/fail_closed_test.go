@@ -12,16 +12,27 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
+const (
+	// noRevocationStorePath points database.runtime_persistent at a SQLite file holding only the
+	// runtime table, so governance reads and writes work while every revocation write fails. It has no
+	// directory component, so it resolves against the server home under every database profile.
+	noRevocationStorePath = "governance_no_revocation_store.db"
+)
+
 // unreadableEntitySignIn is the shipped sign-in flow's answer when the account cannot be read.
 var unreadableEntitySignIn = flowAnswer{status: http.StatusOK, flowStatus: "ERROR", code: "FET-1006"}
 
 // FailClosedTestSuite checks that governance refuses when it cannot read what it needs, with the
-// answer the path gives for an unreadable entity, never as a hold or a wrong credential. It runs under
-// the shipped policy.
+// answer the path gives for an unreadable entity, never as a hold or a wrong credential; and that a
+// suspension whose containment fails is not placed. It runs under the shipped policy.
 type FailClosedTestSuite struct {
 	suite.Suite
 	users        *userFixture
 	shippedAppID string
+
+	// originalDatabaseConfig is the deployment's database section, captured before it is broken.
+	originalDatabaseConfig map[string]interface{}
+	configBroken           bool
 }
 
 func TestFailClosedTestSuite(t *testing.T) {
@@ -30,7 +41,13 @@ func TestFailClosedTestSuite(t *testing.T) {
 
 func (ts *FailClosedTestSuite) SetupSuite() {
 	ts.users = newUserFixture(ts.T(), "fail_closed", testutils.UserType{Schema: credentialsSchema(nil)})
+
 	ts.shippedAppID = newShippedFlowApp(ts.T(), ts.users, "fail_closed")
+}
+
+func (ts *FailClosedTestSuite) TearDownSuite() {
+	// Safety net: each test restores the database in a deferred block.
+	ts.restoreRuntimePersistentDB()
 }
 
 // At sign-in, an identity whose runtime document cannot be read is refused with a server error,
@@ -84,6 +101,26 @@ func (ts *FailClosedTestSuite) TestAnUnreadableRuntimeRecordFailsTheSignInFlow()
 		"the account must sign in again once its record is readable")
 }
 
+// Containment runs before the hold: when the revocation store cannot be written, the suspend
+// flow faults and the account is not suspended, and Suspend stays available once the store is back.
+func (ts *FailClosedTestSuite) TestAFailedContainmentLeavesTheAccountActive() {
+	userID, username, password := ts.users.newUser(ts.T(), "containment", nil)
+
+	defer ts.restoreRuntimePersistentDB()
+	ts.breakRevocationStore()
+
+	ts.Equal(serverFault, attemptAdministrationFlow(ts.T(), suspendFlowHandle, userID),
+		"a suspend whose revocation step cannot write must fault")
+	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "no hold may be written after a failed containment")
+	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
+		"the account must still be usable")
+
+	ts.restoreRuntimePersistentDB()
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+	ts.Equal("SUSPENDED", readStatus(ts.T(), userID).Value,
+		"Suspend must succeed once the store is back")
+}
+
 // corruptRuntimeRecord stores a document that is valid JSON, so the table accepts it, but not an
 // access-state document, so the server cannot read it.
 func (ts *FailClosedTestSuite) corruptRuntimeRecord(entityID string) {
@@ -105,4 +142,46 @@ func (ts *FailClosedTestSuite) repairRuntimeRecord(entityID string) {
 		`UPDATE "ENTITY_RUNTIME_DATA" SET RUNTIME_ATTRIBUTES = '{}' WHERE ENTITY_ID = '%s';`, entityID)); err != nil {
 		ts.T().Errorf("failed to repair the runtime record of %s: %v", entityID, err)
 	}
+}
+
+// breakRevocationStore points runtime_persistent at a database holding only the runtime table and
+// restarts. The admin token is not re-obtained: it was issued before and stays valid across the
+// restart, while issuing a new one may need a store this database lacks.
+func (ts *FailClosedTestSuite) breakRevocationStore() {
+	original, err := testutils.ReadDeploymentConfigKey("database")
+	ts.Require().NoError(err, "failed to read the database section of deployment.yaml")
+	originalMap, ok := original.(map[string]interface{})
+	ts.Require().True(ok, "deployment.yaml has no database section")
+	ts.originalDatabaseConfig = originalMap
+
+	ts.Require().NoError(testutils.CreateEntityRuntimeOnlyDB(noRevocationStorePath),
+		"failed to create the database without a revocation store")
+
+	broken := make(map[string]interface{}, len(originalMap))
+	for key, value := range originalMap {
+		broken[key] = value
+	}
+	broken["runtime_persistent"] = map[string]interface{}{
+		"type":   "sqlite",
+		"sqlite": map[string]interface{}{"path": noRevocationStorePath},
+	}
+
+	ts.configBroken = true
+	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{"database": broken}),
+		"failed to point runtime_persistent at the database without a revocation store")
+	ts.Require().NoError(testutils.RestartServer(), "the server must boot without a revocation store")
+}
+
+// restoreRuntimePersistentDB puts the captured database section back, restarts and re-obtains the admin
+// token. Every step runs even if one fails, so the server is left healthy for later packages.
+func (ts *FailClosedTestSuite) restoreRuntimePersistentDB() {
+	if !ts.configBroken {
+		return
+	}
+	ts.Assert().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
+		"database": ts.originalDatabaseConfig,
+	}), "failed to restore the database section of deployment.yaml")
+	ts.Assert().NoError(testutils.RestartServer(), "failed to restart after the database restore")
+	ts.Assert().NoError(testutils.ObtainAdminAccessToken(), "failed to re-obtain the admin token")
+	ts.configBroken = false
 }

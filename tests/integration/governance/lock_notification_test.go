@@ -18,19 +18,6 @@ import (
 // notificationSection is the server-config section naming the default email sender.
 const notificationSection = "notification"
 
-// LockNotificationTestSuite checks the lock email settings: the templates the bootstrap stores in the
-// accountAccess section, the values that section and the notification section refuse, and a
-// declarative notification section naming a declarative sender.
-type LockNotificationTestSuite struct {
-	suite.Suite
-	originalNotification  json.RawMessage
-	originalAccountAccess json.RawMessage
-}
-
-func TestLockNotificationTestSuite(t *testing.T) {
-	suite.Run(t, new(LockNotificationTestSuite))
-}
-
 // shippedLockEmail is the lock email templates the bootstrap stores in the accountAccess section.
 var shippedLockEmail = map[string]interface{}{
 	"templates": map[string]interface{}{
@@ -43,12 +30,66 @@ var shippedLockEmail = map[string]interface{}{
 	},
 }
 
+// declarativeSenderID is the email sender declarativeSenderResources declares.
+const declarativeSenderID = "governance-declarative-email-sender"
+
+// declarativeSenderResources declares an email sender and a notification section naming it.
+const declarativeSenderResources = `resource_type: connection
+id: ` + declarativeSenderID + `
+type: email-smtp
+name: Governance Declarative Email Sender
+host: localhost
+port: 2525
+fromAddress: noreply@thunderid.test
+---
+resource_type: server_config
+name: notification
+value:
+  defaultEmailSenderId: ` + declarativeSenderID + `
+`
+
+// LockNotificationTestSuite checks the lock email settings: the templates the bootstrap stores in the
+// accountAccess section, the values that section and the notification section refuse, and a
+// declarative notification section naming a declarative sender. The suspend and unsuspend flows email
+// the holder through the sender their notify_holder node names.
+type LockNotificationTestSuite struct {
+	suite.Suite
+	smtp                  *testutils.MockSMTPServer
+	senderID              string
+	users                 *userFixture
+	originalNotification  json.RawMessage
+	originalAccountAccess json.RawMessage
+}
+
+func TestLockNotificationTestSuite(t *testing.T) {
+	suite.Run(t, new(LockNotificationTestSuite))
+}
+
 func (ts *LockNotificationTestSuite) SetupSuite() {
 	var err error
 	ts.originalNotification, err = testutils.GetWritableServerConfig(notificationSection)
 	ts.Require().NoError(err, "failed to read the notification section")
 	ts.originalAccountAccess, err = testutils.GetWritableServerConfig(accountAccessSection)
 	ts.Require().NoError(err, "failed to read the accountAccess section")
+
+	ts.smtp = testutils.NewMockSMTPServer(0)
+	ts.Require().NoError(ts.smtp.Start(), "failed to start the mock SMTP server")
+	senderID, err := testutils.CreateSMTPEmailProvider("Lock Notification Test Provider",
+		"localhost", ts.smtp.GetPort(), "noreply@thunderid.test")
+	ts.Require().NoError(err, "failed to create the SMTP email provider")
+	ts.senderID = senderID
+
+	emailAttribute := map[string]interface{}{"type": "email"}
+	ts.users = newUserFixture(ts.T(), "lock_notification", testutils.UserType{
+		Schema: credentialsSchema(map[string]interface{}{"email": emailAttribute}),
+	})
+}
+
+// SetupTest starts each test from this package's policy and no default sender.
+func (ts *LockNotificationTestSuite) SetupTest() {
+	ts.setAccountAccess(`{}`)
+	ts.Require().NoError(testutils.PutWritableServerConfig(notificationSection, []byte(`{}`)))
+	ts.smtp.ClearEmails()
 }
 
 func (ts *LockNotificationTestSuite) TearDownSuite() {
@@ -57,9 +98,20 @@ func (ts *LockNotificationTestSuite) TearDownSuite() {
 			ts.T().Errorf("teardown: failed to restore the accountAccess section: %v", err)
 		}
 	}
+	// Before the sender is deleted, since the section may name it.
 	if ts.originalNotification != nil {
 		if err := testutils.PutWritableServerConfig(notificationSection, ts.originalNotification); err != nil {
 			ts.T().Errorf("teardown: failed to restore the notification section: %v", err)
+		}
+	}
+	if ts.senderID != "" {
+		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
+			ts.T().Logf("teardown: failed to delete the email provider: %v", err)
+		}
+	}
+	if ts.smtp != nil {
+		if err := ts.smtp.Stop(); err != nil {
+			ts.T().Logf("teardown: failed to stop the mock SMTP server: %v", err)
 		}
 	}
 }
@@ -146,24 +198,6 @@ func (ts *LockNotificationTestSuite) TestAnUnknownNotificationSettingIsRefusedAn
 	ts.JSONEq(string(before), string(after), "a refused write must leave the sender named")
 }
 
-// declarativeSenderID is the email sender declarativeSenderResources declares.
-const declarativeSenderID = "governance-declarative-email-sender"
-
-// declarativeSenderResources declares an email sender and a notification section naming it.
-const declarativeSenderResources = `resource_type: connection
-id: ` + declarativeSenderID + `
-type: email-smtp
-name: Governance Declarative Email Sender
-host: localhost
-port: 2525
-fromAddress: noreply@thunderid.test
----
-resource_type: server_config
-name: notification
-value:
-  defaultEmailSenderId: ` + declarativeSenderID + `
-`
-
 // Runs in declarative mode, since outside it the notification service reads no declarative sender.
 func (ts *LockNotificationTestSuite) TestADeclarativeSectionCanNameADeclarativeSender() {
 	dir := ts.T().TempDir()
@@ -202,4 +236,68 @@ func (ts *LockNotificationTestSuite) TestADeclarativeSectionCanNameADeclarativeS
 	status, response := putSection(ts.T(), notificationSection, `{}`)
 	ts.Equal(http.StatusBadRequest, status, "a write over a declarative sender must be refused: %s", response)
 	ts.Contains(response, "SCF-1003", "a write over a declarative sender must be refused as an invalid value")
+}
+
+// Suspend tells the holder an administrator suspended the account.
+func (ts *LockNotificationTestSuite) TestSuspendEmailsTheHolder() {
+	_, suspend := copyShippedFlowWithSender(ts.T(), suspendFlowHandle, administrationFlowType, "notify_holder",
+		ts.senderID, nil)
+	userID, _, address, _ := ts.newUser("suspended")
+	runAdministrationFlow(ts.T(), suspend, userID)
+
+	email := awaitDelivered(ts.T(), ts.smtp.GetLastEmail, "suspend must email the holder")
+	ts.Equal([]string{address}, email.To)
+	ts.Contains(email.Body, "Your account has been suspended by an administrator.")
+	ts.Contains(email.Body, "Only an administrator can lift the suspension.")
+}
+
+// Unsuspend tells the holder the suspension is lifted and the account is still locked.
+func (ts *LockNotificationTestSuite) TestUnsuspendEmailsTheHolder() {
+	_, unsuspend := copyShippedFlowWithSender(ts.T(), unsuspendFlowHandle, administrationFlowType,
+		"notify_holder", ts.senderID, nil)
+	userID, _, address, _ := ts.newUser("unsuspended")
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+	ts.smtp.ClearEmails()
+	runAdministrationFlow(ts.T(), unsuspend, userID)
+
+	email := awaitDelivered(ts.T(), ts.smtp.GetLastEmail, "unsuspend must email the holder")
+	ts.Equal([]string{address}, email.To)
+	ts.Contains(email.Body, "The suspension on your account has been lifted")
+	ts.Contains(email.Body, "Your account is still locked.")
+}
+
+// setAccountAccess writes the writable accountAccess layer as this package's policy and the shipped
+// lock email templates, with body laid over them; SetupTest resets it.
+func (ts *LockNotificationTestSuite) setAccountAccess(body string) {
+	ts.T().Helper()
+
+	var override map[string]interface{}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &override), "unreadable override %s", body)
+	templates := map[string]interface{}{"user": map[string]interface{}{"notifications": map[string]interface{}{
+		"onLock": map[string]interface{}{"email": shippedLockEmail}}}}
+	layer, err := json.Marshal(mergeJSONObjects(lockoutPolicyWith(templates), override))
+	ts.Require().NoError(err)
+	ts.Require().NoError(testutils.PutWritableServerConfig(accountAccessSection, layer),
+		"the accountAccess section must accept %s", body)
+}
+
+// newUser creates one account of the fixture's type, whose primary email is its email address.
+func (ts *LockNotificationTestSuite) newUser(name string) (userID, username, address, password string) {
+	ts.T().Helper()
+	return ts.newUserOfType(ts.users.userType, name, nil)
+}
+
+// newUserOfType creates one account of the given user type with an email address and any extra
+// attributes.
+func (ts *LockNotificationTestSuite) newUserOfType(userType, name string, extra map[string]interface{}) (
+	userID, username, address, password string) {
+	ts.T().Helper()
+
+	address = ts.users.usernameFor(name) + "@example.com"
+	attributes := map[string]interface{}{"email": address}
+	for key, value := range extra {
+		attributes[key] = value
+	}
+	userID, username, password = ts.users.newUserOfType(ts.T(), userType, name, attributes)
+	return userID, username, address, password
 }

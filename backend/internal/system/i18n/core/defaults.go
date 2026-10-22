@@ -1197,6 +1197,8 @@ var defaultMessages = map[string]string{
 	"error.ouservice.parent_organization_unit_not_found": "Parent organization unit not found",
 	"error.ouservice.parent_organization_unit_not_found_description": "Parent organization unit not found",
 	"error.ouservice.result_limit_exceeded": "Result limit exceeded",
+	"error.passkeyservice.account_suspended": "Account suspended",
+	"error.passkeyservice.account_suspended_description": "This account is suspended. Contact an administrator",
 	"error.passkeyservice.credential_not_found": "Passkey credential not found",
 	"error.passkeyservice.credential_not_found_description": "The specified credential was not found for the user",
 	"error.passkeyservice.empty_credential_id": "Empty credential ID",

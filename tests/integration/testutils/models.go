@@ -323,6 +323,12 @@ type TokenHTTPResult struct {
 	Token      *TokenResponse
 }
 
+// IntrospectionResult is the part of an introspection answer the tests read.
+type IntrospectionResult struct {
+	Active bool   `json:"active"`
+	Sub    string `json:"sub"`
+}
+
 // AccessStatus is the effective access status a management read of a user, an agent or an
 // application reports.
 type AccessStatus struct {
@@ -334,6 +340,7 @@ type AccessStatus struct {
 type AccessStatusDetails struct {
 	Reason        string         `json:"reason"`
 	Since         string         `json:"since"`
+	OperatorNote  string         `json:"operatorNote"`
 	LockedMethods []LockedMethod `json:"lockedMethods"`
 }
 

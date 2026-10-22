@@ -381,6 +381,54 @@ func (ts *RecoveryReleaseTestSuite) TestASignInThroughARecoveryThatReleasesCompl
 	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "the recovery must have released the lock")
 }
 
+// The hold an unsuspend leaves holds every sign-in method, yet a passkey still proves control in
+// recovery.
+func (ts *RecoveryReleaseTestSuite) TestAPasskeyRecoversFromThePostSuspensionHold() {
+	appID := ts.newRecoveryApp("passkey", passkeyRecoveryFlow())
+	userID, username, password, _ := ts.newUser("passkey_recovery")
+	assertion, err := testutils.ObtainAuthAssertion(username, password)
+	ts.Require().NoError(err, "the holder must sign in before the suspension")
+	authenticator, userHandle, err := testutils.RegisterPasskeyCredential(userID,
+		recoveryPasskeyRPID, recoveryPasskeyRPName, recoveryPasskeyOrigin, assertion)
+	ts.Require().NoError(err, "failed to enrol the passkey")
+
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+	runAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
+	ts.Require().Equal("LOCKED", readStatus(ts.T(), userID).Value, "the unsuspend must leave its hold")
+
+	step, err := common.InitiateRecoveryFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "failed to initiate the recovery flow")
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username}, submitUsernameAction, step.ChallengeToken)
+	ts.Require().NoError(err, "failed to submit the username")
+	raw, ok := step.Data.AdditionalData["passkeyChallenge"]
+	ts.Require().True(ok, "the hold must not withhold the passkey challenge")
+	var options struct {
+		Challenge string `json:"challenge"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(raw), &options), "unreadable passkey challenge")
+
+	credentialID, clientDataJSON, authenticatorData, signature, err :=
+		authenticator.CreateAssertionResponse(options.Challenge, true)
+	ts.Require().NoError(err, "failed to sign the passkey challenge")
+	step, err = common.CompleteFlow(step.ExecutionID, map[string]string{
+		"credentialId": credentialID, "clientDataJSON": clientDataJSON,
+		"authenticatorData": authenticatorData, "signature": signature, "userHandle": userHandle,
+	}, passkeyAssertionAction, step.ChallengeToken)
+	ts.Require().NoError(err, "failed to submit the passkey assertion")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "password"),
+		"the passkey must get past the post-suspension hold in recovery")
+
+	replacement := "Recovered-By-Passkey-31!"
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"password": replacement}, submitPasswordAction, step.ChallengeToken)
+	ts.Require().NoError(err, "failed to submit the new password")
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "the recovery must complete")
+	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "the recovery must release the hold")
+	ts.True(authenticate(ts.T(), "username", username, replacement).succeeded(),
+		"the replacement secret must work immediately")
+}
+
 // Each shipped recovery flow runs as a copy whose email node names a sender, as an operator must name
 // one, and whose link back to sign-in calls the application's own sign-in flow; the path the test
 // drives is the shipped one.
@@ -485,6 +533,31 @@ func (ts *RecoveryReleaseTestSuite) TestARecoveryFlowWithoutTheNodeReleasesNothi
 	ts.requireLockUnchanged(userID, "credential", expiry, "no release node")
 }
 
+// The account is locked first so there is a real lock to release. Once the holds are lifted, the
+// original secret still works and the attempted one does not.
+func (ts *RecoveryReleaseTestSuite) TestASuspendedAccountCannotRecoverOutOfItsHold() {
+	userID, username, password, _ := ts.newUser("suspended_recovery")
+	ts.lockCredential(userID, username)
+
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+	ts.Require().Equal("SUSPENDED", readStatus(ts.T(), userID).Value, "the hold must be in place")
+
+	replacement := "Recovered-Under-Hold-17!"
+	ts.False(ts.attemptRecoveryThrough(ts.appID, username, replacement, nil),
+		"a suspended account must not be able to drive a recovery to completion")
+	ts.Equal("SUSPENDED", readStatus(ts.T(), userID).Value, "the suspension must survive the attempt")
+
+	runAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
+	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
+	ts.Require().Equal("ACTIVE", readStatus(ts.T(), userID).Value,
+		"the holds must be lifted before the secrets are compared")
+
+	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
+		"the original secret must still be the account's")
+	ts.False(authenticate(ts.T(), "username", username, replacement).succeeded(),
+		"the credential must not have been written")
+}
+
 // newRecoveryApp creates a recovery flow and an application that recovers through it.
 func (ts *RecoveryReleaseTestSuite) newRecoveryApp(name string, flow testutils.Flow) string {
 	ts.T().Helper()
@@ -584,7 +657,8 @@ func (ts *RecoveryReleaseTestSuite) recoverThrough(appID, username, newPassword 
 }
 
 // attemptRecoveryThrough drives the recovery flow and reports whether it completed. extra is sent
-// with every step, for a request naming inputs the flow did not ask for. A refusal is still a flow
+// with every step, for a request naming inputs the flow did not ask for. A held subject is refused at
+// identify like an unknown one, so the flow asks for the username again. A refusal is still a flow
 // answer, so a failed request fails the test.
 func (ts *RecoveryReleaseTestSuite) attemptRecoveryThrough(appID, username, newPassword string,
 	extra map[string]string) bool {

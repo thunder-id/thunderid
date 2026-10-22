@@ -301,6 +301,9 @@ func (p *defaultAuthnProvider) initiateEnrollmentWithPasskey(
 	}
 	result, svcErr := p.passkeyService.StartRegistration(ctx, req)
 	if svcErr != nil {
+		if stated := passkeyEnrollmentRefusal(svcErr); stated != nil {
+			return nil, stated
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return nil, newClientError(authnprovidercm.ErrorCodeEnrollmentFailed,
 				svcErr.Error.DefaultValue, svcErr.ErrorDescription.DefaultValue)
@@ -335,6 +338,9 @@ func (p *defaultAuthnProvider) enrollWithPasskey(
 	}
 	result, svcErr := p.passkeyService.FinishRegistration(ctx, req)
 	if svcErr != nil {
+		if stated := passkeyEnrollmentRefusal(svcErr); stated != nil {
+			return nil, stated
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return nil, newClientError(authnprovidercm.ErrorCodeEnrollmentFailed,
 				svcErr.Error.DefaultValue, svcErr.ErrorDescription.DefaultValue)

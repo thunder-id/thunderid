@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -13,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/identitygovernanceprovider"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -53,6 +55,8 @@ func (s *IdentityGovernanceExecutorTestSuite) TearDownTest() {
 // assertNothingApplied asserts that no lifecycle method reached the provider.
 func (s *IdentityGovernanceExecutorTestSuite) assertNothingApplied() {
 	s.governance.AssertNotCalled(s.T(), "Unlock", mock.Anything, mock.Anything)
+	s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, mock.Anything, mock.Anything)
+	s.governance.AssertNotCalled(s.T(), "Unsuspend", mock.Anything, mock.Anything)
 }
 
 // governanceContext builds an administration node context with the mode and the subject input.
@@ -64,6 +68,25 @@ func governanceContext(mode, subject string) *providers.NodeContext {
 		ExecutorMode: mode,
 		UserInputs:   map[string]string{revocationInputSubject: subject},
 	}
+}
+
+// governanceContextWithNote is governanceContext with an operator note input.
+func governanceContextWithNote(mode, subject, operatorNote string) *providers.NodeContext {
+	ctx := governanceContext(mode, subject)
+	ctx.UserInputs[governanceInputOperatorNote] = operatorNote
+	return ctx
+}
+
+// governanceSuspendContext builds a suspend node context holding the plan for u1 and no subject input.
+func governanceSuspendContext(operatorNote string) *providers.NodeContext {
+	plan, _ := encodeRevocationPlan(buildSuspensionPlan("u1", "", time.Now(), 0))
+	ctx := governanceContext(ExecutorModeSuspend, "")
+	delete(ctx.UserInputs, revocationInputSubject)
+	if operatorNote != "" {
+		ctx.UserInputs[governanceInputOperatorNote] = operatorNote
+	}
+	ctx.SharedRuntimeData = map[string]string{common.RuntimeKeyRevocationPlan: plan}
+	return ctx
 }
 
 // adminOperation is a lifecycle mode run on u1, with the provider call it expects.
@@ -85,6 +108,22 @@ func adminOperations() []adminOperation {
 			},
 			ctx: func() *providers.NodeContext { return governanceContext(ExecutorModeUnlock, "u1") },
 		},
+		{
+			mode: ExecutorModeUnsuspend,
+			expect: func(governance *identitygovernanceprovidermock.IdentityGovernanceProviderMock,
+				svcErr *tidcommon.ServiceError) {
+				governance.EXPECT().Unsuspend(mock.Anything, "u1").Return(svcErr).Once()
+			},
+			ctx: func() *providers.NodeContext { return governanceContext(ExecutorModeUnsuspend, "u1") },
+		},
+		{
+			mode: ExecutorModeSuspend,
+			expect: func(governance *identitygovernanceprovidermock.IdentityGovernanceProviderMock,
+				svcErr *tidcommon.ServiceError) {
+				governance.EXPECT().Suspend(mock.Anything, "u1", "").Return(svcErr).Once()
+			},
+			ctx: func() *providers.NodeContext { return governanceSuspendContext("") },
+		},
 	}
 }
 
@@ -103,17 +142,119 @@ func (s *IdentityGovernanceExecutorTestSuite) TestEachModeCallsItsOwnOperation()
 	}
 }
 
+func (s *IdentityGovernanceExecutorTestSuite) TestTheOperatorNoteReachesThePort() {
+	s.governance.EXPECT().Suspend(mock.Anything, "u1", "Credential exposure").Return(nil).Once()
+
+	execResp, err := s.executor.Execute(governanceSuspendContext("Credential exposure"))
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, execResp.Status)
+}
+
+func (s *IdentityGovernanceExecutorTestSuite) TestSuspendWithoutAnOperatorNoteIsComplete() {
+	s.governance.EXPECT().Suspend(mock.Anything, "u1", "").Return(nil).Once()
+
+	execResp, err := s.executor.Execute(governanceSuspendContext(""))
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, execResp.Status)
+}
+
+// The engine re-prompts an unconsumed input, so a stray note must be consumed on every mode.
+func (s *IdentityGovernanceExecutorTestSuite) TestTheOperatorNoteInputIsConsumedOnEveryMode() {
+	s.governance.EXPECT().Unsuspend(mock.Anything, "u1").Return(nil).Once()
+
+	ctx := governanceContextWithNote(ExecutorModeUnsuspend, "u1", "ignored here")
+	execResp, err := s.executor.Execute(ctx)
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, execResp.Status)
+	s.Contains(ctx.GetConsumedInputs(), governanceInputOperatorNote,
+		"an input the node does not mark consumed is re-prompted")
+}
+
+func (s *IdentityGovernanceExecutorTestSuite) TestSuspendTakesItsTargetFromThePlan() {
+	s.governance.EXPECT().Suspend(mock.Anything, "u1", "").Return(nil).Once()
+
+	ctx := governanceSuspendContext("")
+	ctx.UserInputs[revocationInputSubject] = "someone-else"
+	execResp, err := s.executor.Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, execResp.Status)
+	s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, "someone-else", mock.Anything)
+}
+
+func (s *IdentityGovernanceExecutorTestSuite) TestSuspendWithoutAPlanFaults() {
+	_, err := s.executor.Execute(governanceContext(ExecutorModeSuspend, "u1"))
+
+	s.Require().Error(err)
+	s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *IdentityGovernanceExecutorTestSuite) TestSuspendWithAForeignOrTargetlessPlanFaults() {
+	for name, test := range map[string]struct {
+		plan revocationPlan
+		want string
+	}{
+		"foreign": {revocationPlan{
+			Criteria: []revocation.Criterion{{Type: revocation.CriterionTypeApplicationKey, Value: "client-1"}},
+			Reason:   revocation.ReasonApplicationDeleted,
+			TargetID: "app-1",
+		}, "not \"identity_suspended\""},
+		"targetless": {revocationPlan{
+			Criteria: []revocation.Criterion{{Type: revocation.CriterionTypeSubject, Value: "u1"}},
+			Reason:   revocation.ReasonIdentitySuspended,
+		}, "no target"},
+	} {
+		s.Run(name, func() {
+			plan, err := encodeRevocationPlan(test.plan)
+			s.Require().NoError(err)
+			ctx := governanceContext(ExecutorModeSuspend, "u1")
+			ctx.SharedRuntimeData = map[string]string{common.RuntimeKeyRevocationPlan: plan}
+
+			_, err = s.executor.Execute(ctx)
+
+			s.Require().ErrorContains(err, test.want)
+			s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *IdentityGovernanceExecutorTestSuite) TestUnlockAndUnsuspendPublishNoPlan() {
+	for _, op := range adminOperations()[:2] {
+		s.Run(op.mode, func() {
+			governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+			executor := s.newExecutor(governance)
+			op.expect(governance, nil)
+
+			execResp, err := executor.Execute(op.ctx())
+			s.Require().NoError(err)
+			s.Empty(execResp.SharedRuntimeData,
+				"%s must not revoke anything that was already issued", op.mode)
+		})
+	}
+}
+
 func (s *IdentityGovernanceExecutorTestSuite) TestAnOmittedModeRefuses() {
 	_, err := s.executor.Execute(governanceContext("", "u1"))
 	s.Require().Error(err)
 	s.assertNothingApplied()
 }
 
+func (s *IdentityGovernanceExecutorTestSuite) TestTheGovernedSubjectIsPublishedForLaterNodes() {
+	s.governance.EXPECT().Suspend(mock.Anything, "u1", "").Return(nil).Once()
+
+	execResp, err := s.executor.Execute(governanceSuspendContext(""))
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, execResp.Status)
+	s.Equal("u1", execResp.RuntimeData[userAttributeUserID])
+}
+
 func (s *IdentityGovernanceExecutorTestSuite) TestTheExecutorDeclaresNoDefaultMode() {
 	meta := s.executor.GetMeta()
 	s.Require().NotNil(meta)
 	s.Empty(meta.DefaultMode)
-	s.ElementsMatch([]string{ExecutorModeUnlock}, meta.SupportedModes)
+	s.ElementsMatch([]string{
+		ExecutorModeUnlock, ExecutorModeSuspend, ExecutorModeUnsuspend,
+	}, meta.SupportedModes)
 }
 
 func (s *IdentityGovernanceExecutorTestSuite) TestAnUnsupportedModeRefuses() {
@@ -123,16 +264,20 @@ func (s *IdentityGovernanceExecutorTestSuite) TestAnUnsupportedModeRefuses() {
 }
 
 func (s *IdentityGovernanceExecutorTestSuite) TestAnAbsentSubjectIsPromptedFor() {
-	ctx := governanceContext(ExecutorModeUnlock, "")
-	delete(ctx.UserInputs, revocationInputSubject)
+	for _, mode := range []string{ExecutorModeUnlock, ExecutorModeUnsuspend} {
+		s.Run(mode, func() {
+			ctx := governanceContext(mode, "")
+			delete(ctx.UserInputs, revocationInputSubject)
 
-	execResp, err := s.executor.Execute(ctx)
+			execResp, err := s.executor.Execute(ctx)
 
-	s.Require().NoError(err)
-	s.Equal(providers.ExecUserInputRequired, execResp.Status)
-	s.Require().Len(execResp.Inputs, 1)
-	s.Equal(revocationInputSubject, execResp.Inputs[0].Identifier)
-	s.assertNothingApplied()
+			s.Require().NoError(err)
+			s.Equal(providers.ExecUserInputRequired, execResp.Status)
+			s.Require().Len(execResp.Inputs, 1)
+			s.Equal(revocationInputSubject, execResp.Inputs[0].Identifier)
+			s.assertNothingApplied()
+		})
+	}
 }
 
 // A flow definition can declare an optional node input; leaving it out does not prompt for it.
@@ -152,7 +297,7 @@ func (s *IdentityGovernanceExecutorTestSuite) TestAnAbsentOptionalNodeInputIsNot
 }
 
 func (s *IdentityGovernanceExecutorTestSuite) TestAnEmptySubjectIsAnError() {
-	_, err := s.executor.Execute(governanceContext(ExecutorModeUnlock, ""))
+	_, err := s.executor.Execute(governanceContext(ExecutorModeUnsuspend, ""))
 	s.Require().Error(err)
 	s.assertNothingApplied()
 }
@@ -313,18 +458,15 @@ func (s *IdentityGovernanceExecutorTestSuite) TestAnAdministrativeOperationKeeps
 	s.False(privileged, "an operator's lifecycle call must not be elevated past their own authority")
 }
 
-// Without governance the mode check is all that stops a recovery flow.
-func (s *IdentityGovernanceExecutorTestSuite) TestOnlyUnlockRunsInARecoveryFlow() {
-	for name, executor := range map[string]*identityGovernanceExecutor{
-		"with governance":    s.executor,
-		"without governance": s.newExecutor(nil),
-	} {
+func (s *IdentityGovernanceExecutorTestSuite) TestSuspendAndUnsuspendAreAdministrationOnly() {
+	for _, mode := range []string{ExecutorModeSuspend, ExecutorModeUnsuspend} {
 		ctx := recoveryUnlockContext("user-proven", "")
-		ctx.ExecutorMode = "delete"
+		ctx.ExecutorMode = mode
 
-		_, err := executor.Execute(ctx)
+		_, err := s.executor.Execute(ctx)
 
-		s.Error(err, name)
+		s.Error(err, "%s must not be reachable from a recovery flow", mode)
 	}
-	s.assertNothingApplied()
+	s.governance.AssertNotCalled(s.T(), "Suspend", mock.Anything, mock.Anything, mock.Anything)
+	s.governance.AssertNotCalled(s.T(), "Unsuspend", mock.Anything, mock.Anything)
 }

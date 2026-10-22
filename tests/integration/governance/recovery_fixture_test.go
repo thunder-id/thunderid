@@ -14,10 +14,11 @@ import (
 
 // The actions the prompts in this package's flows submit.
 const (
-	signInAction         = "action_sign_in"
-	submitUsernameAction = "action_submit_username"
-	submitPasswordAction = "action_submit_password"
-	submitOTPAction      = "action_submit_otp"
+	signInAction           = "action_sign_in"
+	submitUsernameAction   = "action_submit_username"
+	submitPasswordAction   = "action_submit_password"
+	submitOTPAction        = "action_submit_otp"
+	passkeyAssertionAction = "action_assertion"
 )
 
 // The inputs this package's flows ask for.
@@ -221,6 +222,39 @@ func otpReleaseRecoveryFlowForACall(senderID string) testutils.Flow {
 	return flow
 }
 
+// passkeyRecoveryFlow is a recovery flow proven by a passkey: identify, challenge, verify, set,
+// release.
+func passkeyRecoveryFlow() testutils.Flow {
+	assertionInputs := []map[string]interface{}{
+		flowInput("input_credential_id", "credentialId", "TEXT_INPUT"),
+		flowInput("input_client_data", "clientDataJSON", "TEXT_INPUT"),
+		flowInput("input_auth_data", "authenticatorData", "TEXT_INPUT"),
+		flowInput("input_signature", "signature", "TEXT_INPUT"),
+		{"ref": "input_user_handle", "identifier": "userHandle", "type": "TEXT_INPUT", "required": false},
+	}
+	return testutils.Flow{
+		Name:     "Governance Passkey Recovery Test Flow",
+		Handle:   "governance-passkey-recovery-test",
+		FlowType: "RECOVERY",
+		Nodes: []map[string]interface{}{
+			startNode("prompt_username"),
+			usernamePrompt(),
+			identifyNode("passkey_challenge"),
+			taskNode("passkey_challenge", "PasskeyAuthExecutor", "challenge", "prompt_assertion",
+				map[string]interface{}{"properties": map[string]interface{}{
+					"relyingPartyId": recoveryPasskeyRPID, "relyingPartyName": recoveryPasskeyRPName,
+				}}),
+			promptNode("prompt_assertion", passkeyAssertionAction, "passkey_verify", assertionInputs...),
+			taskNode("passkey_verify", "PasskeyAuthExecutor", "verify", "prompt_new_password", nil),
+			newPasswordPrompt(),
+			setCredentialNode(),
+			releaseNode("recovery_complete"),
+			recoveryCompleteNode(),
+			endNode(),
+		},
+	}
+}
+
 // passwordSignInFlow is the shipped sign-in shape, of flowType: a credentials prompt the credentials
 // node returns to when it is incomplete. An authentication flow asserts the account at the end.
 func passwordSignInFlow(name, handle, flowType string) testutils.Flow {
@@ -327,6 +361,23 @@ func (f *heldRecoveryFixture) tearDown(t *testing.T) {
 			t.Logf("teardown: failed to delete flow %s: %v", flowID, err)
 		}
 	}
+}
+
+// submitRecoveryUsername starts the recovery flow and submits a username, returning the raw answer
+// whatever its status, since a stated refusal and an unknown-user answer are the subject.
+func (f *heldRecoveryFixture) submitRecoveryUsername(t *testing.T, username string) (int, string) {
+	t.Helper()
+
+	step, err := common.InitiateRecoveryFlow(f.appID, false, nil, "")
+	require.NoError(t, err, "failed to initiate the recovery flow")
+	require.Equal(t, "INCOMPLETE", step.FlowStatus)
+
+	return postFlow(t, nil, "", map[string]interface{}{
+		"executionId":    step.ExecutionID,
+		"challengeToken": step.ChallengeToken,
+		"inputs":         map[string]string{"username": username},
+		"action":         submitUsernameAction,
+	})
 }
 
 // recover drives the recovery flow to completion with a new password.

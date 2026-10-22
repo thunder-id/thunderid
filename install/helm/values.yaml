@@ -604,9 +604,9 @@ configuration:
         maxConsecutiveFailures: 50
 
   # Identity governance provider. "disabled" turns off the governance checks of the flow engine and
-  # the unlock flows. With "disabled", also set accountAccess.<category>.default.enabled to false for
-  # user and agent; otherwise locks still form and cannot be released early. Leave empty to keep the
-  # default provider.
+  # the suspend, unsuspend and unlock flows. With "disabled", also set
+  # accountAccess.<category>.default.enabled to false for user and agent; otherwise locks still form
+  # and cannot be released early. Leave empty to keep the default provider.
   identityGovernanceProvider:
     type: ""
 

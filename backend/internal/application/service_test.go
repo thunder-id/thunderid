@@ -4674,6 +4674,55 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 	assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
 }
 
+// The client is resolved by entity ID with no deletion or rotation checks: a public client still
+// reports its client ID.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_ReturnsTheEntitysClientID() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).Return(
+		&providers.OAuthClient{ClientID: "client-to-suspend", PublicClient: true}, nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "client-to-suspend", clientID)
+}
+
+// An empty entity ID is refused before any lookup.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_EmptyEntityIDIsRefused() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), "")
+
+	assert.Empty(suite.T(), clientID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, svcErr.Code)
+	mockStore.AssertNotCalled(suite.T(), "GetOAuthClientByEntityID", mock.Anything, mock.Anything)
+}
+
+// An entity that owns no client, such as a user, yields no client ID.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_NoClientIsEmpty() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).
+		Return((*providers.OAuthClient)(nil), nil)
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), clientID)
+}
+
+// A client that cannot be resolved is a server error, so the suspension publishes no plan.
+func (suite *ServiceTestSuite) TestGetOAuthClientID_UnresolvableClientIsAServerError() {
+	service, mockStore := suite.newFlowTargetTestService(nil)
+	mockStore.On("GetOAuthClientByEntityID", mock.Anything, testServiceAppID).
+		Return((*providers.OAuthClient)(nil), errors.New("store down"))
+
+	clientID, svcErr := service.GetOAuthClientID(context.Background(), testServiceAppID)
+
+	assert.Empty(suite.T(), clientID)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
 // A public client authenticates without a secret, so rotating one would write a credential that is
 // never used while revoking artifacts that are still legitimate.
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicClient() {

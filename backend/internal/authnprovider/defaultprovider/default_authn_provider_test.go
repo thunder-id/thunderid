@@ -1504,6 +1504,29 @@ func (suite *DefaultAuthnProviderTestSuite) TestInitiateEnrollment_InvalidPayloa
 	suite.Equal(authnprovidercm.ErrorCodeInvalidRequest, err.Code)
 }
 
+func (suite *DefaultAuthnProviderTestSuite) TestEnroll_PasskeyKeepsAStatedSuspension() {
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	startReq := &passkey.PasskeyRegistrationStartRequest{UserID: "user123", RelyingPartyID: "example.com"}
+	finishReq := &passkey.PasskeyRegistrationFinishRequest{CredentialID: "cred-1"}
+
+	for passkeyErr, wantCode := range map[*tidcommon.ServiceError]string{
+		&passkey.ErrorAccountSuspended:    authnprovidercm.ErrorCodeAccountSuspended,
+		&passkey.ErrorInvalidSessionToken: authnprovidercm.ErrorCodeEnrollmentFailed,
+	} {
+		suite.mockPasskey.On("StartRegistration", mock.Anything, startReq).Return(nil, passkeyErr).Once()
+		suite.mockPasskey.On("FinishRegistration", mock.Anything, finishReq).Return(nil, passkeyErr).Once()
+
+		_, err := provider.InitiateEnrollment(context.Background(), passkey.CredentialType, startReq, nil)
+		suite.Require().NotNil(err)
+		suite.Equal(wantCode, err.Code)
+
+		_, err = provider.Enroll(context.Background(), nil,
+			map[string]interface{}{"passkey": finishReq}, nil)
+		suite.Require().NotNil(err)
+		suite.Equal(wantCode, err.Code)
+	}
+}
+
 func (suite *DefaultAuthnProviderTestSuite) TestEnroll_Passkey_Success() {
 	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
 	req := &passkey.PasskeyRegistrationFinishRequest{CredentialID: "cred-1"}

@@ -48,6 +48,7 @@ var DataKey = struct {
 	JTI              string
 	RevocationReason string
 	AccessingOUID    string
+	CriterionType    string
 
 	// Administration Keys. Records whether an operator note was given, never the note itself.
 	OperatorNoteRecorded string
@@ -108,6 +109,7 @@ var DataKey = struct {
 	JTI:              "jti",
 	RevocationReason: "revocation_reason",
 	AccessingOUID:    "accessing_ou_id",
+	CriterionType:    "criterion_type",
 
 	// Administration Keys
 	OperatorNoteRecorded: "operator_note_recorded",

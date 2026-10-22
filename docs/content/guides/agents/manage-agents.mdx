@@ -114,6 +114,13 @@ The **Advanced** tab gathers the agent's OAuth and operational settings:
 
 The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
 
+## Suspend or unlock an agent
+
+An agent locks automatically after repeated failed sign-in attempts, but its client secret never locks. To stop an agent while you investigate, suspend it: open the agent, click **Actions**, and select **Suspend**. Suspending revokes the agent's tokens, including those issued through its OAuth client, and ends its sessions.
+
+- **Console:** the **Actions** menu in the agent's header offers **Suspend**, **Unsuspend**, and **Unlock**, depending on the agent's **Status**.
+- **API:** `GET /agents/<AGENT_ID>` returns the agent's `status`. Suspend, unsuspend, and unlock run as administration flows; there is no direct endpoint.
+
 ## Delete an agent
 
 - **Console:** on the **Advanced** tab, in the **Danger zone** section, click **Delete agent**.

@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -18,6 +19,7 @@ type credentialSetter struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -26,6 +28,7 @@ func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	accessGuard *accessGuard,
 ) *credentialSetter {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialSetter"))
 	base := flowFactory.CreateExecutor(
@@ -51,6 +54,7 @@ func newCredentialSetter(
 		Executor:       base,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
+		accessGuard:    accessGuard,
 		logger:         logger,
 	}
 }
@@ -124,9 +128,21 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 		return execResp, nil
 	}
 
+	// Checked again here, since a hold can be placed after the identifying step's request.
+	held, stated, fault := e.accessGuard.heldAt(ctx.Context, userID, providers.AccessPlaneRecovery, "", logger)
+	if fault != nil {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = &ErrCredentialSetFailed
+		return execResp, nil
+	}
+	if held {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = cmp.Or(stated, &ErrCredentialSetFailed)
+		return execResp, nil
+	}
+
 	// Update user credentials
-	svcErr := e.entityProvider.UpdateCredentials(userID, credentials)
-	if svcErr != nil {
+	if providerErr := e.entityProvider.UpdateCredentials(userID, credentials); providerErr != nil {
 		logger.Debug(ctx.Context, "Failed to update user credentials",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 		execResp.Status = providers.ExecFailure

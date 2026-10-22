@@ -87,15 +87,19 @@ Every event shares one envelope:
 | `TOKEN_ISSUED` | A token is issued |
 | `TOKEN_ISSUANCE_FAILED` | A token request fails |
 | `TOKEN_REVOKED` | A token is revoked |
+| `TOKEN_REVOCATION_FAILED` | A revocation record cannot be stored, which stops the suspension or deletion it belongs to |
 | `RUNTIME_PERSISTENT_DB_UNAVAILABLE` | Revocation enforcement fails closed |
 | `IDENTITY_LOCKED` | Failed sign-in attempts lock a user or agent. The event names the locked authentication method and, for a lock that expires, when it ends. It has no actor |
+| `IDENTITY_SUSPENDED`, `IDENTITY_SUSPENSION_FAILED` | A user, agent or application is suspended, or the suspension is refused or fails |
+| `IDENTITY_UNSUSPENDED`, `IDENTITY_UNSUSPENSION_FAILED` | A suspension is released, or the release is refused or fails |
 | `IDENTITY_UNLOCKED`, `IDENTITY_UNLOCK_FAILED` | An operator releases every sign-in lock on a user or agent, or the unlock is refused or fails |
 | `IDENTITY_SELF_UNLOCKED`, `IDENTITY_SELF_UNLOCK_FAILED` | A recovery flow releases every sign-in lock on the holder's own account, or the unlock is refused or fails |
+| `SERVER_CONFIG_UPDATED`, `SERVER_CONFIG_UPDATE_FAILED` | A server configuration section is written, or the write is rejected. The value is not recorded |
 | `FLOW_STARTED`, `FLOW_COMPLETED`, `FLOW_FAILED` | A flow execution starts, succeeds, or fails |
 | `FLOW_NODE_EXECUTION_STARTED`, `FLOW_NODE_EXECUTION_COMPLETED`, `FLOW_NODE_EXECUTION_FAILED` | A single flow node runs |
 | `FLOW_USER_INPUT_REQUIRED` | A flow pauses for user input |
 
-An operator unlock names the operator as `act_sub` and the agent as `sub`. An automatic lock is `IDENTITY_LOCKED`, with the agent as `sub` and no `act_sub`. There are no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
+An operator suspend, unsuspend, or unlock names the operator as `act_sub` and the agent as `sub`, and never carries the operator's note. An automatic lock is `IDENTITY_LOCKED`, with the agent as `sub` and no `act_sub`. There are no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
 
 ### Agent Attribution Keys
 
