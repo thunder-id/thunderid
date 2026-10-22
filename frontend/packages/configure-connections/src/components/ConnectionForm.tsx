@@ -93,7 +93,9 @@ export default function ConnectionForm({
     if (field.name === 'name' && nameError) {
       return nameError;
     }
-    if ((field.showErrorImmediately || touched[field.name]) && errors[field.name]) {
+    // An untouched empty field has nothing to correct yet, so it never shows a "required" error early.
+    const showImmediately = Boolean(field.showErrorImmediately && values[field.name]?.trim());
+    if ((showImmediately || touched[field.name]) && errors[field.name]) {
       return t(errors[field.name]);
     }
     return undefined;

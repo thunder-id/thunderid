@@ -23,12 +23,16 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 type legacyAuthZENPDP struct {
@@ -120,8 +124,16 @@ func (s *legacyAuthZENPDPService) GetAuthZENPDP(
 }
 
 func newLegacyAuthZENPDP(client httpservice.HTTPClientInterface) *legacyAuthZENPDP {
+	return newLegacyAuthZENPDPWithMemberships(client, nil, nil)
+}
+
+func newLegacyAuthZENPDPWithMemberships(
+	client httpservice.HTTPClientInterface,
+	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
+) *legacyAuthZENPDP {
 	service := &legacyAuthZENPDPService{connections: map[string]authzenpdp.AuthZENPDPConnection{}}
-	pdpEngine, ok := newAuthZENPDPEngine(service, client).(*authZENPDPEngine)
+	pdpEngine, ok := newAuthZENPDPEngine(service, roleService, groupService, client).(*authZENPDPEngine)
 	if !ok {
 		panic("unexpected AuthZEN PDP engine type")
 	}
@@ -246,7 +258,7 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccess() {
 		require.Equal(t, "user", evaluation.Subject.Type)
 		require.Equal(t, "user-1", evaluation.Subject.ID)
 		require.Equal(t, "finance", evaluation.Subject.Properties["department_name"])
-		require.Equal(t, []interface{}{"travel-agent"}, evaluation.Subject.Properties["group_ids"])
+		require.Equal(t, []interface{}{"Travel Agents"}, evaluation.Subject.Properties["group_names"])
 		require.NotContains(t, evaluation.Subject.Properties, "department")
 		require.NotContains(t, evaluation.Subject.Properties, "email")
 		require.NotContains(t, evaluation.Subject.Properties, subjectGroupsProperty)
@@ -267,11 +279,15 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccess() {
 			EntityType: "user",
 			Attributes: []authzenpdp.SubjectAttributeRow{
 				{Attribute: "department", PDPAttribute: "department_name"},
-				{Attribute: subjectGroupsProperty, PDPAttribute: "group_ids"},
+				{Attribute: subjectGroupsProperty, PDPAttribute: "group_names"},
 			},
 		}},
 	}
-	engine := newLegacyAuthZENPDP(server.Client())
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, []string{"travel-agent"}).Return(map[string]*group.Group{
+		"travel-agent": {ID: "travel-agent", Name: "Travel Agents"},
+	}, nil).Once()
+	engine := newLegacyAuthZENPDPWithMemberships(server.Client(), nil, groupService)
 
 	response, err := engine.EvaluateAccess(context.Background(), settings, AccessEvaluationRequest{
 		Subject: Subject{
@@ -520,6 +536,177 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchUsesCon
 	require.False(t, response.Evaluations[1].Decision)
 }
 
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPSendsRoleNames() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authzen.AccessEvaluationRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Equal(t, []interface{}{"admin", "auditor", "editor"}, request.Subject.Properties["roles"])
+		require.NotContains(t, request.Subject.Properties, subjectGroupsProperty)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"decision":true}`))
+	}))
+	defer server.Close()
+
+	settings := AuthZENPDPConfig{
+		Endpoint: evaluationEndpoint(server),
+		SubjectAttributeMappings: []authzenpdp.SubjectAttributeMapping{{
+			EntityType: "Customer",
+			Attributes: []authzenpdp.SubjectAttributeRow{{Attribute: subjectRolesProperty}},
+		}},
+	}
+	roleService := rolemock.NewRoleServiceInterfaceMock(t)
+	roleService.EXPECT().GetUserRoles(mock.Anything, "user-1", []string{"group-1"}).
+		Return([]string{"editor", "admin", "editor"}, nil).Once()
+	roleService.EXPECT().GetRoleWithPermissions(mock.Anything, "role-3").
+		Return(&role.RoleWithPermissions{ID: "role-3", Name: "auditor"}, nil).Once()
+	engine := newLegacyAuthZENPDPWithMemberships(server.Client(), roleService, nil)
+
+	response, err := engine.EvaluateAccess(context.Background(), settings, AccessEvaluationRequest{
+		Subject: Subject{
+			Category: "user", Type: "Customer", ID: "user-1",
+			GroupIDs: []string{"group-1"}, RoleIDs: []string{"role-3"},
+		},
+		ResourceServer: ResourceServer{ID: "resource-server-1"},
+		Permission:     Permission{Name: "read"},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Decision)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPResolvesMembershipsOncePerSubjectInBatch() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authzen.AccessEvaluationsRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Len(t, request.Evaluations, 2)
+		for _, evaluation := range request.Evaluations {
+			require.Equal(t, []interface{}{"Admins", "Travel Agents"}, evaluation.Subject.Properties["memberOf"])
+			require.Equal(t, []interface{}{"editor"}, evaluation.Subject.Properties["roles"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"evaluations":[{"decision":true},{"decision":false}]}`))
+	}))
+	defer server.Close()
+
+	settings := AuthZENPDPConfig{
+		Endpoint:      evaluationEndpoint(server),
+		BatchEndpoint: batchEndpoint(server),
+		SubjectAttributeMappings: []authzenpdp.SubjectAttributeMapping{{
+			EntityType: "Customer",
+			Attributes: []authzenpdp.SubjectAttributeRow{
+				{Attribute: subjectGroupsProperty, PDPAttribute: "memberOf"},
+				{Attribute: subjectRolesProperty},
+			},
+		}},
+	}
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-2", "group-1"}).Return(map[string]*group.Group{
+		"group-1": {ID: "group-1", Name: "Travel Agents"},
+		"group-2": {ID: "group-2", Name: "Admins"},
+	}, nil).Once()
+	roleService := rolemock.NewRoleServiceInterfaceMock(t)
+	roleService.EXPECT().GetUserRoles(mock.Anything, "user-1", []string{"group-2", "group-1"}).
+		Return([]string{"editor"}, nil).Once()
+	engine := newLegacyAuthZENPDPWithMemberships(server.Client(), roleService, groupService)
+
+	subject := Subject{Category: "user", Type: "Customer", ID: "user-1", GroupIDs: []string{"group-2", "group-1"}}
+	response, err := engine.EvaluateAccessBatch(context.Background(), settings, AccessEvaluationsRequest{
+		Evaluations: []AccessEvaluationRequest{
+			{Subject: subject, ResourceServer: ResourceServer{ID: "resource-1"}, Permission: Permission{Name: "read"}},
+			{Subject: subject, ResourceServer: ResourceServer{ID: "resource-1"}, Permission: Permission{Name: "write"}},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Evaluations[0].Decision)
+	require.False(t, response.Evaluations[1].Decision)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPSkipsMembershipLookupsForUnmappedSubjectType() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authzen.AccessEvaluationRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Nil(t, request.Subject.Properties)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"decision":true}`))
+	}))
+	defer server.Close()
+
+	settings := AuthZENPDPConfig{
+		Endpoint: evaluationEndpoint(server),
+		SubjectAttributeMappings: []authzenpdp.SubjectAttributeMapping{{
+			EntityType: "Customer",
+			Attributes: []authzenpdp.SubjectAttributeRow{
+				{Attribute: subjectGroupsProperty},
+				{Attribute: subjectRolesProperty},
+			},
+		}},
+	}
+	engine := newLegacyAuthZENPDPWithMemberships(server.Client(),
+		rolemock.NewRoleServiceInterfaceMock(t), groupmock.NewGroupServiceInterfaceMock(t))
+
+	response, err := engine.EvaluateAccess(context.Background(), settings, AccessEvaluationRequest{
+		Subject:        Subject{Category: "user", Type: "Staff", ID: "user-1", GroupIDs: []string{"group-1"}},
+		ResourceServer: ResourceServer{ID: "resource-server-1"},
+		Permission:     Permission{Name: "read"},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Decision)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPFailsWhenMembershipLookupFails() {
+	settings := AuthZENPDPConfig{
+		Endpoint: "http://127.0.0.1:1/access/v1/evaluation",
+		SubjectAttributeMappings: []authzenpdp.SubjectAttributeMapping{{
+			EntityType: "Customer",
+			Attributes: []authzenpdp.SubjectAttributeRow{
+				{Attribute: subjectGroupsProperty},
+				{Attribute: subjectRolesProperty},
+			},
+		}},
+	}
+	request := AccessEvaluationRequest{
+		Subject:        Subject{Category: "user", Type: "Customer", ID: "user-1", GroupIDs: []string{"group-1"}},
+		ResourceServer: ResourceServer{ID: "resource-server-1"},
+		Permission:     Permission{Name: "read"},
+	}
+	client := httpmock.NewHTTPClientInterfaceMock(suite.T())
+
+	suite.Run("groups", func() {
+		groupService := groupmock.NewGroupServiceInterfaceMock(suite.T())
+		groupService.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1"}).
+			Return(nil, &tidcommon.InternalServerError).Once()
+		engine := newLegacyAuthZENPDPWithMemberships(client, nil, groupService)
+
+		_, err := engine.EvaluateAccess(context.Background(), settings, request)
+		suite.ErrorContains(err, "failed to resolve subject groups")
+	})
+
+	suite.Run("roles", func() {
+		groupService := groupmock.NewGroupServiceInterfaceMock(suite.T())
+		groupService.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1"}).
+			Return(map[string]*group.Group{}, nil).Once()
+		roleService := rolemock.NewRoleServiceInterfaceMock(suite.T())
+		roleService.EXPECT().GetUserRoles(mock.Anything, "user-1", []string{"group-1"}).
+			Return(nil, &tidcommon.InternalServerError).Once()
+		engine := newLegacyAuthZENPDPWithMemberships(client, roleService, groupService)
+
+		_, err := engine.EvaluateAccess(context.Background(), settings, request)
+		suite.ErrorContains(err, "failed to resolve subject roles")
+	})
+
+	suite.Run("missing services", func() {
+		engine := newLegacyAuthZENPDPWithMemberships(client, nil, nil)
+
+		_, err := engine.EvaluateAccess(context.Background(), settings, request)
+		suite.ErrorContains(err, "group service is required")
+	})
+}
+
 func (suite *AuthZENPDPEngineTestSuite) TestNormalizeSubjectAttributeMappings() {
 	t := suite.T()
 	result := normalizeSubjectAttributeMappings([]authzenpdp.SubjectAttributeMapping{
@@ -649,7 +836,7 @@ func (suite *AuthZENPDPEngineTestSuite) TestToAuthZENEvaluationRequestPreservesP
 			},
 		},
 		Permission: Permission{Name: "booking:cancel"},
-	}, "travel-booking-api", nil)
+	}, "travel-booking-api", nil, subjectMemberships{})
 
 	require.Equal(t, "travel-booking-api", request.Resource.Type)
 	require.Equal(t, "booking-123", request.Resource.ID)
@@ -663,7 +850,7 @@ func (suite *AuthZENPDPEngineTestSuite) TestEvaluationRequestDefaultsResourceFie
 		Subject:        Subject{Category: "user", ID: "user-1"},
 		ResourceServer: ResourceServer{ID: "resource-server-1"},
 		Permission:     Permission{Name: "read"},
-	}, "", nil)
+	}, "", nil, subjectMemberships{})
 
 	require.Equal(t, "resource-server-1", request.Resource.Type)
 	require.Equal(t, "resource-server-1", request.Resource.ID)

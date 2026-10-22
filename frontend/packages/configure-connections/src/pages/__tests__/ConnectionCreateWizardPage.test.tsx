@@ -190,9 +190,9 @@ describe('ConnectionCreateWizardPage', () => {
 
     expect(screen.getByTestId('select-pdp-protocol')).toBeInTheDocument();
     expect(screen.getByTestId('pdp-protocol-option-authzen')).toBeInTheDocument();
+    expect(screen.queryByTestId('wizard-continue')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('pdp-protocol-option-authzen'));
-    fireEvent.click(screen.getByTestId('wizard-continue'));
 
     expect(screen.getByTestId('connection-name-input')).toHaveValue('');
     expect(screen.getByTestId('wizard-continue')).toBeDisabled();
@@ -213,7 +213,6 @@ describe('ConnectionCreateWizardPage', () => {
 
     fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
     fireEvent.click(screen.getByTestId('pdp-protocol-option-authzen'));
-    fireEvent.click(screen.getByTestId('wizard-continue'));
 
     fireEvent.click(screen.getByText('Back'));
     expect(screen.getByTestId('select-pdp-protocol')).toBeInTheDocument();

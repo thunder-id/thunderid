@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -41,8 +42,16 @@ type AuthZENPDPConfig struct {
 // authZENPDPEngine evaluates access requests through an external AuthZEN PDP.
 type authZENPDPEngine struct {
 	connectionService authZENPDPConnectionService
+	roleService       role.RoleServiceInterface
+	groupService      group.GroupServiceInterface
 	client            httpservice.HTTPClientInterface
 	logger            *log.Logger
+}
+
+// subjectMemberships holds the group and role names resolved for one subject.
+type subjectMemberships struct {
+	groups []string
+	roles  []string
 }
 
 // authZENPDPConnectionService resolves AuthZEN PDP connection settings by ID.
@@ -75,6 +84,7 @@ type authZENPDPBatchKey struct {
 
 const (
 	subjectGroupsProperty = "groups"
+	subjectRolesProperty  = "roles"
 	// DelegatedResourceIDProperty carries an opaque resource instance ID to the PDP engine.
 	DelegatedResourceIDProperty = "__delegatedResourceId"
 )
