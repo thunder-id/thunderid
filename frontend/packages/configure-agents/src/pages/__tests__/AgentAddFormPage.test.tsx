@@ -165,6 +165,10 @@ describe('AgentAddFormPage', () => {
 
     await fillRequired(user);
     await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    // The owner is optional, and the signed-in user is not assumed: the empty choice is no owner.
+    await user.click(screen.getAllByRole('combobox')[1]);
+    expect(within(await screen.findByRole('listbox')).getByText('agents:addForm.noOwner')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
     await chooseOption(user, 1, 'alice');
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 

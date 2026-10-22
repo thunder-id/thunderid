@@ -24,7 +24,7 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 2. If the organization hierarchy requires it, choose an **Organization Unit**.
 3. Enter an **Agent name** (type one or pick a suggestion).
 4. If the agent schema defines attributes, fill them in.
-5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle.
+5. Optionally, choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle. On a control plane the owner has no default: choose a user the control plane holds, or leave the agent without an owner. Each gateway an owned agent is applied to must hold that user, or a value for the agent's `AGENT_<NAME>_OWNER` variable naming one of its own users. See [Agent Owners](../../resource-export#agent-owners).
 6. Click **Create**.
 
 </TabItem>
@@ -41,7 +41,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `owner` and `validUntil` are optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`type` and `attributes.name` are required, and so is an organization unit, given as `ouId` or `ouHandle`, unless you pass `projectId` (see [Scope agents to a project](#scope-agents-to-a-project)); `validUntil` is optional, and so are the other attributes unless the [agent schema](../agent-schema) marks them required. `owner` is optional and defaults to the caller, except on a control plane, where an agent created without one has no owner, and an owner given must be a user the control plane holds or the request fails with `AGT-1049`. `validUntil` is when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan). `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -60,7 +60,7 @@ Through the API, update an agent with `PUT /agents/<AGENT_ID>`. The request repl
 
 ### Identifiers and owner
 
-Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
+Every agent has an **Agent ID**, its identity in <ProductName />, and can have an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both.
