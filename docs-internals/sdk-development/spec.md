@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.6
+- **Version:** 0.7
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -11,6 +11,7 @@
   [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
+  [RFC 10017](https://www.rfc-editor.org/rfc/rfc10017.html),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html),
   [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html),
   [back-channel logout specification](../back-channel-logout/spec.md)
@@ -271,6 +272,37 @@ at the flow endpoint rather than at initialization.
 The mode MUST NOT change the public surface. `signIn()` is `signIn()` in both modes; the SDK
 resolves the underlying flow internally.
 
+**Sign-in on a backend.** An SDK MAY additionally support running the whole flow on a backend
+the application owns: the Backend for Frontend pattern of
+[RFC 10017](https://www.rfc-editor.org/rfc/rfc10017.html). The backend runs redirect mode, keeps
+the tokens, and proxies the application's API calls, so the client holds no token at all. For a
+browser application it is the answer to the one weakness a browser cannot engineer away, that a
+token the page can reach is a token any script on the page can take. For a mobile application
+that already has a backend, it keeps the refresh token and the API credentials off the handset.
+
+What the client holds in place of a token differs by platform, and nothing else does:
+
+| | Browser SDKs | Mobile SDKs |
+|---|---|---|
+| Backend location | The application's own origin | Any origin, pinned in configuration |
+| Session held as | An `HttpOnly` cookie the page cannot read | An opaque handle in the platform's secure store, attached to each call |
+| Sign-in | A redirect to the backend's sign-in endpoint | The backend's sign-in endpoint in `ASWebAuthenticationSession` or a Custom Tab, returning a one-time code to the application's redirect scheme |
+| Cross-site defence | Same-origin calls and a header a cross-origin page cannot set | Not applicable: the backend's base URL is pinned, and the handle is held by the application |
+
+Everything else is identical, including the endpoints and how a `401` from each is read, so one
+backend serves an application's web and mobile clients alike.
+
+The backend is a contract, not a package. An SDK MUST NOT assume a particular implementation,
+and MUST work against any backend that answers the endpoints in
+[Backend endpoints](#backend-endpoints). ThunderID ships no backend of its own; the
+application's existing server, or a gateway in front of it, implements them.
+
+It is turned on by setting `endpoints.backend`, never inferred, and it applies for the lifetime
+of the client. It is not a third value of `mode`: the backend runs redirect mode on the
+application's behalf, and embedded mode through a backend is out of scope for this version. An
+SDK that supports it MUST refuse the embedded flows while it is on, rather than running them in
+the browser and leaving the result where the backend's tokens are not.
+
 Alongside the two user-facing modes, an SDK MAY support a `client_credentials` grant type for
 machine-to-machine use, in which there is no user and no sign-in step, and `getAccessToken()`
 fetches and refreshes a token for the service itself.
@@ -326,7 +358,7 @@ this table already covers.
 | `signOutOptions` | Map | No | Empty | Extra parameters on the sign-out request. |
 | `signUpOptions` | Map | No | Empty | Extra parameters on the sign-up request. |
 | `discovery` | Object | No | Enabled | OIDC discovery behaviour. Discovered metadata MUST be fetched over HTTPS, and its `issuer` MUST match the expected issuer exactly before any endpoint from it is used. |
-| `endpoints` | Object | No | Discovered | Per-endpoint overrides for a server that does not publish discovery. Every override MUST use HTTPS and MUST share the origin of `baseUrl`, unless the application has explicitly allowed the other origin. |
+| `endpoints` | Object | No | Discovered | Per-endpoint overrides for a server that does not publish discovery. Every override MUST use HTTPS and MUST share the origin of `baseUrl`, unless the application has explicitly allowed the other origin. `endpoints.backend` is not one of them: it names the application's own backend, and MUST NOT be carried into the OIDC provider metadata. See [Backend endpoints](#backend-endpoints). |
 | `tokenRequest` | Object | No | Platform default | Token endpoint authentication and request shaping. |
 | `http` | Object | No | None | HTTP options. `http.fetcher` replaces the transport for [management operations](#management-operations) only. |
 
@@ -338,7 +370,7 @@ this table already covers.
 | `tokenValidation` | Object | No | Validation on | Clock tolerance, and per-claim switches that MUST be rejected when they would disable a check required by [Security requirements](#security-requirements) against a non-loopback `baseUrl`. Disabling a mandatory check is a test affordance, not a deployment option. |
 | `tokenLifecycle` | Object | No | Platform default | Refresh timing and lifecycle behaviour. |
 | `allowedExternalUrls` | List | No | Empty | Origins the SDK may attach an access token to when tokens are held in isolated storage. Every entry MUST use HTTPS. See [Token attachment](#token-attachment) for how entries are matched. |
-| `session` | Object | No | Disabled | Browser SDKs only. Behaviour around the server's SSO session. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
+| `session` | Object | No | Disabled | Behaviour around the server's SSO session. `checkInterval` (seconds, default `0`, backend sign-in only) polls the backend's check endpoint for a session that ended elsewhere; `0` leaves only the check that runs when the application comes back to the foreground. The rest of the key is browser SDKs only. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
 | `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. Turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler where the SDK mounts it, and the `store` that records ended sessions. An SDK that cannot receive the request MUST document the key as unsupported. |
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
@@ -354,6 +386,53 @@ this table already covers.
 Initialization MUST validate the object and fail before any network call when a required key
 is missing or a value is malformed. Any operation invoked before initialization MUST fail with
 a distinct, documented error rather than a null dereference.
+
+<a id="backend-endpoints"></a>
+
+#### Backend endpoints
+
+`endpoints.backend` holds the paths of the backend that signs the application in. In a browser
+each is a path on the application's own origin; on mobile each is a path under the backend base
+URL the application configures. Each unset entry defaults under `/api/auth`. App developers see
+"backend", not "BFF".
+
+| Key | Default | Contract |
+|---|---|---|
+| `signIn` | `/api/auth/signin` | Starts sign-in. Takes a `returnTo` same-origin path and redirects to the authorization endpoint. |
+| `session` | `/api/auth/session` | Reports `{isSignedIn, user, expiresAt}`. `user` is the ID token's claims without the protocol claims. |
+| `checkSession` | `/api/auth/checksession` | Reports `{isSignedIn}` only. Neither refreshes the session nor counts as activity, so it is safe to poll. |
+| `refresh` | `/api/auth/refresh` | Refreshes the session. A failure clears it. |
+| `signOut` | `/api/auth/signout` | Ends the session and returns the URL that ends it at the authorization server. |
+| `proxy` | `/api/auth/proxy` | Prefix the application's API calls are sent through. The backend attaches the access token. |
+
+The SDK reads a `401` from the backend by its body: `session_expired` means refresh once and
+retry, and a second failure means signed out; `login_required` means signed out straight away.
+Any other `401` is the API's own answer and MUST be returned to the caller untouched. A backend
+that refreshes on the server never answers `session_expired`, so one client works against both
+kinds.
+
+**Starting a session on mobile.** A browser carries the backend's cookie by itself. A mobile
+application cannot: the browser session it opens for sign-in has its own cookie jar, which the
+application is not allowed to read, and that separation is the platform's whole protection. The
+session is therefore handed over once, in the open, and the handoff MUST be bound to the
+application that started it:
+
+1. The SDK generates a PKCE verifier and opens `signIn` in `ASWebAuthenticationSession` or a
+   Custom Tab with `redirect_uri` (the application's registered scheme), `code_challenge` and
+   `code_challenge_method=S256`. `returnTo` is the browser SDKs' form of the same parameter.
+2. The backend runs the flow, keeps the tokens, and returns to `redirect_uri` with a one-time
+   `session_code`, or with `error`.
+3. The SDK posts the code and the verifier to `session` and receives
+   `{handle, isSignedIn, user, expiresAt}`.
+
+The handle MUST go in the platform's secure store and MUST be attached to every later backend
+call in the `X-Session-Handle` header. A backend MUST accept a `session_code` once, MUST bind it
+to the `code_challenge` it was issued against, and MUST expire it in minutes, for the same
+reason an authorization code is held to those rules: anything handed over through a redirect
+scheme can be observed by another application on the device.
+
+Everything after the handoff is the same on both platforms: the five remaining endpoints, the
+`401` reading above, and the surface in [Client surface](#client-surface).
 
 ### Client surface
 
@@ -388,6 +467,15 @@ return a different concept under the same name.
 | `exchangeToken` | Performs a token exchange (RFC 8693). |
 | `decodeJwtToken` | Decodes a JWT payload without verifying its signature. MUST be documented as unsafe for authorization decisions. |
 | `setSession`, `clearSession` | Write and clear stored session state. |
+
+When sign-in runs on a backend, the surface stays the same but its source changes. `signIn`,
+`signOut`, `isSignedIn`, `getUser` and the profile operations go through the backend, and
+`isLoading` MUST report true until the first session read settles: an SDK that reports "not
+loading, not signed in" before it knows sends every route guard into a sign-in the SSO session
+answers at once, in a loop. The operations that hand a token to the caller (`getAccessToken`,
+`getIdToken`, `exchangeToken`, and any token revocation) MUST fail with a single stable
+unsupported-operation error, because the client holds no token to give. An SDK
+MUST NOT substitute a plausible-looking empty value for one.
 
 **User and profile**
 
@@ -636,6 +724,19 @@ dumps, and cannot be rotated in place, so an SDK MUST NOT persist a token in one
 Every SDK MUST accept a caller-supplied storage adapter. That adapter is outside the SDK's
 control and can be weaker than the platform default, so an SDK MUST document that the secure
 default applies only when it is the one in use.
+
+**Sign-in on a backend.** Where an SDK supports it, the client MUST hold no token at any point:
+no storage write, no in-memory copy, and nothing in the surface that returns one. A request to a
+URL outside the configured API base MUST be refused rather than sent without credentials:
+sending it anyway turns an authenticated call into an anonymous one and hides the failure from
+the caller.
+
+In a browser, every request the SDK sends to the backend MUST be same-origin, MUST carry the
+session cookie, and MUST carry a header the backend requires and a cross-origin page cannot set
+without a preflight the backend never answers. On mobile, where the backend is reached
+cross-origin by definition, its base URL MUST be configured and MUST use HTTPS, every request
+MUST go to that base, and the session handle MUST live in the platform's secure store under
+[Token storage](#security-requirements) and MUST NOT be written to a log or a crash report.
 
 <a id="token-attachment"></a>
 
@@ -1130,6 +1231,46 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
   later request presents a matching session, then the request is treated as unauthenticated
   until that session could no longer be valid.
 
+### R10. An application can keep its tokens off the client
+
+**Requirement:** As a developer of an application whose users' sessions are worth stealing, I
+want sign-in to run on my own backend, so that nothing that reaches the page or the handset can
+read a token, and ending the session on the server ends it for the application.
+
+**Acceptance criteria:**
+
+- **AC10.1:** Given `endpoints.backend` is set, when the application signs in, calls an API,
+  restarts, and signs out, then client storage, the SDK's in-memory state, and every value the
+  public surface returns contain no access, refresh, or ID token.
+- **AC10.2:** Given `endpoints.backend` is not set, when the application runs, then its
+  behaviour is unchanged from an SDK without this capability.
+- **AC10.3:** Given sign-in runs on a backend, when `getAccessToken`, `getIdToken`,
+  `exchangeToken`, or a token revocation is called, then each fails with the documented
+  unsupported-operation error and returns no value.
+- **AC10.4:** Given the client is initializing, when `isLoading` is read before the first
+  session read settles, then it is true, and a route guard that waits on it starts no sign-in.
+- **AC10.5:** Given the backend answers `401 session_expired`, when the SDK handles it, then it
+  refreshes once, retries once, and treats a second failure as signed out.
+- **AC10.6:** Given the backend answers a `401` that is neither `session_expired` nor
+  `login_required`, when the SDK handles it, then it is returned to the caller unchanged and no
+  refresh is attempted.
+- **AC10.7:** Given a signed-in session ends elsewhere, when the proxy answers `401
+  login_required`, when a check on page focus finds it gone, or when a poll does, then the SDK
+  reports the user as signed out once, and the framework bindings clear the user.
+- **AC10.8:** Given the application signs itself out, when the sign-out completes, then the
+  session-ended notification does not fire for it.
+- **AC10.9:** Given a request to a URL outside the configured API base, when the application
+  sends it through the SDK, then it is refused with a documented error and no request leaves the
+  client.
+- **AC10.10:** Given a browser SDK and a cross-origin page, when it calls a backend endpoint
+  with the user's cookie, then the request is refused for want of the required header.
+- **AC10.11:** Given a mobile SDK, when the session is inspected after sign-in, then the handle
+  is in the platform's secure store, the backend base URL is pinned and uses HTTPS, and neither
+  the handle nor the backend's responses appear in logs or crash reports.
+- **AC10.12:** Given a mobile SDK, when the browser session returns a `session_code`, then it is
+  exchanged with the verifier the SDK generated for that sign-in, and a callback carrying no code,
+  or a code for a sign-in this client did not start, is refused.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1140,3 +1281,4 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
 | 0.4 | 2026-10-06 | Back-channel logout handling added as an optional capability for SDKs with a server runtime. |
 | 0.5 | 2026-10-15 | `syncSession` replaced by a `session` object. The server does not implement OpenID Connect Session Management, so there is no check-session iframe for an SDK to synchronize with. `session.silentSignIn` configures silent sign-in from the SSO session instead. |
 | 0.6 | 2026-10-20 | Federated redirects in embedded mode: a callback without a `state` is never submitted, mobile SDKs compare it with the request's `state`, and a chained `REDIRECTION` is followed (AC4.13 to AC4.15). Authorization codes, and the callback URLs that carry them, are never logged. |
+| 0.7 | 2026-10-22 | Sign-in on a backend the application owns (RFC 10017) added as an optional capability for browser and mobile SDKs: the `endpoints.backend` contract, what the client holds in place of a token on each platform, the surface that is refused while it is on, and `session.checkInterval` (R10). |
