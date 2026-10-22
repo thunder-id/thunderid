@@ -381,6 +381,27 @@ func (ts *GatewayVersionsTestSuite) TestAppliedConnectionsShowWithTheirSecretsMa
 	}
 }
 
+// An authorization details type shows as its read returns it, with its processor credential masked.
+func (ts *GatewayVersionsTestSuite) TestAnAppliedAuthorizationDetailTypeShowsWithItsCredentialMasked() {
+	const secret = "viewed-processor-secret"
+	typeID := ts.create("/authorization-detail-types", map[string]any{
+		"type": "https://viewed.example.com/" + uniqueSuffix(), "name": "Viewed",
+		"schema": map[string]any{"type": "object",
+			"properties": map[string]any{"amount": map[string]any{"type": "number"}}},
+		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",
+			"authentication": map[string]any{"type": "bearer", "properties": map[string]any{"token": secret}}},
+	})
+	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/authorization-detail-types/"+typeID, nil, nil) })
+
+	applied := ts.captureAndApply("authorization details type")
+	ts.NotContains(ts.rawBody(http.MethodGet, "/gateways/"+ts.gatewayID+"/applied-configuration"), secret,
+		"the processor credential was shown")
+
+	shown := ts.shown(applied, "authorization_detail_type", typeID)
+	ts.Equal(ts.read("/authorization-detail-types/"+typeID), shown.Resource)
+	ts.Empty(shown.Parts)
+}
+
 // A flow, theme, layout, translations and server configuration show as their own reads return them.
 // A language's translations show one namespace at a time as a part, as its resolve read filters.
 func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerConfigShow() {

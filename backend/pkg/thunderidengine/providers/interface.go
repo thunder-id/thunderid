@@ -199,6 +199,17 @@ type ConsentProvider interface {
 		*Consent, *common.ServiceError)
 }
 
+// AuthorizationDetailTypeProvider provides the registered RFC 9396 authorization details types.
+type AuthorizationDetailTypeProvider interface {
+	// GetAuthorizationDetailTypeByValue returns the type registered under the given value, or nil if none.
+	GetAuthorizationDetailTypeByValue(ctx context.Context, value string) (
+		*AuthorizationDetailType, *common.ServiceError)
+	// ListAuthorizationDetailTypeValues returns the value of every registered type.
+	ListAuthorizationDetailTypeValues(ctx context.Context) ([]string, *common.ServiceError)
+	// ListAllAuthorizationDetailTypes returns every registered type.
+	ListAllAuthorizationDetailTypes(ctx context.Context) ([]AuthorizationDetailType, *common.ServiceError)
+}
+
 // CaptchaValidationProvider defines the contract for verifying captcha tokens.
 type CaptchaValidationProvider interface {
 	// Verify validates the given captcha token and returns the verification result. An invalid

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
+
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -4325,4 +4327,294 @@ func TestImportUserRefusesPoliciesWithoutASharingAdapter(t *testing.T) {
 	assert.Equal(t, statusFailed, resp.Results[0].Status)
 	assert.Contains(t, resp.Results[0].Message, "sharing")
 	assert.Equal(t, []string{"user-5"}, userSvc.deleted)
+}
+
+type fakeAuthorizationDetailTypeService struct {
+	existing    map[string]*providers.AuthorizationDetailType
+	created     []providers.AuthorizationDetailType
+	updated     []providers.AuthorizationDetailType
+	updateErr   *tidcommon.ServiceError
+	validateErr *tidcommon.ServiceError
+	validated   []providers.AuthorizationDetailType
+}
+
+func (f *fakeAuthorizationDetailTypeService) DeleteAuthorizationDetailType(
+	_ context.Context, id string,
+) *tidcommon.ServiceError {
+	delete(f.existing, id)
+	return nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailTypeByValue(
+	_ context.Context, value string,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	for _, t := range f.existing {
+		if t.Type == value {
+			return t, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) ValidateAuthorizationDetailType(
+	_ context.Context, t providers.AuthorizationDetailType,
+) *tidcommon.ServiceError {
+	f.validated = append(f.validated, t)
+	return f.validateErr
+}
+
+func (f *fakeAuthorizationDetailTypeService) CreateAuthorizationDetailType(
+	_ context.Context, t providers.AuthorizationDetailType,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	f.created = append(f.created, t)
+	return &t, nil
+}
+
+func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailType(
+	_ context.Context, id string,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if t, ok := f.existing[id]; ok {
+		return t, nil
+	}
+	return nil, &authzdetailmgt.ErrorTypeNotFound
+}
+
+func (f *fakeAuthorizationDetailTypeService) UpdateAuthorizationDetailType(
+	ctx context.Context, id string, t providers.AuthorizationDetailType,
+) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if _, svcErr := f.GetAuthorizationDetailType(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	f.updated = append(f.updated, t)
+	return &t, nil
+}
+
+// withAuthorizationDetailTypeStore initializes the server runtime with the given type store mode.
+func withAuthorizationDetailTypeStore(t *testing.T, store string) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", &config.Config{
+		AuthorizationDetail: config.AuthorizationDetailTypeConfig{Store: store},
+	}))
+}
+
+func newAuthorizationDetailTypeImportService(adtSvc authorizationDetailTypeAdapter) ImportServiceInterface {
+	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil)
+	svc.(*importService).authorizationDetailTypeService = adtSvc
+	return svc
+}
+
+const authorizationDetailTypeDocument = `resource_type: authorization_detail_type
+id: adt-1
+type: payment_initiation
+name: Payment initiation
+version: 2
+schema: '{"type":"object","properties":{"amount":{"type":"string"}}}'
+consentTemplate: Pay {{amount}}
+processor:
+  endpoint: https://bank.example.com/rar
+reuse: false
+`
+
+func TestImportAuthorizationDetailType_CreatesWhenAbsent(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	require.Len(t, adtSvc.created, 1)
+	created := adtSvc.created[0]
+	assert.Equal(t, "adt-1", created.ID, "the type keeps the id it was exported with")
+	assert.Equal(t, "Pay {{amount}}", created.ConsentTemplate, "consent placeholders survive template resolution")
+	assert.Equal(t, "https://bank.example.com/rar", created.Processor.Endpoint)
+	assert.False(t, created.Reuse)
+	assert.JSONEq(t, `{"type":"object","properties":{"amount":{"type":"string"}}}`, string(created.Schema))
+}
+
+func TestImportAuthorizationDetailType_UpdatesWhenPresent(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{existing: map[string]*providers.AuthorizationDetailType{
+		"adt-1": {ID: "adt-1", Type: "payment_initiation"},
+	}}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, adtSvc.updated, 1)
+	assert.Empty(t, adtSvc.created)
+
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+		Content: authorizationDetailTypeDocument, DryRun: true,
+	})
+	require.Nil(t, err)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Len(t, adtSvc.updated, 1, "a dry run changes nothing")
+}
+
+func TestImportAuthorizationDetailType_ReportsDeclarativeType(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{
+		existing: map[string]*providers.AuthorizationDetailType{
+			"adt-1": {ID: "adt-1", IsReadOnly: true},
+		},
+		updateErr: &authzdetailmgt.ErrorImmutableType,
+	}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: authorizationDetailTypeDocument})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, authzdetailmgt.ErrorImmutableType.Code, resp.Results[0].Code)
+	assert.Empty(t, adtSvc.created)
+}
+
+func TestImportAuthorizationDetailType_DryRunCreateAndFailures(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: authorizationDetailTypeDocument, DryRun: true,
+	})
+	require.Nil(t, err)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, adtSvc.created)
+
+	resp, err = svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: authorization_detail_type\nid: adt-1\nname: Bad\nschema: 'not json'\n",
+	})
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, ErrorInvalidYAMLContent.Code, resp.Results[0].Code)
+
+	resp, err = newAuthorizationDetailTypeImportService(nil).ImportResources(context.Background(),
+		&ImportRequest{Content: authorizationDetailTypeDocument})
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+}
+
+func TestImportAuthorizationDetailType_DeletesAType(t *testing.T) {
+	adtSvc := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation"},
+		&providers.AuthorizationDetailType{ID: "adt-2", Type: "other"})
+	svc := newAuthorizationDetailTypeImportService(adtSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: resourceTypeAuthorizationDetailType, ID: "adt-1"}},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, 1, resp.Summary.Deleted)
+	assert.NotContains(t, adtSvc.existing, "adt-1")
+	assert.Contains(t, adtSvc.existing, "adt-2", "unrelated types must be left alone")
+}
+
+// existingTypes returns an authorization details type service holding the given types.
+func existingTypes(types ...*providers.AuthorizationDetailType) *fakeAuthorizationDetailTypeService {
+	existing := make(map[string]*providers.AuthorizationDetailType, len(types))
+	for _, t := range types {
+		existing[t.ID] = t
+	}
+	return &fakeAuthorizationDetailTypeService{existing: existing}
+}
+
+// A dry run refuses what the real import would, reporting the operation that import would perform.
+func TestImportAuthorizationDetailType_DryRunPredictsRefusals(t *testing.T) {
+	invalidUpdate := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation"})
+	invalidUpdate.validateErr = &authzdetailmgt.ErrorInvalidSchema
+	cases := map[string]struct {
+		service   *fakeAuthorizationDetailTypeService
+		options   *ImportOptions
+		store     string
+		code      string
+		operation string
+	}{
+		"invalid type": {&fakeAuthorizationDetailTypeService{validateErr: &authzdetailmgt.ErrorInvalidSchema}, nil,
+			"", authzdetailmgt.ErrorInvalidSchema.Code, operationCreate},
+		"invalid update": {invalidUpdate, nil, "", authzdetailmgt.ErrorInvalidSchema.Code, operationUpdate},
+		"type value taken": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-other",
+			Type: "payment_initiation"}), nil, "", authzdetailmgt.ErrorTypeConflict.Code, operationCreate},
+		"id taken without upsert": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"}),
+			&ImportOptions{Upsert: boolPtr(false)}, "", authzdetailmgt.ErrorTypeIDConflict.Code, operationCreate},
+		"declarative type": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1",
+			Type: "payment_initiation", IsReadOnly: true}), nil, "", authzdetailmgt.ErrorImmutableType.Code,
+			operationUpdate},
+		"type value changed": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"}), nil,
+			"", authzdetailmgt.ErrorTypeValueImmutable.Code, operationUpdate},
+		"create in declarative-only mode": {&fakeAuthorizationDetailTypeService{}, nil, "declarative",
+			authzdetailmgt.ErrorDeclarativeModeCreateNotAllowed.Code, operationCreate},
+	}
+	for name, tc := range cases {
+		withAuthorizationDetailTypeStore(t, tc.store)
+		resp, err := newAuthorizationDetailTypeImportService(tc.service).ImportResources(context.Background(),
+			&ImportRequest{Content: authorizationDetailTypeDocument, DryRun: true, Options: tc.options})
+		require.Nil(t, err, name)
+		assert.Equal(t, statusFailed, resp.Results[0].Status, name)
+		assert.Equal(t, tc.code, resp.Results[0].Code, name)
+		assert.Equal(t, tc.operation, resp.Results[0].Operation, name)
+		assert.Empty(t, tc.service.created, name)
+		assert.Empty(t, tc.service.updated, name)
+	}
+}
+
+// A dry run create checks the credential as sent, not against a stored type that holds the id, as the
+// real create does.
+func TestImportAuthorizationDetailType_DryRunCreateIgnoresTheStoredType(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	adtSvc := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"})
+
+	resp, err := newAuthorizationDetailTypeImportService(adtSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: authorizationDetailTypeDocument, DryRun: true,
+			Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Nil(t, err)
+	assert.Equal(t, authzdetailmgt.ErrorTypeIDConflict.Code, resp.Results[0].Code)
+	require.Len(t, adtSvc.validated, 1)
+	assert.Empty(t, adtSvc.validated[0].ID)
+}
+
+// An id wider than the store's ID column is refused before anything is written.
+func TestImportAuthorizationDetailType_RefusesAnOverlongID(t *testing.T) {
+	adtSvc := &fakeAuthorizationDetailTypeService{}
+	content := strings.Replace(authorizationDetailTypeDocument, "id: adt-1", "id: "+strings.Repeat("a", 256), 1)
+
+	for _, dryRun := range []bool{false, true} {
+		resp, err := newAuthorizationDetailTypeImportService(adtSvc).ImportResources(context.Background(),
+			&ImportRequest{Content: content, DryRun: dryRun})
+		require.Nil(t, err)
+		assert.Equal(t, statusFailed, resp.Results[0].Status)
+		assert.Equal(t, ErrorInvalidYAMLContent.Code, resp.Results[0].Code)
+	}
+	assert.Empty(t, adtSvc.created)
+}
+
+func TestDeleteResource_RemovesAuthorizationDetailTypeFile(t *testing.T) {
+	tempHome := t.TempDir()
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	require.NoError(t, config.InitializeServerRuntime(tempHome, &config.Config{}))
+
+	resourceDir := filepath.Join(tempHome, "config", "resources", "authorization_detail_types")
+	require.NoError(t, os.MkdirAll(resourceDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(resourceDir, "payment.yaml"),
+		[]byte(authorizationDetailTypeDocument), 0o600))
+
+	resp, svcErr := newAuthorizationDetailTypeImportService(nil).DeleteResource(context.Background(),
+		&DeleteResourceRequest{ResourceType: resourceTypeAuthorizationDetailType, ResourceKey: "adt-1"})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, "payment.yaml", resp.DeletedFile)
+	_, statErr := os.Stat(filepath.Join(resourceDir, "payment.yaml"))
+	assert.True(t, os.IsNotExist(statErr))
 }
