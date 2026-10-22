@@ -71,7 +71,7 @@ export default function ApplicationDeleteDialog({
         <Alert severity="warning" sx={{mb: 2}}>
           {t(
             'delete.disclaimer',
-            'Warning: All associated data, configurations, and access tokens will be permanently removed.',
+            'Warning: All associated data and configurations will be permanently removed, every token issued to this application will be revoked, and its sessions will be detached.',
           )}
         </Alert>
         {error && (

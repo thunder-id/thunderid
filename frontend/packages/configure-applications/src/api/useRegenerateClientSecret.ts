@@ -71,8 +71,9 @@ function generateClientSecret(): string {
 /**
  * Custom React hook to regenerate an application's client secret.
  *
- * The regeneration runs through the configured administration flow, which revokes the artifacts
- * issued under the old secret before rotating it and returns the new secret the server generated.
+ * The regeneration runs through the configured administration flow, which returns the new secret
+ * the server generated. The server revokes the tokens issued under the old secret around the
+ * rotation on every path, so the fallback below is just as safe.
  *
  * When no such flow is configured it falls back to rotating the secret through the update API:
  * 1. Fetching the current application details
