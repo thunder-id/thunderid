@@ -54,6 +54,7 @@ type oAuthExecutor struct {
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
 	idpService    idp.IDPServiceInterface
+	syncer        *federatedSyncer
 	logger        *log.Logger
 }
 
@@ -68,6 +69,7 @@ func newOAuthExecutor(
 	authService authnoauth.OAuthAuthnCoreServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
+	syncer *federatedSyncer,
 ) oAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOAuth
@@ -99,6 +101,7 @@ func newOAuthExecutor(
 		authnProvider: authnProvider,
 		idpType:       idpType,
 		idpService:    idpService,
+		syncer:        syncer,
 		logger:        logger,
 	}
 }
@@ -263,12 +266,20 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	copyFederatedAttributesToRuntimeData(execResp, federatedAttributes)
 
-	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
+	idpDTO, mappingComplete, err := resolveAndSetMappedAuthorizationTargets(
+		ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
+	if err != nil {
+		return err
+	}
 
-	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
+	userID := setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:
+		if userID != "" &&
+			!o.syncer.syncFederatedUser(ctx, execResp, idpDTO, userID, federatedAttributes, mappingComplete, logger) {
+			return nil
+		}
 		if isAuthenticationWithoutLocalUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 		}

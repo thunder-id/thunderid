@@ -272,6 +272,12 @@ const (
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeyGroupsAndRolesSyncMode holds the federated connection's effective groups and roles sync
+	// mode, read by provisioning to decide whether mapped groups and roles are stored on the new account.
+	RuntimeKeyGroupsAndRolesSyncMode = "groups_and_roles_sync_mode"
+	// RuntimeKeyAttributesSyncMode holds the federated connection's effective attributes sync mode,
+	// read by provisioning to decide which attributes are stored on the new account.
+	RuntimeKeyAttributesSyncMode = "attributes_sync_mode"
 )
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,

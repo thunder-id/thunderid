@@ -17,6 +17,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
@@ -46,7 +47,7 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOIDCService,
-		suite.mockAuthnProvider, providers.IDPTypeOIDC)
+		suite.mockAuthnProvider, providers.IDPTypeOIDC, &federatedSyncer{})
 }
 
 func newOIDCAuthenticatedUser() providers.AuthUser {
@@ -1164,4 +1165,42 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ServerError(
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "OIDC authentication failed")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// A registration flow that finds an existing user must not sync it. The entity provider mock has no
+// expectations, so any sync attempt fails the test.
+//
+//nolint:dupl // same flow in the OAuth and OIDC executors
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationWithExistingUser_DoesNotSync() {
+	suite.executor.(*oidcAuthExecutor).syncer = &federatedSyncer{
+		entityProvider: entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
+	}
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeRegistration,
+		UserInputs:     map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{"idpId": "idp-123", "allowRegistrationWithExistingUser": true},
+	}
+	execResp := &providers.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
+	}
+
+	authenticatedAuthUser := newOIDCAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{
+			"sub": "existing-user-sub", "email": "existing@example.com",
+		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&providers.IDPDTO{ID: "idp-123"}, nil)
+	suite.mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil))
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, execResp.Status)
+	assert.Equal(suite.T(), dataValueTrue, execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser])
 }

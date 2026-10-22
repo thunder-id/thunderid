@@ -380,7 +380,55 @@ func validateIDP(ctx context.Context, idp *providers.IDPDTO, logger *log.Logger)
 	}
 	idp.Properties = updatedProperties
 
+	return validateSyncConfiguration(idp.AttributeConfiguration)
+}
+
+// validateSyncConfiguration checks each set sync mode is a known value. Override received is valid
+// for attributes only, and override all for groups and roles only.
+func validateSyncConfiguration(config *providers.AttributeConfiguration) *tidcommon.ServiceError {
+	if config == nil || config.Sync == nil {
+		return nil
+	}
+	if mode := config.Sync.Attributes; mode != "" && !slices.Contains([]providers.SyncMode{
+		providers.SyncModeNoSync, providers.SyncModeSessionOnly,
+		providers.SyncModeOverrideReceived,
+	}, mode) {
+		return invalidSyncModeError("attributes", mode)
+	}
+	if mode := config.Sync.GroupsAndRoles; mode != "" && !slices.Contains([]providers.SyncMode{
+		providers.SyncModeNoSync, providers.SyncModeSessionOnly, providers.SyncModeOverrideAll,
+	}, mode) {
+		return invalidSyncModeError("groupsAndRoles", mode)
+	}
 	return nil
+}
+
+func invalidSyncModeError(setting string, mode providers.SyncMode) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+		Key:          "error.idpservice.attribute_configuration_invalid_sync_mode_description",
+		DefaultValue: "sync mode '{{param(mode)}}' is not supported for '{{param(setting)}}'",
+		Params:       map[string]string{"mode": string(mode), "setting": setting},
+	})
+}
+
+// GetAttributesSyncMode returns the connection's attributes sync mode, defaulting to
+// SyncModeOverrideReceived when unset.
+func GetAttributesSyncMode(idp *providers.IDPDTO) providers.SyncMode {
+	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.Sync == nil ||
+		idp.AttributeConfiguration.Sync.Attributes == "" {
+		return providers.SyncModeOverrideReceived
+	}
+	return idp.AttributeConfiguration.Sync.Attributes
+}
+
+// GetGroupsAndRolesSyncMode returns the connection's groups and roles sync mode, defaulting to
+// SyncModeNoSync when unset.
+func GetGroupsAndRolesSyncMode(idp *providers.IDPDTO) providers.SyncMode {
+	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.Sync == nil ||
+		idp.AttributeConfiguration.Sync.GroupsAndRoles == "" {
+		return providers.SyncModeNoSync
+	}
+	return idp.AttributeConfiguration.Sync.GroupsAndRoles
 }
 
 // ValidateIDP validates and normalizes dto in place (required properties, type defaults, openid

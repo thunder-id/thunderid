@@ -562,3 +562,68 @@ func (_c *RoleAssignmentServiceInterfaceMock_RemoveAssignments_Call) RunAndRetur
 	_c.Call.Return(run)
 	return _c
 }
+
+// SetUserRoles provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) SetUserRoles(ctx context.Context, userID string, roleIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, roleIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetUserRoles")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, roleIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// RoleAssignmentServiceInterfaceMock_SetUserRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetUserRoles'
+type RoleAssignmentServiceInterfaceMock_SetUserRoles_Call struct {
+	*mock.Call
+}
+
+// SetUserRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - roleIDs []string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) SetUserRoles(ctx interface{}, userID interface{}, roleIDs interface{}) *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call {
+	return &RoleAssignmentServiceInterfaceMock_SetUserRoles_Call{Call: _e.mock.On("SetUserRoles", ctx, userID, roleIDs)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call) Run(run func(ctx context.Context, userID string, roleIDs []string)) *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call) Return(serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call) RunAndReturn(run func(ctx context.Context, userID string, roleIDs []string) *common.ServiceError) *RoleAssignmentServiceInterfaceMock_SetUserRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}

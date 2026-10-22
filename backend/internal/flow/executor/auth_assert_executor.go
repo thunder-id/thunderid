@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -21,11 +22,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/group"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -42,6 +45,7 @@ type authAssertExecutor struct {
 	entityProvider      entityprovider.EntityProviderInterface
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
+	groupService        group.GroupServiceInterface
 	logger              *log.Logger
 }
 
@@ -57,6 +61,7 @@ func newAuthAssertExecutor(
 	entityProvider entityprovider.EntityProviderInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 ) *authAssertExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
@@ -77,6 +82,7 @@ func newAuthAssertExecutor(
 		entityProvider:      entityProvider,
 		attributeCacheSvc:   attributeCacheSvc,
 		roleService:         roleService,
+		groupService:        groupService,
 		logger:              logger,
 	}
 }
@@ -276,8 +282,11 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	}
 
 	if ttlSecondsStr, exists := ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]; exists {
-		// We are not in an App Native flow, so we need to cache the user attributes
-		if len(resolvedAttributes) > 0 {
+		// We are not in an App Native flow, so we need to cache the user attributes, with the
+		// authorization the sign-in granted for the session only, so a refresh can re-check scopes
+		// against it.
+		attributesToCache := a.withSessionGrants(ctx, resolvedAttributes)
+		if len(attributesToCache) > 0 {
 			ttlSeconds, err := strconv.ParseInt(ttlSecondsStr, 10, 64)
 			if err != nil {
 				logger.Error(ctx.Context, "Failed to parse TTL seconds from runtime data",
@@ -287,7 +296,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 				return "", errors.New("something went wrong while processing attribute cache configuration")
 			}
 			attributeCache := &attributecache.AttributeCache{
-				Attributes: resolvedAttributes,
+				Attributes: attributesToCache,
 				TTLSeconds: ttlSeconds,
 			}
 			result, creationErr := a.attributeCacheSvc.CreateAttributeCache(ctx.Context, attributeCache)
@@ -510,13 +519,18 @@ func (a *authAssertExecutor) appendComputedAttributes(
 		if err != nil {
 			return err
 		}
+		mappedGroups, mappedRoleIDs, err := a.getSessionOnlyMappedGroupsAndRoles(ctx, allGroups)
+		if err != nil {
+			return err
+		}
+		allGroups = append(allGroups, mappedGroups...)
 
 		if groupsRequested {
 			a.appendGroupsToClaims(allGroups, attributes)
 		}
 
 		if rolesRequested {
-			if err := a.appendRolesToClaims(ctx, allGroups, attributes, userID); err != nil {
+			if err := a.appendRolesToClaims(ctx, allGroups, mappedRoleIDs, attributes, userID); err != nil {
 				return err
 			}
 		}
@@ -591,6 +605,73 @@ func (a *authAssertExecutor) fetchAllUserGroups(
 	return groups, nil
 }
 
+// withSessionGrants returns attributes with the session grants added under the reserved key, or
+// attributes unchanged when there are none.
+func (a *authAssertExecutor) withSessionGrants(
+	ctx *providers.NodeContext, attributes map[string]interface{},
+) map[string]interface{} {
+	grants := a.getSessionGrants(ctx)
+	if grants == nil {
+		return attributes
+	}
+	withGrants := make(map[string]interface{}, len(attributes)+1)
+	maps.Copy(withGrants, attributes)
+	withGrants[attributecache.SessionGrantsKey] = grants
+	return withGrants
+}
+
+// getSessionGrants returns the authorization the federated login granted for the session without
+// storing it: the mapped groups, with their ancestors, and roles when the connection keeps groups and
+// roles to the session, and the mapped permissions, which are never stored. Returns nil when there are
+// none.
+func (a *authAssertExecutor) getSessionGrants(ctx *providers.NodeContext) *attributecache.SessionGrants {
+	grants := &attributecache.SessionGrants{Permissions: extractMappedPermissions(ctx, a.logger)}
+	if ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] == string(providers.SyncModeSessionOnly) {
+		grants.RoleIDs = sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
+		grants.GroupIDs = expandMappedGroupAncestors(ctx.Context, a.entityProvider, a.logger,
+			sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " "))
+	}
+	if len(grants.GroupIDs) == 0 && len(grants.RoleIDs) == 0 && len(grants.Permissions) == 0 {
+		return nil
+	}
+	return grants
+}
+
+// getSessionOnlyMappedGroupsAndRoles returns the groups, with their ancestors, and the role IDs a
+// federated login's authorization mapping resolved, when the connection keeps groups and roles to the
+// session. Groups already in storedGroups are left out. In every other mode the mapped groups and
+// roles are stored on the account, so the stored memberships already cover them.
+func (a *authAssertExecutor) getSessionOnlyMappedGroupsAndRoles(
+	ctx *providers.NodeContext, storedGroups []providers.EntityGroup,
+) ([]providers.EntityGroup, []string, error) {
+	if ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] != string(providers.SyncModeSessionOnly) {
+		return nil, nil, nil
+	}
+	mappedRoleIDs := sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
+	mappedGroupIDs := expandMappedGroupAncestors(ctx.Context, a.entityProvider, a.logger,
+		sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " "))
+	mappedGroupIDs = slices.DeleteFunc(mappedGroupIDs, func(id string) bool {
+		return slices.ContainsFunc(storedGroups, func(g providers.EntityGroup) bool { return g.ID == id })
+	})
+	if len(mappedGroupIDs) == 0 {
+		return nil, mappedRoleIDs, nil
+	}
+
+	groups, svcErr := a.groupService.GetGroupsByIDs(ctx.Context, mappedGroupIDs)
+	if svcErr != nil {
+		a.logger.Error(ctx.Context, "Failed to fetch mapped groups", log.Any("error", svcErr))
+		return nil, nil, errors.New("something went wrong while fetching mapped groups: " +
+			svcErr.ErrorDescription.DefaultValue)
+	}
+	mappedGroups := make([]providers.EntityGroup, 0, len(groups))
+	for _, id := range mappedGroupIDs {
+		if g, ok := groups[id]; ok {
+			mappedGroups = append(mappedGroups, providers.EntityGroup{ID: g.ID, Name: g.Name, OUID: g.OUID})
+		}
+	}
+	return mappedGroups, mappedRoleIDs, nil
+}
+
 // appendGroupsToClaims appends pre-fetched user groups to the JWT claims.
 func (a *authAssertExecutor) appendGroupsToClaims(
 	groups []providers.EntityGroup, jwtClaims map[string]interface{}) {
@@ -604,9 +685,10 @@ func (a *authAssertExecutor) appendGroupsToClaims(
 	}
 }
 
-// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution.
-func (a *authAssertExecutor) appendRolesToClaims(
-	ctx *providers.NodeContext, groups []providers.EntityGroup, jwtClaims map[string]interface{}, userID string) error {
+// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution,
+// along with the roles of mappedRoleIDs.
+func (a *authAssertExecutor) appendRolesToClaims(ctx *providers.NodeContext, groups []providers.EntityGroup,
+	mappedRoleIDs []string, jwtClaims map[string]interface{}, userID string) error {
 	logger := a.logger.With(log.MaskedString(log.LoggerKeyUserID, userID))
 
 	groupIDs := make([]string, 0, len(groups))
@@ -620,6 +702,19 @@ func (a *authAssertExecutor) appendRolesToClaims(
 			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.Any("error", svcErr))
 		return errors.New("something went wrong while fetching user roles: " + svcErr.ErrorDescription.DefaultValue)
+	}
+
+	for _, roleID := range mappedRoleIDs {
+		mappedRole, svcErr := a.roleService.GetRoleWithPermissions(ctx.Context, roleID)
+		if svcErr != nil {
+			logger.Error(ctx.Context, "Failed to fetch mapped role",
+				log.String("roleId", roleID), log.Any("error", svcErr))
+			return errors.New("something went wrong while fetching mapped role: " +
+				svcErr.ErrorDescription.DefaultValue)
+		}
+		if !slices.Contains(roles, mappedRole.Name) {
+			roles = append(roles, mappedRole.Name)
+		}
 	}
 
 	if len(roles) > 0 {

@@ -8,6 +8,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -416,6 +417,57 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Unp
 	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "affirmative", result["active"])
+}
+
+// TestGetAttributesForProvisioning_SessionOnlyAttributes verifies that when the federated connection
+// keeps attributes to the session, only the subject identifier, required attributes and values the
+// user entered are kept, and other claims carried in RuntimeData are left out.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_SessionOnlyAttributes() {
+	schema := []model.AttributeInfo{
+		{Attribute: "username", Required: true},
+		{Attribute: attributeEmail},
+		{Attribute: "sub"},
+		{Attribute: "given_name"},
+		{Attribute: "mobile"},
+	}
+	runtimeData := map[string]string{
+		userTypeKey:    testUserType,
+		"username":     "fed-user",
+		attributeEmail: "fed@example.com",
+		"sub":          "fed-sub",
+		"given_name":   "Fed",
+	}
+
+	tests := []struct {
+		name     string
+		mode     providers.SyncMode
+		expected map[string]interface{}
+	}{
+		{"session only", providers.SyncModeSessionOnly, map[string]interface{}{
+			"username": "fed-user", "sub": "fed-sub", "mobile": "0771234567",
+		}},
+		{"override all", providers.SyncModeOverrideAll, map[string]interface{}{
+			"username": "fed-user", attributeEmail: "fed@example.com", "sub": "fed-sub", "given_name": "Fed",
+			"mobile": "0771234567",
+		}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+				model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).Return(schema, nil).Once()
+			data := maps.Clone(runtimeData)
+			data[common.RuntimeKeyAttributesSyncMode] = string(tc.mode)
+			ctx := &providers.NodeContext{
+				UserInputs:  map[string]string{"mobile": "0771234567"},
+				RuntimeData: data,
+			}
+
+			result, _, err := suite.executor.getAttributesForProvisioning(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, result)
+		})
+	}
 }
 
 // TestGetAttributesForProvisioning_SchemaEmpty_ReturnsEmpty verifies that when the schema
@@ -1311,9 +1363,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 	suite.mockGroupService.AssertExpectations(suite.T())
 }
 
-// Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
-// deduplicated, when both flags are enabled.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
+// Mapped groups and roles are stored on the new account by default, combined with the fixed
+// assignGroup/assignRole lists and deduplicated.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_StoresMappedGroupsAndRoles() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -1340,10 +1392,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 			{Identifier: "username", Type: "string", Required: true},
 		},
 		NodeProperties: map[string]interface{}{
-			"assignGroup":           "static-group-id",
-			"assignRole":            "static-role-id",
-			"seedGroupsFromMapping": true,
-			"seedRolesFromMapping":  true,
+			"assignGroup": "static-group-id",
+			"assignRole":  "static-role-id",
 		},
 	}
 
@@ -1372,16 +1422,17 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMa
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
+// With session only groups and roles, mapped targets carried in runtime data aren't stored: only the
 // fixed assignGroup/assignRole lists are applied.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SessionOnlyGroupsAndRoles_MappedTargetsNotStored() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser"}
 	attrsJSON, _ := json.Marshal(attrs)
 
 	runtimeData := map[string]string{
-		ouIDKey:     testOUID,
-		userTypeKey: testUserType,
+		ouIDKey:                                 testOUID,
+		userTypeKey:                             testUserType,
+		common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
 	}
 	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},

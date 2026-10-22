@@ -1208,6 +1208,21 @@ var (
 			DefaultValue: "The user could not be deleted",
 		},
 	}
+
+	// ErrFederatedUserSyncFailed is returned when a returning federated user's account cannot be
+	// synced with the identity provider.
+	ErrFederatedUserSyncFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1086",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed",
+			DefaultValue: "Failed to sync user",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.federated_user_sync_failed_desc",
+			DefaultValue: "The account could not be updated with the details from the identity provider",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.

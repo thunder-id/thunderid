@@ -976,7 +976,7 @@ func seedMappedAuthorizationTargets(t *testing.T, targets []providers.Authorizat
 	return data
 }
 
-func TestAuthorizationExecutor_Execute_MappedRoleAndGroupTargets(t *testing.T) {
+func TestAuthorizationExecutor_Execute_SessionOnlyMappedRoleAndGroupTargets(t *testing.T) {
 	mockAuthzService := new(authzmock.AuthorizationProviderMock)
 	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
@@ -986,6 +986,7 @@ func TestAuthorizationExecutor_Execute_MappedRoleAndGroupTargets(t *testing.T) {
 	runtimeData := map[string]string{
 		requestedPermissionsKey:                   "read:documents",
 		common.RuntimeKeyResourceServerIdentifier: "rs-1",
+		common.RuntimeKeyGroupsAndRolesSyncMode:   string(providers.SyncModeSessionOnly),
 	}
 	for k, v := range seedMappedAuthorizationTargets(t, []providers.AuthorizationTarget{
 		{Type: providers.AuthorizationTargetRole, ID: "role-admin"},
@@ -1024,6 +1025,59 @@ func TestAuthorizationExecutor_Execute_MappedRoleAndGroupTargets(t *testing.T) {
 	assert.Equal(t, providers.ExecComplete, resp.Status)
 	assert.Equal(t, "read:documents", resp.RuntimeData[authorizedPermissionsKey])
 	mockAuthzService.AssertExpectations(t)
+}
+
+// Outside session only, the mapped roles and groups are stored on the account, so the permission check
+// uses the stored memberships alone.
+func TestAuthorizationExecutor_Execute_StoredModesIgnoreMappedRoleAndGroupTargets(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	executor := createTestAuthzExecutor(t, mockAuthzService, mockEntityProvider, mockAuthnProvider)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	runtimeData := map[string]string{
+		requestedPermissionsKey:                   "read:documents",
+		common.RuntimeKeyResourceServerIdentifier: "rs-1",
+		common.RuntimeKeyGroupsAndRolesSyncMode:   string(providers.SyncModeNoSync),
+	}
+	for k, v := range seedMappedAuthorizationTargets(t, []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetRole, ID: "role-admin"},
+		{Type: providers.AuthorizationTargetGroup, ID: "group-mapped"},
+	}) {
+		runtimeData[k] = v
+	}
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: runtimeData,
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", testUser123ID).Return(
+		[]providers.EntityGroup{{ID: "group-real"}}, nil)
+
+	mockAuthzService.On("EvaluateAccessBatch",
+		mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			subject := req.Evaluations[0].Subject
+			return len(req.Evaluations) == 1 &&
+				subject.ID == testUser123ID &&
+				len(subject.RoleIDs) == 0 &&
+				assert.ObjectsAreEqual([]string{"group-real"}, subject.GroupIDs)
+		})).Return(&providers.AccessEvaluationsResponse{
+		Evaluations: []providers.AccessEvaluationResponse{{Decision: false}},
+	}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	assert.Empty(t, resp.RuntimeData[authorizedPermissionsKey])
+	mockAuthzService.AssertExpectations(t)
+	mockEntityProvider.AssertNotCalled(t, "GetTransitiveGroupAncestors", mock.Anything)
 }
 
 func TestAuthorizationExecutor_Execute_MappedPermissionTargetUnionsDirectly(t *testing.T) {

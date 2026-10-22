@@ -2002,6 +2002,20 @@ const translations = {
     'attributeMapping.linking.placeholder': 'e.g. email',
     'attributeMapping.linking.addAttribute': 'Add Attribute',
     'attributeMapping.linking.and': 'AND',
+    // Section 4: sync
+    'attributeMapping.sync.title': 'Sync',
+    'attributeMapping.sync.description':
+      'How sign-ins through this connection keep the account in line with the provider.',
+    'attributeMapping.sync.attributes.label': 'Attributes Sync',
+    'attributeMapping.sync.attributes.hint':
+      'Override received updates only the attributes in the attribute mappings. Session only stores only the identifier and required attributes.',
+    'attributeMapping.sync.groupsAndRoles.label': 'Groups and Roles Sync',
+    'attributeMapping.sync.groupsAndRoles.hint':
+      'Groups and roles come from the authorization mapping. Override all removes groups and roles the mapping does not resolve, including ones assigned locally.',
+    'attributeMapping.sync.mode.no_sync': 'No sync',
+    'attributeMapping.sync.mode.session_only': 'Session only',
+    'attributeMapping.sync.mode.override_received': 'Override received',
+    'attributeMapping.sync.mode.override_all': 'Override all',
 
     // Authorization mapping (federated role, group, and permission assignment)
     'authorizationMapping.title': 'Authorization Mapping',
@@ -3771,12 +3785,8 @@ const translations = {
     'core.executions.provisioning.assignGroup.placeholder': 'Comma-separated group IDs to assign',
     'core.executions.provisioning.assignRole.label': 'Assign Role',
     'core.executions.provisioning.assignRole.placeholder': 'Comma-separated role IDs to assign',
-    'core.executions.provisioning.seedGroupsFromMapping.label': 'Seed Groups From Authorization Mapping',
-    'core.executions.provisioning.seedGroupsFromMapping.hint':
-      "Assign groups the connection's authorization mapping resolved for this subject.",
-    'core.executions.provisioning.seedRolesFromMapping.label': 'Seed Roles From Authorization Mapping',
-    'core.executions.provisioning.seedRolesFromMapping.hint':
-      "Assign roles the connection's authorization mapping resolved for this subject.",
+    'core.executions.provisioning.federatedOverrideWarning':
+      "This flow has a federated sign-in. If its connection syncs groups and roles with Override all, the groups and roles assigned here are removed on the next sign-in unless the connection's authorization mapping also resolves them.",
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',

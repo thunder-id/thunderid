@@ -826,6 +826,83 @@ func (_c *UserServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run 
 	return _c
 }
 
+// SyncFederatedUser provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) SyncFederatedUser(ctx context.Context, userID string, attributes map[string]interface{}, groupIDs []string, roleIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, attributes, groupIDs, roleIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SyncFederatedUser")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}, []string, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, attributes, groupIDs, roleIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// UserServiceInterfaceMock_SyncFederatedUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncFederatedUser'
+type UserServiceInterfaceMock_SyncFederatedUser_Call struct {
+	*mock.Call
+}
+
+// SyncFederatedUser is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - attributes map[string]interface{}
+//   - groupIDs []string
+//   - roleIDs []string
+func (_e *UserServiceInterfaceMock_Expecter) SyncFederatedUser(ctx interface{}, userID interface{}, attributes interface{}, groupIDs interface{}, roleIDs interface{}) *UserServiceInterfaceMock_SyncFederatedUser_Call {
+	return &UserServiceInterfaceMock_SyncFederatedUser_Call{Call: _e.mock.On("SyncFederatedUser", ctx, userID, attributes, groupIDs, roleIDs)}
+}
+
+func (_c *UserServiceInterfaceMock_SyncFederatedUser_Call) Run(run func(ctx context.Context, userID string, attributes map[string]interface{}, groupIDs []string, roleIDs []string)) *UserServiceInterfaceMock_SyncFederatedUser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_SyncFederatedUser_Call) Return(serviceError *common.ServiceError) *UserServiceInterfaceMock_SyncFederatedUser_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_SyncFederatedUser_Call) RunAndReturn(run func(ctx context.Context, userID string, attributes map[string]interface{}, groupIDs []string, roleIDs []string) *common.ServiceError) *UserServiceInterfaceMock_SyncFederatedUser_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateUser provides a mock function for the type UserServiceInterfaceMock
 func (_mock *UserServiceInterfaceMock) UpdateUser(ctx context.Context, userID string, user1 *user.User) (*user.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, user1)

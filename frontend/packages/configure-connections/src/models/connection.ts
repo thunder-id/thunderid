@@ -240,6 +240,20 @@ export interface AttributeConfiguration {
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
   accountLinking?: AccountLinking;
   authorizationMapping?: AuthorizationMapping;
+  sync?: SyncConfiguration;
+}
+
+/**
+ * How a federated sign-in keeps the local account in line with the provider.
+ */
+export type SyncMode = 'no_sync' | 'session_only' | 'override_received' | 'override_all';
+
+/**
+ * A connection's sync modes. An unset mode takes its server default.
+ */
+export interface SyncConfiguration {
+  attributes?: SyncMode;
+  groupsAndRoles?: SyncMode;
 }
 
 /**

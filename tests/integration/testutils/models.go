@@ -182,6 +182,13 @@ type AttributeConfiguration struct {
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty"`
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"`
 	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"`
+	Sync                      *SyncConfiguration         `json:"sync,omitempty"`
+}
+
+// SyncConfiguration holds a connection's attribute and groups and roles sync modes.
+type SyncConfiguration struct {
+	Attributes     string `json:"attributes,omitempty"`
+	GroupsAndRoles string `json:"groupsAndRoles,omitempty"`
 }
 
 // IDP represents an identity provider in the system

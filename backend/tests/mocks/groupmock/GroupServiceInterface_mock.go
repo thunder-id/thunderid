@@ -1192,6 +1192,71 @@ func (_c *GroupServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run
 	return _c
 }
 
+// SetUserGroups provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) SetUserGroups(ctx context.Context, userID string, groupIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, groupIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetUserGroups")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, groupIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// GroupServiceInterfaceMock_SetUserGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetUserGroups'
+type GroupServiceInterfaceMock_SetUserGroups_Call struct {
+	*mock.Call
+}
+
+// SetUserGroups is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - groupIDs []string
+func (_e *GroupServiceInterfaceMock_Expecter) SetUserGroups(ctx interface{}, userID interface{}, groupIDs interface{}) *GroupServiceInterfaceMock_SetUserGroups_Call {
+	return &GroupServiceInterfaceMock_SetUserGroups_Call{Call: _e.mock.On("SetUserGroups", ctx, userID, groupIDs)}
+}
+
+func (_c *GroupServiceInterfaceMock_SetUserGroups_Call) Run(run func(ctx context.Context, userID string, groupIDs []string)) *GroupServiceInterfaceMock_SetUserGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetUserGroups_Call) Return(serviceError *common.ServiceError) *GroupServiceInterfaceMock_SetUserGroups_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_SetUserGroups_Call) RunAndReturn(run func(ctx context.Context, userID string, groupIDs []string) *common.ServiceError) *GroupServiceInterfaceMock_SetUserGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateGroup provides a mock function for the type GroupServiceInterfaceMock
 func (_mock *GroupServiceInterfaceMock) UpdateGroup(ctx context.Context, groupID string, request group.UpdateGroupRequest) (*group.Group, *common.ServiceError) {
 	ret := _mock.Called(ctx, groupID, request)

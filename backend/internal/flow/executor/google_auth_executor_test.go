@@ -15,7 +15,8 @@ func TestNewGoogleOIDCAuthExecutor_Success(t *testing.T) {
 	mockFlowFactory, mockIDPService, mockAuthnProvider := setupSocialAuthExecutorMock(t, ExecutorNameGoogleAuth)
 	mockGoogleSvc := googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(t)
 
-	executor := newGoogleOIDCAuthExecutor(mockFlowFactory, mockIDPService, mockGoogleSvc, mockAuthnProvider)
+	executor := newGoogleOIDCAuthExecutor(mockFlowFactory, mockIDPService, mockGoogleSvc, mockAuthnProvider,
+		&federatedSyncer{})
 
 	assert.NotNil(t, executor)
 	result, ok := executor.(*googleOIDCAuthExecutor)

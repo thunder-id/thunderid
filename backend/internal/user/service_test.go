@@ -21,11 +21,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -1852,7 +1855,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testin
 }
 
 func TestNewFunctions(t *testing.T) {
-	svc := newUserService(nil, nil, nil, nil)
+	svc := newUserService(nil, nil, nil, nil, nil, nil, nil)
 	require.NotNil(t, svc)
 
 	handler := newUserHandler(svc)
@@ -3922,4 +3925,106 @@ func TestGetUserMetadata_GetEntityTypeSchemaError(t *testing.T) {
 	require.Nil(t, schema)
 	require.NotNil(t, svcErr)
 	require.Equal(t, entitytype.ErrorEntityTypeNotFound.Code, svcErr.Code)
+}
+
+func TestUserService_SyncFederatedUser(t *testing.T) {
+	changes := map[string]interface{}{"email": "fed@example.com"}
+	merged := json.RawMessage(`{"city":"Colombo","email":"fed@example.com"}`)
+	newService := func(t *testing.T) (*userService, *entitymock.EntityServiceInterfaceMock,
+		*groupmock.GroupServiceInterfaceMock, *rolemock.RoleAssignmentServiceInterfaceMock) {
+		entities := entitymock.NewEntityServiceInterfaceMock(t)
+		groups := groupmock.NewGroupServiceInterfaceMock(t)
+		roles := rolemock.NewRoleAssignmentServiceInterfaceMock(t)
+		return &userService{entityService: entities, groupService: groups, roleAssignmentService: roles,
+			transactioner: transaction.NewNoOpTransactioner()}, entities, groups, roles
+	}
+	expectStored := func(entities *entitymock.EntityServiceInterfaceMock, readOnly bool) {
+		entities.On("GetEntity", mock.Anything, "user-1").Return(&providers.Entity{
+			ID: "user-1", IsReadOnly: readOnly,
+			Attributes: json.RawMessage(`{"email":"old@example.com","city":"Colombo"}`),
+		}, nil).Once()
+	}
+
+	t.Run("merges attributes and writes groups and roles", func(t *testing.T) {
+		svc, entities, groups, roles := newService(t)
+		expectStored(entities, false)
+		entities.On("UpdateAttributes", mock.Anything, "user-1", merged).Return(nil).Once()
+		groups.On("SetUserGroups", mock.Anything, "user-1", []string{"g1"}).
+			Return((*tidcommon.ServiceError)(nil)).Once()
+		roles.On("SetUserRoles", mock.Anything, "user-1", []string{"r1"}).
+			Return((*tidcommon.ServiceError)(nil)).Once()
+
+		require.Nil(t, svc.SyncFederatedUser(context.Background(), "user-1", changes, []string{"g1"}, []string{"r1"}))
+	})
+
+	t.Run("leaves nil parts unchanged", func(t *testing.T) {
+		svc, entities, _, _ := newService(t)
+		expectStored(entities, false)
+		entities.On("UpdateAttributes", mock.Anything, "user-1", merged).Return(nil).Once()
+
+		require.Nil(t, svc.SyncFederatedUser(context.Background(), "user-1", changes, nil, nil))
+	})
+
+	t.Run("skips attributes of a read-only user and still writes groups", func(t *testing.T) {
+		svc, entities, groups, _ := newService(t)
+		expectStored(entities, true)
+		groups.On("SetUserGroups", mock.Anything, "user-1", []string{"g1"}).
+			Return((*tidcommon.ServiceError)(nil)).Once()
+
+		require.Nil(t, svc.SyncFederatedUser(context.Background(), "user-1", changes, []string{"g1"}, nil))
+		entities.AssertNotCalled(t, "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("a rejected attribute stops groups and roles", func(t *testing.T) {
+		svc, entities, _, _ := newService(t)
+		expectStored(entities, false)
+		entities.On("UpdateAttributes", mock.Anything, "user-1", merged).
+			Return(entitypkg.ErrAttributeConflict).Once()
+
+		svcErr := svc.SyncFederatedUser(context.Background(), "user-1", changes, []string{"g1"}, []string{"r1"})
+
+		require.Equal(t, &ErrorAttributeConflict, svcErr)
+	})
+
+	t.Run("a failed group write stops roles", func(t *testing.T) {
+		svc, _, groups, _ := newService(t)
+		groups.On("SetUserGroups", mock.Anything, "user-1", []string{"g1"}).
+			Return(&tidcommon.InternalServerError).Once()
+
+		svcErr := svc.SyncFederatedUser(context.Background(), "user-1", nil, []string{"g1"}, []string{"r1"})
+
+		require.Equal(t, &tidcommon.InternalServerError, svcErr)
+	})
+
+	t.Run("reads and writes inside the transaction, and a failed role write rolls it back", func(t *testing.T) {
+		svc, entities, groups, roles := newService(t)
+		tx := &recordingTransactioner{}
+		svc.transactioner = tx
+		inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(recordingTxKey{}) != nil })
+		entities.On("GetEntity", inTx, "user-1").Return(&providers.Entity{
+			ID: "user-1", Attributes: json.RawMessage(`{"email":"old@example.com","city":"Colombo"}`),
+		}, nil).Once()
+		entities.On("UpdateAttributes", inTx, "user-1", merged).Return(nil).Once()
+		groups.On("SetUserGroups", inTx, "user-1", []string{"g1"}).
+			Return((*tidcommon.ServiceError)(nil)).Once()
+		roles.On("SetUserRoles", inTx, "user-1", []string{"r1"}).Return(&tidcommon.InternalServerError).Once()
+
+		svcErr := svc.SyncFederatedUser(context.Background(), "user-1", changes, []string{"g1"}, []string{"r1"})
+
+		require.Equal(t, &tidcommon.InternalServerError, svcErr)
+		require.Error(t, tx.err, "the transaction should roll back")
+	})
+}
+
+type recordingTxKey struct{}
+
+// recordingTransactioner runs txFunc with a marked context and records its result, which a real
+// transactioner commits on nil and rolls back otherwise.
+type recordingTransactioner struct {
+	err error
+}
+
+func (r *recordingTransactioner) Transact(ctx context.Context, txFunc func(context.Context) error) error {
+	r.err = txFunc(context.WithValue(ctx, recordingTxKey{}, true))
+	return r.err
 }

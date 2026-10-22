@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -33,6 +34,7 @@ type RoleAssignmentServiceInterface interface {
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) *tidcommon.ServiceError
 	AddAssigneesToRoles(ctx context.Context, assignments []RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
+	SetUserRoles(ctx context.Context, userID string, roleIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
@@ -328,6 +330,50 @@ func (as *roleAssignmentService) AddAssigneesToRoles(
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to add assignees to roles", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// SetUserRoles sets a user's direct role assignments to roleIDs in one transaction. Roles in roleIDs
+// that no longer exist are skipped.
+func (as *roleAssignmentService) SetUserRoles(
+	ctx context.Context, userID string, roleIDs []string,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
+	assignment := []RoleAssignment{{ID: userID, Type: AssigneeTypeUser}}
+	var capturedSvcErr *tidcommon.ServiceError
+	err := as.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, err := as.roleStore.GetEntityRoleIDs(txCtx, userID, nil)
+		if err != nil {
+			return err
+		}
+		for _, rid := range roleIDs {
+			if slices.Contains(current, rid) {
+				continue
+			}
+			if svcErr := as.AddAssignments(txCtx, rid, assignment); svcErr != nil &&
+				svcErr.Code != ErrorRoleNotFound.Code {
+				capturedSvcErr = svcErr
+				return fmt.Errorf("failed to assign role %s: %s", rid, svcErr.Error.DefaultValue)
+			}
+		}
+		for _, rid := range current {
+			if slices.Contains(roleIDs, rid) {
+				continue
+			}
+			if svcErr := as.RemoveAssignments(txCtx, rid, assignment); svcErr != nil {
+				capturedSvcErr = svcErr
+				return fmt.Errorf("failed to unassign role %s: %s", rid, svcErr.Error.DefaultValue)
+			}
+		}
+		return nil
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		logger.Error(ctx, "Failed to set user roles", log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 	return nil

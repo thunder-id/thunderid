@@ -70,8 +70,6 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: propertyKeyAssignGroup},
 				{Property: propertyKeyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 			},
 		})
@@ -581,7 +579,9 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 // Schema is the whitelist for both maps.
 // Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
 // Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
-// from the engine's string representation to the type declared by the schema attribute.
+// from the engine's string representation to the type declared by the schema attribute. When the
+// federated connection keeps attributes to the session, only the subject identifier and required
+// attributes are taken from RuntimeData.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
@@ -597,6 +597,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		return identifyingAttrs, credentialAttrs, nil
 	}
 
+	sessionOnly := ctx.RuntimeData[common.RuntimeKeyAttributesSyncMode] == string(providers.SyncModeSessionOnly)
 	for _, a := range schemaAttrs {
 		if a.Credential {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
@@ -607,6 +608,8 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 		} else {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
+			} else if sessionOnly && !a.Required && a.Attribute != userAttributeSub {
+				continue
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			}
@@ -741,14 +744,11 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
+	// Groups and roles the federated login's authorization mapping resolved are stored on the new
+	// account, alongside the fixed lists above, unless the connection keeps them to the session.
+	if ctx.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] != string(providers.SyncModeSessionOnly) {
 		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
 		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
 		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
 		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
 	}
@@ -780,28 +780,6 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyUserID, userID))
 	return nil
-}
-
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.

@@ -20,14 +20,17 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/group"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
@@ -50,6 +53,7 @@ type AuthAssertExecutorTestSuite struct {
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockAttributeCacheSvc *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockRoleService       *rolemock.RoleServiceInterfaceMock
+	mockGroupService      *groupmock.GroupServiceInterfaceMock
 	executor              *authAssertExecutor
 }
 
@@ -69,6 +73,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAttributeCacheSvc = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockRoleService = rolemock.NewRoleServiceInterfaceMock(suite.T())
+	suite.mockGroupService = groupmock.NewGroupServiceInterfaceMock(suite.T())
 
 	mockExec := createMockExecutorSimple(suite.T(), ExecutorNameAuthAssert, providers.ExecutorTypeUtility)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameAuthAssert, providers.ExecutorTypeUtility,
@@ -76,7 +81,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 
 	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider, suite.mockEntityProvider,
-		suite.mockAttributeCacheSvc, suite.mockRoleService)
+		suite.mockAttributeCacheSvc, suite.mockRoleService, suite.mockGroupService)
 }
 
 func createMockExecutorSimple(t *testing.T, name string,
@@ -1124,6 +1129,76 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_NilUser
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+// The authorization a federated sign-in grants for the session only is cached under the reserved key, so
+// a refresh can re-check scopes against it. Session-only groups and roles are cached only under session
+// only, and mapped permissions in every mode.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_CachesSessionGrants() {
+	permissions := `[{"type":"permission","resourceServerId":"rs-1","permission":"read"}]`
+	tests := []struct {
+		name     string
+		mode     providers.SyncMode
+		expected *attributecache.SessionGrants
+	}{
+		{"session only", providers.SyncModeSessionOnly, &attributecache.SessionGrants{
+			GroupIDs: []string{"group-mapped", "group-parent"}, RoleIDs: []string{"role-mapped"},
+			Permissions: []providers.AuthorizationTarget{
+				{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"}},
+		}},
+		{"no sync", providers.SyncModeNoSync, &attributecache.SessionGrants{
+			Permissions: []providers.AuthorizationTarget{
+				{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"}},
+		}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID: "flow-123",
+				EntityID:    "app-123",
+				Context:     context.Background(),
+				AuthUser:    newTestAuthenticatedAuthUser(),
+				RuntimeData: map[string]string{
+					common.RuntimeKeyUserAttributesCacheTTLSeconds: "300",
+					common.RuntimeKeyGroupsAndRolesSyncMode:        string(tc.mode),
+					common.RuntimeKeyMappedGroupIDs:                "group-mapped",
+					common.RuntimeKeyMappedRoleIDs:                 "role-mapped",
+					common.RuntimeKeyMappedPermissions:             permissions,
+				},
+				ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+				Application: providers.Application{
+					InboundAuthProfile: providers.InboundAuthProfile{
+						Assertion: &inboundmodel.AssertionConfig{},
+					},
+				},
+			}
+			suite.setupGetEntityReference("", "")
+			suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{})
+			suite.mockEntityProvider.On("GetTransitiveGroupAncestors", "group-mapped").
+				Return([]string{"group-parent"}, nil).Maybe()
+
+			var cached map[string]interface{}
+			suite.mockAttributeCacheSvc.On("CreateAttributeCache", mock.Anything,
+				mock.MatchedBy(func(c *attributecache.AttributeCache) bool {
+					cached = c.Attributes
+					return true
+				})).Return(&attributecache.AttributeCache{ID: "cache-xyz"}, nil)
+			suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+				mock.MatchedBy(func(claims map[string]interface{}) bool {
+					_, leaked := claims[attributecache.SessionGrantsKey]
+					return claims["aci"] == "cache-xyz" && !leaked
+				}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			grants, grantsErr := attributecache.GetSessionGrants(cached)
+			suite.Require().NoError(grantsErr)
+			suite.Equal(tc.expected, grants)
+		})
+	}
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_OnlyResolvedAttrsStoredInCache() {
 	// resolved attributes only contain "email"; "phone" is configured but not found in authn provider
 	ctx := &providers.NodeContext{
@@ -1713,4 +1788,82 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolvesMappedSubjectFromU
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "jwt-token", resp.Assertion)
 	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_SessionOnlyAddsMappedGroupsAndRoles() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
+			common.RuntimeKeyMappedGroupIDs:         "stored-group mapped-group",
+			common.RuntimeKeyMappedRoleIDs:          "mapped-role",
+		},
+	}
+	storedGroups := []providers.EntityGroup{{ID: "stored-group", Name: "stored"}}
+
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").Return(storedGroups, nil)
+	suite.mockEntityProvider.On("GetTransitiveGroupAncestors", "stored-group").Return([]string{}, nil)
+	suite.mockEntityProvider.On("GetTransitiveGroupAncestors", "mapped-group").Return([]string{"parent-group"}, nil)
+	suite.mockGroupService.On("GetGroupsByIDs", mock.Anything, []string{"mapped-group", "parent-group"}).
+		Return(map[string]*group.Group{
+			"mapped-group": {ID: "mapped-group", Name: "mapped"},
+			"parent-group": {ID: "parent-group", Name: "parent"},
+		}, (*tidcommon.ServiceError)(nil))
+	suite.mockRoleService.On("GetUserRoles", mock.Anything, "user-123",
+		[]string{"stored-group", "mapped-group", "parent-group"}).Return([]string{"group-role"}, nil)
+	suite.mockRoleService.On("GetRoleWithPermissions", mock.Anything, "mapped-role").
+		Return(&role.RoleWithPermissions{ID: "mapped-role", Name: "mapped-role-name"}, nil)
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx,
+		[]string{oauth2const.UserAttributeGroups, oauth2const.UserAttributeRoles}, nil, "user-123", "", "")
+
+	suite.Require().NoError(err)
+	suite.Equal([]string{"stored", "mapped", "parent"}, attrs[oauth2const.UserAttributeGroups])
+	suite.Equal([]string{"group-role", "mapped-role-name"}, attrs[oauth2const.UserAttributeRoles])
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_StoredGroupsAndRolesIgnoreMapping() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeNoSync),
+			common.RuntimeKeyMappedGroupIDs:         "mapped-group",
+			common.RuntimeKeyMappedRoleIDs:          "mapped-role",
+		},
+	}
+
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+		Return([]providers.EntityGroup{{ID: "stored-group", Name: "stored"}}, nil)
+	suite.mockRoleService.On("GetUserRoles", mock.Anything, "user-123", []string{"stored-group"}).
+		Return([]string{"stored-role"}, nil)
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx,
+		[]string{oauth2const.UserAttributeGroups, oauth2const.UserAttributeRoles}, nil, "user-123", "", "")
+
+	suite.Require().NoError(err)
+	suite.Equal([]string{"stored"}, attrs[oauth2const.UserAttributeGroups])
+	suite.Equal([]string{"stored-role"}, attrs[oauth2const.UserAttributeRoles])
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_SessionOnlyMappedGroupFetchError() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyGroupsAndRolesSyncMode: string(providers.SyncModeSessionOnly),
+			common.RuntimeKeyMappedGroupIDs:         "mapped-group",
+		},
+	}
+
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").Return([]providers.EntityGroup{}, nil)
+	suite.mockEntityProvider.On("GetTransitiveGroupAncestors", "mapped-group").Return([]string{}, nil)
+	suite.mockGroupService.On("GetGroupsByIDs", mock.Anything, []string{"mapped-group"}).
+		Return((map[string]*group.Group)(nil), &tidcommon.InternalServerError)
+
+	_, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
+		nil, "user-123", "", "")
+
+	suite.ErrorContains(err, "something went wrong while fetching mapped groups")
 }

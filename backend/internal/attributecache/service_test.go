@@ -387,3 +387,18 @@ func (suite *AttributeCacheServiceTestSuite) TestDeleteAttributeCache_StoreError
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 }
+
+func TestGetSessionGrants(t *testing.T) {
+	grants, err := GetSessionGrants(map[string]interface{}{"email": "a@example.com"})
+	assert.NoError(t, err)
+	assert.Nil(t, grants)
+
+	grants, err = GetSessionGrants(map[string]interface{}{SessionGrantsKey: map[string]interface{}{
+		"groupIds": []interface{}{"g1"}, "roleIds": []interface{}{"r1"},
+	}})
+	assert.NoError(t, err)
+	assert.Equal(t, &SessionGrants{GroupIDs: []string{"g1"}, RoleIDs: []string{"r1"}}, grants)
+
+	_, err = GetSessionGrants(map[string]interface{}{SessionGrantsKey: "not an object"})
+	assert.Error(t, err)
+}

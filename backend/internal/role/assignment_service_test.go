@@ -777,3 +777,43 @@ func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_Group
 	suite.NoError(err)
 	suite.Equal(1, deleted)
 }
+
+// SetUserRoles Tests
+
+func (suite *RoleAssignmentServiceTestSuite) TestSetUserRoles_AddsMissingAndRemovesUnsent() {
+	normalized := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity}}
+
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil)).
+		Return([]string{"kept-role", "stale-role"}, nil).Once()
+	suite.mockStore.On("IsRoleExist", mock.Anything, mock.Anything).Return(true, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{{ID: testUserID1, Category: providers.EntityCategoryUser}}, nil)
+	suite.mockStore.On("AddAssignments", mock.Anything, "new-role", normalized).Return(nil).Once()
+	suite.mockStore.On("RemoveAssignments", mock.Anything, "stale-role", normalized).Return(nil).Once()
+
+	err := suite.service.SetUserRoles(context.Background(), testUserID1,
+		[]string{"kept-role", "new-role"})
+
+	suite.Nil(err)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestSetUserRoles_SkipsMissingRole() {
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil)).
+		Return([]string{}, nil).Once()
+	suite.mockStore.On("IsRoleExist", mock.Anything, "deleted-role").Return(false, nil).Once()
+
+	err := suite.service.SetUserRoles(context.Background(), testUserID1, []string{"deleted-role"})
+
+	suite.Nil(err)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestSetUserRoles_StoreError() {
+	suite.mockStore.On("GetEntityRoleIDs", mock.Anything, testUserID1, []string(nil)).
+		Return(nil, errors.New("db error")).Once()
+
+	err := suite.service.SetUserRoles(context.Background(), testUserID1, []string{"role1"})
+
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}

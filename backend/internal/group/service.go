@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -53,6 +54,7 @@ type GroupServiceInterface interface {
 	GetGroupsByNames(ctx context.Context, names []string) (map[string][]*Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
+	SetUserGroups(ctx context.Context, userID string, groupIDs []string) *tidcommon.ServiceError
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -1265,6 +1267,61 @@ func (gs *groupService) AddMembersToGroups(
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to add members to groups", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// SetUserGroups sets a user's direct group memberships to groupIDs in one transaction. Groups in
+// groupIDs that no longer exist are skipped.
+func (gs *groupService) SetUserGroups(
+	ctx context.Context, userID string, groupIDs []string,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	member := []Member{{ID: userID, Type: MemberTypeUser}}
+	var capturedSvcErr *tidcommon.ServiceError
+	err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		count, err := gs.entityService.GetGroupCountForEntity(txCtx, userID)
+		if err != nil {
+			return fmt.Errorf("failed to count groups: %w", err)
+		}
+		currentIDs := make([]string, 0, count)
+		if count > 0 {
+			current, err := gs.entityService.GetEntityGroups(txCtx, userID, count, 0)
+			if err != nil {
+				return fmt.Errorf("failed to get groups: %w", err)
+			}
+			for _, g := range current {
+				currentIDs = append(currentIDs, g.ID)
+			}
+		}
+
+		for _, gid := range groupIDs {
+			if slices.Contains(currentIDs, gid) {
+				continue
+			}
+			if _, svcErr := gs.AddGroupMembers(txCtx, gid, member); svcErr != nil &&
+				svcErr.Code != ErrorGroupNotFound.Code {
+				capturedSvcErr = svcErr
+				return fmt.Errorf("failed to add user to group %s: %s", gid, svcErr.Error.DefaultValue)
+			}
+		}
+		for _, gid := range currentIDs {
+			if slices.Contains(groupIDs, gid) {
+				continue
+			}
+			if _, svcErr := gs.RemoveGroupMembers(txCtx, gid, member); svcErr != nil {
+				capturedSvcErr = svcErr
+				return fmt.Errorf("failed to remove user from group %s: %s", gid, svcErr.Error.DefaultValue)
+			}
+		}
+		return nil
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		logger.Error(ctx, "Failed to set user groups", log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 	return nil

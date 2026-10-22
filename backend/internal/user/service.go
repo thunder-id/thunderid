@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"sort"
 	"strings"
@@ -18,7 +19,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -53,16 +56,21 @@ type UserServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetUserUsages(ctx context.Context, userID string) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
+	SyncFederatedUser(ctx context.Context, userID string, attributes map[string]interface{},
+		groupIDs, roleIDs []string) *tidcommon.ServiceError
 }
 
 // userService is the default implementation of the UserServiceInterface.
 type userService struct {
-	authzService       sysauthz.SystemAuthorizationServiceInterface
-	entityService      entity.EntityServiceInterface
-	ouService          oupkg.OrganizationUnitServiceInterface
-	entityTypeService  entitytype.EntityTypeServiceInterface
-	uuidGenerator      func() (string, error)
-	dependencyRegistry resourcedependency.Registry
+	authzService          sysauthz.SystemAuthorizationServiceInterface
+	entityService         entity.EntityServiceInterface
+	ouService             oupkg.OrganizationUnitServiceInterface
+	entityTypeService     entitytype.EntityTypeServiceInterface
+	groupService          group.GroupServiceInterface
+	roleAssignmentService role.RoleAssignmentServiceInterface
+	transactioner         providers.Transactioner
+	uuidGenerator         func() (string, error)
+	dependencyRegistry    resourcedependency.Registry
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -71,13 +79,19 @@ func newUserService(
 	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	groupService group.GroupServiceInterface,
+	roleAssignmentService role.RoleAssignmentServiceInterface,
+	transactioner providers.Transactioner,
 ) UserServiceInterface {
 	return &userService{
-		authzService:      authzService,
-		entityService:     entityService,
-		ouService:         ouService,
-		entityTypeService: entityTypeService,
-		uuidGenerator:     utils.GenerateUUIDv7,
+		authzService:          authzService,
+		entityService:         entityService,
+		ouService:             ouService,
+		entityTypeService:     entityTypeService,
+		groupService:          groupService,
+		roleAssignmentService: roleAssignmentService,
+		transactioner:         transactioner,
+		uuidGenerator:         utils.GenerateUUIDv7,
 	}
 }
 
@@ -681,6 +695,77 @@ func (us *userService) UpdateUserAttributes(
 
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
+}
+
+// SyncFederatedUser writes what a federated sign-in syncs to the user's account. attributes holds the
+// attributes to change, merged into the stored ones inside the transaction. A read-only (declarative)
+// user's attributes are left unchanged; their groups and roles still sync. A nil argument leaves that
+// part unchanged. Attributes and groups are written in one transaction. Roles live in another
+// database, so their transaction runs nested inside it and commits first: a failed role write rolls
+// back the attributes and groups too. Only a failed commit of the outer transaction can leave roles
+// changed alone, and the next sync converges them.
+func (us *userService) SyncFederatedUser(
+	ctx context.Context, userID string, attributes map[string]interface{}, groupIDs, roleIDs []string,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	var capturedSvcErr *tidcommon.ServiceError
+	err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if len(attributes) > 0 {
+			if err := us.mergeUserAttributes(txCtx, userID, attributes, logger); err != nil {
+				capturedSvcErr = mapEntityError(err)
+				return err
+			}
+		}
+		if groupIDs != nil {
+			if svcErr := us.groupService.SetUserGroups(txCtx, userID, groupIDs); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New(svcErr.Error.DefaultValue)
+			}
+		}
+		if roleIDs != nil {
+			if svcErr := us.roleAssignmentService.SetUserRoles(txCtx, userID, roleIDs); svcErr != nil {
+				capturedSvcErr = svcErr
+				return errors.New(svcErr.Error.DefaultValue)
+			}
+		}
+		return nil
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
+		return logErrorAndReturnServerError(ctx, logger, "Failed to sync federated user", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	return nil
+}
+
+// mergeUserAttributes merges changes into the user's stored attributes. A read-only (declarative)
+// user's attributes are left unchanged.
+func (us *userService) mergeUserAttributes(
+	ctx context.Context, userID string, changes map[string]interface{}, logger *log.Logger,
+) error {
+	existing, err := us.entityService.GetEntity(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if existing.IsReadOnly {
+		logger.Debug(ctx, "Skipping attribute sync for a read-only user", log.MaskedString(log.LoggerKeyUserID, userID))
+		return nil
+	}
+	merged := make(map[string]interface{}, len(changes))
+	if len(existing.Attributes) > 0 {
+		if err := json.Unmarshal(existing.Attributes, &merged); err != nil {
+			return fmt.Errorf("failed to read user attributes: %w", err)
+		}
+	}
+	maps.Copy(merged, changes)
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return fmt.Errorf("failed to encode user attributes: %w", err)
+	}
+	return us.entityService.UpdateAttributes(ctx, userID, encoded)
 }
 
 // UpdateUserCredentials updates schema-defined credentials for a user.

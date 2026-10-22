@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
@@ -99,6 +100,21 @@ func (suite *UtilsTestSuite) TestgetStandardJWTClaims_ReturnsNewMap() {
 	// Should be independent - modifying one shouldn't affect the other
 	claims1["test"] = true
 	assert.NotContains(suite.T(), claims2, "test")
+}
+
+func (suite *UtilsTestSuite) TestBuildClaims_NeverEmitsSessionGrants() {
+	attributes := map[string]interface{}{
+		"email":                         "john@example.com",
+		attributecache.SessionGrantsKey: map[string]interface{}{"groupIds": []string{"g1"}},
+	}
+	scopeClaimsMapping := map[string][]string{"profile": {"email", attributecache.SessionGrantsKey}}
+	requestedClaims := map[string]*model.IndividualClaimRequest{attributecache.SessionGrantsKey: nil}
+
+	result := BuildClaims([]string{constants.ScopeOpenID, "profile"}, requestedClaims, attributes,
+		scopeClaimsMapping, []string{"email"})
+
+	assert.Equal(suite.T(), "john@example.com", result["email"])
+	assert.NotContains(suite.T(), result, attributecache.SessionGrantsKey)
 }
 
 func (suite *UtilsTestSuite) TestExtractUserAttributes_WithStandardClaimsOnly() {

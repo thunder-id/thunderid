@@ -41,6 +41,7 @@ type oidcAuthExecutor struct {
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
+	syncer        *federatedSyncer
 	logger        *log.Logger
 }
 
@@ -55,6 +56,7 @@ func newOIDCAuthExecutor(
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
+	syncer *federatedSyncer,
 ) oidcAuthExecutorInterface {
 	if name == "" {
 		name = ExecutorNameOIDCAuth
@@ -68,7 +70,7 @@ func newOIDCAuthExecutor(
 	}
 
 	base := newOAuthExecutor(name, defaultInputs, prerequisites,
-		flowFactory, idpService, oauthSvcCast, authnProvider, idpType)
+		flowFactory, idpService, oauthSvcCast, authnProvider, idpType, syncer)
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,
@@ -76,6 +78,7 @@ func newOIDCAuthExecutor(
 		authService:            authService,
 		authnProvider:          authnProvider,
 		idpType:                idpType,
+		syncer:                 syncer,
 		logger:                 logger,
 	}
 }
@@ -216,12 +219,20 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	copyFederatedAttributesToRuntimeData(execResp, federatedAttributes)
 
-	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
+	idpDTO, mappingComplete, err := resolveAndSetMappedAuthorizationTargets(
+		ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
+	if err != nil {
+		return err
+	}
 
-	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
+	userID := setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:
+		if userID != "" &&
+			!o.syncer.syncFederatedUser(ctx, execResp, idpDTO, userID, federatedAttributes, mappingComplete, logger) {
+			return nil
+		}
 		if isAuthenticationWithoutLocalUserAllowed(ctx) {
 			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 		}

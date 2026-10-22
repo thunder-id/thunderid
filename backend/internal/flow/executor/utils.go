@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -199,22 +200,26 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 }
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
-// (via account linking) into the entityState runtime key.
+// (via account linking) into the entityState runtime key, and returns that user's ID, or "" when none.
 func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
-	authnProvider providers.AuthnProviderManager) {
+	authnProvider providers.AuthnProviderManager) string {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
 	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr == nil && entityRef != nil {
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+		return entityRef.EntityID
 	}
+	return ""
 }
 
 // reservedAuthorizationRuntimeKeys must never be overwritten by an external claim of the same name.
 var reservedAuthorizationRuntimeKeys = map[string]bool{
-	common.RuntimeKeyMappedRoleIDs:     true,
-	common.RuntimeKeyMappedGroupIDs:    true,
-	common.RuntimeKeyMappedPermissions: true,
+	common.RuntimeKeyMappedRoleIDs:          true,
+	common.RuntimeKeyMappedGroupIDs:         true,
+	common.RuntimeKeyMappedPermissions:      true,
+	common.RuntimeKeyGroupsAndRolesSyncMode: true,
+	common.RuntimeKeyAttributesSyncMode:     true,
 }
 
 // copyFederatedAttributesToRuntimeData copies federatedAttributes into execResp.RuntimeData, skipping
@@ -238,22 +243,30 @@ func copyFederatedAttributesToRuntimeData(
 
 // resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
 // rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
-// without the affected targets when the IDP or direct targets can't be resolved, rather than failing
-// the federated login over what is best-effort enrichment of its runtime state.
+// unions their targets, and stores the result, with the IDP's sync modes, as runtime data for later
+// executors. Returns the IDP and whether every target resolved. Returns an error when the IDP can't be
+// resolved, since later executors would otherwise store attributes the connection keeps to the session.
+// Logs and continues without the direct targets when they can't be resolved, rather than failing the
+// federated login over best-effort enrichment.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
 	idpService idp.IDPServiceInterface, idpID string, federatedAttributes map[string]interface{},
 	logger *log.Logger,
-) {
+) (*providers.IDPDTO, bool, error) {
 	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve IDP for authorization mapping, skipping",
+		logger.Error(ctx, "Failed to resolve IDP for sync modes and authorization mapping",
 			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
-		return
+		return nil, false, errors.New("error while retrieving identity provider")
 	}
+	if execResp.RuntimeData == nil {
+		execResp.RuntimeData = make(map[string]string)
+	}
+	execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode] = string(idp.GetGroupsAndRolesSyncMode(idpDTO))
+	execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode] = string(idp.GetAttributesSyncMode(idpDTO))
 	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
 	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
+	complete := svcErr == nil
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
 			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
@@ -261,6 +274,29 @@ func resolveAndSetMappedAuthorizationTargets(
 		targets = append(targets, directTargets...)
 	}
 	setMappedAuthorizationTargets(execResp, targets)
+	return idpDTO, complete, nil
+}
+
+// expandMappedGroupAncestors adds each mapped group's ancestor groups. Best-effort, like the rest of
+// authorization mapping at login.
+func expandMappedGroupAncestors(
+	ctx context.Context, entityProvider entityprovider.EntityProviderInterface, logger *log.Logger,
+	mappedGroupIDs []string,
+) []string {
+	if entityProvider == nil || len(mappedGroupIDs) == 0 {
+		return mappedGroupIDs
+	}
+	expanded := mappedGroupIDs
+	for _, groupID := range mappedGroupIDs {
+		ancestors, err := entityProvider.GetTransitiveGroupAncestors(groupID)
+		if err != nil {
+			logger.Warn(ctx, "Failed to resolve ancestors of a mapped group, continuing without them",
+				log.String("groupId", groupID), log.Error(err))
+			continue
+		}
+		expanded = systemutils.MergeUniqueStrings(expanded, ancestors)
+	}
+	return expanded
 }
 
 // setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)

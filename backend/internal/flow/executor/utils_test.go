@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -12,6 +13,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -671,4 +673,53 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 			s.Equal(tt.expectedValid, valid)
 		})
 	}
+}
+
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_SetsSyncModes() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(&providers.IDPDTO{
+		ID: "idp-123",
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			Sync: &providers.SyncConfiguration{GroupsAndRoles: providers.SyncModeSessionOnly},
+		},
+	}, (*tidcommon.ServiceError)(nil))
+	mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil))
+	execResp := &providers.ExecutorResponse{}
+
+	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		"idp-123", nil, log.GetLogger())
+
+	s.NoError(err)
+	s.Equal(string(providers.SyncModeSessionOnly), execResp.RuntimeData[common.RuntimeKeyGroupsAndRolesSyncMode])
+	s.Equal(string(providers.SyncModeOverrideReceived), execResp.RuntimeData[common.RuntimeKeyAttributesSyncMode])
+}
+
+func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_FailsWhenIDPUnresolved() {
+	mockIDPService := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").Return(nil, &tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Error: tidcommon.I18nMessage{DefaultValue: "store unavailable"},
+	})
+	execResp := &providers.ExecutorResponse{}
+
+	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
+		"idp-123", nil, log.GetLogger())
+
+	s.Error(err)
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyAttributesSyncMode)
+}
+
+func (s *UtilsTestSuite) TestCopyFederatedAttributesToRuntimeData_SkipsSyncModes() {
+	execResp := &providers.ExecutorResponse{}
+
+	copyFederatedAttributesToRuntimeData(execResp, map[string]interface{}{
+		common.RuntimeKeyGroupsAndRolesSyncMode: "no_sync",
+		common.RuntimeKeyAttributesSyncMode:     "no_sync",
+		"email":                                 "user@example.com",
+	})
+
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyGroupsAndRolesSyncMode)
+	s.NotContains(execResp.RuntimeData, common.RuntimeKeyAttributesSyncMode)
+	s.Equal("user@example.com", execResp.RuntimeData["email"])
 }

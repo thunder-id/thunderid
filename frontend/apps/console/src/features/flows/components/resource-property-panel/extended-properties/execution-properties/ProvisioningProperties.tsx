@@ -1,9 +1,11 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {Alert, Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {useNodes} from '@xyflow/react';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import {FEDERATED_EXECUTORS} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
@@ -16,6 +18,12 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
     const stepData = resource?.data as StepData | undefined;
     return stepData?.properties ?? {};
   }, [resource]);
+
+  const nodes = useNodes();
+  const hasFederatedExecutor = useMemo(
+    () => nodes.some((node) => FEDERATED_EXECUTORS.has((node.data as StepData)?.action?.executor?.name ?? '')),
+    [nodes],
+  );
 
   const handleBooleanPropertyChange = useCallback(
     (propertyName: string, value: boolean): void => {
@@ -131,29 +139,14 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         />
       </div>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties.seedGroupsFromMapping}
-            onChange={(e) => handleBooleanPropertyChange('seedGroupsFromMapping', e.target.checked)}
-            size="small"
-          />
-        }
-        label={t('flows:core.executions.provisioning.seedGroupsFromMapping.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
-
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties.seedRolesFromMapping}
-            onChange={(e) => handleBooleanPropertyChange('seedRolesFromMapping', e.target.checked)}
-            size="small"
-          />
-        }
-        label={t('flows:core.executions.provisioning.seedRolesFromMapping.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
+      {hasFederatedExecutor && (!!properties.assignGroup || !!properties.assignRole) && (
+        <Alert severity="warning">
+          {t(
+            'flows:core.executions.provisioning.federatedOverrideWarning',
+            "This flow has a federated sign-in. If its connection syncs groups and roles with Override all, the groups and roles assigned here are removed on the next sign-in unless the connection's authorization mapping also resolves them.",
+          )}
+        </Alert>
+      )}
     </Stack>
   );
 }

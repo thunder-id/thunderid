@@ -186,12 +186,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize entity provider
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
 
-	userService, ouUserResolver, userExporter, err := user.Initialize(
-		mux, entityService, ouService, entityTypeService, ouAuthzService,
-	)
-	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
-	exporters = append(exporters, userExporter)
-
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
@@ -207,6 +201,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
 	exporters = append(exporters, roleExporter)
+
+	userService, ouUserResolver, userExporter, err := user.Initialize(
+		mux, entityService, ouService, entityTypeService, ouAuthzService,
+		groupService, roleAssignmentService, dbprovider.GetDBProvider(),
+	)
+	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
+	exporters = append(exporters, userExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.
 	ouService.SetOUUserResolver(ouUserResolver)

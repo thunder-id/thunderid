@@ -121,9 +121,11 @@ Behavior:
 
 - An advanced rule's targets can span roles, groups, and permissions across more than one resource server at once.
 - A mapped group also grants that group's ancestor groups, transitively, the same as a direct group assignment does.
-- Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.
-- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented. If resolving the mapping fails, sign-in still proceeds without it; token exchange and ID-JAG consumption fail the request instead, since there is no already-issued session to fall back to.
-- To also assign a mapping's roles and groups the moment an account is first created, rather than only computing them at each sign-in, enable **Seed Groups/Roles From Authorization Mapping** on the flow's Provisioning step. See [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes).
+- Everything a mapping grants adds to whatever is already assigned directly, unless **Groups and Roles Sync** is set to **Override all**. See [Sync](#sync).
+- The mapping applies wherever the identity's attributes are read: at sign-in, when a token from this provider is exchanged, and when an identity assertion (ID-JAG) it issued is presented.
+- At sign-in, mapped permissions are granted on every sign-in. Mapped roles and groups grant access through the account's stored memberships, as **Groups and Roles Sync** decides. Only **Session only** grants them for the session without storing them.
+- If the connection can't be loaded during sign-in, sign-in fails. If a direct mapping's lookup fails, sign-in proceeds with the advanced rules' targets only, unless **Groups and Roles Sync** is set to **Override all**, in which case a returning user's sign-in fails and the account isn't changed. Token exchange and ID-JAG consumption fail the request whenever resolving the mapping fails, since there is no already-issued session to fall back to.
+- When a sign-in creates the account, the mapping's roles and groups are also assigned to it, unless **Groups and Roles Sync** is set to **Session only**. See [Sync](#sync).
 
 ### Account Linking
 
@@ -135,6 +137,38 @@ Behavior:
 - Otherwise, all configured attributes that have a value are matched together (AND) to resolve a unique local user.
 - Each attribute is an external claim name; if it's mapped under **Attribute Mappings** (for example, `email` to `work_email`), the mapped local attribute is used for the lookup instead.
 - If neither `sub` nor the configured attributes resolve a user, the user is treated as new (subject to the flow's provisioning configuration).
+
+### Sync
+
+Choose how each sign-in through this connection keeps the account in line with the provider under **Sync**.
+
+| Attributes Sync | Behavior |
+|-------|-------------|
+| **Override received** (the default) | The attributes named under **Attribute Mappings** for the account's user type overwrite the account's values when the provider sends them. Other attributes are kept. |
+| **No sync** | The provider's attributes are stored when a sign-in creates the account, and are not updated after. |
+| **Session only** | The account stores only the subject identifier (`sub`) and the attributes its user type requires. The provider's attributes apply to the session and the issued tokens. |
+
+| Groups and Roles Sync | Behavior |
+|-------|-------------|
+| **No sync** (the default) | The roles and groups the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after. |
+| **Override all** | The account's groups and roles are matched to what the authorization mapping resolves, removals included. This also removes groups and roles assigned on the flow's Provisioning step. Groups are only changed when the mapping has a group target, and roles only when it has a role target. |
+| **Session only** | The roles and groups the authorization mapping resolves apply to the session and appear in the `groups` and `roles` claims, but are not assigned to the account. |
+
+Sync writes the attributes through the user type's rules. If a synced value breaks one, for example an email already used by another account, sign-in fails and the account isn't changed. If the groups and roles can't be updated, sign-in also fails, and the next successful sign-in brings them in line. The subject identifier (`sub`), credentials, and linked identities are never changed by sync.
+
+Sync only updates attributes that have an explicit mapping. A claim with the same name as a local attribute, but no mapping, is stored when a sign-in creates the account and isn't updated after.
+
+Groups and roles come only from the [Authorization Mapping](#authorization-mapping). Without one, sync does not change the account's groups or roles. Groups and roles set on the flow's [Provisioning](../../flows/advanced-configurations#user-provisioning-and-attributes) step are assigned when the account is created. Under **Override all** they're removed on the next sign-in unless the authorization mapping also resolves them.
+
+:::warning
+Under **Override all**, direct mappings match groups and roles by name, so the provider decides the stored set by name:
+
+- Renaming a local group or role stops the match, and the next sign-in removes it.
+- A name that matches more than one group or role grants nothing, so creating a second one with the same name removes the membership.
+- A provider that sends the name of a privileged group or role, such as `Administrators`, grants it. Use rule mappings for privileged targets.
+:::
+
+Session only groups and roles stay in the `groups` and `roles` claims of tokens issued from a refresh token, and the permission scopes they grant survive refresh until the refresh token expires, as described in [Refresh Token](../../protocols/oauth-oidc/refresh-token). Access the provider removes after sign-in keeps working until then.
 
 Click **Save changes** to apply your attribute configuration.
 

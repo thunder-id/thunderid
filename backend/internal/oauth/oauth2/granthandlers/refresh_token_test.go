@@ -2259,6 +2259,71 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EvaluatesWithSub
 	assert.Equal(suite.T(), []string{"group-1", "group-2"}, evaluatedGroupIDs)
 }
 
+// The groups, roles and permissions a federated sign-in granted for the session only are cached with the
+// user attributes, and count when the scopes are re-evaluated on refresh.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EvaluatesWithSessionGrants() {
+	suite.resetAuthzMocks()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:         testRefreshTokenClientID,
+			Sub:              testRefreshTokenUserID,
+			Audiences:        []string{testRefreshTokenAudience},
+			Scopes:           []string{"read", "write"},
+			GrantType:        "authorization_code",
+			AttributeCacheID: testCacheID,
+			Iat:              int64(suite.validClaims["iat"].(float64)),
+			Exp:              int64(suite.validClaims["iat"].(float64)) + 86400,
+		}, nil)
+	// The cached grants come back as decoded JSON, as they do from the cache store.
+	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
+		Return(&attributecache.AttributeCache{ID: testCacheID, TTLSeconds: 1 << 30, Attributes: map[string]interface{}{
+			attributecache.SessionGrantsKey: map[string]interface{}{
+				"groupIds": []interface{}{"session-group"},
+				"roleIds":  []interface{}{"session-role"},
+				"permissions": []interface{}{map[string]interface{}{
+					"type": "permission", "resourceServerId": testRefreshTokenAudience, "permission": "write",
+				}},
+			},
+		}}, (*tidcommon.ServiceError)(nil)).Once()
+	suite.mockAttrCacheService.On("ExtendAttributeCacheTTL", mock.Anything, mock.Anything, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil)).Maybe()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{{ID: "group-1"}}, nil)
+	var subject providers.Subject
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req providers.AccessEvaluationsRequest) bool {
+			suite.Require().NotEmpty(req.Evaluations)
+			subject = req.Evaluations[0].Subject
+			return true
+		})).Return(&providers.AccessEvaluationsResponse{Evaluations: []providers.AccessEvaluationResponse{
+		{Decision: true}, {Decision: false},
+	}}, nil)
+
+	var grantedScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			grantedScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	_, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"group-1", "session-group"}, subject.GroupIDs)
+	assert.Equal(suite.T(), []string{"session-role"}, subject.RoleIDs)
+	assert.Equal(suite.T(), []string{"read", "write"}, grantedScopes,
+		"write is denied by the engine but granted by the cached mapped permission")
+}
+
 // OIDC scopes are not permission scopes, so they survive even when the subject holds no permissions
 // on the bound resource server.
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_OIDCScopesSurviveDeauthorization() {

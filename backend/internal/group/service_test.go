@@ -3028,3 +3028,43 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_AbortedWhenCascadeFails() {
 	suite.Require().NotNil(err)
 	storeMock.AssertNotCalled(suite.T(), "DeleteGroup", mock.Anything, mock.Anything)
 }
+
+func (suite *GroupServiceTestSuite) TestGroupService_SetUserGroups() {
+	storedMember := []Member{{ID: "usr-001", Type: memberTypeEntity}}
+
+	suite.Run("adds missing groups and removes the rest", func() {
+		storeMock := newGroupStoreInterfaceMock(suite.T())
+		entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entityMock.On("GetGroupCountForEntity", mock.Anything, "usr-001").Return(1, nil).Once()
+		entityMock.On("GetEntityGroups", mock.Anything, "usr-001", 1, 0).Return([]providers.EntityGroup{
+			{ID: "grp-stale"},
+		}, nil).Once()
+		entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+			Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryUser}}, nil)
+		storeMock.On("GetGroup", mock.Anything, "grp-new").
+			Return(GroupDAO{ID: "grp-new", OUID: testOUID1}, nil)
+		storeMock.On("GetGroup", mock.Anything, "grp-gone").Return(GroupDAO{}, ErrGroupNotFound)
+		storeMock.On("GetGroup", mock.Anything, "grp-stale").
+			Return(GroupDAO{ID: "grp-stale", OUID: testOUID1}, nil)
+		storeMock.On("AddGroupMembers", mock.Anything, "grp-new", storedMember).Return(nil).Once()
+		storeMock.On("RemoveGroupMembers", mock.Anything, "grp-stale", storedMember).Return(nil).Once()
+		svc := &groupService{authzService: newAllowAllAuthz(suite.T()), groupStore: storeMock,
+			entityService: entityMock, transactioner: &stubTransactioner{}}
+
+		svcErr := svc.SetUserGroups(context.Background(), "usr-001", []string{"grp-new", "grp-gone"})
+
+		suite.Require().Nil(svcErr)
+		storeMock.AssertExpectations(suite.T())
+	})
+
+	suite.Run("fails when the current groups can't be read", func() {
+		entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+		entityMock.On("GetGroupCountForEntity", mock.Anything, "usr-001").
+			Return(0, errors.New("db down")).Once()
+		svc := &groupService{entityService: entityMock, transactioner: &stubTransactioner{}}
+
+		svcErr := svc.SetUserGroups(context.Background(), "usr-001", []string{})
+
+		suite.Require().Equal(&tidcommon.InternalServerError, svcErr)
+	})
+}

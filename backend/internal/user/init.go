@@ -9,9 +9,12 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -24,9 +27,18 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	groupService group.GroupServiceInterface,
+	roleAssignmentService role.RoleAssignmentServiceInterface,
+	dbProvider provider.DBProviderInterface,
 ) (UserServiceInterface, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
+	transactioner, err := dbProvider.GetEntityDBTransactioner()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	// Step 1: Create service with entity service
-	userService := newUserService(authzService, entityService, ouService, entityTypeService)
+	userService := newUserService(authzService, entityService, ouService, entityTypeService,
+		groupService, roleAssignmentService, transactioner)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
 	if err := entityService.LoadIndexedAttributes(getUserIndexedAttributes()); err != nil {
