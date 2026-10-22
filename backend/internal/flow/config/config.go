@@ -33,6 +33,7 @@ type FlowSectionConfig struct {
 	AuthFlow                FlowTypeConfig `json:"authFlow"`
 	RegistrationFlow        FlowTypeConfig `json:"registrationFlow"`
 	UserOnboardingFlow      FlowTypeConfig `json:"userOnboardingFlow"`
+	DeviceGrantFlow         FlowTypeConfig `json:"deviceGrantFlow"`
 	RecoveryFlow            FlowTypeConfig `json:"recoveryFlow"`
 	SignOutFlow             FlowTypeConfig `json:"signOutFlow"`
 	UserDeletionFlow        FlowTypeConfig `json:"userDeletionFlow"`

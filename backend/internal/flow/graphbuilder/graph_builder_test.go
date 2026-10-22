@@ -1657,6 +1657,19 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 
 // CALL node tests
 
+func (s *GraphBuilderTestSuite) TestConfigureCallNodeReference_FlowType() {
+	nodeDef := &providers.NodeDefinition{
+		Flow: &providers.FlowReferenceDefinition{
+			Mode:     providers.FlowReferenceModeFlowType,
+			FlowType: providers.FlowTypeRecovery,
+		},
+	}
+	mockCallNode := coremock.NewCallNodeInterfaceMock(s.T())
+	mockCallNode.EXPECT().SetReferencedFlow(common.FlowTypeReferencePrefix + string(providers.FlowTypeRecovery))
+
+	s.builder.configureCallNodeReference(nodeDef, mockCallNode)
+}
+
 func (s *GraphBuilderTestSuite) TestBuildGraph_CallNode_MissingFlowRef() {
 	flow := &providers.CompleteFlowDefinition{
 		ID:       "flow-1",

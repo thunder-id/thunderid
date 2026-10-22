@@ -9,7 +9,11 @@ import Call from '../Call';
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback ?? _key,
+    t: (_key: string, fallback?: string, values?: Record<string, string>) =>
+      Object.entries(values ?? {}).reduce(
+        (message, [name, value]) => message.replace(`{{${name}}}`, value),
+        fallback ?? _key,
+      ),
   }),
 }));
 
@@ -27,7 +31,6 @@ const mockDeleteElements = vi.fn();
 const mockUseNodeId = vi.fn<() => string | null>(() => 'call-node-id');
 
 vi.mock('@xyflow/react', () => ({
-  // eslint-disable-next-line react/require-default-props
   Handle: ({type, position, id}: {type: string; position: string; id?: string}) => (
     <div data-testid={`handle-${type}-${id ?? position}`} data-position={position} data-handle-id={id} />
   ),
@@ -118,6 +121,11 @@ describe('Call', () => {
     it('shows the "Select a flow to invoke" placeholder when no flow ref is set', () => {
       renderCall({});
       expect(screen.getByTestId('call-node-flow-ref')).toHaveTextContent(/select a flow/i);
+    });
+
+    it('shows the selected application flow type for a flow type target', () => {
+      renderCall({flow: {mode: 'flow_type', flowType: 'REGISTRATION'}});
+      expect(screen.getByTestId('call-node-flow-ref')).toHaveTextContent('Application flow: REGISTRATION');
     });
 
     it('shows the step id in the header', () => {

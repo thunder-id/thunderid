@@ -69,6 +69,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel"
@@ -320,6 +321,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.RuntimeTransient.Type,
 		runtime.Config.Server.Identifier)
 	fatalOnError(ctx, logger, err, "Failed to initialize runtime store")
+	deviceCodeVerifier := deviceauth.NewUserCodeVerifier(runtimeStoreProvider)
 
 	// Initialize passkey service
 	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider)
@@ -440,6 +442,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			UserService:           userService,
 			CriteriaRevoker:       revocationSvc,
 			ResourceMgtService:    resourceService,
+			DeviceCodeVerifier:    deviceCodeVerifier,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

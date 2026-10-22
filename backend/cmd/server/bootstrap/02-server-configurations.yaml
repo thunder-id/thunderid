@@ -14,6 +14,9 @@ value:
   userOnboardingFlow:
     defaultHandle: default-flow
     expirySeconds: 86400
+  deviceGrantFlow:
+    defaultHandle: default-device-grant-flow
+    expirySeconds: 3600
   userDeletionFlow:
     defaultHandle: default-user-deletion-flow
   applicationDeletionFlow:

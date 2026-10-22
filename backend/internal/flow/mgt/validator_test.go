@@ -765,6 +765,21 @@ func (s *ValidatorTestSuite) TestValidateCallNode_EmptyFlowRef() {
 	s.Contains(err.ErrorDescription.DefaultValue, "flow reference")
 }
 
+func (s *ValidatorTestSuite) TestFlowTypeCallTargetIsAllowedInAuthenticationFlow() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "call"},
+		{ID: "call", Type: string(common.NodeTypeCall), OnSuccess: "end",
+			Flow: &providers.FlowReferenceDefinition{Mode: providers.FlowReferenceModeFlowType,
+				FlowType: providers.FlowTypeAuthentication}},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index := map[string]*providers.NodeDefinition{}
+	for i := range nodes {
+		index[nodes[i].ID] = &nodes[i]
+	}
+	s.Nil(s.v.validateNodes(nodes, index, providers.FlowTypeAuthentication))
+}
+
 func (s *ValidatorTestSuite) TestValidateCallNode_MissingOnSuccess() {
 	node := &providers.NodeDefinition{
 		ID:   "call-sub",

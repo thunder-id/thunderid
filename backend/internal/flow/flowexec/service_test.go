@@ -61,6 +61,7 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 }
 
 const testUserOnboardingFlowHandle = "onboarding-handle"
+const testDeviceGrantFlowHandle = "device-grant-handle"
 const testDefaultAuthFlowHandle = "default-auth-handle"
 
 var testFlowConfig = engineconfig.FlowConfig{}
@@ -101,6 +102,16 @@ func TestInitiateFlowNilContext(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Empty(t, executionID)
 	assert.Equal(t, "FES-1008", err.Code)
+}
+
+func TestSystemFlowResolvesDeviceGrantHandle(t *testing.T) {
+	svc := &flowExecService{serverConfigSvc: stubServerConfig{cfg: flowconfig.FlowSectionConfig{
+		DeviceGrantFlow: flowconfig.FlowTypeConfig{DefaultHandle: testDeviceGrantFlowHandle},
+	}}}
+	assert.Equal(t, testDeviceGrantFlowHandle,
+		svc.resolveDefaultFlowHandle(context.Background(), providers.FlowTypeSystem))
+	assert.Equal(t, defaultAuthFlowExpiry,
+		svc.getFlowExpirySeconds(context.Background(), providers.FlowTypeSystem))
 }
 
 func TestInitiateFlowEmptyApplicationID(t *testing.T) {
@@ -235,6 +246,17 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 				return ctx.RuntimeData != nil && ctx.RuntimeData["email"] == "test@example.com"
 			},
 		},
+		{
+			name: "device grant system flow",
+			runtimeData: map[string]string{
+				"request_id": "device-request-1",
+			},
+			setRuntimeDataField: true,
+			expectedRuntimeDataCheck: func(ctx EngineContext) bool {
+				return ctx.FlowType == providers.FlowTypeSystem && ctx.AppID == "" &&
+					ctx.RuntimeData["request_id"] == "device-request-1"
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -263,6 +285,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 				serverConfigSvc: stubServerConfig{cfg: flowconfig.FlowSectionConfig{
 					AuthFlow:           flowconfig.FlowTypeConfig{DefaultHandle: testDefaultAuthFlowHandle},
 					UserOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: testUserOnboardingFlowHandle},
+					DeviceGrantFlow:    flowconfig.FlowTypeConfig{DefaultHandle: testDeviceGrantFlowHandle},
 				}},
 			}
 
@@ -277,25 +300,31 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 			}
 
 			// Setup expectations
-			if tt.name == "user onboarding flow (system flow)" {
-				initContext.FlowType = string(providers.FlowTypeUserOnboarding)
+			if tt.name == "user onboarding flow (system flow)" || tt.name == "device grant system flow" {
+				systemFlowType := providers.FlowTypeUserOnboarding
+				systemHandle := testUserOnboardingFlowHandle
+				if tt.name == "device grant system flow" {
+					systemFlowType = providers.FlowTypeSystem
+					systemHandle = testDeviceGrantFlowHandle
+				}
+				initContext.FlowType = string(systemFlowType)
 				initContext.ApplicationID = "" // System flows don't need app ID
 
 				// Mock flow management service to return flow by handle
 				mockFlow := &providers.CompleteFlowDefinition{
 					ID:       "onboarding-flow-123",
-					FlowType: providers.FlowTypeUserOnboarding,
+					FlowType: systemFlowType,
 				}
 				mockFlowProvider.EXPECT().GetFlowByHandle(mock.Anything,
-					testUserOnboardingFlowHandle, providers.FlowTypeUserOnboarding).Return(mockFlow, nil)
+					systemHandle, systemFlowType).Return(mockFlow, nil)
 
 				// Mock GetGraph call which is made during initContext
-				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", providers.FlowTypeUserOnboarding, 1)
+				inviteGraph := flowFactory.CreateGraph("onboarding-flow-123", systemFlowType, 1)
 				mockFlowProvider.EXPECT().
 					GetFlow(mock.Anything, "onboarding-flow-123").
 					Return(&providers.CompleteFlowDefinition{
 						ID:       "onboarding-flow-123",
-						FlowType: providers.FlowTypeUserOnboarding,
+						FlowType: systemFlowType,
 					}, nil)
 				mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(inviteGraph, nil)
 

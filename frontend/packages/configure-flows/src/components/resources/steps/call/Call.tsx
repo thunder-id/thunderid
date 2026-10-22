@@ -39,7 +39,7 @@ import StepTitle from '../StepTitle';
 
 export type CallPropsInterface = CommonStepFactoryPropsInterface;
 
-type CallStepData = StepData & {flow?: {ref?: string}};
+type CallStepData = StepData & {flow?: {mode?: string; ref?: string; flowId?: string; flowType?: string}};
 
 const CALL_NODE_WIDTH = 260;
 
@@ -63,7 +63,7 @@ function Call({resources, data}: CallPropsInterface): ReactElement {
   const [isOpenConfirmDialog, setIsOpenConfirmDialog] = useState<boolean>(false);
 
   const callData: CallStepData = (data as CallStepData) ?? {};
-  const flowRef: string = callData.flow?.ref ?? '';
+  const flowRef: string = callData.flow?.flowId ?? callData.flow?.ref ?? '';
   const paletteEntry: Step | undefined = resources?.[0];
   const displayLabel: string = paletteEntry?.display?.label ?? t('flows:core.call.unconfiguredLabel', 'Flow');
 
@@ -127,9 +127,12 @@ function Call({resources, data}: CallPropsInterface): ReactElement {
     navigate(flowRoutes.flows.detail(referencedFlow.id));
   };
 
-  const bodyLabel: string = referencedFlow
-    ? referencedFlow.name
-    : t('flows:core.call.selectFlow', 'Select a flow to invoke');
+  const bodyLabel: string =
+    callData.flow?.mode === 'flow_type'
+      ? t('flows:core.call.applicationFlowType', 'Application flow: {{flowType}}', {
+          flowType: callData.flow.flowType ?? '',
+        })
+      : (referencedFlow?.name ?? t('flows:core.call.selectFlow', 'Select a flow to invoke'));
 
   return (
     <ValidationErrorBoundary resource={resource}>

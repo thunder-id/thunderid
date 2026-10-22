@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	testGrantSubject  = "user-1"
-	testGrantAudience = "https://api.example.com"
+	testGrantSubject      = "user-1"
+	testGrantAudience     = "https://api.example.com"
+	testGrantCompletedACR = "urn:acr:pwd"
 )
 
 // denyListLookup answers like the criteria deny list: boundary rows match artifacts established by their cutoff.

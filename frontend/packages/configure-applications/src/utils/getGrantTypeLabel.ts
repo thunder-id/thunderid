@@ -11,6 +11,9 @@ export function getGrantTypeLabel(grant: string, t: (key: string, fallback: stri
   if (grant === OAuth2GrantTypes.CIBA) {
     return t('applications:edit.advanced.grantTypes.labels.ciba', 'CIBA (Client-Initiated Backchannel Authentication)');
   }
+  if (grant === OAuth2GrantTypes.DEVICE_CODE) {
+    return t('applications:edit.advanced.grantTypes.labels.deviceCode', 'Device Authorization Grant');
+  }
   if (grant === OAuth2GrantTypes.TOKEN_EXCHANGE) {
     return t('applications:edit.advanced.grantTypes.labels.tokenExchange', 'Token exchange');
   }

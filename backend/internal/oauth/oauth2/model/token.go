@@ -24,6 +24,7 @@ type TokenRequest struct {
 	RequestedTokenType string   `json:"requested_token_type,omitempty"`
 	Audiences          []string `json:"audiences,omitempty"`
 	AuthReqID          string   `json:"auth_req_id,omitempty"`
+	DeviceCode         string   `json:"device_code,omitempty"`
 	Assertion          string   `json:"assertion,omitempty"`
 }
 

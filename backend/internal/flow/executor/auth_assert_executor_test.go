@@ -312,10 +312,14 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAuthorizedPermissions(
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesExecutionIDAsCorrelationID() {
 	ctx := &providers.NodeContext{
-		ExecutionID:      "flow-123",
-		EntityID:         "app-123",
-		FlowType:         providers.FlowTypeAuthentication,
-		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:       "consent-123",
+			common.RuntimeKeyConsentApproved: "true",
+		},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 		Application:      providers.Application{},
 	}
@@ -325,7 +329,9 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesExecutionIDAsCorrel
 
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
-			return claims[oauth2const.ClaimCorrelationID] == "flow-123"
+			return claims[oauth2const.ClaimCorrelationID] == "flow-123" &&
+				claims[oauth2const.ClaimConsentID] == "consent-123" &&
+				claims[oauth2const.ClaimConsentApproved] == true
 		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
 
 	resp, err := suite.executor.Execute(ctx)

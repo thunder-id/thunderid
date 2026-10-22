@@ -295,8 +295,8 @@ func (b *graphBuilder) validateOnIncompleteTarget(nodes []providers.NodeDefiniti
 
 // validateCallNodeDefinition validates the constraints specific to CALL nodes.
 func (b *graphBuilder) validateCallNodeDefinition(nodeDef *providers.NodeDefinition) error {
-	if nodeDef.Flow == nil || nodeDef.Flow.Ref == "" {
-		return fmt.Errorf("CALL node %s: 'flow.ref' is required", nodeDef.ID)
+	if nodeDef.Flow == nil || !nodeDef.Flow.Valid() {
+		return fmt.Errorf("CALL node %s: flow.ref or a valid dynamic target is required", nodeDef.ID)
 	}
 	if nodeDef.OnSuccess == "" {
 		return fmt.Errorf("CALL node %s: 'onSuccess' is required", nodeDef.ID)
@@ -315,11 +315,17 @@ func (b *graphBuilder) validateCallNodeDefinition(nodeDef *providers.NodeDefinit
 
 // configureCallNodeReference sets the referenced flow ID on CALL nodes.
 func (b *graphBuilder) configureCallNodeReference(nodeDef *providers.NodeDefinition, node core.NodeInterface) {
-	if nodeDef.Flow == nil || nodeDef.Flow.Ref == "" {
+	if nodeDef.Flow == nil || !nodeDef.Flow.Valid() {
 		return
 	}
 	if callNode, ok := node.(core.CallNodeInterface); ok {
-		callNode.SetReferencedFlow(nodeDef.Flow.Ref)
+		if nodeDef.Flow.Mode == providers.FlowReferenceModeFlowType {
+			callNode.SetReferencedFlow(common.FlowTypeReferencePrefix + string(nodeDef.Flow.FlowType))
+		} else if nodeDef.Flow.FlowID != "" {
+			callNode.SetReferencedFlow(nodeDef.Flow.FlowID)
+		} else {
+			callNode.SetReferencedFlow(nodeDef.Flow.Ref)
+		}
 	}
 }
 

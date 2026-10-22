@@ -16,6 +16,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/callback"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -98,11 +99,17 @@ func Initialize(
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
 			discoveryService, resourceService, runtimeStore, jtiStore, cfg)
 	}
+	var deviceAuthService deviceauth.DeviceAuthServiceInterface
+	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
+		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeDeviceCode)) {
+		deviceAuthService = deviceauth.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService,
+			flowProvider, resourceService, runtimeStore, jtiStore, cfg)
+	}
 
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, enforcementService, cfg)
+		cibaService, deviceAuthService, revocationSvc, revocationSvc, enforcementService, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, cfg)
@@ -111,7 +118,7 @@ func Initialize(
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, cfg)
-	callback.Initialize(mux, oauth2AuthzService, cibaService, cfg)
+	callback.Initialize(mux, oauth2AuthzService, cibaService, deviceAuthService, cfg)
 
 	if cfg.OAuth.Logout.IsEnabled() {
 		oauth2logout.Initialize(mux, jwtService, actorProvider, flowExecService, runtimeStore, cfg)

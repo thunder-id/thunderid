@@ -14,6 +14,7 @@ const SignOutPage = lazy(() => import('./pages/SignOutPage'));
 const RecoveryPage = lazy(() => import('./pages/RecoveryPage'));
 const SignInPage = lazy(() => import('./pages/SignInPage'));
 const SignUpPage = lazy(() => import('./pages/SignUpPage'));
+const DevicePage = lazy(() => import('./pages/DevicePage'));
 
 export default function App(): JSX.Element {
   return (
@@ -23,6 +24,7 @@ export default function App(): JSX.Element {
           <Route path={RouteConfig.root()} element={<DefaultLayout />}>
             <Route path={RouteConfig.root()} element={<Navigate to={RouteConfig.signIn()} replace />} />
             <Route path={RouteConfig.signIn()} element={<SignInPage />} />
+            <Route path={RouteConfig.device()} element={<DevicePage />} />
             <Route path={RouteConfig.signUp()} element={<SignUpPage />} />
             <Route path={RouteConfig.invite()} element={<AcceptInvitePage />} />
             <Route path={RouteConfig.recovery()} element={<RecoveryPage />} />

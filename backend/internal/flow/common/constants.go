@@ -32,6 +32,9 @@ const (
 	NodeTypeCall NodeType = "CALL"
 )
 
+// FlowTypeReferencePrefix marks an internal CALL target resolved from the current application.
+const FlowTypeReferencePrefix = "$flowType:"
+
 // NodeStatus defines the status of a node in the flow execution.
 type NodeStatus string
 
@@ -72,6 +75,8 @@ const (
 	DataInviteLink = "inviteLink"
 	// DataCallbackType is the OAuth grant type surfaced on the terminal flow response's additional data.
 	DataCallbackType = "callbackType"
+	// DataAuthID identifies the OAuth authorization request for its callback.
+	DataAuthID = "authId"
 	// DataEmailSent is the key used to indicate that an email was sent successfully in the flow response.
 	DataEmailSent = "emailSent"
 	// DataSMSSent is the key used to indicate that an SMS was sent successfully in the flow response.
@@ -176,6 +181,8 @@ const (
 	RuntimeKeyRequiredLocales = "required_locales"
 	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
 	RuntimeKeyConsentID = "consent_id"
+	// RuntimeKeyConsentApproved records whether the user explicitly approved the consent prompt.
+	RuntimeKeyConsentApproved = "consent_approved"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.
 	RuntimeKeyStepTimeout = "step_timeout"
 	// RuntimeKeyConsentedAttributes holds a space-separated set of attributes that the user has consented to share.
@@ -265,6 +272,14 @@ const (
 	// RuntimeKeyAuthorizationRequestID holds the auth request identifier bound to the current flow
 	// execution (the OAuth authorize authId or the CIBA auth_req_id), if applicable.
 	RuntimeKeyAuthorizationRequestID = "authorizationRequestId"
+	// RuntimeKeyDeviceApplicationID is derived from the verified device request, never from the URI.
+	RuntimeKeyDeviceApplicationID = "deviceApplicationId"
+	// RuntimeKeyDeviceApplicationAuthenticationFlowID is resolved from the verified application's configuration.
+	RuntimeKeyDeviceApplicationAuthenticationFlowID = "deviceApplicationAuthenticationFlowId"
+	// RuntimeKeyDeviceCallFailed marks a failed application flow call in the Device Grant system flow.
+	RuntimeKeyDeviceCallFailed = "deviceCallFailed"
+	// RuntimeValueTrue is the string representation of a true runtime-data flag.
+	RuntimeValueTrue = "true"
 	// RuntimeKeyCallbackType holds the OAuth grant type of the initiating request, seeded by the OAuth
 	// initiator and surfaced onto the terminal flow response as DataCallbackType so the Gate/SDK routes
 	// to the correct callback handler. Absent for non-OAuth flows.

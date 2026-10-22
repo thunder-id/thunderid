@@ -47,6 +47,8 @@ const (
 	FlowTypeSignOut FlowType = "SIGNOUT"
 	// FlowTypeAdministration represents an administrator-designed operational flow.
 	FlowTypeAdministration FlowType = "ADMINISTRATION"
+	// FlowTypeSystem represents a protocol-specific flow provided by ThunderID.
+	FlowTypeSystem FlowType = "SYSTEM"
 )
 
 // ValidFlowTypes is the set of supported flow types.
@@ -57,7 +59,26 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
+	FlowTypeSystem,
 }
+
+// ValidApplicationFlowTypes is the set of flow types that an application can reference.
+var ValidApplicationFlowTypes = []FlowType{
+	FlowTypeAuthentication,
+	FlowTypeRegistration,
+	FlowTypeRecovery,
+	FlowTypeSignOut,
+}
+
+// FlowReferenceMode identifies how a CALL node selects its target flow.
+type FlowReferenceMode string
+
+const (
+	// FlowReferenceModeFixed selects a flow by its configured ID.
+	FlowReferenceModeFixed FlowReferenceMode = "fixed"
+	// FlowReferenceModeFlowType selects the current application's flow for a configured type.
+	FlowReferenceModeFlowType FlowReferenceMode = "flow_type"
+)
 
 // NodeVariant identifies a PROMPT node sub-type that activates a variant-specific code path.
 type NodeVariant string
@@ -131,6 +152,8 @@ const (
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
 	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
 	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
+	// GrantTypeDeviceCode represents the OAuth 2.0 Device Authorization Grant grant type.
+	GrantTypeDeviceCode GrantType = "urn:ietf:params:oauth:grant-type:device_code"
 	// GrantTypeJWTBearer represents the JWT bearer grant type used to present an ID-JAG assertion
 	// (draft-ietf-oauth-identity-assertion-authz-grant) issued by a trusted external IdP.
 	GrantTypeJWTBearer GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer" //nolint:gosec
@@ -172,6 +195,7 @@ var SupportedGrantTypes = []GrantType{
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 	GrantTypeJWTBearer,
 }
 
@@ -189,6 +213,7 @@ func (gt GrantType) IsValid() bool {
 var refreshTokenIssuingGrantTypes = []GrantType{
 	GrantTypeAuthorizationCode,
 	GrantTypeCIBA,
+	GrantTypeDeviceCode,
 }
 
 // IssuesRefreshToken reports whether this grant type can issue a refresh token.
@@ -649,6 +674,7 @@ const (
 	NamespaceLogoutReq      RuntimeStoreNamespace = "logout:req"
 	NamespacePAR            RuntimeStoreNamespace = "par:req"
 	NamespaceCIBA           RuntimeStoreNamespace = "ciba:req"
+	NamespaceDeviceAuth     RuntimeStoreNamespace = "device:req"
 	NamespaceJTI            RuntimeStoreNamespace = "jti:token"
 	NamespaceVCINonce       RuntimeStoreNamespace = "vci:nonce"
 	NamespaceVCIOffer       RuntimeStoreNamespace = "vci:offer"

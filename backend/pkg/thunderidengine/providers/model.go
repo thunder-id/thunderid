@@ -255,12 +255,32 @@ type NodeDefinition struct {
 	OnFailure    string                   `json:"onFailure,omitempty"    yaml:"onFailure,omitempty"    jsonschema:"ID of the next node to execute on failure"`
 	OnIncomplete string                   `json:"onIncomplete,omitempty" yaml:"onIncomplete,omitempty" jsonschema:"For TASK_EXECUTION nodes: ID of the PROMPT node to forward to when user input is required."`
 	Condition    *ConditionDefinition     `json:"condition,omitempty"    yaml:"condition,omitempty"    jsonschema:"Optional condition to determine if this node should execute"`
-	Flow         *FlowReferenceDefinition `json:"flow,omitempty"       yaml:"flow,omitempty"         jsonschema:"For CALL nodes: identifies the target flow to invoke by its ID."`
+	Flow         *FlowReferenceDefinition `json:"flow,omitempty"       yaml:"flow,omitempty"         jsonschema:"For CALL nodes: identifies a fixed flow or an application flow type."`
 }
 
-// FlowReferenceDefinition identifies the target flow for a CALL node.
+// FlowReferenceDefinition identifies a fixed flow or an application flow type for a CALL node.
 type FlowReferenceDefinition struct {
-	Ref string `json:"ref" yaml:"ref" jsonschema:"ID of the flow to invoke."`
+	Ref      string            `json:"ref,omitempty"      yaml:"ref,omitempty"      jsonschema:"Legacy fixed flow ID."`
+	Mode     FlowReferenceMode `json:"mode,omitempty"     yaml:"mode,omitempty"     jsonschema:"fixed or flow_type. Omitted for legacy fixed references."`
+	FlowID   string            `json:"flowId,omitempty"   yaml:"flowId,omitempty"   jsonschema:"Flow ID when mode is fixed."`
+	FlowType FlowType          `json:"flowType,omitempty" yaml:"flowType,omitempty" jsonschema:"Application flow type when mode is flow_type."`
+}
+
+// Valid reports whether the CALL target has exactly one supported source.
+func (f *FlowReferenceDefinition) Valid() bool {
+	if f == nil {
+		return false
+	}
+	switch f.Mode {
+	case "":
+		return f.Ref != "" && f.FlowID == "" && f.FlowType == ""
+	case FlowReferenceModeFixed:
+		return f.Ref == "" && f.FlowID != "" && f.FlowType == ""
+	case FlowReferenceModeFlowType:
+		return f.Ref == "" && f.FlowID == "" && slices.Contains(ValidApplicationFlowTypes, f.FlowType)
+	default:
+		return false
+	}
 }
 
 type nodeDefinitionAlias NodeDefinition
@@ -1284,6 +1304,25 @@ func (a *Application) OAuthClientID() string {
 		}
 	}
 	return ""
+}
+
+// FlowID returns the flow configured for the requested application flow type.
+func (a *Application) FlowID(flowType FlowType) string {
+	if a == nil {
+		return ""
+	}
+	switch flowType {
+	case FlowTypeAuthentication:
+		return a.AuthFlowID
+	case FlowTypeRegistration:
+		return a.RegistrationFlowID
+	case FlowTypeRecovery:
+		return a.RecoveryFlowID
+	case FlowTypeSignOut:
+		return a.SignOutFlowID
+	default:
+		return ""
+	}
 }
 
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).

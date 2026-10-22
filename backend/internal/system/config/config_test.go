@@ -1744,6 +1744,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		PAR:                      engineconfig.PARConfig{ExpiresIn: 600, RequirePAR: true},
 		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
 		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
+		Device:                   engineconfig.DeviceConfig{ExpiresIn: 600, Interval: 5},
 		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
 		AllowWildcardRedirectURI: true,
 		AllowedGrantTypes:        []string{"authorization_code"},
@@ -1761,6 +1762,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.PAR, dst.PAR)
 	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
 	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
+	assert.Equal(suite.T(), src.Device, dst.Device)
 	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
 	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)

@@ -14,6 +14,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -39,6 +40,7 @@ type flowEngine struct {
 	interceptorRunner InterceptorRunnerInterface
 	observabilitySvc  providers.ObservabilityProvider
 	flowProvider      providers.FlowProvider
+	actorProvider     providers.ActorProvider
 	graphBuilder      graphbuilder.GraphBuilderInterface
 	logger            *log.Logger
 }
@@ -49,6 +51,7 @@ func newFlowEngine(
 	interceptorRunner InterceptorRunnerInterface,
 	observabilitySvc providers.ObservabilityProvider,
 	flowProvider providers.FlowProvider,
+	actorProvider providers.ActorProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 ) flowEngineInterface {
 	return &flowEngine{
@@ -56,6 +59,7 @@ func newFlowEngine(
 		interceptorRunner: interceptorRunner,
 		observabilitySvc:  observabilitySvc,
 		flowProvider:      flowProvider,
+		actorProvider:     actorProvider,
 		graphBuilder:      graphBuilder,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
 	}
@@ -276,6 +280,10 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	fe.trackPresentedOptionalInputs(ctx, nodeResp)
 	fe.updateContextWithNodeResponse(ctx, nodeResp)
+	if svcErr := fe.bindResolvedApplication(ctx, nodeResp, logger); svcErr != nil {
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return nil, false, svcErr
+	}
 
 	nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, flowStep, logger)
 	if svcErr != nil {
@@ -736,6 +744,33 @@ func (fe *flowEngine) updateContextWithNodeResponse(engineCtx *EngineContext, no
 	}
 }
 
+// bindResolvedApplication hydrates the application context identified by a verified Device Grant request.
+func (fe *flowEngine) bindResolvedApplication(ctx *EngineContext, resp *common.NodeResponse,
+	logger *log.Logger) *tidcommon.ServiceError {
+	appID := resp.EngineData[common.RuntimeKeyDeviceApplicationID]
+	if appID == "" {
+		return nil
+	}
+	if ctx.FlowType != providers.FlowTypeSystem ||
+		ctx.RuntimeData[common.RuntimeKeyDeviceApplicationID] != appID ||
+		ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] == "" {
+		return &tidcommon.InternalServerError
+	}
+	app, svcErr := actorprovider.BuildApplication(ctx.Context, fe.actorProvider, appID)
+	if svcErr != nil || app == nil || app.AuthFlowID !=
+		ctx.RuntimeData[common.RuntimeKeyDeviceApplicationAuthenticationFlowID] {
+		logger.Error(ctx.Context, "Failed to bind resolved application")
+		return &tidcommon.InternalServerError
+	}
+	ctx.AppID = appID
+	ctx.Application = *app
+	ctx.SessionFlowID = app.AuthFlowID
+	if inbound, ok := session.InboundFrom(ctx.Context); ok {
+		ctx.SSOHandleIn = inbound.HandleFor(app.AuthFlowID)
+	}
+	return nil
+}
+
 // updateContextWithInterceptorResponse merges interceptor response data into the engine context.
 func (fe *flowEngine) updateContextWithInterceptorResponse(
 	engineCtx *EngineContext, resp *common.InterceptorResponse,
@@ -887,8 +922,13 @@ func (fe *flowEngine) handleDisplayOnlyPromptResponse(ctx *EngineContext,
 
 	// If the next node is END, complete the flow
 	if nextNode.GetType() == common.NodeTypeEnd {
-		flowStep.Status = providers.FlowStatusComplete
-		continueExecution = true
+		if ctx.FlowType == providers.FlowTypeSystem &&
+			ctx.RuntimeData[common.RuntimeKeyDeviceCallFailed] == common.RuntimeValueTrue {
+			flowStep.Status = providers.FlowStatusError
+		} else {
+			flowStep.Status = providers.FlowStatusComplete
+			continueExecution = true
+		}
 	} else {
 		// Set current node to the next node so that flow can be resumed from there in the next execution
 		ctx.CurrentNode = nextNode
@@ -1003,20 +1043,39 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 		return nil, &ErrorMaxCallDepthExceeded
 	}
 
-	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, nodeResp.CallTargetFlowID)
+	targetFlowID := nodeResp.CallTargetFlowID
+	if nodeResp.CallTargetFlowType != "" {
+		if ctx.AppID == "" || ctx.Application.ID != ctx.AppID ||
+			targetFlowID != ctx.Application.FlowID(nodeResp.CallTargetFlowType) {
+			return nil, &tidcommon.InternalServerError
+		}
+	}
+	if isDeviceApplicationAuthenticationCall(ctx, nodeResp) &&
+		(ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] == "" ||
+			ctx.AppID != ctx.RuntimeData[common.RuntimeKeyDeviceApplicationID]) {
+		return nil, &tidcommon.InternalServerError
+	}
+
+	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, targetFlowID)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to get call target flow",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
+		return nil, &tidcommon.InternalServerError
+	}
+	if nodeResp.CallTargetFlowType != "" && flow.FlowType != nodeResp.CallTargetFlowType {
 		return nil, &tidcommon.InternalServerError
 	}
 
 	calleeGraph, svcErr := fe.graphBuilder.GetGraph(ctx.Context, flow)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to build call target graph",
-			log.String("targetFlowID", nodeResp.CallTargetFlowID))
+			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if nodeResp.CallTargetFlowType == providers.FlowTypeAuthentication {
+		ctx.SSOFlowVersion = flow.ActiveVersion
+	}
 	return fe.switchContextToCallee(ctx, nodeResp, calleeGraph, logger)
 }
 
@@ -1027,6 +1086,16 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	core.NodeInterface, *tidcommon.ServiceError) {
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
+	deviceRequestID := ""
+	var deviceRequestData map[string]string
+	if isDeviceApplicationAuthenticationCall(ctx, nodeResp) {
+		deviceRequestID = ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]
+		deviceRequestData = map[string]string{
+			common.RuntimeKeyRequestedPermissions:       ctx.RuntimeData[common.RuntimeKeyRequestedPermissions],
+			common.RuntimeKeyResourceServerIdentifier:   ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier],
+			common.RuntimeKeyRequiredOptionalAttributes: ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes],
+		}
+	}
 	ctx.pushFrame(resumeCallNodeID)
 
 	// Switch context to the callee flow. Per-frame transient state is reset so the callee
@@ -1035,6 +1104,14 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.Graph = calleeGraph
 	ctx.FlowType = calleeGraph.GetType()
 	ctx.RuntimeData = make(map[string]string)
+	if deviceRequestID != "" {
+		ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] = deviceRequestID
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] = string(providers.GrantTypeDeviceCode)
+		ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] = common.RuntimeValueTrue
+		for key, value := range deviceRequestData {
+			ctx.RuntimeData[key] = value
+		}
+	}
 	ctx.ForwardedData = nil
 	ctx.AdditionalData = make(map[string]string)
 	ctx.CurrentNodeResponse = nil
@@ -1052,6 +1129,11 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.CurrentNode = startNode
 
 	return startNode, nil
+}
+
+func isDeviceApplicationAuthenticationCall(ctx *EngineContext, nodeResp *common.NodeResponse) bool {
+	return nodeResp.CallTargetFlowType == providers.FlowTypeAuthentication &&
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode)
 }
 
 // handleCalleeReturn is called when the callee flow's END node completes while there is a
@@ -1137,6 +1219,12 @@ func (fe *flowEngine) handleCalleeFailure(ctx *EngineContext, nodeResp *common.N
 		logger.Error(ctx.Context, "Call onFailure node not found",
 			log.String("onFailureID", onFailureID))
 		return nil, false, &tidcommon.InternalServerError
+	}
+	if ctx.FlowType == providers.FlowTypeSystem &&
+		ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode) &&
+		cn.GetReferencedFlow() == common.FlowTypeReferencePrefix+string(providers.FlowTypeAuthentication) {
+		ctx.RuntimeData[common.RuntimeKeyDeviceCallFailed] = common.RuntimeValueTrue
+		flowStep.Error = nodeResp.Error
 	}
 
 	ctx.CurrentNode = nextNode

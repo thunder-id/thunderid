@@ -50,6 +50,11 @@ export const FlowType = {
    * Administration flows orchestrate authenticated administrative operations
    */
   ADMINISTRATION: 'ADMINISTRATION',
+
+  /**
+   * System flows handle protocol-specific browser steps, such as Device Grant code entry.
+   */
+  SYSTEM: 'SYSTEM',
 } as const;
 
 /**

@@ -221,6 +221,9 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 	}
 
 	failOnDeny, _ := ctx.NodeProperties[propertyKeyConsentFailOnDeny].(bool)
+	if ctx.RuntimeData[common.RuntimeKeyCallbackType] == string(providers.GrantTypeDeviceCode) {
+		failOnDeny = true
+	}
 
 	// A timed out prompt is not a user decision, so nothing is recorded and nothing is consented.
 	// The expiry check below is skipped because such a submission is expected to arrive late.
@@ -287,6 +290,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 
 	// Fail the flow when the node opts into strict denial handling and the user did not approve
 	// the prompt. This is verified with the IsApproved flag on the consent decisions struct.
+	execResp.RuntimeData[common.RuntimeKeyConsentApproved] = strconv.FormatBool(decisions.Approved)
 	if failOnDeny && !decisions.Approved {
 		logger.Debug(ctx.Context, "User denied consent and failOnDeny is enabled",
 			log.String("consentID", consentRecord.ID))

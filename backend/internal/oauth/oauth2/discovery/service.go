@@ -69,6 +69,9 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		metadata.BackchannelTokenDeliveryModesSupported = []string{"poll"}
 		metadata.BackchannelUserCodeParameterSupported = false
 	}
+	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeDeviceCode)) {
+		metadata.DeviceAuthorizationEndpoint = ds.cfg.BaseURL + constants.OAuth2DeviceAuthorizationEndpoint
+	}
 	if ds.cfg.OAuth.TokenRevocation.IsEnabled() {
 		metadata.RevocationEndpoint = ds.getRevocationEndpoint()
 	}

@@ -76,6 +76,48 @@ func (s *CallNodeTestSuite) TestGetAndSetReferencedFlow() {
 	s.Empty(callNode.GetReferencedFlow())
 }
 
+func (s *CallNodeTestSuite) TestFlowTypeTargetUsesApplicationFlow() {
+	application := providers.Application{InboundAuthProfile: providers.InboundAuthProfile{
+		AuthFlowID:         "auth-flow",
+		RegistrationFlowID: "registration-flow",
+		RecoveryFlowID:     "recovery-flow",
+		SignOutFlowID:      "sign-out-flow",
+	}}
+	tests := []struct {
+		name     string
+		flowType providers.FlowType
+		flowID   string
+	}{
+		{name: "authentication", flowType: providers.FlowTypeAuthentication, flowID: "auth-flow"},
+		{name: "registration", flowType: providers.FlowTypeRegistration, flowID: "registration-flow"},
+		{name: "recovery", flowType: providers.FlowTypeRecovery, flowID: "recovery-flow"},
+		{name: "sign-out", flowType: providers.FlowTypeSignOut, flowID: "sign-out-flow"},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			node := newCallNode("call-flow-type", nil, false, false).(CallNodeInterface)
+			node.SetReferencedFlow(common.FlowTypeReferencePrefix + string(test.flowType))
+			response, err := node.Execute(&providers.NodeContext{
+				Context:     context.Background(),
+				FlowType:    providers.FlowTypeSystem,
+				Application: application,
+			})
+			s.Nil(err)
+			s.Equal(test.flowID, response.CallTargetFlowID)
+			s.Equal(test.flowType, response.CallTargetFlowType)
+		})
+	}
+}
+
+func (s *CallNodeTestSuite) TestFlowTypeTargetRejectsMissingApplicationFlow() {
+	node := newCallNode("call-flow-type", nil, false, false).(CallNodeInterface)
+	node.SetReferencedFlow(common.FlowTypeReferencePrefix + string(providers.FlowTypeRecovery))
+	response, err := node.Execute(&providers.NodeContext{Context: context.Background(),
+		FlowType: providers.FlowTypeSystem})
+	s.Nil(response)
+	s.NotNil(err)
+}
+
 func (s *CallNodeTestSuite) TestGetAndSetOnSuccess() {
 	node := newCallNode("call-1", nil, false, false)
 	callNode, ok := node.(CallNodeInterface)

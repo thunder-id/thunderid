@@ -95,6 +95,30 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
 	s.True(called)
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_DeviceGrantHandleUsesSystemType() {
+	s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+		return handle == "device-grant" && flowType == providers.FlowTypeSystem
+	})
+
+	cfg := flowconfig.FlowSectionConfig{
+		DeviceGrantFlow: flowconfig.FlowTypeConfig{DefaultHandle: "device-grant"},
+	}
+	s.NoError(s.handler.Validate(cfg, nil, nil))
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_DeviceGrantHandle() {
+	ro := flowconfig.FlowSectionConfig{
+		DeviceGrantFlow: flowconfig.FlowTypeConfig{DefaultHandle: "device-grant", ExpirySeconds: 600},
+	}
+	wr := flowconfig.FlowSectionConfig{
+		DeviceGrantFlow: flowconfig.FlowTypeConfig{ExpirySeconds: 900},
+	}
+
+	merged := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+	s.Equal("device-grant", merged.DeviceGrantFlow.DefaultHandle)
+	s.Equal(int64(900), merged.DeviceGrantFlow.ExpirySeconds)
+}
+
 func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown() {
 	s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool {
 		return false

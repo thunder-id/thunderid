@@ -175,6 +175,40 @@ func (a *authAssertExecutor) resolveAuthTime(ctx *providers.NodeContext) int64 {
 	return time.Now().UTC().Unix()
 }
 
+// addRuntimeContextClaims adds flow execution context claims to the assertion.
+func (a *authAssertExecutor) addRuntimeContextClaims(
+	jwtClaims map[string]interface{}, ctx *providers.NodeContext,
+) {
+	if completedACR, exists := ctx.RuntimeData[common.RuntimeKeySelectedAuthClass]; exists && completedACR != "" {
+		jwtClaims[oauth2const.ClaimCompletedAuthClass] = completedACR
+	}
+
+	// Preserve the authentication time when this flow reuses an older SSO session.
+	jwtClaims[oauth2const.ClaimAuthTime] = a.resolveAuthTime(ctx)
+
+	// Bind the assertion to the authorization request handled by its callback.
+	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
+		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
+	}
+	if consentID, exists := ctx.RuntimeData[common.RuntimeKeyConsentID]; exists && consentID != "" {
+		jwtClaims[oauth2const.ClaimConsentID] = consentID
+	}
+	if consentApproved, exists := ctx.RuntimeData[common.RuntimeKeyConsentApproved]; exists {
+		jwtClaims[oauth2const.ClaimConsentApproved] = consentApproved == "true"
+	}
+
+	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
+
+	// Carry token family metadata for family-scoped revocation.
+	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
+		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	}
+	// Carry the SSO session ID when the flow has a Session node.
+	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
+		jwtClaims[oauth2const.ClaimSessionID] = sessionID
+	}
+}
+
 // addCorrelationClaim carries the flow's execution id onto the assertion so the authorization code
 // minted from it, and the token issuance events that follow, report the same correlation identifier
 // as the flow's own observability events.
@@ -191,10 +225,12 @@ func addCorrelationClaim(jwtClaims map[string]interface{}, executionID string) {
 // replaced value would reach the authorization code and be reported as the event's subject, which is
 // the mapped-attribute disclosure these claims exist to avoid.
 var reservedAssertionClaims = map[string]bool{
-	oauth2const.ClaimSubjectID:     true,
-	oauth2const.ClaimSubjectType:   true,
-	oauth2const.ClaimCorrelationID: true,
-	oauth2const.ClaimSessionID:     true,
+	oauth2const.ClaimSubjectID:       true,
+	oauth2const.ClaimSubjectType:     true,
+	oauth2const.ClaimCorrelationID:   true,
+	oauth2const.ClaimSessionID:       true,
+	oauth2const.ClaimConsentID:       true,
+	oauth2const.ClaimConsentApproved: true,
 }
 
 // addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
@@ -299,33 +335,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		jwtClaims["authorized_permissions"] = permissions
 	}
 
-	if completedACR, exists := ctx.RuntimeData[common.RuntimeKeySelectedAuthClass]; exists && completedACR != "" {
-		jwtClaims[oauth2const.ClaimCompletedAuthClass] = completedACR
-	}
-
-	// Carry the time the subject actually authenticated. On the SSO path that is the reused
-	// session's authentication time, which is older than this assertion's iat; without the claim
-	// the OAuth layer falls back to iat and auth_time advances on every authorization.
-	jwtClaims[oauth2const.ClaimAuthTime] = a.resolveAuthTime(ctx)
-
-	// Bind the assertion to the originating auth request so the corresponding callback can verify this assertion
-	// authorizes the specific request it accompanies.
-	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
-		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
-	}
-
-	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
-
-	// Carry the token family id (minted by the Session node) so the authorization code, and in turn
-	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
-	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
-		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
-	}
-
-	// Carry the SSO session id published by the Session node. Absent when the flow has no Session node.
-	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
-		jwtClaims[oauth2const.ClaimSessionID] = sessionID
-	}
+	a.addRuntimeContextClaims(jwtClaims, ctx)
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
 

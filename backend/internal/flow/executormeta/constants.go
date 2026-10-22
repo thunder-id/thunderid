@@ -53,6 +53,7 @@ const (
 	ExecutorNameRole                         = "RoleExecutor"
 	ExecutorNameGroup                        = "GroupExecutor"
 	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
+	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 
 // Executor mode constants

@@ -60,6 +60,7 @@ const (
 	RequestParamBindingMessage      string = "binding_message"
 	RequestParamRequestedExpiry     string = "requested_expiry"
 	RequestParamAuthReqID           string = "auth_req_id"
+	RequestParamDeviceCode          string = "device_code"
 )
 
 // OAuth2 HTTP headers.
@@ -126,6 +127,7 @@ const (
 	OAuth2PAREndpoint                     string = "/oauth2/par"
 	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
 	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"
+	OAuth2DeviceAuthorizationEndpoint     string = "/oauth2/device-authorize"
 )
 
 // OAuth2 token types.
@@ -313,6 +315,10 @@ const (
 	// either claim.
 	ClaimSubjectID   string = "sub_id"
 	ClaimSubjectType string = "sub_type"
+	// ClaimConsentID identifies the consent record associated with an authentication assertion.
+	ClaimConsentID string = "consent_id"
+	// ClaimConsentApproved indicates whether the user approved the associated consent request.
+	ClaimConsentApproved string = "consent_approved"
 )
 
 // Subject type values for the sub_type claim.
@@ -375,6 +381,15 @@ const (
 	CIBADefaultIntervalSeconds = 5
 	// CIBAMaxExpiresInSeconds is the maximum lifetime in seconds a client may request via requested_expiry.
 	CIBAMaxExpiresInSeconds = 600
+	// DeviceAuthorizationDefaultExpiresInSeconds is the default lifetime for a device request.
+	DeviceAuthorizationDefaultExpiresInSeconds = 600
+	// DeviceAuthorizationDefaultIntervalSeconds is the minimum interval between token polls.
+	DeviceAuthorizationDefaultIntervalSeconds = 5
+	// DeviceAuthorizationSlowDownIncrementSeconds is added after each early token poll.
+	DeviceAuthorizationSlowDownIncrementSeconds = 5
+	// DeviceAuthorizationExpiredRecordRetentionSeconds keeps an expired request available long enough
+	// for the token endpoint to return expired_token instead of treating the device code as unknown.
+	DeviceAuthorizationExpiredRecordRetentionSeconds = 60
 )
 
 const (

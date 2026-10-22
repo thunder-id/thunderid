@@ -335,6 +335,12 @@ type ClientAssertionConfig struct {
 	MaxIatAge int64 `yaml:"max_iat_age" json:"max_iat_age"`
 }
 
+// DeviceConfig holds OAuth 2.0 Device Authorization Grant settings.
+type DeviceConfig struct {
+	ExpiresIn int64 `yaml:"expires_in"                             json:"expires_in"`
+	Interval  int64 `yaml:"interval"                              json:"interval"`
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken         RefreshTokenConfig         `yaml:"refresh_token"               json:"refresh_token"`
@@ -347,6 +353,7 @@ type OAuthConfig struct {
 	AuthClass            AuthClassConfig            `yaml:"auth_class"                  json:"auth_class"`
 	CIBA                 CIBAConfig                 `yaml:"ciba"                        json:"ciba"`
 	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
+	Device               DeviceConfig               `yaml:"device"                      json:"device"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
 	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.

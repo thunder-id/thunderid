@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
@@ -1403,6 +1404,29 @@ func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_ForwardToEndNode()
 	s.Equal("response_value", flowStep.Data.AdditionalData["response_key"])
 }
 
+func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_DeviceGrantFailureKeepsErrorStatus() {
+	t := s.T()
+	prompt := coremock.NewPromptNodeInterfaceMock(t)
+	prompt.On("GetNextNode").Return("end")
+	end := coremock.NewNodeInterfaceMock(t)
+	end.On("GetType").Return(common.NodeTypeEnd)
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetNode", "end").Return(end, true)
+	ctx := &EngineContext{CurrentNode: prompt, Graph: graph, FlowType: providers.FlowTypeSystem,
+		RuntimeData: map[string]string{common.RuntimeKeyDeviceCallFailed: "true"}}
+	step := &FlowStep{Data: FlowData{}}
+	meta := map[string]interface{}{"components": []interface{}{"failure message"}}
+
+	next, continueExecution, err := (&flowEngine{}).handleDisplayOnlyPromptResponse(ctx,
+		&common.NodeResponse{Status: common.NodeStatusComplete, Meta: meta}, step, log.GetLogger())
+
+	s.Nil(err)
+	s.Nil(next)
+	s.False(continueExecution)
+	s.Equal(providers.FlowStatusError, step.Status)
+	s.Equal(meta, step.Data.Meta)
+}
+
 func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_UnknownNextNode() {
 	t := s.T()
 	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
@@ -1915,7 +1939,7 @@ func (s *EngineTestSuite) TestNewFlowEngine() {
 	mockFlowProvider := NewFlowProviderMock(t)
 	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
 
-	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, mockGraphBuilder)
+	engine := newFlowEngine(mockRegistry, mockInterceptorRunner, mockObs, mockFlowProvider, nil, mockGraphBuilder)
 	s.NotNil(engine)
 }
 
@@ -4168,6 +4192,96 @@ func (s *EngineTestSuite) TestHandleCallResponse_Success() {
 	s.Equal(mockStartNode, ctx.CurrentNode)
 }
 
+func (s *EngineTestSuite) TestHandleCallResponse_UsesResolvedDeviceApplication() {
+	t := s.T()
+	flowProvider := NewFlowProviderMock(t)
+	flow := &providers.CompleteFlowDefinition{ID: "app-auth-flow", FlowType: providers.FlowTypeAuthentication,
+		ActiveVersion: 2}
+	flowProvider.EXPECT().GetFlow(mock.Anything, "app-auth-flow").Return(flow, nil)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	startNode := coremock.NewNodeInterfaceMock(t)
+	graphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(calleeGraph, nil)
+	calleeGraph.EXPECT().GetType().Return(providers.FlowTypeAuthentication)
+	calleeGraph.EXPECT().GetStartNode().Return(startNode, nil)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	callNode.EXPECT().GetID().Return("call-app")
+	callNode.EXPECT().GetOnSuccess().Return("end")
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callerGraph.EXPECT().GetNode("call-app").Return(callNode, true)
+	endNode := coremock.NewNodeInterfaceMock(t)
+	callerGraph.EXPECT().GetNode("end").Return(endNode, true)
+	ctx := &EngineContext{Context: context.Background(), FlowType: providers.FlowTypeSystem,
+		AppID: "verified-app", Application: providers.Application{ID: "verified-app",
+			InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "app-auth-flow"}},
+		Graph: callerGraph, CurrentNode: callNode, RuntimeData: map[string]string{
+			common.RuntimeKeyDeviceApplicationID:                   "verified-app",
+			common.RuntimeKeyDeviceApplicationAuthenticationFlowID: "app-auth-flow",
+			common.RuntimeKeyAuthorizationRequestID:                "device-request",
+			common.RuntimeKeyCallbackType:                          string(providers.GrantTypeDeviceCode),
+			common.RuntimeKeyRequestedPermissions:                  "booking:read",
+			common.RuntimeKeyResourceServerIdentifier:              "https://api.example.com",
+			common.RuntimeKeyRequiredOptionalAttributes:            "email",
+		}}
+	engine := &flowEngine{logger: log.GetLogger(),
+		flowProvider: flowProvider, graphBuilder: graphBuilder}
+	next, err := engine.handleCallResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusCall, CallTargetFlowID: "app-auth-flow",
+		CallTargetFlowType: providers.FlowTypeAuthentication,
+	}, log.GetLogger())
+	s.Nil(err)
+	s.Equal(startNode, next)
+	s.Equal("verified-app", ctx.AppID)
+	s.Equal("app-auth-flow", ctx.Application.AuthFlowID)
+	s.Equal(2, ctx.SSOFlowVersion)
+	s.Equal("device-request", ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID])
+	s.Equal(string(providers.GrantTypeDeviceCode), ctx.RuntimeData[common.RuntimeKeyCallbackType])
+	s.Equal("true", ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt])
+	s.Equal("booking:read", ctx.RuntimeData[common.RuntimeKeyRequestedPermissions])
+	s.Equal("https://api.example.com", ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier])
+	s.Equal("email", ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes])
+	s.Equal(1, ctx.frameDepth())
+	returned, err := engine.handleCalleeReturn(ctx, log.GetLogger())
+	s.Nil(err)
+	s.Equal(endNode, returned)
+	s.Equal(callerGraph, ctx.Graph)
+	s.Equal(providers.FlowTypeSystem, ctx.FlowType)
+	s.Equal("device-request", ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID])
+}
+
+func (s *EngineTestSuite) TestBindResolvedApplicationUsesTrustedExecutorOutput() {
+	t := s.T()
+	actor := actorprovidermock.NewActorProviderMock(t)
+	actor.EXPECT().GetInboundClientByID(mock.Anything, "verified-app").
+		Return(&providers.InboundClient{ID: "verified-app", AuthFlowID: "app-auth-flow"}, nil)
+	actor.EXPECT().GetActor("verified-app").Return((*providers.Entity)(nil), nil)
+	ctx := &EngineContext{Context: context.Background(), FlowType: providers.FlowTypeSystem,
+		RuntimeData: map[string]string{
+			common.RuntimeKeyDeviceApplicationID:                   "verified-app",
+			common.RuntimeKeyDeviceApplicationAuthenticationFlowID: "app-auth-flow",
+			common.RuntimeKeyAuthorizationRequestID:                "request-1",
+		}}
+	engine := &flowEngine{actorProvider: actor}
+	err := engine.bindResolvedApplication(ctx, &common.NodeResponse{
+		EngineData: map[string]string{common.RuntimeKeyDeviceApplicationID: "verified-app"}}, log.GetLogger())
+	s.Nil(err)
+	s.Equal("verified-app", ctx.AppID)
+	s.Equal("app-auth-flow", ctx.Application.AuthFlowID)
+	s.Equal("app-auth-flow", ctx.SessionFlowID)
+}
+
+func (s *EngineTestSuite) TestHandleCallResponse_RejectsUnverifiedDeviceContext() {
+	engine := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), FlowType: providers.FlowTypeSystem,
+		RuntimeData: map[string]string{common.RuntimeKeyDeviceApplicationID: "url-app"}}
+	next, err := engine.handleCallResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusCall, CallTargetFlowID: "app-auth-flow",
+		CallTargetFlowType: providers.FlowTypeAuthentication,
+	}, log.GetLogger())
+	s.Nil(next)
+	s.NotNil(err)
+}
+
 func (s *EngineTestSuite) TestSharedRuntimeDataSurvivesAdministrationFlowCallAndReturn() {
 	t := s.T()
 	callerGraph := coremock.NewGraphInterfaceMock(t)
@@ -4392,6 +4506,36 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 	s.NotNil(ctx.CurrentNodeResponse)
 	s.Equal(common.NodeStatusForward, ctx.CurrentNodeResponse.Status)
 	s.Equal(callerErr, ctx.CurrentNodeResponse.Error)
+}
+
+func (s *EngineTestSuite) TestHandleCalleeFailure_DeviceGrantRoutesToConfiguredPrompt() {
+	t := s.T()
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	failurePrompt := coremock.NewNodeInterfaceMock(t)
+	callerGraph.On("GetNode", "call-app").Return(callNode, true)
+	callNode.On("GetOnFailure").Return("failure-prompt")
+	callNode.On("GetReferencedFlow").Return(common.FlowTypeReferencePrefix +
+		string(providers.FlowTypeAuthentication))
+	callerGraph.On("GetNode", "failure-prompt").Return(failurePrompt, true)
+	ctx := &EngineContext{Context: context.Background(), Graph: callerGraph,
+		FlowType: providers.FlowTypeSystem, RuntimeData: map[string]string{
+			common.RuntimeKeyCallbackType: string(providers.GrantTypeDeviceCode),
+		}}
+	ctx.pushFrame("call-app")
+	ctx.Graph = coremock.NewGraphInterfaceMock(t)
+	ctx.FlowType = providers.FlowTypeAuthentication
+	step := &FlowStep{}
+	denied := &tidcommon.ServiceError{Code: "consent-denied"}
+
+	next, continueExecution, err := (&flowEngine{}).handleCalleeFailure(ctx,
+		&common.NodeResponse{Status: common.NodeStatusFailure, Error: denied}, step, log.GetLogger())
+
+	s.Nil(err)
+	s.True(continueExecution)
+	s.Equal(failurePrompt, next)
+	s.Equal("true", ctx.RuntimeData[common.RuntimeKeyDeviceCallFailed])
+	s.Equal(denied, step.Error)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_CallNodeNotFound() {

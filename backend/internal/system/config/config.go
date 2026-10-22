@@ -666,6 +666,7 @@ type OAuthConfig struct {
 	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
 	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
 	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
+	Device                   engineconfig.DeviceConfig               `yaml:"device" json:"device"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
 	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
 	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
@@ -691,6 +692,7 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		AuthClass:                c.AuthClass,
 		CIBA:                     c.CIBA,
 		ClientAssertion:          c.ClientAssertion,
+		Device:                   c.Device,
 		Revocation:               c.Revocation,
 		TokenExchange:            c.TokenExchange,
 		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,

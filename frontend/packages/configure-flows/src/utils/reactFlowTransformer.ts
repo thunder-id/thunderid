@@ -8,6 +8,7 @@ import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
 import {ElementCategories, ElementTypes, ActionEventTypes, ButtonTypes} from '../models/elements';
+import type {FlowType} from '../models/flows';
 import type {StepAction, StepData} from '../models/steps';
 import {ExecutionTypes, StepTypes, StaticStepTypes} from '../models/steps';
 
@@ -60,7 +61,10 @@ interface FlowNode {
   onIncomplete?: string;
   next?: string;
   flow?: {
-    ref: string;
+    mode?: 'fixed' | 'flow_type';
+    ref?: string;
+    flowId?: string;
+    flowType?: FlowType;
   };
 }
 
@@ -645,11 +649,25 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
 
   // Handle CALL nodes (cross-flow invocation)
   if (canvasNode.type === StepTypes.Call) {
-    const callData = stepData as (StepData & {flow?: {ref?: string}}) | undefined;
-    const actionFlow = (callData?.action as (StepAction & {flow?: {ref?: string}}) | undefined)?.flow;
-    const flowRef: string | undefined = callData?.flow?.ref ?? actionFlow?.ref;
-    if (flowRef) {
-      flowNode.flow = {ref: flowRef};
+    const callData = stepData as
+      | (StepData & {
+          flow?: {mode?: 'fixed' | 'flow_type'; ref?: string; flowId?: string; flowType?: FlowType};
+        })
+      | undefined;
+    const actionFlow = (
+      callData?.action as
+        | (StepAction & {
+            flow?: {mode?: 'fixed' | 'flow_type'; ref?: string; flowId?: string; flowType?: FlowType};
+          })
+        | undefined
+    )?.flow;
+    const callFlow = callData?.flow ?? actionFlow;
+    if (callFlow?.mode === 'flow_type' && callFlow.flowType) {
+      flowNode.flow = {mode: 'flow_type', flowType: callFlow.flowType};
+    } else if (callFlow?.mode === 'fixed' && callFlow.flowId) {
+      flowNode.flow = {mode: 'fixed', flowId: callFlow.flowId};
+    } else if (callFlow?.ref) {
+      flowNode.flow = {ref: callFlow.ref};
     }
 
     const successNode = findNextNode(canvasNode, edges);

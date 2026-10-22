@@ -4,6 +4,8 @@
 package core
 
 import (
+	"strings"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -59,9 +61,21 @@ func (n *callNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, *t
 		n.logger.Error(ctx.Context, "Referenced flow ID is not set for CALL node")
 		return nil, &tidcommon.InternalServerError
 	}
+	targetFlowID := n.referencedFlow
+	targetFlowType := providers.FlowType("")
+	if flowType, dynamic := strings.CutPrefix(targetFlowID, common.FlowTypeReferencePrefix); dynamic {
+		targetFlowType = providers.FlowType(flowType)
+		targetFlowID = ctx.Application.FlowID(targetFlowType)
+		if targetFlowID == "" {
+			n.logger.Error(ctx.Context, "Application flow is not configured for CALL node",
+				log.String("flowType", flowType))
+			return nil, &tidcommon.InternalServerError
+		}
+	}
 	return &common.NodeResponse{
-		Status:           common.NodeStatusCall,
-		CallTargetFlowID: n.referencedFlow,
+		Status:             common.NodeStatusCall,
+		CallTargetFlowID:   targetFlowID,
+		CallTargetFlowType: targetFlowType,
 	}, nil
 }
 

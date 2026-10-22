@@ -50,6 +50,9 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameCredentialSetter: {},
 	ExecutorNameCredentialsAuth:  {},
+	ExecutorNameDeviceCode: {
+		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeSystem},
+	},
 	ExecutorNameCriteriaRevocation: {
 		DefaultMode:        ExecutorModeRevoke,
 		SupportedModes:     []string{ExecutorModeAdvanceCutoff, ExecutorModeRevoke},

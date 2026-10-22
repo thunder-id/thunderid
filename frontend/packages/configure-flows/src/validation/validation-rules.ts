@@ -225,10 +225,21 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
   // Node Validation Rules
   // ---------------------------------------------------------------------------
 
-  // CALL: referenced flow must be set
+  // CALL: validate the field selected by this node's target mode.
   {
-    match: (r) => (r as {type?: string}).type === StepTypes.Call,
+    match: (r) => r.type === StepTypes.Call && !(r.data as {flow?: {mode?: string}} | undefined)?.flow?.mode,
     fields: [{name: 'data.flow.ref', errorMessageKey: 'flows:core.validation.fields.call.flowRef'}],
+    generalMessageKey: 'flows:core.validation.fields.call.general',
+  },
+  {
+    match: (r) => r.type === StepTypes.Call && (r.data as {flow?: {mode?: string}} | undefined)?.flow?.mode === 'fixed',
+    fields: [{name: 'data.flow.flowId', errorMessageKey: 'flows:core.validation.fields.call.flowRef'}],
+    generalMessageKey: 'flows:core.validation.fields.call.general',
+  },
+  {
+    match: (r) =>
+      r.type === StepTypes.Call && (r.data as {flow?: {mode?: string}} | undefined)?.flow?.mode === 'flow_type',
+    fields: [{name: 'data.flow.flowType', errorMessageKey: 'flows:core.validation.fields.call.flowRef'}],
     generalMessageKey: 'flows:core.validation.fields.call.general',
   },
 

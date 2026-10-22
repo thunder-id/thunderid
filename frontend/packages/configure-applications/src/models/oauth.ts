@@ -17,6 +17,7 @@ export type OAuth2GrantType =
   | 'password'
   | 'implicit'
   | 'urn:openid:params:grant-type:ciba'
+  | 'urn:ietf:params:oauth:grant-type:device_code'
   | 'urn:ietf:params:oauth:grant-type:token-exchange'
   | 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
@@ -47,6 +48,8 @@ export const OAuth2GrantTypes = {
   IMPLICIT: 'implicit',
   /** Client-Initiated Backchannel Authentication (CIBA) - Decoupled authentication flow */
   CIBA: 'urn:openid:params:grant-type:ciba',
+  /** OAuth 2.0 Device Authorization Grant - Authorization for limited-input devices */
+  DEVICE_CODE: 'urn:ietf:params:oauth:grant-type:device_code',
   /** Token Exchange (RFC 8693) - Exchange a token for one scoped to a different resource/audience */
   TOKEN_EXCHANGE: 'urn:ietf:params:oauth:grant-type:token-exchange',
   /** JWT Bearer - Exchanges a signed JWT assertion for an access token */

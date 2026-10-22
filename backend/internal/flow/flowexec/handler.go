@@ -53,6 +53,7 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	flowID := sysutils.SanitizeString(flowR.FlowID)
 	executionID := sysutils.SanitizeString(flowR.ExecutionID)
 	flowTypeStr := sysutils.SanitizeString(flowR.FlowType)
+	systemFlow := sysutils.SanitizeString(flowR.SystemFlow)
 	verbose := flowR.Verbose
 	action := sysutils.SanitizeString(flowR.Action)
 	inputs := sysutils.SanitizeStringMap(flowR.Inputs)
@@ -63,6 +64,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	// Read the inbound SSO transport inputs and make them available to the flow service, which
 	// selects the handle once the flow is known.
 	ctx := r.Context()
+	if systemFlow != "" {
+		ctx = withSystemFlow(ctx, systemFlow)
+	}
 	ssoExchange := &session.Exchange{Request: r, Response: w}
 	if h.ssoTransport != nil {
 		ctx = session.WithInbound(ctx, h.ssoTransport.Read(ssoExchange))

@@ -279,11 +279,26 @@ type FlowRequest struct {
 	FlowID         string            `json:"flowId,omitempty"`
 	ApplicationID  string            `json:"applicationId"`
 	FlowType       string            `json:"flowType"`
+	SystemFlow     string            `json:"systemFlow,omitempty"`
 	Verbose        bool              `json:"verbose,omitempty"`
 	ExecutionID    string            `json:"executionId"`
 	ChallengeToken string            `json:"challengeToken,omitempty"`
 	Action         string            `json:"action"`
 	Inputs         map[string]string `json:"inputs"`
+}
+
+type systemFlowContextKey struct{}
+
+// SystemFlowDeviceGrant identifies the Device Grant system flow in flow execution requests.
+const SystemFlowDeviceGrant = "DEVICE_GRANT"
+
+func withSystemFlow(ctx context.Context, systemFlow string) context.Context {
+	return context.WithValue(ctx, systemFlowContextKey{}, systemFlow)
+}
+
+func systemFlowFromContext(ctx context.Context) string {
+	systemFlow, _ := ctx.Value(systemFlowContextKey{}).(string)
+	return systemFlow
 }
 
 // FlowInitContext represents the context for initiating a new flow with runtime data

@@ -17,6 +17,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -27,8 +28,8 @@ import (
 // flowCallbackRequest is the request body sent by the Gate UI to the flow callback endpoint.
 // Assertion carries the terminal flow outcome, either an authentication assertion or a signed error
 // assertion; the grant-type handler tells them apart from the assertion's own claims. Type identifies
-// which handler processes it. When absent it defaults to authorization_code, preserving existing
-// behavior for the auth code flow.
+// which handler processes it. When absent, Device Grant requests are recognized by authId; all other
+// requests retain the authorization_code default.
 type flowCallbackRequest struct {
 	AuthID    string `json:"authId"`
 	Assertion string `json:"assertion"`
@@ -37,22 +38,25 @@ type flowCallbackRequest struct {
 
 // callbackDispatcher dispatches flow assertion callbacks to the appropriate grant-type handler.
 type callbackDispatcher struct {
-	cfg          oauthconfig.Config
-	authZService oauth2authz.AuthorizeServiceInterface
-	cibaService  ciba.CIBAServiceInterface
-	logger       *log.Logger
+	cfg           oauthconfig.Config
+	authZService  oauth2authz.AuthorizeServiceInterface
+	cibaService   ciba.CIBAServiceInterface
+	deviceService deviceauth.DeviceAuthServiceInterface
+	logger        *log.Logger
 }
 
 func newCallbackDispatcher(
 	cfg oauthconfig.Config,
 	authZService oauth2authz.AuthorizeServiceInterface,
 	cibaService ciba.CIBAServiceInterface,
+	deviceService deviceauth.DeviceAuthServiceInterface,
 ) *callbackDispatcher {
 	return &callbackDispatcher{
-		cfg:          cfg,
-		authZService: authZService,
-		cibaService:  cibaService,
-		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CallbackHandler")),
+		cfg:           cfg,
+		authZService:  authZService,
+		cibaService:   cibaService,
+		deviceService: deviceService,
+		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CallbackHandler")),
 	}
 }
 
@@ -61,9 +65,10 @@ func Initialize(
 	mux *http.ServeMux,
 	authZService oauth2authz.AuthorizeServiceInterface,
 	cibaService ciba.CIBAServiceInterface,
+	deviceService deviceauth.DeviceAuthServiceInterface,
 	cfg oauthconfig.Config,
 ) {
-	d := newCallbackDispatcher(cfg, authZService, cibaService)
+	d := newCallbackDispatcher(cfg, authZService, cibaService, deviceService)
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -98,7 +103,21 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 
 	callbackType := req.Type
 	if callbackType == "" {
-		callbackType = string(providers.GrantTypeAuthorizationCode)
+		if d.deviceService != nil {
+			isDeviceRequest, lookupErr := d.deviceService.IsDeviceRequest(ctx, req.AuthID)
+			if lookupErr != nil {
+				d.logger.Error(ctx, "Failed to determine callback grant type", log.Error(lookupErr))
+				utils.WriteJSONError(ctx, w, oauth2const.ErrorServerError,
+					"Failed to process authentication callback", http.StatusInternalServerError, nil)
+				return
+			}
+			if isDeviceRequest {
+				callbackType = string(providers.GrantTypeDeviceCode)
+			}
+		}
+		if callbackType == "" {
+			callbackType = string(providers.GrantTypeAuthorizationCode)
+		}
 	}
 
 	switch callbackType {
@@ -127,6 +146,23 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 				statusCode = http.StatusInternalServerError
 			}
 			utils.WriteJSONError(ctx, w, cibaErr.Code, cibaErr.Message, statusCode, nil)
+			return
+		}
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, map[string]string{"status": "OK"})
+
+	case string(providers.GrantTypeDeviceCode):
+		if d.deviceService == nil {
+			utils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest,
+				"Unsupported callback type", http.StatusBadRequest, nil)
+			return
+		}
+		deviceErr := d.deviceService.HandleCallback(ctx, req.AuthID, req.Assertion)
+		if deviceErr != nil {
+			statusCode := http.StatusBadRequest
+			if deviceErr.Code == oauth2const.ErrorServerError {
+				statusCode = http.StatusInternalServerError
+			}
+			utils.WriteJSONError(ctx, w, deviceErr.Code, deviceErr.Message, statusCode, nil)
 			return
 		}
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, map[string]string{"status": "OK"})

@@ -2198,6 +2198,36 @@ describe('reactFlowTransformer', () => {
       expect(result.nodes[0].flow).toEqual({ref: 'referenced-flow-id'});
     });
 
+    it('should preserve an application flow type target from data.flow', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
+            flow: {mode: 'flow_type', flowType: 'REGISTRATION'},
+          } as unknown as StepData),
+        ],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].flow).toEqual({mode: 'flow_type', flowType: 'REGISTRATION'});
+    });
+
+    it('should preserve a fixed flow target from data.flow', () => {
+      const canvasData: ReactFlowCanvasData = {
+        nodes: [
+          createNode('call-1', StepTypes.Call, {x: 0, y: 0}, {
+            flow: {mode: 'fixed', flowId: 'referenced-flow-id'},
+          } as unknown as StepData),
+        ],
+        edges: [],
+      };
+
+      const result = transformReactFlow(canvasData);
+
+      expect(result.nodes[0].flow).toEqual({mode: 'fixed', flowId: 'referenced-flow-id'});
+    });
+
     it('should fall back to data.action.flow.ref when data.flow is absent', () => {
       const canvasData: ReactFlowCanvasData = {
         nodes: [

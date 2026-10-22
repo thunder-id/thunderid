@@ -13,10 +13,6 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('react-router', () => ({
-  useParams: () => ({flowId: 'current-flow-id'}),
-}));
-
 const mockUseGetFlows = vi.fn<() => unknown>();
 vi.mock('../../../../api/useGetFlows', () => ({
   default: (): unknown => mockUseGetFlows(),
@@ -43,10 +39,10 @@ describe('CallProperties', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the description and the flow dropdown label', () => {
+  it('renders the mode and fixed-flow selector by default', () => {
     mockUseGetFlows.mockReturnValue({data: {flows: []}, isLoading: false, error: null});
     render(<CallProperties resource={makeResource()} onChange={onChange} />);
-    expect(screen.getByText('Pick the flow to invoke when this node executes.')).toBeInTheDocument();
+    expect(screen.getByText('Mode')).toBeInTheDocument();
     expect(screen.getByText('Referenced flow')).toBeInTheDocument();
   });
 
@@ -56,22 +52,21 @@ describe('CallProperties', () => {
     expect(screen.getByTestId('call-properties-error')).toBeInTheDocument();
   });
 
-  it('disables the dropdown while flows are loading', () => {
+  it('disables the fixed-flow selector while flows are loading', () => {
     mockUseGetFlows.mockReturnValue({data: undefined, isLoading: true, error: null});
     render(<CallProperties resource={makeResource()} onChange={onChange} />);
     const select = screen.getByTestId('call-flow-ref-select');
-    const combobox = select.querySelector('[role="combobox"]');
-    expect(combobox).toHaveAttribute('aria-disabled', 'true');
+    expect(select.querySelector('[role="combobox"]')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('lists flows from the API and excludes the flow being edited and sign-out flows', () => {
+  it('lists available flows except sign-out flows', () => {
     mockUseGetFlows.mockReturnValue({
       data: {
         flows: [
           {id: 'flow-a', name: 'Flow A', flowType: 'AUTHENTICATION'},
           {id: 'flow-b', name: 'Flow B', flowType: 'REGISTRATION'},
           {id: 'flow-so', name: 'Sign Out', flowType: 'SIGNOUT'},
-          {id: 'current-flow-id', name: 'Self', flowType: 'AUTHENTICATION'},
+          {id: 'current-flow-id', name: 'Current Flow', flowType: 'AUTHENTICATION'},
         ],
       },
       isLoading: false,
@@ -81,12 +76,11 @@ describe('CallProperties', () => {
     fireEvent.mouseDown(screen.getByTestId('call-flow-ref-select').querySelector('[role="combobox"]')!);
     expect(screen.getByText('Flow A (AUTHENTICATION)')).toBeInTheDocument();
     expect(screen.getByText('Flow B (REGISTRATION)')).toBeInTheDocument();
-    expect(screen.queryByText('Self (AUTHENTICATION)')).not.toBeInTheDocument();
-    // Sign-out flows are not valid call targets and must not appear in the picker.
+    expect(screen.getByText('Current Flow (AUTHENTICATION)')).toBeInTheDocument();
     expect(screen.queryByText('Sign Out (SIGNOUT)')).not.toBeInTheDocument();
   });
 
-  it('writes the chosen flow id back to data.flow', () => {
+  it('writes a selected fixed flow id to the resource', () => {
     mockUseGetFlows.mockReturnValue({
       data: {flows: [{id: 'flow-a', name: 'Flow A', flowType: 'AUTHENTICATION'}]},
       isLoading: false,
@@ -96,6 +90,45 @@ describe('CallProperties', () => {
     render(<CallProperties resource={resource} onChange={onChange} />);
     fireEvent.mouseDown(screen.getByTestId('call-flow-ref-select').querySelector('[role="combobox"]')!);
     fireEvent.click(screen.getByText('Flow A (AUTHENTICATION)'));
-    expect(onChange).toHaveBeenCalledWith('data.flow', {ref: 'flow-a'}, resource);
+    expect(onChange).toHaveBeenCalledWith('data.flow', {mode: 'fixed', flowId: 'flow-a'}, resource);
+  });
+
+  it('allows selecting an application flow type outside system flows and excludes sign-out', () => {
+    mockUseGetFlows.mockReturnValue({data: {flows: []}, isLoading: false, error: null});
+    const resource = makeResource({
+      data: {flow: {mode: 'flow_type', flowType: 'AUTHENTICATION'}},
+    } as Partial<Resource>);
+    render(<CallProperties resource={resource} onChange={onChange} />);
+    const flowType = screen.getByTestId('call-flow-type-select');
+    fireEvent.mouseDown(flowType.querySelector('[role="combobox"]')!);
+    expect(screen.getByRole('option', {name: 'AUTHENTICATION'})).toBeInTheDocument();
+    expect(screen.getByRole('option', {name: 'REGISTRATION'})).toBeInTheDocument();
+    expect(screen.getByRole('option', {name: 'RECOVERY'})).toBeInTheDocument();
+    expect(screen.queryByRole('option', {name: 'SIGNOUT'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', {name: 'REGISTRATION'}));
+    expect(onChange).toHaveBeenCalledWith('data.flow', {mode: 'flow_type', flowType: 'REGISTRATION'}, resource);
+    expect(screen.queryByTestId('call-flow-ref-select')).not.toBeInTheDocument();
+  });
+
+  it('switches between fixed flow and flow type modes', () => {
+    mockUseGetFlows.mockReturnValue({data: {flows: []}, isLoading: false, error: null});
+    const resource = makeResource({
+      data: {flow: {mode: 'flow_type', flowType: 'AUTHENTICATION'}},
+    } as Partial<Resource>);
+    const {rerender} = render(<CallProperties resource={resource} onChange={onChange} />);
+    const select = screen.getByTestId('call-flow-source-select');
+    fireEvent.mouseDown(select.querySelector('[role="combobox"]')!);
+    fireEvent.click(screen.getByRole('option', {name: 'Select a flow'}));
+    expect(onChange).toHaveBeenCalledWith('data.flow', {mode: 'fixed'}, resource);
+
+    const fixedResource = makeResource({data: {flow: {mode: 'fixed'}}} as Partial<Resource>);
+    rerender(<CallProperties resource={fixedResource} onChange={onChange} />);
+    fireEvent.mouseDown(screen.getByTestId('call-flow-source-select').querySelector('[role="combobox"]')!);
+    fireEvent.click(screen.getByRole('option', {name: 'Select a flow type'}));
+    expect(onChange).toHaveBeenLastCalledWith(
+      'data.flow',
+      {mode: 'flow_type', flowType: 'AUTHENTICATION'},
+      fixedResource,
+    );
   });
 });

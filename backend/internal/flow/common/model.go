@@ -68,8 +68,9 @@ type NodeResponse struct {
 	FieldErrors       []FieldError            `json:"fieldErrors,omitempty"`
 	AuthUser          providers.AuthUser      `json:"-"`
 	// EngineData carries executor output the engine consumes internally; never serialized to the client.
-	EngineData       map[string]string `json:"-"`
-	CallTargetFlowID string            `json:"callTargetFlowId,omitempty"`
+	EngineData         map[string]string  `json:"-"`
+	CallTargetFlowID   string             `json:"callTargetFlowId,omitempty"`
+	CallTargetFlowType providers.FlowType `json:"-"`
 }
 
 // InterceptorResponse represents the response from an interceptor execution

@@ -17,6 +17,7 @@ vi.mock('@thunderid/react', () => ({
   ThunderIDProvider: ({
     children,
     baseUrl,
+    applicationId,
     discovery,
     preferences,
     sendCookiesInRequests,
@@ -24,12 +25,13 @@ vi.mock('@thunderid/react', () => ({
   }: {
     children: React.ReactNode;
     baseUrl?: string;
+    applicationId?: string;
     discovery?: Record<string, unknown>;
     preferences?: Record<string, unknown>;
     sendCookiesInRequests?: boolean;
     signInOptions?: Record<string, string>;
   }) => {
-    capturedProviderProps = {baseUrl, discovery, preferences, sendCookiesInRequests, signInOptions};
+    capturedProviderProps = {baseUrl, applicationId, discovery, preferences, sendCookiesInRequests, signInOptions};
     return <div data-testid="thunderid-provider">{children}</div>;
   },
 }));
@@ -50,6 +52,7 @@ describe('AppWithConfig', () => {
     capturedProviderProps = {};
     Object.keys(mockConfig).forEach((key) => delete mockConfig[key]);
     import.meta.env.VITE_THUNDER_BASE_URL = 'https://env-fallback-url.example.com';
+    window.history.replaceState({}, '', '/');
   });
 
   it('renders without crashing', () => {
@@ -68,6 +71,20 @@ describe('AppWithConfig', () => {
     mockGetServerUrl.mockReturnValue('https://custom-server.com');
     render(<AppWithConfig />);
     expect(capturedProviderProps.baseUrl).toBe('https://custom-server.com');
+  });
+
+  it('passes the verification URI application ID to the SDK for branding', () => {
+    window.history.replaceState({}, '', '/device?applicationId=application-1');
+    render(<AppWithConfig />);
+    expect(capturedProviderProps.applicationId).toBe('application-1');
+  });
+
+  it('retains branding when the verification URI parameters are removed', () => {
+    window.history.replaceState({}, '', '/device?applicationId=application-1&user_code=BCDF-GHJK');
+    const {rerender} = render(<AppWithConfig />);
+    window.history.replaceState({}, '', '/device');
+    rerender(<AppWithConfig />);
+    expect(capturedProviderProps.applicationId).toBe('application-1');
   });
 
   it('falls back to VITE_THUNDER_BASE_URL when getServerUrl returns undefined', () => {

@@ -1914,6 +1914,141 @@ nodes:
       y: 637
 ---
 resource_type: flow
+id: 01900000-0000-7000-8000-000000000090
+name: Default Device Grant Flow
+handle: default-device-grant-flow
+flowType: SYSTEM
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_user_code
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 50
+      y: 400
+- id: verify_user_code
+  type: TASK_EXECUTION
+  executor:
+    name: DeviceCodeExecutor
+  onSuccess: call_application_flow
+  onIncomplete: prompt_user_code
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 800
+      y: 400
+- id: prompt_user_code
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: device_code_title
+      label: Enter the code shown on your device
+      variant: HEADING_1
+    - type: BLOCK
+      id: device_code_form
+      components:
+      - type: TEXT_INPUT
+        id: device_code_input
+        ref: user_code
+        label: Verification code
+        placeholder: ABCD-EFGH
+        required: true
+      - type: ACTION
+        id: device_code_submit
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: device_code_input
+      identifier: user_code
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: device_code_submit
+      nextNode: verify_user_code
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 300
+      y: 200
+- id: call_application_flow
+  type: CALL
+  flow:
+    mode: flow_type
+    flowType: AUTHENTICATION
+  onSuccess: device_authorization_success
+  onFailure: device_authorization_failure
+  layout:
+    size:
+      width: 260
+      height: 120
+    position:
+      x: 1050
+      y: 399
+- id: device_authorization_success
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: device_authorization_success_title
+      label: '{{ t(device:verification.authorized.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - type: TEXT
+      id: device_authorization_success_message
+      label: '{{ t(device:verification.authorized.message) }}'
+      variant: HEADING_6
+  message: Device authorized
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 358
+    position:
+      x: 1500
+      y: 100
+- id: device_authorization_failure
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: device_authorization_failure_title
+      label: '{{ t(device:verification.failed.title) }}'
+      variant: HEADING_1
+      color: ERROR
+    - type: TEXT
+      id: device_authorization_failure_message
+      label: '{{ t(device:verification.failed.message) }}'
+      variant: HEADING_6
+  message: Device authorization failed
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 358
+    position:
+      x: 1500
+      y: 700
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2200
+      y: 450
+---
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000077
 name: Default User Deletion Flow
 handle: default-user-deletion-flow
@@ -6226,6 +6361,11 @@ resource_type: translation
 id: 01900000-0000-7000-8000-000000000091
 language: en-US
 translations:
+  device:
+    verification.authorized.title: Device authorized
+    verification.authorized.message: You can return to your device.
+    verification.failed.title: Device authorization failed
+    verification.failed.message: Return to your device and start again.
   onboarding:
     forms.email.title: User Email
     forms.email.fields.email.label: Email

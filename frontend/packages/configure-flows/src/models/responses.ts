@@ -251,10 +251,14 @@ export interface FlowNode {
     onSkip?: string;
   };
   /**
-   * Cross-flow reference for CALL nodes. Carries the ID of the flow to invoke.
+   * Cross-flow reference for CALL nodes. Identifies either a fixed flow or an
+   * application flow type to resolve when the node executes.
    */
   flow?: {
-    ref: string;
+    mode?: 'fixed' | 'flow_type';
+    ref?: string;
+    flowId?: string;
+    flowType?: FlowType;
   };
 }
 

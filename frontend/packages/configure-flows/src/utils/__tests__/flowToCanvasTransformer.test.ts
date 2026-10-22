@@ -838,6 +838,24 @@ describe('flowToCanvasTransformer', () => {
         });
       });
 
+      it('should preserve an application flow type target in the canvas data', () => {
+        const flowData = createBaseFlowData([
+          {
+            id: 'call-1',
+            type: 'CALL',
+            flow: {mode: 'flow_type', flowType: 'REGISTRATION'},
+            layout: {position: {x: 0, y: 0}, size: {width: 260, height: 120}},
+          },
+        ]);
+
+        const result = transformFlowToCanvas(flowData);
+
+        expect(result.nodes[0].data).toMatchObject({
+          flow: {mode: 'flow_type', flowType: 'REGISTRATION'},
+          action: {type: 'CALL', flow: {mode: 'flow_type', flowType: 'REGISTRATION'}},
+        });
+      });
+
       it('should generate the onSuccess edge from a CALL node using the _NEXT source handle', () => {
         const flowData = createBaseFlowData([
           {id: 'call-1', type: 'CALL', flow: {ref: 'ref'}, onSuccess: 'next-1'},

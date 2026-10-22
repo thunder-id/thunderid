@@ -821,10 +821,10 @@ func (v *flowValidator) validateValidationRules(
 
 // validateCallNode validates the format of a CALL node.
 func (v *flowValidator) validateCallNode(node *providers.NodeDefinition) *tidcommon.ServiceError {
-	if node.Flow == nil || node.Flow.Ref == "" {
+	if node.Flow == nil || !node.Flow.Valid() {
 		return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.call_node_missing_flow_ref_description",
-			DefaultValue: "CALL node '{{param(nodeID)}}' must have a flow reference with a non-empty ref",
+			DefaultValue: "CALL node '{{param(nodeID)}}' must have a flow reference or valid dynamic target",
 			Params:       map[string]string{"nodeID": node.ID},
 		})
 	}

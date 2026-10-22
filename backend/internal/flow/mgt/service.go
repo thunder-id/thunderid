@@ -280,10 +280,17 @@ func (s *flowMgtService) GetReachableCallTargets(ctx context.Context, flowID str
 
 		for i := range flow.Nodes {
 			node := &flow.Nodes[i]
-			if node.Type != string(common.NodeTypeCall) || node.Flow == nil || node.Flow.Ref == "" {
+			if node.Type != string(common.NodeTypeCall) || node.Flow == nil ||
+				node.Flow.Mode == providers.FlowReferenceModeFlowType {
 				continue
 			}
-			targetID := node.Flow.Ref
+			targetID := node.Flow.FlowID
+			if targetID == "" {
+				targetID = node.Flow.Ref
+			}
+			if targetID == "" {
+				continue
+			}
 			if _, seen := visited[targetID]; seen {
 				continue
 			}

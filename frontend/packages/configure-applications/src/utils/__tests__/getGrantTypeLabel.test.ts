@@ -13,6 +13,10 @@ describe('getGrantTypeLabel', () => {
     );
   });
 
+  it('returns the friendly Device Authorization Grant label for the device-code URN', () => {
+    expect(getGrantTypeLabel('urn:ietf:params:oauth:grant-type:device_code', t)).toBe('Device Authorization Grant');
+  });
+
   it('returns the raw value unchanged for authorization_code', () => {
     expect(getGrantTypeLabel('authorization_code', t)).toBe('authorization_code');
   });

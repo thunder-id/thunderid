@@ -37,7 +37,7 @@ func Initialize(
 	flowStore := newFlowStore(storeProvider)
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
-		flowProvider, graphBuilder)
+		flowProvider, actorProvider, graphBuilder)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
 		actorProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
 		graphBuilder, jwtService, serverConfigSvc, cfg)
