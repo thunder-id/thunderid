@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -121,9 +122,13 @@ func (s *OUEndpointOrderingTestSuite) post(ouID string) (*httptest.ResponseRecor
 	discoverySvc.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
 		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://localhost:8090"})
 
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
+
 	mux := http.NewServeMux()
 	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil),
-		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil, nil), s.authn, nil,
+		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil, nil, governance), s.authn, nil,
 		discoverySvc, nil, s.ouService, true, engineconfig.ClientAssertionConfig{}, 0)
 
 	form := url.Values{}

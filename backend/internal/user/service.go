@@ -423,6 +423,7 @@ func (us *userService) GetUser(
 	}
 	access := us.governance.ReadEntityAccess(ctx, *e)
 	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 
 	if includeDisplay {
 		displayAttrPaths := entitytype.ResolveDisplayAttributePaths(
@@ -619,6 +620,7 @@ func (us *userService) UpdateUser(
 	// The status is derived from the updated entity, never taken from the request.
 	access := us.governance.ReadEntityAccess(ctx, *updated)
 	user.Status = &access.Status
+	user.LastLoginAt = access.LastLoginAt
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -704,6 +706,7 @@ func (us *userService) UpdateUserAttributes(
 
 	access := us.governance.ReadEntityAccess(ctx, *existingEntity)
 	existingUser.Status = &access.Status
+	existingUser.LastLoginAt = access.LastLoginAt
 
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
@@ -1133,12 +1136,14 @@ func (us *userService) validateOrganizationUnitForUserType(
 	return nil
 }
 
-// usersWithAccess converts entities to users with the status governance derived for each, in one read.
+// usersWithAccess converts entities to users with the access facts governance derived for each, in one
+// read.
 func (us *userService) usersWithAccess(ctx context.Context, entities []providers.Entity) []providers.User {
 	reads := us.governance.ReadAccess(ctx, entities)
 	users := entitiesToUsers(entities)
 	for i := range users {
 		users[i].Status = &reads[i].Status
+		users[i].LastLoginAt = reads[i].LastLoginAt
 	}
 	return users
 }

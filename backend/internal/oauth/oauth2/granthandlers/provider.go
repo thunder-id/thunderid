@@ -47,13 +47,14 @@ func newGrantHandlerProvider(
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
 	enforcementService revocation.EnforcementServiceInterface,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {
 	allowedGrantTypes := cfg.OAuth.AllowedGrantTypes
 	grantProvider := &GrantHandlerProvider{}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeClientCredentials) {
 		grantProvider.clientCredentialsGrantHandler = newClientCredentialsGrantHandler(
-			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService)
+			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService, governance)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		grantProvider.authorizationCodeGrantHandler = newAuthorizationCodeGrantHandler(
@@ -62,7 +63,7 @@ func newGrantHandlerProvider(
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, governance, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(

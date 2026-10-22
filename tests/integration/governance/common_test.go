@@ -304,6 +304,19 @@ func getManagement(t *testing.T, path string) []byte {
 	return body
 }
 
+// readLastLoginAt returns the lastLoginAt a management read of a user or agent reports, empty when
+// absent.
+func readLastLoginAt(t *testing.T, collection, entityID string) string {
+	t.Helper()
+
+	body := getManagement(t, "/"+collection+"/"+entityID)
+	var read struct {
+		LastLoginAt string `json:"lastLoginAt"`
+	}
+	require.NoError(t, json.Unmarshal(body, &read), "unreadable %s response: %s", collection, string(body))
+	return read.LastLoginAt
+}
+
 // statusReport is the effective access status a management read carries.
 type statusReport testutils.AccessStatus
 
@@ -1039,6 +1052,26 @@ func newShippedFlowApp(t *testing.T, users *userFixture, name string) string {
 		}
 	})
 	return appID
+}
+
+// cleanupApplication deletes the application when t ends.
+func cleanupApplication(t *testing.T, appID string) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			t.Logf("teardown: failed to delete application %s: %v", appID, err)
+		}
+	})
+}
+
+// cleanupFlow deletes the flow when t ends.
+func cleanupFlow(t *testing.T, flowID string) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			t.Logf("teardown: failed to delete flow %s: %v", flowID, err)
+		}
+	})
 }
 
 // awaitDelivered polls take until it hands back a message, and fails the test if none arrives within

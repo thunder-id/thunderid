@@ -73,6 +73,8 @@ type AgentCompleteResponse struct {
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	// Status is the effective access status and what produced it, set on update responses.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
+	// LastLoginAt is when this agent was last granted access, set on update responses.
+	LastLoginAt string `json:"lastLoginAt,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -96,6 +98,9 @@ type AgentGetResponse struct {
 	// Status is the effective access status and what produced it, derived at read time: SUSPENDED
 	// beats LOCKED beats ACTIVE. Read-only, and excluded from the YAML export as runtime state.
 	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`
+	// LastLoginAt is when this agent was last granted access. Recorded by the runtime, never by a
+	// profile write, and absent until a sign-in has been recorded.
+	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -116,6 +121,9 @@ type BasicAgentResponse struct {
 	IsReadOnly  bool            `json:"isReadOnly"`
 	// Status is the effective access status and what produced it, derived at read time.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
+	// LastLoginAt is when this agent was last granted access. Absent until a sign-in has been
+	// recorded.
+	LastLoginAt string `json:"lastLoginAt,omitempty"`
 }
 
 // AgentListResponse is the paginated list response.

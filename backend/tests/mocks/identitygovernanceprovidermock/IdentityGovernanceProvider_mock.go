@@ -196,6 +196,65 @@ func (_c *IdentityGovernanceProviderMock_EvaluateAccess_Call) RunAndReturn(run f
 	return _c
 }
 
+// RecordLogin provides a mock function for the type IdentityGovernanceProviderMock
+func (_mock *IdentityGovernanceProviderMock) RecordLogin(ctx context.Context, entityID string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordLogin")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// IdentityGovernanceProviderMock_RecordLogin_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordLogin'
+type IdentityGovernanceProviderMock_RecordLogin_Call struct {
+	*mock.Call
+}
+
+// RecordLogin is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *IdentityGovernanceProviderMock_Expecter) RecordLogin(ctx any, entityID any) *IdentityGovernanceProviderMock_RecordLogin_Call {
+	return &IdentityGovernanceProviderMock_RecordLogin_Call{Call: _e.mock.On("RecordLogin", ctx, entityID)}
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordLogin_Call) Run(run func(ctx context.Context, entityID string)) *IdentityGovernanceProviderMock_RecordLogin_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordLogin_Call) Return(serviceError *common.ServiceError) *IdentityGovernanceProviderMock_RecordLogin_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *IdentityGovernanceProviderMock_RecordLogin_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *IdentityGovernanceProviderMock_RecordLogin_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Suspend provides a mock function for the type IdentityGovernanceProviderMock
 func (_mock *IdentityGovernanceProviderMock) Suspend(ctx context.Context, entityID string, operatorNote string) *common.ServiceError {
 	ret := _mock.Called(ctx, entityID, operatorNote)

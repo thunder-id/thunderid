@@ -70,6 +70,16 @@ func (s *DefaultIdentityGovernanceProviderTestSuite) TestAccessCheckFailuresPass
 	s.Equal(&tidcommon.InternalServerError, err)
 }
 
+func (s *DefaultIdentityGovernanceProviderTestSuite) TestRecordLoginForwardsOnARuntimeContext() {
+	s.svc.EXPECT().RecordLogin(mock.MatchedBy(security.IsRuntimeContext), "e1").Return(nil).Once()
+	s.Nil(s.provider.RecordLogin(s.ctx, "e1"))
+}
+
+func (s *DefaultIdentityGovernanceProviderTestSuite) TestRecordLoginPassesAFailureThrough() {
+	s.svc.EXPECT().RecordLogin(mock.Anything, "e1").Return(&tidcommon.InternalServerError).Once()
+	s.Equal(&tidcommon.InternalServerError, s.provider.RecordLogin(s.ctx, "e1"))
+}
+
 // Lifecycle operations are not elevated, since the service checks the caller's boundary.
 func (s *DefaultIdentityGovernanceProviderTestSuite) TestLifecycleOperationsKeepTheCallersContext() {
 	notRuntime := mock.MatchedBy(func(ctx context.Context) bool { return !security.IsRuntimeContext(ctx) })

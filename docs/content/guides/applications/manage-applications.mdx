@@ -119,6 +119,15 @@ To update an application:
 
 Changes take effect immediately for new authentication requests. Active sessions and issued access tokens are not affected until they expire. Rotating the client secret is the exception: it also rejects refresh tokens issued before the rotation.
 
+## Suspend an Application
+
+Suspend an application to stop it from authenticating without deleting it. Suspending revokes the tokens issued to it or through its client ID, including user tokens. Sign-ins through the application are refused until it is unsuspended.
+
+1. Open the application from the **Applications** list.
+2. Click **Actions** and select **Suspend**, then confirm.
+
+To lift the suspension, select **Unsuspend** from the same menu. Revoked tokens are not restored. Applications are never locked automatically. See [Account Locks and Suspension](../../account-locks-and-suspension).
+
 ## Delete an Application
 
 To delete an application:

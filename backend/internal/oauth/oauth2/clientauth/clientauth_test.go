@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +27,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
@@ -31,8 +35,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/jtimock"
@@ -65,7 +72,7 @@ func TestClientAuthTestSuite(t *testing.T) {
 }
 
 func (suite *ClientAuthTestSuite) actorProvider() providers.ActorProvider {
-	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 }
 
 func (suite *ClientAuthTestSuite) SetupTest() {
@@ -385,6 +392,81 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_ClientNotFound() {
 	assert.NotNil(suite.T(), authErr)
 	assert.Nil(suite.T(), clientInfo)
 	assert.Equal(suite.T(), errInvalidClientCredentials, authErr)
+}
+
+// A client that does not resolve is invalid_client either way; only a server fault logs an error,
+// since a held or unknown client is the caller's doing.
+func (suite *ClientAuthTestSuite) TestAuthenticate_UnresolvedClientLogsByErrorType() {
+	cases := []struct {
+		name      string
+		setup     func() providers.ActorProvider
+		wantLog   string
+		unwantLog string
+	}{
+		{
+			name: "held client",
+			setup: func() providers.ActorProvider {
+				suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
+					Return(&providers.OAuthClient{ID: "app-1", ClientID: testClientID}, nil).Once()
+				governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+				governance.EXPECT().EvaluateAccess(mock.Anything, "app-1", providers.AccessPlaneApplication,
+					providers.AuthenticationMethod("")).Return(providers.AccessDecision{}, nil).Once()
+				return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(),
+					nil, nil, governance)
+			},
+			wantLog:   "Refusing client authentication",
+			unwantLog: "Failed to retrieve OAuth client",
+		},
+		{
+			name: "lookup fault",
+			setup: func() providers.ActorProvider {
+				suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
+					Return(nil, errors.New("store down")).Once()
+				return suite.actorProvider()
+			},
+			wantLog:   "Failed to retrieve OAuth client",
+			unwantLog: "Refusing client authentication",
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			formData := url.Values{}
+			formData.Set("client_id", testClientID)
+			formData.Set("client_secret", testClientSecret)
+			req, _ := http.NewRequest("POST", "/test", strings.NewReader(formData.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			_ = req.ParseForm()
+			actors := tc.setup()
+
+			var authErr *authError
+			logs := captureClientAuthLogs(suite.T(), func() {
+				_, authErr = authenticate(req.Context(), req, actors, suite.mockAuthnProvider, suite.mockJwtService,
+					suite.mockJtiStore, testIssuer, testAssertionCfg, testJWTLeeway)
+			})
+
+			suite.Equal(errInvalidClientCredentials, authErr)
+			suite.Contains(logs, tc.wantLog)
+			suite.NotContains(logs, tc.unwantLog)
+		})
+	}
+}
+
+// captureClientAuthLogs runs fn with the logger writing debug records to a file and returns them.
+func captureClientAuthLogs(t *testing.T, fn func()) string {
+	dir := t.TempDir()
+	logger := log.GetLogger()
+	require.NoError(t, logger.Configure(log.OutputOptions{
+		FileEnabled: true, File: rollingfile.Config{Path: filepath.Join(dir, "clientauth.log")}}))
+	require.NoError(t, logger.SetLevel("debug"))
+	defer func() {
+		require.NoError(t, logger.SetLevel("info"))
+		require.NoError(t, logger.Configure(log.OutputOptions{ConsoleEnabled: true}))
+	}()
+	fn()
+	out, err := fs.ReadFile(os.DirFS(dir), "clientauth.log")
+	require.NoError(t, err)
+	return string(out)
 }
 
 func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidClientSecret() {

@@ -609,8 +609,9 @@ func (ts *GatewayVersionsTestSuite) field(value any, name string) []any {
 	return values
 }
 
-// accessStateKeys are the fields of a read the runtime keeps and a version never holds: the status.
-var accessStateKeys = []string{"status"}
+// accessStateKeys are the fields of a read the runtime keeps and a version never holds: the access
+// status and the last login.
+var accessStateKeys = []string{"status", "lastLoginAt"}
 
 // withoutAccessState leaves the access state out of a read.
 func withoutAccessState(read document) document {

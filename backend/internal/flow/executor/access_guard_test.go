@@ -35,6 +35,7 @@ func admitAllAccess(t interface {
 		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
 	governance.EXPECT().AdmitSignIn(mock.Anything, mock.Anything).
 		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
+	governance.EXPECT().RecordLogin(mock.Anything, mock.Anything).Return(nil).Maybe()
 	return governance
 }
 
@@ -93,6 +94,9 @@ func (s *AccessGuardTestSuite) TestAccessGuardReportsAFaultWhenTheAuthorityFails
 	governance.EXPECT().EvaluateAccess(mock.Anything, "u1", providers.AccessPlaneAuthentication,
 		providers.AuthenticationMethodCredential).
 		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
+	governance.EXPECT().EvaluateAccess(mock.Anything, "u1", providers.AccessPlaneDispatch,
+		providers.AuthenticationMethodOTP).
+		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
 	governance.EXPECT().AdmitSignIn(mock.Anything, "u1").
 		Return(providers.AccessDecision{}, &tidcommon.InternalServerError).Once()
 	guard := newAccessGuard(governance)
@@ -105,6 +109,12 @@ func (s *AccessGuardTestSuite) TestAccessGuardReportsAFaultWhenTheAuthorityFails
 	svcErr, err = guard.refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())
 	s.Error(err)
 	s.Nil(svcErr)
+
+	withheld, stated, err := guard.heldAtDispatch(context.Background(), "u1",
+		providers.AuthenticationMethodOTP, providers.FlowTypeAuthentication, log.GetLogger())
+	s.Error(err)
+	s.False(withheld)
+	s.Nil(stated)
 }
 
 func (s *AccessGuardTestSuite) TestAccessGuardPassesThePlaneAndMethodThrough() {
@@ -182,11 +192,57 @@ func (s *AccessGuardTestSuite) TestAccessGuardWithNoSubjectOrProviderChecksNothi
 	s.Nil(decided(s.T())(guard.refuseIfHeld(context.Background(), "", providers.AccessPlaneSession, "",
 		log.GetLogger())))
 	s.Nil(decided(s.T())(guard.refuseSignInIfHeld(context.Background(), "", log.GetLogger())))
+	guard.recordLogin(context.Background(), "")
 	governance.AssertNotCalled(s.T(), "EvaluateAccess", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	governance.AssertNotCalled(s.T(), "AdmitSignIn", mock.Anything, mock.Anything)
+	governance.AssertNotCalled(s.T(), "RecordLogin", mock.Anything, mock.Anything)
 
 	noGovernance := newAccessGuard(nil)
 	s.Nil(decided(s.T())(noGovernance.refuseIfHeld(context.Background(), "u1", providers.AccessPlaneSession, "",
 		log.GetLogger())))
 	s.Nil(decided(s.T())(noGovernance.refuseSignInIfHeld(context.Background(), "u1", log.GetLogger())))
+	noGovernance.recordLogin(context.Background(), "u1")
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardRecordsTheLogin() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().RecordLogin(mock.Anything, "u1").Return(nil).Once()
+
+	newAccessGuard(governance).recordLogin(context.Background(), "u1")
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardChecksNonAuthenticationDispatchAtTheRecoveryPlane() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeRegistration} {
+		governance := expectAccess(s.T(), "u1", providers.AccessPlaneRecovery, providers.AuthenticationMethodOTP,
+			providers.AccessDecision{Admitted: true}, nil)
+
+		withheld, stated, err := newAccessGuard(governance).heldAtDispatch(context.Background(), "u1",
+			providers.AuthenticationMethodOTP, flowType, log.GetLogger())
+		s.Require().NoError(err)
+		s.False(withheld, string(flowType))
+		s.Nil(stated)
+	}
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardWithholdsADispatchWithTheStatedHold() {
+	guard := newAccessGuard(expectAccess(s.T(), "u1", providers.AccessPlaneDispatch,
+		providers.AuthenticationMethodOTP, providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}, nil))
+
+	withheld, stated, err := guard.heldAtDispatch(context.Background(), "u1",
+		providers.AuthenticationMethodOTP, providers.FlowTypeAuthentication, log.GetLogger())
+	s.Require().NoError(err)
+	s.True(withheld)
+	s.Require().NotNil(stated)
+	s.Equal(ErrAccountLocked.Code, stated.Code)
+}
+
+func (s *AccessGuardTestSuite) TestAccessGuardWithholdsADispatchWithoutAStatedHold() {
+	guard := newAccessGuard(expectAccess(s.T(), "u1", providers.AccessPlaneDispatch,
+		providers.AuthenticationMethodOTP, providers.AccessDecision{}, nil))
+
+	withheld, stated, err := guard.heldAtDispatch(context.Background(), "u1",
+		providers.AuthenticationMethodOTP, providers.FlowTypeAuthentication, log.GetLogger())
+	s.Require().NoError(err)
+	s.True(withheld)
+	s.Nil(stated)
 }

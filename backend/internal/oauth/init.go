@@ -60,6 +60,7 @@ func Initialize(
 	ssoSession session.Service,
 	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
+	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -102,7 +103,7 @@ func Initialize(
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, enforcementService, cfg)
+		cibaService, revocationSvc, revocationSvc, enforcementService, governance, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, cfg)

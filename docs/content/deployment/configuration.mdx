@@ -874,6 +874,8 @@ Treat `attribute_cache.encryption.enabled` as a set-once value. It is applied on
 If you are upgrading from an earlier release, remove the `email.smtp` block from `deployment.yaml`, or `configuration.email.smtp` from your Helm values. The server does not start while `deployment.yaml` has an `email` block, and the Helm chart does not render while `configuration.email.smtp.host` is set. To move those settings to an email provider, see [Migrate From `email.smtp`](../../guides/notifications/email-providers#migrate-from-emailsmtp).
 :::
 
+Server-sent email that is not part of a flow, such as the automatic account-lock notice, goes through the default email sender. See [Notification Defaults](#notification-defaults).
+
 ## Notification Configuration
 
 Controls notification delivery behaviour, including OTP generation parameters.
@@ -1073,7 +1075,7 @@ Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
-The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts.
+The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts. See [Account Locks and Suspension](../../guides/account-locks-and-suspension#customize-the-lifecycle-flows).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
@@ -1114,9 +1116,41 @@ Configure flow defaults in either of these ways:
 Set `defaultHandle` only for flow types that have a corresponding flow in your deployment. The handle is validated when the configuration is written. An unknown handle or a handle belonging to a different flow type is rejected with `SCF-1003`. For optional types (registration, recovery, user-onboarding, sign-out), omit `defaultHandle` to leave the server-level default empty.
 :::
 
+## Notification Defaults
+
+Names the email provider for server-sent email that no flow node sends, such as the automatic account-lock notice. Flow email nodes still select their own provider. The setting is stored in the server-config `notification` section, not in `deployment.yaml`, and is separate from the `notification.otp` settings in [Notification Configuration](#notification-configuration).
+
+| Field | Description |
+|-------|-------------|
+| `defaultEmailSenderId` | The ID of an email provider (an email notification sender). It is resolved each time an email is sent, so an unknown sender, or one that does not send email, fails the delivery rather than the update. An empty value clears it. |
+
+The section has no other field. A runtime update with an unknown field is rejected with `SCF-1003`, and a declarative document with one stops the server at startup.
+
+<ProductName /> ships no default sender. Until one is set, server-sent email is not delivered and the server logs a warning, but the action that triggered it, such as a lock, is unaffected. The value is read each time an email is sent, so a runtime update applies without a restart; a declarative change applies after a restart. To create a provider and find its ID, see [Configure an Email Provider](../../guides/notifications/email-providers).
+
+Set it in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/notification.yaml`, then restart:
+  ```yaml
+  name: notification
+  value:
+    defaultEmailSenderId: "<email-sender-id>"
+  ```
+- **Runtime** - send the new value to `PUT /server-config/notification`; it is applied immediately:
+  ```http
+  PUT /server-config/notification
+  Content-Type: application/json
+
+  { "defaultEmailSenderId": "<email-sender-id>" }
+  ```
+
+:::note
+A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+:::
+
 ## Account Access
 
-Controls the automatic account lock: how many failed sign-ins lock a user or an agent, and for how long. The policy is stored in the server-config `accountAccess` section. Only the `user` and `agent` categories can be configured; applications are never locked automatically, and an `application` block is rejected.
+Controls the automatic account lock: how many failed sign-ins lock a user or an agent, for how long, and whether the account holder is emailed. It also controls whether the last successful sign-in time is recorded. An administrative suspension is not configured here; see [Account Locks and Suspension](../../guides/account-locks-and-suspension). The policy is stored in the server-config `accountAccess` section. Only the `user` and `agent` categories can be configured; applications are never locked automatically, and an `application` block is rejected.
 
 Only password and one-time-password failures are counted. A lock:
 
@@ -1131,12 +1165,16 @@ With observability enabled, every lock that forms, and every suspend, unsuspend,
 
 ### Settings
 
-These fields of a category (`user`, `agent`) control the lock. All are optional, so a layer states only what it changes.
+Each category (`user`, `agent`) accepts these fields. All are optional, so a layer states only what it changes.
 
 | Field | Description |
 |-------|-------------|
 | `lockGranularity` | `authentication_method` (default) locks only the sign-in method that failed. `entity` counts every lockable failure together and locks every sign-in method. |
+| `recordLastLogin` | When `true`, the time access was last granted is recorded as `lastLoginAt` and returned on user and agent reads. For an agent, a `client_credentials` token also records it. Defaults to `false`. |
+| `lastLoginResolutionSeconds` | Skips the write when the stored value is newer than this many seconds. `0` writes every time. Defaults to `3600`. |
 | `default` | The policy for every sign-in method in the category (see below). |
+| `notifications.onLock.email.enabled` | Whether the lock email is sent. Only the `user` category sends it. See [Lock Email](#lock-email). |
+| `notifications.onLock.email.templates` | The lock email's templates. Set only through the section, not `default.json` or `deployment.yaml`. See [Lock Email](#lock-email). |
 
 A policy has these fields:
 
@@ -1160,7 +1198,7 @@ The defaults ship as the `account_access` block of `default.json`, with the keys
 | `user` | `5` | `3600` s | `300`, `900`, `1800`, `3600` s | `86400` s | `50` |
 | `agent` | `5` | `900` s | `60`, `300`, `900` s | `3600` s | `50` |
 
-Both categories default to `authentication_method` granularity.
+Both categories default to `authentication_method` granularity, `record_last_login: false`, and `last_login_resolution_seconds: 3600`. The user category sends the lock email by default (`notifications.on_lock.email.enabled: true`). The lock email templates are not part of this block: the bootstrap stores them in the section's runtime value (see [Lock Email](#lock-email)).
 
 Override the block in `deployment.yaml`, which is the base of the section:
 
@@ -1196,6 +1234,16 @@ Set the section in any of these ways:
         threshold: 3
         failureWindowSeconds: 1800
         lockDurationsSeconds: [600, 3600]
+      notifications:
+        onLock:
+          email:
+            enabled: true
+            templates:
+              temporary: authentication-method-locked
+              permanent: authentication-method-locked-permanent
+              account:
+                temporary: account-locked
+                permanent: account-locked-permanent
   ```
 - **Runtime**: send the new value to `PUT /server-config/accountAccess`. It is applied immediately:
   ```http
@@ -1208,23 +1256,39 @@ Set the section in any of these ways:
         "threshold": 3,
         "failureWindowSeconds": 1800,
         "lockDurationsSeconds": [600, 3600]
+      },
+      "notifications": {
+        "onLock": {
+          "email": {
+            "templates": {
+              "temporary": "authentication-method-locked",
+              "permanent": "authentication-method-locked-permanent",
+              "account": {
+                "temporary": "account-locked",
+                "permanent": "account-locked-permanent"
+              }
+            }
+          }
+        }
       }
     }
   }
   ```
+- **Console** - open **Settings** > **Account security**. Under **Automatic account lock**, the user and agent cards edit the granularity, threshold, window, lock durations, decay, and consecutive-failure limit, and, for users, whether the lock email is sent. `recordLastLogin`, `lastLoginResolutionSeconds` and the lock email templates are not offered in the Console; set them in any of the other ways. A Console save keeps every stored value the cards do not show. A declarative document makes the cards read-only.
 
-A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. To remove the runtime layer and return to the base, send an empty value.
+A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep, the lock email templates included. To remove the runtime layer and return to the base, send an empty value; the lock email then has no template and is not sent.
 
 :::note
-In a Helm deployment, set the base with the `configuration.accountAccess` chart value, in camelCase. The chart's `values.yaml` carries the product defaults, so override only the keys you need. The API and a declarative `server_configs/accountAccess.yaml` mounted with `declarativeResources` (see [Helm Deployment](#helm-deployment)) work as in any other deployment.
+In a Helm deployment, set the base with the `configuration.accountAccess` chart value, in camelCase. The chart's `values.yaml` carries the product defaults, so override only the keys you need. The API, the Console and a declarative `server_configs/accountAccess.yaml` mounted with `declarativeResources` (see [Helm Deployment](#helm-deployment)) work as in any other deployment.
 :::
 
 ### Validation
 
 An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server configuration value"), and nothing is changed. The section rejects:
 
-- Unknown fields, including a misspelled key and an `application` block.
+- Unknown fields, including a misspelled key, an `application` block, and a lock email recipient setting.
 - A `lockGranularity` other than `authentication_method` or `entity`.
+- A lock email template that is not a valid handle, and a `templates.methods` key other than `credential` or `otp`.
 - A negative `threshold` or seconds value, and a seconds value above the maximum.
 - A negative `maxConsecutiveFailures`, or one above `0` and below the policy's `threshold`.
 - An enabled policy, after it is laid over the base, that cannot form a lock: it needs a `threshold` of at least `1`, a `failureWindowSeconds` and a non-empty `lockDurationsSeconds`. Set `enabled: false` to switch the policy off.
@@ -1232,11 +1296,46 @@ An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server confi
 
 The same rules check the base on its own at startup. An enabled policy in the `account_access` block of `default.json` and `deployment.yaml` must have its `threshold`, `failure_window_seconds` and `lock_durations_seconds` without any later layer. An invalid base stops the server from starting.
 
+### Lock Email
+
+When a lock forms for a user, <ProductName /> emails the user type's primary email. The recipient cannot be configured. If the user type has no primary email, the user has no value for it, or the value is not a valid address, no email is sent. If the user's profile or user type cannot be read, no email is sent and the server logs an error. The email goes through the default email sender; see [Notification Defaults](#notification-defaults). A notice is attempted once for each new lock episode; a failed notice is not resent by another sign-in attempt while that lock remains active. Agent locks notify nobody.
+
+The email's templates are set in `notifications.onLock.email.templates`, through the section only:
+
+| Field | Description |
+|-------|-------------|
+| `temporary` | The template for a lock that expires. The bootstrap sets `authentication-method-locked`. |
+| `permanent` | The template for a lock that does not expire. The bootstrap sets `authentication-method-locked-permanent`. |
+| `account` | `temporary` and `permanent` for a lock on every sign-in method (`entity` granularity). The bootstrap sets `account-locked` and `account-locked-permanent`. |
+| `methods` | `temporary` and `permanent` for a lock on one sign-in method, keyed by `credential` or `otp`. The bootstrap sets none. |
+
+A field an override leaves out uses `temporary` or `permanent`. By default every lock on one sign-in method uses the same template, which names the method. A template can use these values:
+
+| Value | Description |
+|-------|-------------|
+| `{{ctx(authenticationMethod)}}` | The sign-in method that locked, `credential` or `otp`. Empty for a lock on every sign-in method. |
+| `{{ctx(lockDuration)}}` | How long the lock lasts. Empty for a lock that does not expire. |
+| `{{ctx(unlockTime)}}` | When the lock lifts, in UTC. Empty for a lock that does not expire. |
+
+The sign-in method is not translated. To word each method in its own language, set a template for each under `methods`. With no template for a lock, no email is sent and the server logs a warning.
+
+For example, to give one-time password locks their own wording:
+
+```json
+"templates": {
+  "temporary": "authentication-method-locked",
+  "permanent": "authentication-method-locked-permanent",
+  "methods": {
+    "otp": {"temporary": "otp-locked", "permanent": "otp-locked-permanent"}
+  }
+}
+```
+
 ### Identity Governance Provider
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `identity_governance_provider.type` | `default` | Set to `disabled` to turn off the identity governance checks the flow engine makes, and the suspend, unsuspend, and unlock flows. A recovery flow still completes and releases no lock. Sign-in through the default authentication provider and the Direct API still enforces locks and suspensions. With `disabled`, also set `account_access.<category>.default.enabled: false` for `user` and `agent`, and keep it off in the `accountAccess` section: otherwise locks still form and none can be released early. |
+| `identity_governance_provider.type` | `default` | Set to `disabled` to turn off the identity governance checks the flow engine and OAuth make, and the suspend, unsuspend, and unlock flows. A recovery flow still completes and releases no lock. Sign-in through the default authentication provider and the Direct API still enforces locks and suspensions. With `disabled`, also set `account_access.<category>.default.enabled: false` for `user` and `agent`, and keep it off in the `accountAccess` section: otherwise locks still form and none can be released early. |
 
 ## Passkey Configuration
 

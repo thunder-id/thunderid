@@ -65,6 +65,15 @@ func newMFAFixture(t *testing.T, name, ouID, userType string) *mfaFixture {
 func (f *mfaFixture) passPassword(t *testing.T, username, password string) *common.FlowStep {
 	t.Helper()
 
+	step := f.submitPassword(t, username, password)
+	require.Equal(t, "INCOMPLETE", step.FlowStatus, "the password must pass and prompt for the code")
+	return step
+}
+
+// submitPassword starts the MFA flow and submits the password, returning the next step whatever it is.
+func (f *mfaFixture) submitPassword(t *testing.T, username, password string) *common.FlowStep {
+	t.Helper()
+
 	step, err := common.InitiateAuthenticationFlow(f.appID, false, nil, "")
 	require.NoError(t, err, "failed to start the MFA flow")
 	f.server.ClearMessages()
@@ -72,7 +81,6 @@ func (f *mfaFixture) passPassword(t *testing.T, username, password string) *comm
 	step, err = common.CompleteFlow(step.ExecutionID,
 		map[string]string{"username": username, "password": password}, signInAction, step.ChallengeToken)
 	require.NoError(t, err, "failed to submit the password")
-	require.Equal(t, "INCOMPLETE", step.FlowStatus, "the password must pass and prompt for the code")
 	return step
 }
 

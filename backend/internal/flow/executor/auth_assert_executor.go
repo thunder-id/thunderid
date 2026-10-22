@@ -134,6 +134,8 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 
 		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
 
+		a.accessGuard.recordLogin(ctx.Context, entityRef.EntityID)
+
 		execResp.Status = providers.ExecComplete
 		execResp.Assertion = token
 	} else {

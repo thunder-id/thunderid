@@ -202,11 +202,12 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.AuthnProvider))
+				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(
-				deps.FlowFactory, deps.MagicLinkService, deps.AuthnProvider, deps.EntityProvider))
+				deps.FlowFactory, deps.MagicLinkService, deps.AuthnProvider, deps.EntityProvider,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameOAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOAuth, newOAuthExecutor(
@@ -314,7 +315,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameOTPExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOTPExecutor, newOTPExecutor(
-				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider))
+				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNamePreDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePreDelete,

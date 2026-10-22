@@ -2824,8 +2824,11 @@ components:
           readOnly: true
           enum: [ACTIVE, SUSPENDED]
           description: |
-            `ACTIVE` or `SUSPENDED`. `SUSPENDED` is an administrative hold. Applications are never
-            locked.
+            `ACTIVE` or `SUSPENDED`. Applications are never locked.
+
+            While suspended, the application cannot be used for authorization, token, userinfo or
+            flow requests, but the record can still be updated. The suspend flow places the
+            suspension and the unsuspend flow removes it, returning the application to `ACTIVE`.
           example: "ACTIVE"
 
     Error:

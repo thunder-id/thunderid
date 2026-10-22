@@ -395,9 +395,13 @@ configuration:
       default:
         threshold: 3
         lockDurationsSeconds: [600, 3600]
+      notifications:
+        onLock:
+          email:
+            enabled: false
 ```
 
-This value is the base of the `accountAccess` section. A change made later through the API is stored as a separate layer over it. For every key and its default, see [Account Access](../../configuration#account-access).
+This value is the base of the `accountAccess` section. A change made later through the Console or the API is stored as a separate layer over it. For every key and its default, see [Account Access](../../configuration#account-access).
 
 ### Resource Store Modes
 

@@ -160,7 +160,7 @@ func (suite *ImportExportFreshPackSuite) TestServerConfigExportImportRoundTrip()
 
 // TestAccountAccessExportImportRoundTrip exports the accountAccess section, clears its writable layer,
 // imports the export and checks the effective policy is the one exported, the lock email templates
-// included. The field it changes has no effect on the other tests.
+// included. The field set is inert, since last-login recording is off by default.
 func (suite *ImportExportFreshPackSuite) TestAccountAccessExportImportRoundTrip() {
 	const section = "accountAccess"
 	original, err := testutils.GetWritableServerConfig(section)

@@ -13,6 +13,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -163,7 +164,10 @@ func (s *userInfoService) buildResponseFromClaims(
 		return nil, svcErr
 	}
 
-	oauthApp := s.getOAuthApp(ctx, tokenClaims)
+	oauthApp, svcErr := s.getOAuthApp(ctx, tokenClaims)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Extract allowed user attributes
 	var allowedUserAttributes []string
@@ -433,21 +437,31 @@ func (s *userInfoService) validateOpenIDScope(ctx context.Context, scopes []stri
 }
 
 // getOAuthApp retrieves the OAuth client configuration if client_id is present in claims.
-// Returns nil when no client_id is present, on error, or when the app is not found.
+// Returns nil when no client_id is present, on a client error, or when the app is not found; the
+// response is then built without the app's claim configuration. A held client refuses the token and
+// a server error fails the request.
 func (s *userInfoService) getOAuthApp(
 	ctx context.Context, claims map[string]interface{},
-) *providers.OAuthClient {
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
 	clientID, ok := claims["client_id"].(string)
 	if !ok || clientID == "" {
-		return nil
+		return nil, nil
 	}
 
 	app, svcErr := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
-	if svcErr != nil || app == nil {
-		return nil
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			s.logger.Error(ctx, "Failed to retrieve OAuth client",
+				log.String("error", svcErr.Error.DefaultValue))
+			return nil, &tidcommon.InternalServerError
+		}
+		if svcErr.Code == actorprovider.ErrorActorUnavailable.Code {
+			s.logger.Debug(ctx, "Refusing userinfo for a token of an unavailable application")
+			return nil, &errorInvalidAccessToken
+		}
+		return nil, nil
 	}
-
-	return app
+	return app, nil
 }
 
 // buildUserInfoResponse builds the final UserInfo response from sub, scopes, and user attributes.

@@ -1,0 +1,198 @@
+---
+title: Account Locks and Suspension
+docType: guide
+description: Lock a sign-in method automatically after repeated failed attempts, and suspend, unsuspend, or unlock users, agents, and applications.
+---
+
+# Account Locks and Suspension
+
+Restrict an account without deleting it. <ProductName /> locks a sign-in method automatically after repeated failed attempts, and an administrator can suspend a user, agent, or application to stop all of its access until the suspension is lifted.
+
+## Prerequisites
+
+- <ProductName /> running. See [Get <ProductName />](../../getting-started/get-thunderid).
+- An administrator account that holds the `system` permission. Suspend, unsuspend, and unlock run as administration flows, and only an account with `system` can start one. The shipped flows also check `system:user`, `system:agent`, or `system` for the account they act on, which `system` covers.
+- To email account holders, an [email provider](../notifications/email-providers). See [Notifications](#notifications) for where to select it.
+
+## Locks and Suspensions
+
+A **lock** is automatic protection against guessing. A **suspension** is an administrator's decision to contain an account, for example after a reported compromise. They are separate holds, and releasing one leaves the other in place.
+
+| | Automatic lock | Suspension |
+|---|---|---|
+| Applies to | Users and agents | Users, agents, and applications |
+| Placed by | Repeated failed password or one-time password attempts | An administrator, through the suspend flow |
+| New sign-ins | Refused through the locked sign-in method, or through every method when the lock covers the whole account | Refused through every method |
+| Existing sessions and tokens | Kept | Ended and revoked by the suspend flow |
+| Token refresh | Allowed | Refused |
+| Account recovery | Allowed. A completed recovery releases the lock | Refused |
+| AuthZEN access decisions | Decided by roles as usual | Denied |
+| Ends | When its duration passes, when the user completes recovery, or when an administrator unlocks it | Only when an administrator unsuspends it |
+
+If you set `identity_governance_provider.type` to `disabled`, also turn off automatic locking: set `default.enabled` to `false` for both `user` and `agent` in the `accountAccess` section. The disabled provider turns off recovery release and the suspend, unsuspend, and unlock flows, but sign-in still counts failures and enforces locks, so a lock could then never be released early. Turning the lock off also stops enforcing the locks already recorded. See [Identity Governance Provider](../../deployment/configuration#identity-governance-provider).
+
+Only failed passwords and failed one-time passwords count toward a lock, including other stored secrets such as PINs. Passkeys, magic links, federated sign-in, and verifiable presentations never form a lock. A lock on the whole account refuses them too. A client secret is never counted, so an agent's or an application's client secret never locks.
+
+A lock never ends sessions or stops token refresh. Anyone who knows an identifier can cause failed attempts, so a lock that reached existing access would let an attacker sign a user out. To end existing access, suspend the account.
+
+While an account is suspended, its record stays editable, so you can rotate a credential or correct an attribute during an investigation. Neither a credential change nor a completed recovery lifts a suspension.
+
+## What the Account Holder Sees
+
+A refused sign-in states the hold. A lock refuses the sign-in step with `FET-1113` (**Account locked**). Its message tells the user to try again later or reset their password. A suspension refuses it with `FET-1114` (**Account suspended**), which tells them to contact an administrator. It never says which sign-in method is locked or when the lock ends. Where a lock limits guessing, a wrong password or code gets the same answer as the correct one and is not counted.
+
+A locked user can still start account recovery. Inside a recovery flow, a one-time password, magic link, passkey, or federated sign-in gets past the lock. A password still meets its own lock. A suspended user who tries recovery is told the account is suspended.
+
+An identifier that matches no account keeps its usual answer. The direct authentication endpoints refuse a held account with `AUTHN-1011` (locked) or `AUTHN-1012` (suspended). Both return HTTP 401, the same status as invalid credentials. Token endpoints never state a hold: a refresh answers `invalid_grant`, and a suspended client answers `invalid_client`.
+
+## Account Status
+
+User, agent, and application reads carry a read-only `status`, computed when the record is read. In the Console, the **Users**, **Agents**, and **Applications** lists show it in the **Status** column, and each record's page shows a banner while the account is locked or suspended.
+
+| Status | Meaning |
+|---|---|
+| `ACTIVE` | No hold applies. |
+| `LOCKED` | A lock is in force on one or more sign-in methods. Users and agents only. |
+| `SUSPENDED` | An administrator suspended the account. Reported instead of `LOCKED` when both apply. |
+
+User and agent reads add `details`: a `reason` (`FAILED_ATTEMPTS`, `SUSPENSION_RELEASE_LOCK`, or `ADMINISTRATIVE_SUSPENSION`), the time a suspension was placed (`since`), the administrator's `operatorNote`, and the `lockedMethods` in force. Each locked method has an `expiresAt`, which is absent for a lock that does not expire. A lock on the whole account is reported as the method `entity`. Application reads return only `value`.
+
+```json
+{
+  "status": {
+    "value": "LOCKED",
+    "details": {
+      "reason": "FAILED_ATTEMPTS",
+      "lockedMethods": [
+        {"method": "credential", "expiresAt": "2026-09-08T10:15:00Z"}
+      ]
+    }
+  }
+}
+```
+
+Once [last sign-in recording](../../deployment/configuration#account-access) is on for the category, user and agent reads also return `lastLoginAt`, beside `status`: the time access was last granted.
+
+The operator note is returned only on management reads, never on the user's own `GET /users/me` and never on a refused sign-in. See the [API Reference](../../apis#tag/users) for the full schema.
+
+## Configure Automatic Locking
+
+<ProductName /> ships a policy for users and one for agents, and every lockable sign-in method in a category uses that category's policy:
+
+- **Users** lock after 5 failed attempts with no gap longer than 1 hour. Repeated locks last 5 minutes, 15 minutes, 30 minutes, and then 1 hour.
+- **Agents** lock after 5 failed attempts with no gap longer than 15 minutes. Repeated locks last 1 minute, 5 minutes, and then 15 minutes.
+- In both categories, the 50th consecutive failed attempt with no successful sign-in with that method forms a lock that does not expire.
+
+To change the policy in the Console:
+
+1. Navigate to **Settings** and open the **Account security** tab.
+2. Under **Automatic account lock**, find the **Users** or **Agents** card. Turn the switch off to stop locking that category.
+3. Under **Lockout applies to**, select **Only the affected sign-in method** or **All sign-in methods**. The **Agents** card calls them authentication methods.
+4. Under **Lock after**, set how many failed attempts form a lock and the longest gap allowed between two of them. A longer gap starts the count again.
+5. To change the lock durations, the reset period, or the consecutive failure limit, expand **Advanced settings**.
+6. For users, select **Notify user by email** to send an email when a lock forms. See [Notifications](#notifications).
+7. Click **Save changes**.
+
+Changes saved here apply without a restart. When the policy is defined in a declarative resource, the cards are read-only. To set the policy through the API, a declarative resource, `deployment.yaml`, or Helm, and for the validation rules, see [Account Access](../../deployment/configuration#account-access). Recording the last sign-in time (`lastLoginAt`) is configured there too; the Console does not offer it.
+
+## Suspend an Account
+
+The default suspend flow checks that you may suspend the account, revokes the tokens it holds, ends its sessions, and then places the hold. Last, it emails the account holder, when the flow can send email.
+
+1. Open the user, agent, or application from its list.
+2. Click **Actions** and select **Suspend**.
+3. For a user or an agent, optionally enter an **Operator note (optional)**. Anyone who can read the record can read the note, and it is never shown on a sign-in attempt.
+4. Click **Suspend**.
+
+The flow revokes every token issued to the account before the suspension. For an application, and for an agent that has an OAuth client, it also revokes the tokens issued through that client, including user tokens. A token that names an agent only as its actor (`act`) on another client is not revoked.
+
+If revoking tokens or ending sessions fails, the flow stops and the account is not suspended. Some tokens or sessions may already be withdrawn. Run **Suspend** again.
+
+:::warning
+Revocation is enforced only where <ProductName /> checks it. A resource server that validates access tokens offline, by signature and expiry alone, keeps accepting them until they expire. See [Where Revocation Is Enforced](../protocols/oauth-oidc/token-revocation#where-revocation-is-enforced). Token revocation must also stay enabled (`oauth.token_revocation.enabled`, on by default).
+:::
+
+The Console offers no actions on a record defined in a declarative resource, or on the Console application itself.
+
+## Unsuspend an Account
+
+Unsuspending removes the suspension. Sessions and tokens revoked during the suspension are not restored, so the account holder signs in again.
+
+1. Open the suspended user, agent, or application.
+2. Click **Actions** and select **Unsuspend**.
+3. Click **Unsuspend**.
+
+What follows depends on the category:
+
+- A **user** is left locked on every sign-in method until they complete account recovery or an administrator unlocks the account. This lock does not expire, so a suspension never ends with the old credentials working at once. To lift both holds together, select **Unsuspend and unlock** instead. It runs the unsuspend flow and then the unlock flow, and if the unlock fails the account stays locked.
+- An **agent** can authenticate again, unless an automatic lock from before the suspension is still in force.
+- An **application** can authenticate and obtain tokens again.
+
+## Unlock an Account
+
+Unlocking clears every lock on a user or an agent, and the history that makes repeated locks longer. It does not lift a suspension.
+
+1. Open the locked user or agent.
+2. Click **Actions** and select **Unlock**.
+
+Unlock runs without a confirmation. A user can also clear their own locks by completing account recovery. The default recovery flows end with an **Unlock Identity** node that releases the account whose credential the flow set. A recovery flow you build yourself needs the same node after its credential step, or the user stays locked. See [Set Credentials](../flows/advanced-configurations#executor-details-and-configuration).
+
+## Customize the Lifecycle Flows
+
+Suspend, unsuspend, and unlock run as administration flows, so you can change what each one does in the flow editor. To see them, navigate to **Settings**, open the **Account security** tab, and find the **Lock and suspension flows** card. It lists the flow for each action, and opening one takes you to the flow editor.
+
+The flow that runs is named in the `flow` server configuration section:
+
+| Key under `flow` | Default flow |
+|---|---|
+| `userSuspendFlow` | `default-user-suspend-flow` |
+| `userUnsuspendFlow` | `default-user-unsuspend-flow` |
+| `userUnlockFlow` | `default-user-unlock-flow` |
+| `agentSuspendFlow` | `default-agent-suspend-flow` |
+| `agentUnsuspendFlow` | `default-agent-unsuspend-flow` |
+| `agentUnlockFlow` | `default-agent-unlock-flow` |
+| `applicationSuspendFlow` | `default-application-suspend-flow` |
+| `applicationUnsuspendFlow` | `default-application-unsuspend-flow` |
+
+Point a key's `defaultHandle` at another administration flow to replace the shipped one. See [Flow Defaults](../../deployment/configuration#flow-defaults). The Console offers an action only when its flow resolves; applications are never locked, so they have no unlock flow.
+
+A suspend flow must run **Validate and Plan Suspension** before its revocation nodes and the **Suspend Identity** node. That node checks that the administrator may suspend the account before anything is revoked, and plans what the revocation nodes withdraw. **Suspend Identity**, **Unsuspend Identity**, and **Unlock Identity** are modes of one executor, `IdentityGovernanceExecutor`. See [Executors](../flows/advanced-configurations#executors).
+
+To run a flow from automation, find its ID with `GET /flows?flowType=ADMINISTRATION`, then start it with an access token that carries the `system` permission. Pass the account's ID as `subject`; `operatorNote` is optional and recorded only by a suspension:
+
+```bash
+curl -k -X POST https://localhost:8090/flow/execute \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"flowId": "<suspend-flow-id>", "inputs": {"subject": "<user-id>", "operatorNote": "Credential exposure reported"}}'
+```
+
+A completed run returns `"flowStatus": "COMPLETE"`. A refused operation, such as unsuspending an account that is not suspended, returns `FET-1112` without naming the cause, and the server logs the cause at debug level. A server error during the operation returns HTTP 500 with `SSE-5000`. There is no direct suspend, unsuspend, or unlock endpoint, and a profile update cannot change an account's status.
+
+## Notifications
+
+Two kinds of email reach the account holder:
+
+| Email | Sent when | Template | Sent through |
+|---|---|---|---|
+| Lock notice | A lock forms on a user | The templates set in the `accountAccess` section; by default `authentication-method-locked`, or `account-locked` for a lock on every sign-in method, each with a `-permanent` form for a lock that does not expire | The default email sender in [Notification Defaults](../../deployment/configuration#notification-defaults) |
+| Suspension, unsuspension, and unlock notices | The user suspend, unsuspend, and unlock flows complete. The agent and application suspend flows send one only when the record holds an email address | `account-suspended`, `account-unsuspended`, `account-unlocked` | The email provider selected on the flow's **Send Email** node |
+
+The lock notice goes to the user type's primary email, and the recipient cannot be configured. A user whose type has no primary email, or who has no value for it, gets no lock notice. If the user's profile or user type cannot be read, nothing is sent and the server logs an error. Every lock on one sign-in method uses the same template by default, which names the method with `{{ctx(authenticationMethod)}}` (`credential` or `otp`). An expiring lock's template can also use `{{ctx(lockDuration)}}` and `{{ctx(unlockTime)}}`, the time it lifts in UTC. To change the templates, or to set one for a single sign-in method, see [Lock Email](../../deployment/configuration#lock-email). Each lock sends at most one notice, and a failed notice is not resent. Agent locks notify nobody.
+
+The shipped lifecycle flows name no email provider, because none exists when <ProductName /> is installed. Until you select one on each flow's **Send Email** node, those flows complete and send nothing. Every notice is best effort: a failed email never undoes the lock or the operation. When a lifecycle flow sends no notice, its response carries `emailSent` as `"false"` in `data.additionalData` and the Console says the email was not sent; a send that fails on the server is also logged as a warning.
+
+## Monitor Locks and Suspensions
+
+With observability enabled, every lock that forms is published as `IDENTITY_LOCKED`. A suspend, unsuspend, or unlock is published as `IDENTITY_SUSPENDED`, `IDENTITY_UNSUSPENDED`, or `IDENTITY_UNLOCKED`, and as `IDENTITY_SUSPENSION_FAILED`, `IDENTITY_UNSUSPENSION_FAILED`, or `IDENTITY_UNLOCK_FAILED` when it is refused or fails. A release by a recovery flow is published as `IDENTITY_SELF_UNLOCKED` or `IDENTITY_SELF_UNLOCK_FAILED`. The events name the account and, for an administrator's operation, the administrator, but never the operator note. For categories and filtering, see [Event Categories](../../deployment/configuration#event-categories).
+
+Account access state is stored in the `runtime_persistent` database. Restore it to the same recovery point as the `entity` database, or a restore can lift a suspension placed after that point. See [Production Guidelines](../../deployment/production-guidelines).
+
+A lock protects one account from guessing. It does not limit request volume, so keep rate limiting in front of the sign-in endpoints. See [Configure Rate Limiting](../../deployment/production-guidelines#configure-rate-limiting).
+
+## Next Steps
+
+- [Account Access](../../deployment/configuration#account-access): Configuration reference for the lock policy and the lock email
+- [Token Revocation](../protocols/oauth-oidc/token-revocation): How revoked tokens are enforced
+- [Manage Users](../users/manage-users): Create and update the users you govern
+- [Advanced Configurations](../flows/advanced-configurations): Executors used by the lifecycle and recovery flows

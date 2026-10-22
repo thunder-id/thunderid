@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package granthandlers
@@ -23,6 +23,7 @@ type clientCredentialsGrantHandler struct {
 	authzService    providers.AuthorizationProvider
 	actorProvider   providers.ActorProvider
 	resourceService providers.ResourceServerProvider
+	governance      providers.IdentityGovernanceProvider
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
@@ -32,6 +33,7 @@ func newClientCredentialsGrantHandler(
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
+	governance providers.IdentityGovernanceProvider,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
 		tokenBuilder:    tokenBuilder,
@@ -39,6 +41,7 @@ func newClientCredentialsGrantHandler(
 		authzService:    authzService,
 		actorProvider:   actorProvider,
 		resourceService: resourceService,
+		governance:      governance,
 	}
 }
 
@@ -161,6 +164,12 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",
 		}
+	}
+
+	// The client was granted access, so its last login is stamped. A failed stamp is logged by the
+	// authority and never fails the response.
+	if h.governance != nil {
+		_ = h.governance.RecordLogin(ctx, oauthApp.ID)
 	}
 
 	return &model.TokenResponseDTO{

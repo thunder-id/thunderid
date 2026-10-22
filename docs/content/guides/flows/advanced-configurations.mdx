@@ -372,7 +372,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | - |
 | **Validate and Plan Suspension** | Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. | Administration flows only |
-| **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Validate and Plan Suspension must have run |
+| **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Validate and Plan Suspension must have run. See [Account Locks and Suspension](../../account-locks-and-suspension) |
 | **Unsuspend Identity** | Lifts a suspension. A user is left locked until recovery or an unlock. | Administration flows only |
 | **Unlock Identity** | Clears every automatic lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
@@ -1756,7 +1756,7 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 
 #### Account Lifecycle
 
-These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow.
+These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow. See [Account Locks and Suspension](../../account-locks-and-suspension).
 
 <details>
 <summary>Validate and Plan Suspension</summary>

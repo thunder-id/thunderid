@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -35,6 +36,7 @@ var switchesOn = revocationSwitches{oauth: true, native: true}
 
 // switchesFor names the tests that run with a switch off. Every other test runs with both on.
 var switchesFor = map[string]revocationSwitches{
+	"TestWithOAuthRevocationOffIntrospectionMissesTheSuspension":   {oauth: false, native: true},
 	"TestWithNativeRevocationOffTheRESTAPIMissesTheSuspension":     {oauth: true, native: false},
 	"TestWithNativeRevocationOffTheSelfUpdateReportsTheSuspension": {oauth: true, native: false},
 }
@@ -309,7 +311,8 @@ func (ts *ExistingAccessTestSuite) TestEveryTokenPathNamesTheEntityAndSuspension
 	ts.Equal(userID, ts.claim(refreshed.Token.AccessToken, "sub"),
 		"refresh: the new access token must name the entity")
 
-	status, exchanged := ts.exchangeAccessToken(token.AccessToken)
+	status, exchanged := exchangeAccessToken(ts.T(), existingAccessClientID, existingAccessClientSecret,
+		token.AccessToken)
 	ts.Require().Equal(http.StatusOK, status, "token exchange must succeed before the suspension")
 	ts.Equal(userID, ts.claim(exchanged.AccessToken, "sub"), "exchange: the issued token must name the entity")
 
@@ -333,7 +336,7 @@ func (ts *ExistingAccessTestSuite) TestEveryTokenPathNamesTheEntityAndSuspension
 		ts.False(ts.tokenActive(raw), "%s: the access token must be revoked", name)
 	}
 	ts.False(ts.refreshSucceeds(refreshed.Token.RefreshToken), "refresh: the rotated grant must be revoked")
-	status, _ = ts.exchangeAccessToken(token.AccessToken)
+	status, _ = exchangeAccessToken(ts.T(), existingAccessClientID, existingAccessClientSecret, token.AccessToken)
 	ts.NotEqual(http.StatusOK, status, "exchange: a revoked subject token must not be exchanged")
 	status, _ = ts.userInfo(token.AccessToken)
 	ts.Equal(http.StatusUnauthorized, status, "UserInfo must refuse a revoked token")
@@ -383,6 +386,18 @@ func (ts *ExistingAccessTestSuite) TestTokenClaimsStayStandard() {
 	}
 	ts.Equal(userID, ts.claim(token.AccessToken, "sub"), "the access token's subject is the entity ID")
 	ts.True(ts.tokenActive(token.AccessToken), "the access token introspects as active")
+}
+
+// With OAuth revocation off, an access token issued before a suspension still introspects as active,
+// while refresh is still refused by its live check.
+func (ts *ExistingAccessTestSuite) TestWithOAuthRevocationOffIntrospectionMissesTheSuspension() {
+	userID, username, password := ts.newUser("oauth_switch_off")
+	token := ts.browser().login(username, password, "oauth_switch_off")
+	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
+
+	ts.True(ts.tokenActive(token.AccessToken),
+		"with OAuth revocation off, introspection does not consult the suspension's record")
+	ts.False(ts.refreshSucceeds(token.RefreshToken), "refresh is still refused by its live check")
 }
 
 // With native API revocation off, `/users/me` still accepts a token issued before a suspension, and
@@ -555,26 +570,26 @@ func (ts *ExistingAccessTestSuite) claim(raw, name string) interface{} {
 	return claims[name]
 }
 
-// exchangeAccessToken exchanges a locally issued access token through the suite application.
-func (ts *ExistingAccessTestSuite) exchangeAccessToken(subjectToken string) (int, *testutils.TokenResponse) {
-	ts.T().Helper()
+// exchangeAccessToken exchanges a locally issued access token as the given client.
+func exchangeAccessToken(t *testing.T, clientID, clientSecret, subjectToken string) (int, *testutils.TokenResponse) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, testServerURL+"/oauth2/token", strings.NewReader(url.Values{
 		"grant_type":         {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token":      {subjectToken},
 		"subject_token_type": {"urn:ietf:params:oauth:token-type:access_token"},
 	}.Encode()))
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(existingAccessClientID, existingAccessClientSecret)
+	req.SetBasicAuth(clientID, clientSecret)
 	resp, err := testutils.GetHTTPClient().Do(req)
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
+	require.NoError(t, err)
 
 	var token testutils.TokenResponse
 	if resp.StatusCode == http.StatusOK {
-		ts.Require().NoError(json.Unmarshal(body, &token))
+		require.NoError(t, json.Unmarshal(body, &token))
 	}
 	return resp.StatusCode, &token
 }

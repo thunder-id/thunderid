@@ -216,6 +216,7 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -323,6 +324,7 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -471,6 +473,7 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 		}
 	}
 
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -965,6 +968,7 @@ func (as *authenticationService) buildPasskeyAuthenticationResponse(ctx context.
 	}
 
 	if skipAssertion {
+		as.recordLogin(ctx, entityRef.EntityID)
 		return authResponse, nil
 	}
 
@@ -978,6 +982,7 @@ func (as *authenticationService) buildPasskeyAuthenticationResponse(ctx context.
 		common.AuthenticatorPasskey, existingAssertion, logger); svcErr != nil {
 		return nil, svcErr
 	}
+	as.recordLogin(ctx, entityRef.EntityID)
 	return authResponse, nil
 }
 
@@ -1001,6 +1006,11 @@ func (as *authenticationService) refuseIfHeld(ctx context.Context, entityID stri
 		}
 	}
 	return nil
+}
+
+// recordLogin records the sign-in time of the entity. A failure does not fail the response.
+func (as *authenticationService) recordLogin(ctx context.Context, entityID string) {
+	_ = as.governance.RecordLogin(ctx, entityID)
 }
 
 // passkeyEnrollmentError maps a passkey enrolment error. A stated hold keeps its meaning, and any other

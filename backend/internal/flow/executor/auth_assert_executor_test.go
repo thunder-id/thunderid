@@ -2174,6 +2174,19 @@ func (suite *AuthAssertExecutorTestSuite) expectHeldUser() {
 		}, (*tidcommon.ServiceError)(nil))
 }
 
+func (suite *AuthAssertExecutorTestSuite) TestExecute_RecordsAccessGrantedForTheAdmittedSubject() {
+	governance := expectSignIn(suite.T(), testUserID, providers.AccessDecision{Admitted: true}, nil)
+	governance.EXPECT().RecordLogin(mock.Anything, testUserID).Return(nil).Once()
+	suite.newGovernedExecutor(governance)
+	suite.expectAssertedUser()
+
+	resp, err := suite.executor.Execute(governedAssertionContext())
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	governance.AssertExpectations(suite.T())
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithoutGovernanceAsserts() {
 	suite.newGovernedExecutor(nil)
 	suite.expectAssertedUser()
@@ -2193,9 +2206,10 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UnreadableAuthorityIsAServ
 	_, err := suite.executor.Execute(governedAssertionContext())
 
 	suite.Require().Error(err)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestExecute_RefusesAHeldSubject() {
+func (suite *AuthAssertExecutorTestSuite) TestExecute_RefusesAHeldSubjectAndRecordsNothing() {
 	for name, test := range map[string]struct {
 		decision providers.AccessDecision
 		want     string
@@ -2216,6 +2230,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_RefusesAHeldSubject() {
 			suite.Require().NoError(err)
 			assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 			assert.Equal(suite.T(), test.want, resp.Error.Code)
+			governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
 		})
 	}
 }

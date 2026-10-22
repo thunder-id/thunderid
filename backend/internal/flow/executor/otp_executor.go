@@ -28,6 +28,7 @@ type otpExecutor struct {
 	entityProvider entityprovider.EntityProviderInterface
 	otpService     otp.OTPAuthnServiceInterface
 	authnProvider  providers.AuthnProviderManager
+	accessGuard    *accessGuard
 	logger         *log.Logger
 }
 
@@ -37,6 +38,7 @@ func newOTPExecutor(
 	otpService otp.OTPAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
+	accessGuard *accessGuard,
 ) *otpExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -78,6 +80,7 @@ func newOTPExecutor(
 		entityProvider: entityProvider,
 		otpService:     otpService,
 		authnProvider:  authnProvider,
+		accessGuard:    accessGuard,
 		logger:         logger,
 	}
 }
@@ -155,6 +158,23 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
+	// A refusal that names no hold generates a code but skips delivery, so the step answers as a sent
+	// code does.
+	skipDelivery := false
+	if recipientAttr == authnprovidercm.UserAttributeUserID {
+		withheld, stated, fault := e.accessGuard.heldAtDispatch(ctx.Context, recipient,
+			providers.AuthenticationMethodOTP, ctx.FlowType, logger)
+		if fault != nil {
+			return nil, fault
+		}
+		if withheld && stated != nil {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = stated
+			return execResp, nil
+		}
+		skipDelivery = withheld
+	}
+
 	otpCfg := e.resolveOTPProperties(ctx)
 	sessionToken, otpValue, expirySeconds, svcErr :=
 		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
@@ -164,6 +184,12 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
 	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
+	if skipDelivery {
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = dataValueTrue
+	} else if ctx.RuntimeData[common.RuntimeKeySkipDelivery] == dataValueTrue {
+		// A resend after the hold lifted is delivered.
+		execResp.RuntimeData[common.RuntimeKeySkipDelivery] = ""
+	}
 	// Published from the generated value rather than the configured otpLength property, since the
 	// property is clamped and may fall back to the server default.
 	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))

@@ -27,7 +27,10 @@ const (
 	tokenExchangeTestPassword = "TePassword123!"
 	tokenExchangeTestEmail    = "te_test@example.com"
 	tokenExchangeMockOIDCPort = 8094
-	tokenExchangeRedirectURI  = "https://localhost:3000"
+	// tokenExchangeSecondMockOIDCPort is a second external IdP address, for a test that must not reuse
+	// the first one's cached keys. No other suite binds it.
+	tokenExchangeSecondMockOIDCPort = 8104
+	tokenExchangeRedirectURI        = "https://localhost:3000"
 )
 
 type TokenExchangeTestSuite struct {
@@ -206,6 +209,19 @@ func (ts *TokenExchangeTestSuite) createTestUser() string {
 	ts.Require().NoError(err, "Failed to create test user")
 	ts.T().Logf("Created test user with ID: %s", userID)
 
+	return userID
+}
+
+// createUserNamed creates a further local user of the suite's type, for a test that changes its state.
+func (ts *TokenExchangeTestSuite) createUserNamed(username string) string {
+	attributes, err := json.Marshal(map[string]interface{}{
+		"username": username, "password": tokenExchangeTestPassword, "email": username + "@example.com",
+	})
+	ts.Require().NoError(err)
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: "token-test-person", OUID: ts.oUID, Attributes: json.RawMessage(attributes),
+	})
+	ts.Require().NoError(err, "Failed to create %s", username)
 	return userID
 }
 
@@ -530,19 +546,62 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_SpentAssertionCannotComplete
 }
 
 func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedTokenAudience() {
+	const externalSubject = "external-oidc-subject"
+
+	resp, statusCode := ts.exchangeExternalToken(tokenExchangeMockOIDCPort, externalSubject)
+	ts.Equal(http.StatusOK, statusCode)
+	ts.NotEmpty(resp.AccessToken, "Access token should be present")
+	ts.Equal("urn:ietf:params:oauth:token-type:access_token", resp.IssuedTokenType)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err, "Access token should be a valid JWT")
+	ts.Equal(externalSubject, claims.Sub, "Issued token subject should match external token subject")
+	active, err := testutils.IntrospectToken(resp.AccessToken, tokenExchangeClientID, tokenExchangeClientSecret)
+	ts.Require().NoError(err)
+	ts.True(active, "an exchanged token for an external subject is active")
+	ts.assertAudienceEquals(claims, "https://resource.example.com")
+	ts.Equal(
+		"urn:ietf:params:oauth:grant-type:token-exchange",
+		claims.Additional["grant_type"],
+		"Issued token should record token exchange grant type",
+	)
+}
+
+// An external issuer's subject never selects a local account, even when the string equals a local
+// entity ID: a suspended local user's ID as the external `sub` still exchanges.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectIsNotALocalAccount() {
+	localID := ts.createUserNamed("token-exchange-suspended-local")
+	defer func() {
+		if err := testutils.DeleteUser(localID); err != nil {
+			ts.T().Logf("Failed to delete the suspended local user: %v", err)
+		}
+	}()
+	status, flowStatus, err := testutils.RunAdministrationFlow("default-user-suspend-flow",
+		map[string]string{"subject": localID})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().Equal("COMPLETE", flowStatus, "the local user must be suspended")
+
+	// Its own IdP address: the server caches an issuer's keys, and the mock mints new ones per start.
+	resp, statusCode := ts.exchangeExternalToken(tokenExchangeSecondMockOIDCPort, localID)
+	ts.Require().Equal(http.StatusOK, statusCode, "local governance must not judge an external subject: %+v", resp)
+	ts.Require().NotEmpty(resp.AccessToken)
+}
+
+// exchangeExternalToken obtains an ID token for subject from a mock external IdP on port that this
+// server trusts for token exchange, and exchanges it.
+func (ts *TokenExchangeTestSuite) exchangeExternalToken(port int, subject string) (*TokenExchangeResponse, int) {
 	const (
 		externalClientID     = "external-oidc-client-id"
 		externalClientSecret = "mock-oidc-secret"
-		externalSubject      = "external-oidc-subject"
 		redirectURI          = "https://localhost:3000/callback"
 	)
 
-	mockOIDCServer, err := testutils.NewMockOIDCServer(
-		tokenExchangeMockOIDCPort, externalClientID, externalClientSecret)
+	mockOIDCServer, err := testutils.NewMockOIDCServer(port, externalClientID, externalClientSecret)
 	ts.Require().NoError(err, "Failed to create mock OIDC server")
 
 	mockOIDCServer.AddUser(&testutils.OIDCUserInfo{
-		Sub:           externalSubject,
+		Sub:           subject,
 		Email:         "external-user@example.com",
 		EmailVerified: true,
 		Name:          "External User",
@@ -590,19 +649,7 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedToken
 
 	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
 	ts.Require().NoError(err)
-	ts.Equal(http.StatusOK, statusCode)
-	ts.NotEmpty(resp.AccessToken, "Access token should be present")
-	ts.Equal("urn:ietf:params:oauth:token-type:access_token", resp.IssuedTokenType)
-
-	claims, err := testutils.DecodeJWT(resp.AccessToken)
-	ts.Require().NoError(err, "Access token should be a valid JWT")
-	ts.Equal(externalSubject, claims.Sub, "Issued token subject should match external token subject")
-	ts.assertAudienceEquals(claims, "https://resource.example.com")
-	ts.Equal(
-		"urn:ietf:params:oauth:grant-type:token-exchange",
-		claims.Additional["grant_type"],
-		"Issued token should record token exchange grant type",
-	)
+	return resp, statusCode
 }
 
 // TestTokenExchange_WithAudience tests that audience does not drive the issued access-token audience.

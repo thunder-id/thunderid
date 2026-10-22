@@ -736,16 +736,18 @@ type AccessDecision struct {
 	Reason   AccessRefusalReason
 }
 
-// User represents a user in the system. Status is derived at read time and read-only.
+// User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
+// recorded by the runtime, session reuse included, never by a profile write.
 type User struct {
-	ID         string              `json:"id,omitempty"`
-	OUID       string              `json:"ouId,omitempty"`
-	OUHandle   string              `json:"ouHandle,omitempty"`
-	Type       string              `json:"type,omitempty"`
-	Attributes json.RawMessage     `json:"attributes,omitempty"`
-	Display    string              `json:"display,omitempty"`
-	IsReadOnly bool                `json:"isReadOnly"`
-	Status     *AccessStatusReport `json:"status,omitempty"`
+	ID          string              `json:"id,omitempty"`
+	OUID        string              `json:"ouId,omitempty"`
+	OUHandle    string              `json:"ouHandle,omitempty"`
+	Type        string              `json:"type,omitempty"`
+	Attributes  json.RawMessage     `json:"attributes,omitempty"`
+	Display     string              `json:"display,omitempty"`
+	IsReadOnly  bool                `json:"isReadOnly"`
+	Status      *AccessStatusReport `json:"status,omitempty"`
+	LastLoginAt string              `json:"lastLoginAt,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
 }

@@ -222,6 +222,27 @@ func otpReleaseRecoveryFlowForACall(senderID string) testutils.Flow {
 	return flow
 }
 
+// otpDispatchRecoveryFlow is a recovery flow that dispatches a one-time password after identifying the
+// account: identify, generate, send, prompt. It stops at the prompt, since a test of it is about the
+// dispatch.
+func otpDispatchRecoveryFlow(senderID string) testutils.Flow {
+	toPrompt := map[string]interface{}{"onFailure": "otp_sent_status"}
+	return testutils.Flow{
+		Name:     "Governance Dispatch Recovery Test Flow",
+		Handle:   "governance-dispatch-recovery-test",
+		FlowType: "RECOVERY",
+		Nodes: []map[string]interface{}{
+			startNode("prompt_username"),
+			usernamePrompt(),
+			mergeJSONObjects(identifyNode("generate_otp"), toPrompt),
+			taskNode("generate_otp", "OTPExecutor", "generate", "sms_send", toPrompt),
+			smsSendNode(senderID, "otp_sent_status", toPrompt),
+			promptNode("otp_sent_status", submitOTPAction, "end", otpInput),
+			endNode(),
+		},
+	}
+}
+
 // passkeyRecoveryFlow is a recovery flow proven by a passkey: identify, challenge, verify, set,
 // release.
 func passkeyRecoveryFlow() testutils.Flow {

@@ -501,3 +501,12 @@ func statedDecision(decision providers.AccessDecision) *tidcommon.ServiceError {
 func governanceFault(svcErr *tidcommon.ServiceError) error {
 	return fmt.Errorf("identity governance check failed: %s", svcErr.Error.DefaultValue)
 }
+
+// dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
+// way at the recovery plane, so recovery and registration challenges still go out.
+func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
+	if flowType == providers.FlowTypeAuthentication {
+		return providers.AccessPlaneDispatch
+	}
+	return providers.AccessPlaneRecovery
+}

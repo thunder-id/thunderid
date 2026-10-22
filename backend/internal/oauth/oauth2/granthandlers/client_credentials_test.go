@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package granthandlers
@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
@@ -167,11 +168,13 @@ func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
 	handler := newClientCredentialsGrantHandler(
 		suite.mockTokenBuilder, suite.mockOUService, suite.mockAuthzService,
-		suite.mockEntityProvider, suite.mockResourceService)
+		suite.mockEntityProvider, suite.mockResourceService, governance)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+	assert.Equal(suite.T(), governance, handler.(*clientCredentialsGrantHandler).governance)
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestValidateGrant_Success() {
@@ -995,4 +998,71 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoDPoPProof
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), constants.TokenTypeBearer, result.AccessToken.TokenType)
+}
+
+// scopelessTokenRequest is a client_credentials request with no scope, so no authorization call is made.
+func scopelessTokenRequest() *model.TokenRequest {
+	return &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+	}
+}
+
+// An issued token stamps the client's last login with the client's entity ID.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_RecordsLoginOnSuccess() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("RecordLogin", mock.Anything, testEntityID).Return((*tidcommon.ServiceError)(nil)).Once()
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	governance.AssertExpectations(suite.T())
+}
+
+// A failed stamp does not fail the token response.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_RecordLoginFailureStillIssues() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	governance.On("RecordLogin", mock.Anything, testEntityID).Return(&tidcommon.InternalServerError).Once()
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	suite.Require().NotNil(result)
+	assert.Equal(suite.T(), testJWTToken, result.AccessToken.Token)
+	governance.AssertExpectations(suite.T())
+}
+
+// A grant that issues no token records nothing.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_FailedGrantRecordsNoLogin() {
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	suite.handler.governance = governance
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(nil, errors.New("JWT generation failed"))
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	governance.AssertNotCalled(suite.T(), "RecordLogin", mock.Anything, mock.Anything)
+}
+
+// Without governance the grant issues and records nothing.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilGovernanceSkipsRecording() {
+	suite.handler.governance = nil
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), scopelessTokenRequest(), suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
 }

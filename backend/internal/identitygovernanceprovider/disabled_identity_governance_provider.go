@@ -30,6 +30,12 @@ func (p *disabledIdentityGovernanceProvider) AdmitSignIn(_ context.Context,
 	return providers.AccessDecision{Admitted: true}, nil
 }
 
+// RecordLogin records nothing.
+func (p *disabledIdentityGovernanceProvider) RecordLogin(_ context.Context, _ string,
+) *tidcommon.ServiceError {
+	return nil
+}
+
 // Unlock is unavailable without governance.
 func (p *disabledIdentityGovernanceProvider) Unlock(_ context.Context, _ string,
 ) *tidcommon.ServiceError {

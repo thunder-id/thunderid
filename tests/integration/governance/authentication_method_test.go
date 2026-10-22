@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -18,14 +19,16 @@ import (
 const methodLockSeconds = 300
 
 // AuthenticationMethodTestSuite checks that a lock stops at the authentication method it was
-// earned at, using password and OTP. Counter cases use the atomic endpoints.
+// earned at, using password and OTP, and that a held method is never sent a fresh challenge.
+// Counter cases use the atomic endpoints; the dispatch cases drive flows.
 type AuthenticationMethodTestSuite struct {
 	suite.Suite
 	mockServer    *testutils.MockNotificationServer
 	users         *userFixture
 	senderID      string
-	otpAuthFlowID string
+	recoveryAppID string
 	otpAuthAppID  string
+	mfa           *mfaFixture
 }
 
 func TestAuthenticationMethodTestSuite(t *testing.T) {
@@ -39,6 +42,12 @@ func (ts *AuthenticationMethodTestSuite) SetupSuite() {
 
 	ts.mockServer = testutils.NewMockNotificationServer(0)
 	ts.Require().NoError(ts.mockServer.Start(), "failed to start the mock notification server")
+	t := ts.T()
+	t.Cleanup(func() {
+		if err := ts.mockServer.Stop(); err != nil {
+			t.Logf("teardown: failed to stop the mock notification server: %v", err)
+		}
+	})
 
 	ts.users = newUserFixture(ts.T(), "method",
 		testutils.UserType{Schema: credentialsSchema(map[string]interface{}{"mobile_number": stringAttribute})})
@@ -55,11 +64,44 @@ func (ts *AuthenticationMethodTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "failed to create the notification sender")
 	ts.senderID = senderID
+	t.Cleanup(func() {
+		if err := testutils.DeleteNotificationSender(senderID); err != nil {
+			t.Logf("teardown: failed to delete the notification sender: %v", err)
+		}
+	})
 
-	// An authentication flow that dispatches a one-time password.
+	// A recovery flow that dispatches a one-time password: an atomic send has no flow type.
+	recoveryFlowID, err := testutils.CreateFlow(otpDispatchRecoveryFlow(senderID))
+	ts.Require().NoError(err, "failed to create the recovery flow")
+	cleanupFlow(t, recoveryFlowID)
+
+	// An isolated authentication flow, because the default one reaches the default recovery flow and
+	// an application may not name two different ones.
+	authFlowID, err := testutils.CreateIsolatedAuthFlow("governance-method-isolated-auth")
+	ts.Require().NoError(err, "failed to create the isolated auth flow")
+	cleanupFlow(t, authFlowID)
+
+	recoveryAppID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.users.ouID,
+		Name:                  "Governance Authentication Method Recovery App",
+		Description:           "Application the dispatch acceptance tests drive recovery through",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "governance_method_recovery_client",
+		ClientSecret:          "governance_method_recovery_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{ts.users.userType},
+		AuthFlowID:            authFlowID,
+		RecoveryFlowID:        recoveryFlowID,
+	})
+	ts.Require().NoError(err, "failed to create the recovery application")
+	ts.recoveryAppID = recoveryAppID
+	cleanupApplication(t, recoveryAppID)
+
+	// An authentication flow that dispatches a one-time password. The guard is in the flow's
+	// OTPExecutor; the atomic send endpoint is not guarded.
 	otpAuthFlowID, err := testutils.CreateFlow(otpSignInFlow(senderID))
 	ts.Require().NoError(err, "failed to create the OTP authentication flow")
-	ts.otpAuthFlowID = otpAuthFlowID
+	cleanupFlow(t, otpAuthFlowID)
 
 	otpAuthAppID, err := testutils.CreateApplication(testutils.Application{
 		OUID:             ts.users.ouID,
@@ -73,29 +115,9 @@ func (ts *AuthenticationMethodTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "failed to create the OTP authentication application")
 	ts.otpAuthAppID = otpAuthAppID
-}
+	cleanupApplication(t, otpAuthAppID)
 
-func (ts *AuthenticationMethodTestSuite) TearDownSuite() {
-	if ts.otpAuthAppID != "" {
-		if err := testutils.DeleteApplication(ts.otpAuthAppID); err != nil {
-			ts.T().Logf("teardown: failed to delete application %s: %v", ts.otpAuthAppID, err)
-		}
-	}
-	if ts.otpAuthFlowID != "" {
-		if err := testutils.DeleteFlow(ts.otpAuthFlowID); err != nil {
-			ts.T().Logf("teardown: failed to delete flow %s: %v", ts.otpAuthFlowID, err)
-		}
-	}
-	if ts.senderID != "" {
-		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
-			ts.T().Logf("teardown: failed to delete the notification sender: %v", err)
-		}
-	}
-	if ts.mockServer != nil {
-		if err := ts.mockServer.Stop(); err != nil {
-			ts.T().Logf("teardown: failed to stop the mock notification server: %v", err)
-		}
-	}
+	ts.mfa = newMFAFixture(ts.T(), "method", ts.users.ouID, ts.users.userType)
 }
 
 func (ts *AuthenticationMethodTestSuite) SetupTest() {
@@ -234,6 +256,50 @@ func (ts *AuthenticationMethodTestSuite) TestFailuresAtOneAuthenticationMethodDo
 		"the password's failures must not have spent the one-time password's allowance")
 }
 
+// Withholding writes nothing, so the lock is not extended either.
+func (ts *AuthenticationMethodTestSuite) TestNoChallengeIsSentToAHeldAuthenticationMethod() {
+	heldID, heldUsername, heldMobile, _ := ts.newUser("dispatch", 3)
+	_, liveUsername, _, _ := ts.newUser("dispatch_live", 6)
+
+	ts.failOTP(heldMobile, lockThreshold)
+	before, reported := readStatus(ts.T(), heldID).expiryOf("otp")
+	ts.Require().True(reported, "the one-time-password lock must report an expiry")
+	revision := runtimeRevision(ts.T(), heldID)
+
+	ts.mockServer.ClearMessages()
+	held := ts.startOTPSignIn(heldUsername)
+	requireNoCodeSent(ts.T(), ts.mockServer, "no code may be dispatched to a held authentication_method")
+	requireStatedFlowLock(ts.T(), held)
+	ts.Equal(revision, runtimeRevision(ts.T(), heldID), "a withheld dispatch must write nothing")
+
+	live := ts.startOTPSignIn(liveUsername)
+	sent := awaitDelivered(ts.T(), ts.mockServer.GetLastMessage, "the control account must actually receive a code")
+	ts.Require().NotEmpty(sent.OTP)
+	ts.Require().Equal("INCOMPLETE", live.FlowStatus, "the control account must reach the code prompt")
+
+	after := readStatus(ts.T(), heldID)
+	ts.Equal([]string{"otp"}, after.lockedMethods(), "withholding must not reach another method")
+	afterExpiry, reported := after.expiryOf("otp")
+	ts.Require().True(reported, "the one-time-password lock must still be reported")
+	ts.Equal(before, afterExpiry, "a withheld dispatch must not extend the lock")
+}
+
+func (ts *AuthenticationMethodTestSuite) TestASecondFactorIsNotSentToAHeldAuthenticationMethod() {
+	heldID, heldUsername, heldMobile, heldPassword := ts.newUser("mfa_held", 9)
+	_, liveUsername, _, livePassword := ts.newUser("mfa_live", 10)
+
+	ts.failOTP(heldMobile, lockThreshold)
+	ts.Require().Equal([]string{"otp"}, readStatus(ts.T(), heldID).lockedMethods(),
+		"the one-time-password method must be the locked one")
+
+	held := ts.mfa.submitPassword(ts.T(), heldUsername, heldPassword)
+	requireNoCodeSent(ts.T(), ts.mfa.server, "no second factor may be dispatched to a held authentication_method")
+	requireStatedFlowLock(ts.T(), held)
+
+	ts.mfa.passPassword(ts.T(), liveUsername, livePassword)
+	ts.NotEmpty(ts.mfa.sentCode(ts.T()), "the control account must receive its second factor")
+}
+
 func (ts *AuthenticationMethodTestSuite) TestRequestingCodesLocksNobody() {
 	userID, username, mobile, password := ts.newUser("dispatch_count", 4)
 
@@ -245,6 +311,31 @@ func (ts *AuthenticationMethodTestSuite) TestRequestingCodesLocksNobody() {
 	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "sending codes must lock nothing")
 	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
 		"the account must still be usable")
+}
+
+// The flow type is the only difference from the sign-in dispatch test.
+func (ts *AuthenticationMethodTestSuite) TestARecoveryFlowStillChallengesALockedAccount() {
+	userID, username, mobile, _ := ts.newUser("recovery_dispatch", 7)
+
+	ts.failOTP(mobile, lockThreshold)
+	ts.Require().Equal([]string{"otp"}, readStatus(ts.T(), userID).lockedMethods(),
+		"the one-time-password authentication_method must be the locked one")
+
+	ts.mockServer.ClearMessages()
+
+	step, err := common.InitiateRecoveryFlow(ts.recoveryAppID, false, nil, "")
+	ts.Require().NoError(err, "failed to initiate the recovery flow")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username}, submitUsernameAction, step.ChallengeToken)
+	ts.Require().NoError(err, "failed to submit the username")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus,
+		"a locked account must still be identified by a recovery flow")
+
+	message := awaitDelivered(ts.T(), ts.mockServer.GetLastMessage,
+		"a recovery flow must still dispatch to a locked account")
+	ts.NotEmpty(message.OTP, "the dispatched challenge must carry a usable code")
 }
 
 // startOTPSignIn submits a username to the OTP authentication flow and returns the resulting step.
@@ -267,6 +358,15 @@ func (ts *AuthenticationMethodTestSuite) submitOTPSignIn(step *common.FlowStep, 
 		step.ChallengeToken)
 	ts.Require().NoError(err, "failed to submit the code")
 	return next
+}
+
+// requireStatedFlowLock checks a flow step ended on the stated lock.
+func requireStatedFlowLock(t *testing.T, step *common.FlowStep) {
+	t.Helper()
+
+	require.Equal(t, "ERROR", step.FlowStatus, "a withheld challenge must end the step")
+	require.NotNil(t, step.Error, "a withheld challenge must state the hold")
+	require.Equal(t, flowStatedLockCode, step.Error.Code, "the step must state the lock")
 }
 
 // otpSignInFlow is a sign-in flow that identifies the account by username and sends it a one-time

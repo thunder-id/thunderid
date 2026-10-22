@@ -1479,16 +1479,31 @@ func (s *ServiceTestSuite) TestRecordLoginSkipsEntityReadsWhenNoCategoryRecords(
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-// Once any category records, the entity's own category decides.
+// Once any category records, the entity's own category decides, and an application never records.
 func (s *ServiceTestSuite) TestRecordLoginWritesNothingWhenThisCategoryDoesNot() {
-	s.source.EXPECT().Current(mock.Anything).Return(recordingConfig(0)).Once()
-	s.port.On("GetEntityProfile", mock.Anything, "e1").
-		Return(&providers.Entity{Category: providers.EntityCategoryAgent}, nil).Once()
+	everyCategoryRecords := recordingConfig(0)
+	everyCategoryRecords.Agent = &accountAccessCategory{RecordLastLogin: new(true)}
+	testCases := []struct {
+		name     string
+		config   accountAccessValue
+		category providers.EntityCategory
+	}{
+		{name: "agent", config: recordingConfig(0), category: providers.EntityCategoryAgent},
+		{name: "application", config: everyCategoryRecords, category: providers.EntityCategoryApp},
+	}
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.source.EXPECT().Current(mock.Anything).Return(tc.config).Once()
+			s.port.On("GetEntityProfile", mock.Anything, "e1").
+				Return(&providers.Entity{Category: tc.category}, nil).Once()
 
-	s.Require().Nil(s.svc.RecordLogin(s.ctx, "e1"))
+			s.Require().Nil(s.svc.RecordLogin(s.ctx, "e1"))
 
-	s.port.AssertNotCalled(s.T(), "RecordLogin",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			s.port.AssertNotCalled(s.T(), "RecordLogin",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
 }
 
 // The window is passed to the write, so the store compares without a read-modify-write.

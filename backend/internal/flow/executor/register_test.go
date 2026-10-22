@@ -104,6 +104,15 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_P
 		ExecutorNameSession: func(e providers.Executor) providers.IdentityGovernanceProvider {
 			return e.(*sessionExecutor).accessGuard.governance
 		},
+		ExecutorNameOTPExecutor: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*otpExecutor).accessGuard.governance
+		},
+		ExecutorNamePasskeyAuth: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*passkeyAuthExecutor).accessGuard.governance
+		},
+		ExecutorNameMagicLink: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*magicLinkExecutor).accessGuard.governance
+		},
 	}
 	for name, governanceOfExecutor := range governanceOf {
 		reg := newExecutorRegistry()

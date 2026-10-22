@@ -3284,7 +3284,8 @@ func (suite *AgentServiceTestSuite) TestGetAgent_ReportsTheGovernedStatus() {
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadEntityAccess(mock.Anything, *agentEntity).
 		Return(identitygovernance.AccessRead{
-			Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
 		}).Once()
 	svc.governance = governance
 
@@ -3292,6 +3293,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_ReportsTheGovernedStatus() {
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp.Status)
 	suite.Equal(providers.AccessStatusLocked, resp.Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.LastLoginAt)
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() {
@@ -3309,7 +3311,8 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() 
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadAccess(mock.Anything, listed).Return([]identitygovernance.AccessRead{
 		{
-			Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+			LastLoginAt: "2026-09-09T18:22:04Z",
 		},
 		{Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended}},
 	}).Once()
@@ -3321,6 +3324,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ReportsTheGovernedStatus() 
 	suite.Require().Len(resp.Agents, 2)
 	suite.Equal(testAgentID, resp.Agents[0].ID)
 	suite.Equal(providers.AccessStatusLocked, resp.Agents[0].Status.Value)
+	suite.Equal("2026-09-09T18:22:04Z", resp.Agents[0].LastLoginAt)
 	suite.Equal("agent-2", resp.Agents[1].ID)
 	suite.Equal(providers.AccessStatusSuspended, resp.Agents[1].Status.Value)
 }
@@ -3335,6 +3339,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReportsTheGovernedStatus() {
 				Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonFailedAttempts,
 					LockedMethods: []providers.AccessLockedMethod{
 						{Method: "credential", ExpiresAt: "2026-10-21T09:00:00Z"}}}},
+			LastLoginAt: "2026-10-20T08:00:00Z",
 		}},
 		{name: "an active agent", read: identitygovernance.AccessRead{
 			Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}}},
@@ -3360,6 +3365,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReportsTheGovernedStatus() {
 			suite.Require().Nil(svcErr)
 			suite.Require().NotNil(resp.Status)
 			suite.Equal(tc.read.Status, *resp.Status)
+			suite.Equal(tc.read.LastLoginAt, resp.LastLoginAt)
 		})
 	}
 }
@@ -3375,4 +3381,5 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_ReportsNoStatus() {
 
 	suite.Require().Nil(svcErr)
 	suite.Nil(resp.Status)
+	suite.Empty(resp.LastLoginAt)
 }

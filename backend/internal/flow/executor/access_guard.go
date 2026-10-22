@@ -74,3 +74,18 @@ func (g *accessGuard) refuseSignInIfHeld(ctx context.Context, entityID string,
 		log.String("plane", string(providers.AccessPlaneSession)))
 	return cmp.Or(statedDecision(decision), &ErrInvalidCredentials), nil
 }
+
+// recordLogin stamps when the identity was last granted access.
+func (g *accessGuard) recordLogin(ctx context.Context, entityID string) {
+	if g.governance == nil || entityID == "" {
+		return
+	}
+	_ = g.governance.RecordLogin(ctx, entityID)
+}
+
+// heldAtDispatch is heldAt for a challenge about to be sent, checked against the challenge's own
+// method at the plane its flow type maps to.
+func (g *accessGuard) heldAtDispatch(ctx context.Context, entityID string, method providers.AuthenticationMethod,
+	flowType providers.FlowType, logger *log.Logger) (bool, *tidcommon.ServiceError, error) {
+	return g.heldAt(ctx, entityID, dispatchPlaneFor(flowType), method, logger)
+}

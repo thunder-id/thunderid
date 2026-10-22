@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -55,7 +56,8 @@ func (suite *PasskeyAuthExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
 		mock.Anything, mock.Anything, mock.Anything).Return(mockExec)
 
-	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider)
+	suite.executor = newPasskeyAuthExecutor(suite.mockFlowFactory, suite.mockAuthnProvider,
+		newAccessGuard(admitAllAccess(suite.T())))
 }
 
 func createMockPasskeyAuthExecutor(t *testing.T) providers.Executor {
@@ -221,6 +223,61 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_ServiceError_Cli
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue, "User has no registered passkeys")
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_HeldMatchesNoRegisteredPasskey() {
+	noPasskey := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	noPasskey.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.mockAuthnProvider.On("InitiateAuthentication", mock.Anything, passkey.CredentialType,
+		mock.Anything, mock.Anything).Return(nil, &tidcommon.ServiceError{
+		Type:             tidcommon.ClientErrorType,
+		Code:             authnprovidercm.ErrorCodeAuthenticationFailed,
+		ErrorDescription: passkey.ErrorNoCredentialsFound.ErrorDescription,
+	}).Once()
+	want, err := suite.executor.Execute(noPasskey)
+	suite.Require().NoError(err)
+
+	held := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	held.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), testPasskeyUserID,
+		providers.AccessPlaneDispatch, providers.AuthenticationMethodPasskey, providers.AccessDecision{}, nil))
+	got, err := suite.executor.Execute(held)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, got.Status)
+	suite.Equal(want.Status, got.Status)
+	suite.Equal(*want.Error, *got.Error)
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_HeldStatesTheHold() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), testPasskeyUserID,
+		providers.AccessPlaneDispatch, providers.AuthenticationMethodPasskey,
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "InitiateAuthentication",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_GovernanceFaultIsAnError() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeChallenge, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	suite.executor.accessGuard = newAccessGuard(expectAccess(suite.T(), testPasskeyUserID,
+		providers.AccessPlaneDispatch, providers.AuthenticationMethodPasskey,
+		providers.AccessDecision{}, &tidcommon.InternalServerError))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "InitiateAuthentication",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteChallenge_ServiceError_Server() {

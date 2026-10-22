@@ -22,7 +22,8 @@ type UserType struct {
 // UserTypeSystemAttributes carries the system-level settings of a user type, such as the
 // attribute used to render a human-readable display name.
 type UserTypeSystemAttributes struct {
-	Display string `json:"display,omitempty"`
+	Display      string `json:"display,omitempty"`
+	PrimaryEmail string `json:"primaryEmail,omitempty"`
 }
 
 // User represents a user in the system

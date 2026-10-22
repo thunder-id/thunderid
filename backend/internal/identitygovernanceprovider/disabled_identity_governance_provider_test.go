@@ -57,3 +57,7 @@ func (s *DisabledIdentityGovernanceProviderTestSuite) TestDisabledProviderAdmits
 	s.Nil(err)
 	s.True(decision.Admitted)
 }
+
+func (s *DisabledIdentityGovernanceProviderTestSuite) TestDisabledProviderRecordsNothing() {
+	s.Nil(newDisabledIdentityGovernanceProvider().RecordLogin(context.Background(), "e1"))
+}

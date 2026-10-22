@@ -12,8 +12,8 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// defaultIdentityGovernanceProvider forwards to the governance service. Access checks run on a
-// runtime context; lifecycle operations keep the caller's.
+// defaultIdentityGovernanceProvider forwards to the governance service. Access checks and RecordLogin
+// run on a runtime context; lifecycle operations keep the caller's.
 type defaultIdentityGovernanceProvider struct {
 	governance identitygovernance.IdentityGovernanceServiceInterface
 }
@@ -38,6 +38,12 @@ func (p *defaultIdentityGovernanceProvider) EvaluateAccess(ctx context.Context, 
 func (p *defaultIdentityGovernanceProvider) AdmitSignIn(ctx context.Context,
 	entityID string) (providers.AccessDecision, *tidcommon.ServiceError) {
 	return p.governance.AdmitSignIn(security.WithRuntimeContext(ctx), entityID)
+}
+
+// RecordLogin stamps when access was last granted.
+func (p *defaultIdentityGovernanceProvider) RecordLogin(ctx context.Context,
+	entityID string) *tidcommon.ServiceError {
+	return p.governance.RecordLogin(security.WithRuntimeContext(ctx), entityID)
 }
 
 // Unlock releases every automatic lock.

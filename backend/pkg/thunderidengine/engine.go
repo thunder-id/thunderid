@@ -197,7 +197,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil, flowConfig)
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.identityGovernance, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -246,7 +247,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.transactioner, revocationEnforcer, revocationService,
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
-		nil, nil, engineCtx.flowProvider, oauthConfig)
+		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

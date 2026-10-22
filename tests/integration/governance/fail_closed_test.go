@@ -13,6 +13,9 @@ import (
 )
 
 const (
+	failClosedGovernanceClientID     = "governance_fail_closed_client"
+	failClosedGovernanceClientSecret = "governance_fail_closed_secret"
+
 	// noRevocationStorePath points database.runtime_persistent at a SQLite file holding only the
 	// runtime table, so governance reads and writes work while every revocation write fails. It has no
 	// directory component, so it resolves against the server home under every database profile.
@@ -28,6 +31,7 @@ var unreadableEntitySignIn = flowAnswer{status: http.StatusOK, flowStatus: "ERRO
 type FailClosedTestSuite struct {
 	suite.Suite
 	users        *userFixture
+	appID        string
 	shippedAppID string
 
 	// originalDatabaseConfig is the deployment's database section, captured before it is broken.
@@ -42,6 +46,24 @@ func TestFailClosedTestSuite(t *testing.T) {
 func (ts *FailClosedTestSuite) SetupSuite() {
 	ts.users = newUserFixture(ts.T(), "fail_closed", testutils.UserType{Schema: credentialsSchema(nil)})
 
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:        ts.users.ouID,
+		Name:        "Governance Fail Closed Client",
+		Description: "Client for the governance fail-closed tests",
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                failClosedGovernanceClientID,
+				"clientSecret":            failClosedGovernanceClientSecret,
+				"redirectUris":            []string{"https://localhost:3000"},
+				"grantTypes":              []string{"client_credentials"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		}},
+	})
+	ts.Require().NoError(err, "failed to create the client")
+	ts.appID = appID
+	cleanupApplication(ts.T(), appID)
 	ts.shippedAppID = newShippedFlowApp(ts.T(), ts.users, "fail_closed")
 }
 
@@ -99,6 +121,26 @@ func (ts *FailClosedTestSuite) TestAnUnreadableRuntimeRecordFailsTheSignInFlow()
 	ts.Equal("COMPLETE",
 		answerOf(submitSignIn(ts.T(), ts.shippedAppID, shippedSignInAction, username, password)).flowStatus,
 		"the account must sign in again once its record is readable")
+}
+
+// At OAuth client authentication, an application whose runtime document cannot be read is
+// refused as invalid_client, the answer for an unreadable client.
+func (ts *FailClosedTestSuite) TestAnUnreadableApplicationRecordRefusesClientAuthentication() {
+	result := clientCredentials(ts.T(), failClosedGovernanceClientID, failClosedGovernanceClientSecret, "")
+	ts.Require().Equal(http.StatusOK, result.StatusCode,
+		"the client must authenticate while its record is readable: %s", result.Body)
+
+	ts.corruptRuntimeRecord(ts.appID)
+	defer ts.repairRuntimeRecord(ts.appID)
+
+	result = clientCredentials(ts.T(), failClosedGovernanceClientID, failClosedGovernanceClientSecret, "")
+	ts.Equal(http.StatusUnauthorized, result.StatusCode, "an unreadable client record must refuse: %s", result.Body)
+	ts.Contains(string(result.Body), "invalid_client", "the refusal must be invalid_client")
+
+	ts.repairRuntimeRecord(ts.appID)
+	result = clientCredentials(ts.T(), failClosedGovernanceClientID, failClosedGovernanceClientSecret, "")
+	ts.Equal(http.StatusOK, result.StatusCode,
+		"the client must authenticate again once its record is readable: %s", result.Body)
 }
 
 // Containment runs before the hold: when the revocation store cannot be written, the suspend

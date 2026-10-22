@@ -100,7 +100,7 @@ Deleting a user through the `DELETE /users/{id}` API removes the record only. It
 
 ### Account Suspension
 
-Suspending a user, agent, or application runs a suspend flow that revokes, by subject, every token issued to the account before the suspension, and terminates its sessions before the hold is placed. For an application, or an agent that has an OAuth client, the flow also revokes the tokens issued through that client's ID, including user tokens. Unsuspending does not restore revoked tokens.
+Suspending a user, agent, or application runs a suspend flow that revokes, by subject, every token issued to the account before the suspension, and terminates its sessions before the hold is placed. For an application, or an agent that has an OAuth client, the flow also revokes the tokens issued through that client's ID, including user tokens. Unsuspending does not restore revoked tokens. See [Account Locks and Suspension](../../../account-locks-and-suspension#suspend-an-account).
 
 An automatic account lock revokes nothing: it refuses new sign-ins only.
 

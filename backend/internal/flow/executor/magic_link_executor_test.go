@@ -123,7 +123,7 @@ func (suite *MagicLinkExecutorTestSuite) SetupTest() {
 		suite.mockFlowFactory,
 		suite.mockMagicLinkService,
 		suite.mockAuthnProvider,
-		suite.mockEntityProvider)
+		suite.mockEntityProvider, newAccessGuard(admitAllAccess(suite.T())))
 	suite.executor.Executor = mockExec
 }
 
@@ -493,6 +493,87 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 	assert.Equal(suite.T(), dataValueTrue, resp.RuntimeData[common.RuntimeKeySkipDelivery])
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 	suite.mockMagicLinkService.AssertNotCalled(suite.T(), "GenerateMagicLink")
+}
+
+// generateForHeld runs a generate step for an identified user under the given governance answer.
+func (suite *MagicLinkExecutorTestSuite) generateForHeld(
+	governance providers.IdentityGovernanceProvider) (*providers.ExecutorResponse, error) {
+	suite.executor.accessGuard = newAccessGuard(governance)
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+		userAttributeEmail: magicLinkTestEmail,
+	}).Return(toStringPtr(magicLinkTestUserID), nil).Once()
+	return suite.executor.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		ExecutionID:  magicLinkTestExecutionID,
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		Application:  providers.Application{ID: magicLinkTestAppID},
+		UserInputs:   map[string]string{userAttributeEmail: magicLinkTestEmail},
+		RuntimeData:  make(map[string]string),
+	})
+}
+
+// dispatchDecision expects one dispatch check of the identified user's magic link.
+func (suite *MagicLinkExecutorTestSuite) dispatchDecision(decision providers.AccessDecision,
+	fault *tidcommon.ServiceError) providers.IdentityGovernanceProvider {
+	return expectAccess(suite.T(), magicLinkTestUserID, providers.AccessPlaneDispatch,
+		providers.AuthenticationMethodMagicLink, decision, fault)
+}
+
+// A refusal that names no hold answers as an unknown user does.
+func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_HeldSkipsDelivery() {
+	resp, err := suite.generateForHeld(suite.dispatchDecision(providers.AccessDecision{}, nil))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueTrue, resp.RuntimeData[common.RuntimeKeySkipDelivery])
+	suite.mockMagicLinkService.AssertNotCalled(suite.T(), "GenerateMagicLink")
+}
+
+// An unreadable authority answers as a failed user lookup does.
+func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_GovernanceFaultSkipsDelivery() {
+	resp, err := suite.generateForHeld(suite.dispatchDecision(providers.AccessDecision{},
+		&tidcommon.InternalServerError))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueTrue, resp.RuntimeData[common.RuntimeKeySkipDelivery])
+	suite.mockMagicLinkService.AssertNotCalled(suite.T(), "GenerateMagicLink")
+}
+
+func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_HeldStatesTheHold() {
+	resp, err := suite.generateForHeld(suite.dispatchDecision(
+		providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}, nil))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrAccountSuspended.Code, resp.Error.Code)
+	suite.mockMagicLinkService.AssertNotCalled(suite.T(), "GenerateMagicLink")
+}
+
+func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_ClearsAnEarlierSkip() {
+	ctx := &providers.NodeContext{
+		Context:      context.Background(),
+		ExecutionID:  magicLinkTestExecutionID,
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		Application:  providers.Application{ID: magicLinkTestAppID},
+		UserInputs:   map[string]string{userAttributeEmail: magicLinkTestEmail},
+		RuntimeData:  map[string]string{common.RuntimeKeySkipDelivery: dataValueTrue},
+	}
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+		userAttributeEmail: magicLinkTestEmail,
+	}).Return(toStringPtr(magicLinkTestUserID), nil).Once()
+	suite.mockMagicLinkService.On("GenerateMagicLink", mock.Anything, magicLinkTestUserID, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("https://example.com/verify", nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	value, set := resp.RuntimeData[common.RuntimeKeySkipDelivery]
+	suite.True(set)
+	suite.Empty(value)
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAuthenticatedUser() {

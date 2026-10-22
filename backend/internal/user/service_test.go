@@ -992,6 +992,7 @@ func TestUserService_UpdateUser_ReportsTheGovernedStatus(t *testing.T) {
 		Status: providers.AccessStatusReport{Value: providers.AccessStatusSuspended,
 			Details: &providers.AccessStatusDetails{Reason: providers.AccessHoldReasonAdministrativeSuspension,
 				Since: "2026-10-21T08:00:00Z", OperatorNote: "Under investigation"}},
+		LastLoginAt: "2026-10-20T08:00:00Z",
 	}
 	active := identitygovernance.AccessRead{Status: providers.AccessStatusReport{Value: providers.AccessStatusActive}}
 	cases := []struct {
@@ -1037,6 +1038,7 @@ func TestUserService_UpdateUser_ReportsTheGovernedStatus(t *testing.T) {
 			require.Nil(t, svcErr)
 			require.NotNil(t, resp.Status)
 			require.Equal(t, tc.read.Status, *resp.Status)
+			require.Equal(t, tc.read.LastLoginAt, resp.LastLoginAt)
 		})
 	}
 }
@@ -4054,7 +4056,8 @@ func TestGetUserMetadata_GetEntityTypeSchemaError(t *testing.T) {
 // lockedRead returns an access read reporting LOCKED, without details.
 func lockedRead() identitygovernance.AccessRead {
 	return identitygovernance.AccessRead{
-		Status: providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+		Status:      providers.AccessStatusReport{Value: providers.AccessStatusLocked},
+		LastLoginAt: "2026-09-09T18:22:04Z",
 	}
 }
 
@@ -4090,6 +4093,7 @@ func TestUserService_GetUser_ReportsTheGovernedStatus(t *testing.T) {
 	require.Nil(t, svcErr)
 	require.NotNil(t, user.Status)
 	require.Equal(t, providers.AccessStatusLocked, user.Status.Value)
+	require.Equal(t, "2026-09-09T18:22:04Z", user.LastLoginAt)
 }
 
 func TestUserService_GetUser_RefusedReadDerivesNoStatus(t *testing.T) {
@@ -4133,6 +4137,7 @@ func TestUserService_UpdateUserAttributes_ReportsTheGovernedStatus(t *testing.T)
 	require.Nil(t, svcErr)
 	require.NotNil(t, user.Status)
 	require.Equal(t, providers.AccessStatusLocked, user.Status.Value)
+	require.Equal(t, "2026-09-09T18:22:04Z", user.LastLoginAt)
 }
 
 func TestUserService_GetUserList_ReportsTheGovernedStatus(t *testing.T) {
@@ -4184,6 +4189,7 @@ func TestUserService_GetUserList_ReportsTheGovernedStatus(t *testing.T) {
 			require.Len(t, resp.Users, 2)
 			require.Equal(t, svcTestUserID1, resp.Users[0].ID)
 			require.Equal(t, providers.AccessStatusLocked, resp.Users[0].Status.Value)
+			require.Equal(t, "2026-09-09T18:22:04Z", resp.Users[0].LastLoginAt)
 			require.Equal(t, svcTestUserID123, resp.Users[1].ID)
 			require.Equal(t, providers.AccessStatusSuspended, resp.Users[1].Status.Value)
 		})

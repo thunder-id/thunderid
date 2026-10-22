@@ -435,6 +435,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	resp.OUID = ouID
 	access := s.governance.ReadEntityAccess(ctx, *updated)
 	resp.Status = &access.Status
+	resp.LastLoginAt = access.LastLoginAt
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp)
 	return resp, nil
@@ -1106,6 +1107,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 		ClientID:    clientID,
 		Attributes:  e.Attributes,
 		Status:      &access.Status,
+		LastLoginAt: access.LastLoginAt,
 	}
 
 	inbound, err := s.inboundClientService.GetInboundClientByEntityID(ctx, e.ID)
@@ -1180,6 +1182,7 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 			Attributes:  e.Attributes,
 			IsReadOnly:  e.IsReadOnly,
 			Status:      &reads[i].Status,
+			LastLoginAt: reads[i].LastLoginAt,
 		})
 	}
 

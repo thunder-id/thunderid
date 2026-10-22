@@ -34,3 +34,17 @@ var ErrorEntityNotFound = tidcommon.ServiceError{
 		DefaultValue: "The requested entity does not exist",
 	},
 }
+
+// ErrorActorUnavailable is returned when the actor resolves but identity governance refuses it.
+var ErrorActorUnavailable = tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: "ACP-1003",
+	Error: tidcommon.I18nMessage{
+		Key:          "error.actor_unavailable",
+		DefaultValue: "Actor unavailable",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.actor_unavailable_description",
+		DefaultValue: "The requested actor is currently unavailable",
+	},
+}

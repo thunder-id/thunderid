@@ -359,6 +359,99 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow() {
 	ts.Require().Equal("invalid_grant", reuse.errorCode, "a consumed request must not issue tokens again")
 }
 
+// A CIBA request authenticated before its user is suspended is refused at redemption: the request's
+// authentication time falls before the suspension's cutoff. The user is this test's own, so the
+// suite's shared user stays usable.
+func (ts *CIBATestSuite) TestCIBASuspensionBeforeRedemptionRefusesTheGrant() {
+	const (
+		username = "ciba_suspend_user"
+		password = "cibasuspend123"
+	)
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: ts.ouID,
+		Type: "ciba-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "` + password + `",
+			"email": "ciba_suspend_user@example.com",
+			"mobile_number": "+1987654322"
+		}`),
+	})
+	ts.Require().NoError(err, "failed to create the suspended CIBA user")
+	defer func() {
+		if err := testutils.DeleteUser(userID); err != nil {
+			ts.T().Logf("failed to delete the suspended CIBA user: %v", err)
+		}
+	}()
+
+	status, bcResp := ts.cibaBackchannelAuthorize(username, "openid")
+	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed")
+	executionID, inviteToken := ts.recoverCIBAInvite(bcResp.AuthReqID)
+
+	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
+		map[string]string{"inviteToken": inviteToken}, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username, "password": password,
+	}, "action_001", resumeStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+	callbackStatus, _ := ts.cibaPostCallback(bcResp.AuthReqID, flowStep.Assertion)
+	ts.Require().Equal(http.StatusOK, callbackStatus, "the request must be authenticated before the suspension")
+
+	status, flowStatus, err := testutils.RunAdministrationFlow("default-user-suspend-flow",
+		map[string]string{"subject": userID})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().Equal("COMPLETE", flowStatus, "the suspension must be placed")
+
+	tokenRes := ts.pollCIBATokenUntilIssued(bcResp.AuthReqID, cibaClientID, cibaClientSecret)
+	ts.Equal(http.StatusBadRequest, tokenRes.statusCode,
+		"a request authenticated before the suspension must not issue tokens")
+	ts.Equal("invalid_grant", tokenRes.errorCode, "the refusal must be an ordinary invalid grant")
+	ts.Empty(tokenRes.accessToken)
+}
+
+// A suspended application's backchannel request cannot be completed: its callback is refused as an
+// unauthorized client. The application is this test's own, so the suite's client stays usable.
+func (ts *CIBATestSuite) TestCIBACallbackIsRefusedForASuspendedApplication() {
+	const (
+		clientID     = "ciba_test_client_suspended"
+		clientSecret = "ciba_test_secret_suspended"
+	)
+	appID := ts.createCIBAApp("CIBASuspendedApp", clientID, clientSecret, []string{cibaGrantType}, ts.flowID)
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("failed to delete the suspended CIBA application: %v", err)
+		}
+	}()
+
+	form := url.Values{}
+	form.Set("login_hint", cibaTestUsername)
+	form.Set("scope", "openid")
+	status, bcResp := ts.cibaBackchannelAuthorizeForm(form, clientID, clientSecret)
+	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed before the suspension")
+	executionID, inviteToken := ts.recoverCIBAInvite(bcResp.AuthReqID)
+	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
+		map[string]string{"inviteToken": inviteToken}, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": cibaTestUsername, "password": cibaTestPassword,
+	}, "action_001", resumeStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "the user must authenticate before the suspension")
+
+	status, flowStatus, err := testutils.RunAdministrationFlow("default-application-suspend-flow",
+		map[string]string{"subject": appID})
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().Equal("COMPLETE", flowStatus, "the application must be suspended")
+
+	callbackStatus, errorCode := ts.cibaPostCallback(bcResp.AuthReqID, flowStep.Assertion)
+	ts.Equal(http.StatusBadRequest, callbackStatus, "the callback of a suspended application must be refused")
+	ts.Equal("unauthorized_client", errorCode, "the refusal must name the client as unauthorized")
+}
+
 // TestCIBAFlowFailureDeniesRequest verifies that a terminal flow failure is propagated to the polling
 // client instead of leaving the request PENDING until it expires. The flow mints a signed error
 // assertion, the gate relays it to the callback in the same field a success assertion uses, and the
