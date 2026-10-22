@@ -545,6 +545,12 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
+  onSuccess: release_account_locks
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
   onSuccess: recovery_complete
 - id: recovery_complete
   type: PROMPT
@@ -861,13 +867,26 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: CredentialSetter
-  onSuccess: recovery_complete
+  onSuccess: release_account_locks
   layout:
     size:
       width: 206
       height: 113
     position:
       x: 2820
+      y: 340
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: recovery_complete
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 3200
       y: 340
 - id: recovery_complete
   type: PROMPT
@@ -895,7 +914,7 @@ nodes:
       width: 350
       height: 340
     position:
-      x: 3140
+      x: 3580
       y: 250
 - id: call_authentication
   type: CALL
@@ -916,7 +935,7 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 3600
+      x: 4040
       y: 375
 ---
 resource_type: flow
@@ -6569,6 +6588,134 @@ translations:
     forms.confirm.actions.submit.label: Sign out
     errors.failed.description: Something went wrong. Please try again.
 ---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000087
+name: Default User Unlock Flow
+handle: default-user-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: notify_holder
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: notify_holder
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: account-unlocked
+    bestEffort: true
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1060
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1440
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000086
+name: Default Agent Unlock Flow
+handle: default-agent-unlock-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent
+  executor:
+    name: PermissionValidator
+  onSuccess: access_governance
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: access_governance
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 680
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1060
+      y: 200
+---
 resource_type: notification_template
 channel: email
 handle: user-invite
@@ -6833,5 +6980,22 @@ content:
       <p><strong>This lock does not expire automatically.</strong></p>
       <p>To regain access, complete account recovery or contact your administrator.</p>
       <p><strong>Didn't try to sign in?</strong> Someone else may be trying to get into your account. Report this to your administrator. Once you regain access, change your credentials and check that your email address and phone number are still yours.</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+channel: email
+handle: account-unlocked
+ouHandle: default
+displayName: Account Unlocked Email
+description: Sent when an administrator unlocks an account.
+content:
+  subject: "Your account has been unlocked"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+      <h2>Your account has been unlocked</h2>
+      <p>An administrator has unlocked your account. You can sign in again.</p>
     </body>
     </html>

@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -72,11 +71,6 @@ type IdentityGovernanceServiceInterface interface {
 	// ReadAccess derives what management reads report for each entity, in order: the effective status
 	// and the last login time. Each category's lockout policy is resolved once per call.
 	ReadAccess(ctx context.Context, entities []providers.Entity) []AccessRead
-
-	// SetServerConfigService injects the server-config service the accountAccess section and the lock
-	// email's default sender are read from. It is built after governance, since it takes the section
-	// handler Initialize returns.
-	SetServerConfigService(serverConfigService serverconfig.ServerConfigService)
 }
 
 // entityStateProvider reads and writes the governed state. The entity service implements it.
@@ -413,14 +407,6 @@ func (s *identityGovernanceService) ReadAccess(ctx context.Context, entities []p
 		reads[i] = accessReadFor(entity, enforcement, now)
 	}
 	return reads
-}
-
-// SetServerConfigService injects the server-config service. See IdentityGovernanceServiceInterface.
-func (s *identityGovernanceService) SetServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	s.source.setReader(serverConfigService)
-	if s.notifier != nil {
-		s.notifier.setServerConfigService(serverConfigService)
-	}
 }
 
 // enforcementFor resolves which recorded locks a category's policy enforces. An application has no

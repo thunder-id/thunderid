@@ -247,4 +247,5 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.AccessChangeValidator,
   ExecutionTypes.RoleExecutor,
   ExecutionTypes.GroupExecutor,
+  ExecutionTypes.IdentityGovernance,
 ]);

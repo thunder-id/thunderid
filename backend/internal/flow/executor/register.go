@@ -186,6 +186,7 @@ type ExecutorDependencies struct {
 	UserService           user.UserServiceInterface
 	CriteriaRevoker       revocation.CriteriaRevoker
 	ResourceMgtService    resource.ResourceServiceInterface
+	IdentityGovernance    providers.IdentityGovernanceProvider
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -240,7 +241,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
 				deps.OUService, deps.AuthAssertGen, deps.AuthnProvider, deps.EntityProvider,
-				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService))
+				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
@@ -347,6 +349,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOwnerResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
 				deps.FlowFactory, deps.EntityProvider))
+		},
+		ExecutorNameIdentityGovernance: func(reg ExecutorRegistryInterface,
+			deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameIdentityGovernance,
+				newIdentityGovernanceExecutor(deps.FlowFactory, deps.IdentityGovernance))
 		},
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,

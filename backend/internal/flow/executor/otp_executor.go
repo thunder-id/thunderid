@@ -302,6 +302,15 @@ func (e *otpExecutor) getAuthenticatedUser(ctx *providers.NodeContext,
 	authUser, authenticatedClaims, svcErr := e.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message.
+		if stated := statedHold(svcErr); stated != nil {
+			logger.Debug(ctx.Context, "OTP verification refused by a stated hold",
+				log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = e.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code ||
 			svcErr.Code == authnprovidermgr.ErrorInvalidRequest.Code {
 			logger.Debug(ctx.Context, "OTP verification failed")

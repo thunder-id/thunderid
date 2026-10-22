@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -173,7 +174,10 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 				return nil, err
 			}
 			if len(holderIDs) > 0 {
-				p.applyExistingLinkHolderRules(ctx, category, holderIDs, execResp, logger)
+				err = p.applyExistingLinkHolderRules(ctx, category, holderIDs, execResp, logger)
+				if err != nil {
+					return nil, err
+				}
 				return execResp, nil
 			}
 		}
@@ -250,25 +254,32 @@ func (p *provisioningExecutor) registrationLinkHolders(ctx *providers.NodeContex
 }
 
 // applyExistingLinkHolderRules completes registration as the one user holding the link when
-// registering an existing user is allowed, and fails it otherwise.
+// registering an existing user is allowed, and fails it otherwise. It returns an error only for a
+// server fault while binding the holder.
 func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, holderIDs []string, execResp *providers.ExecutorResponse,
-	logger *log.Logger) {
+	logger *log.Logger) error {
 	logger.Debug(ctx.Context, "Federated identity is already linked to a user",
 		log.Int("holderCount", len(holderIDs)))
 	if len(holderIDs) > 1 || !isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, category)
-		return
+		return nil
 	}
 	// Several users hold the link, so the AuthUser names none of them yet.
 	if ctx.RuntimeData[common.RuntimeKeyEntityState] == entityStateAmbiguous {
-		p.authenticateProvisionedEntity(ctx, category, holderIDs[0], execResp)
-		if execResp.Status == providers.ExecFailure {
-			return
+		if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
+			execResp); svcErr != nil {
+			if svcErr.Type == tidcommon.ServerErrorType {
+				return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
+			}
+			execResp.Status = providers.ExecFailure
+			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
+			return nil
 		}
 	}
 	execResp.Status = providers.ExecComplete
+	return nil
 }
 
 // categoryFromMode maps the node's mode property onto the entity category it works on. A mode is

@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -363,7 +364,7 @@ func (i *identifyingExecutor) promptLinkHolders(ctx context.Context, holders []*
 }
 
 // bindLinkHolder makes the AuthUser name the link holder the user picked. The holder came from the
-// link itself, so it is authenticated as the provisioning executor authenticates an entity it created.
+// link itself, so it is authenticated by entity ID, which the provider admits as a federated sign-in.
 func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 	entityID string, logger *log.Logger) (*providers.ExecutorResponse, error) {
 	if i.authnProvider == nil {
@@ -375,7 +376,7 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 		}
 		logger.Debug(ctx.Context, "Failed to bind the resolved link holder", log.String("errorCode", svcErr.Code))
 		execResp.Status = providers.ExecFailure
-		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped))
 		return execResp, nil
 	}
 

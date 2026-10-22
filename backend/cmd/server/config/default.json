@@ -420,6 +420,9 @@
   "user_mgt_provider": {
     "type": "default"
   },
+  "identity_governance_provider": {
+    "type": "default"
+  },
   "openid4vp": {
     "client_id_scheme": "x509_san_dns",
     "signing_key_id": "ecdsa-key",

@@ -9,7 +9,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -592,46 +591,6 @@ func (_c *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call) Return(servic
 
 func (_c *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call {
 	_c.Call.Return(run)
-	return _c
-}
-
-// SetServerConfigService provides a mock function for the type IdentityGovernanceServiceInterfaceMock
-func (_mock *IdentityGovernanceServiceInterfaceMock) SetServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	_mock.Called(serverConfigService)
-	return
-}
-
-// IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetServerConfigService'
-type IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call struct {
-	*mock.Call
-}
-
-// SetServerConfigService is a helper method to define mock.On call
-//   - serverConfigService serverconfig.ServerConfigService
-func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) SetServerConfigService(serverConfigService any) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	return &IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call{Call: _e.mock.On("SetServerConfigService", serverConfigService)}
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) Run(run func(serverConfigService serverconfig.ServerConfigService)) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 serverconfig.ServerConfigService
-		if args[0] != nil {
-			arg0 = args[0].(serverconfig.ServerConfigService)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) Return() *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call) RunAndReturn(run func(serverConfigService serverconfig.ServerConfigService)) *IdentityGovernanceServiceInterfaceMock_SetServerConfigService_Call {
-	_c.Run(run)
 	return _c
 }
 

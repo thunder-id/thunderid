@@ -60,6 +60,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "emailTemplate", IsRequired: true},
 			{Property: "senderId"},
+			{Property: "bestEffort"},
 		},
 	},
 	ExecutorNameGitHubAuth: {
@@ -93,6 +94,10 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "loginHintAttribute"},
 		},
+	},
+	ExecutorNameIdentityGovernance: {
+		SupportedModes:     []string{ExecutorModeUnlock},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY"},
 	},
 	ExecutorNameInviteExecutor: {
 		SupportedModes: []string{"generate", "verify"},

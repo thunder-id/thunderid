@@ -20,7 +20,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -2645,24 +2644,6 @@ func (s *ServiceTestSuite) TestReadAccessForAnApplicationReadsNoSection() {
 	s.Require().Len(reads, 1)
 	s.Equal(providers.AccessStatusLocked, reads[0].Status.Value)
 	s.source.AssertNotCalled(s.T(), "Current", mock.Anything)
-}
-
-func (s *ServiceTestSuite) TestSetServerConfigServiceSetsTheSectionReader() {
-	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
-	s.source.EXPECT().setReader(reader).Once()
-
-	s.svc.SetServerConfigService(reader)
-}
-
-// The lock email reads its default sender through the same server-config service.
-func (s *ServiceTestSuite) TestSetServerConfigServiceReachesTheNotifier() {
-	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
-	notifier := newLockNotifierInterfaceMock(s.T())
-	s.source.EXPECT().setReader(reader).Once()
-	notifier.EXPECT().setServerConfigService(reader).Once()
-	svc := newIdentityGovernanceService(s.port, s.source, notifier, nil, nil)
-
-	svc.SetServerConfigService(reader)
 }
 
 // testAccountAccessConfig is a representative deployment: a user default and agent locking switched

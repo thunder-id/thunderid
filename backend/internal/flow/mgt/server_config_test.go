@@ -258,6 +258,24 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_AgentOnboardingHandleRejectedW
 	s.Contains(err.Error(), "agentOnboardingFlow.defaultHandle")
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_LifecycleHandlesCheckedAgainstAdministration() {
+	gotTypes := map[string]providers.FlowType{}
+	s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+		gotTypes[handle] = flowType
+		return true
+	})
+	cfg := flowconfig.FlowSectionConfig{
+		UserUnlockFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "user-unlock"},
+		AgentUnlockFlow: flowconfig.FlowTypeConfig{DefaultHandle: "agent-unlock"},
+	}
+
+	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
+	s.Equal(map[string]providers.FlowType{
+		"user-unlock":  providers.FlowTypeAdministration,
+		"agent-unlock": providers.FlowTypeAdministration,
+	}, gotTypes)
+}
+
 // An operator can repoint agent onboarding at their own administration flow through the writable
 // layer, and an empty writable layer leaves the declarative default standing.
 func (s *FlowConfigHandlerTestSuite) TestMerge_AgentOnboardingHandleOverlays() {
@@ -275,18 +293,28 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_AgentOnboardingHandleOverlays() {
 	s.Equal("default-agent-onboarding-flow", kept.AgentOnboardingFlow.DefaultHandle)
 }
 
-func (s *FlowConfigHandlerTestSuite) TestMerge_CarriesEveryAdministrationFlow() {
-	ro := flowconfig.FlowSectionConfig{
-		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-user-deletion"},
-		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "ro-application-deletion"},
-		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "ro-secret-regeneration"},
-		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-assignment-removal"},
-		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-deletion"},
-		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-permission-removal"},
-		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-deletion"},
-		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-membership-removal"},
-		ActionDeletionFlow:         flowconfig.FlowTypeConfig{DefaultHandle: "ro-action-deletion"},
+// everyAdministrationFlow names a handle, prefixed with prefix, for every administration flow.
+func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
+	handle := func(name string) flowconfig.FlowTypeConfig {
+		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
+	return flowconfig.FlowSectionConfig{
+		UserDeletionFlow:           handle("user-deletion"),
+		ApplicationDeletionFlow:    handle("application-deletion"),
+		SecretRegenerationFlow:     handle("secret-regeneration"),
+		RoleAssignmentRemovalFlow:  handle("role-assignment-removal"),
+		RoleDeletionFlow:           handle("role-deletion"),
+		RolePermissionRemovalFlow:  handle("role-permission-removal"),
+		GroupDeletionFlow:          handle("group-deletion"),
+		GroupMembershipRemovalFlow: handle("group-membership-removal"),
+		ActionDeletionFlow:         handle("action-deletion"),
+		UserUnlockFlow:             handle("user-unlock"),
+		AgentUnlockFlow:            handle("agent-unlock"),
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_CarriesEveryAdministrationFlow() {
+	ro := everyAdministrationFlow("ro")
 
 	merged, ok := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
 
@@ -295,28 +323,8 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_CarriesEveryAdministrationFlow() 
 }
 
 func (s *FlowConfigHandlerTestSuite) TestMerge_WritableWinsForEveryAdministrationFlow() {
-	wr := flowconfig.FlowSectionConfig{
-		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "wr-user-deletion"},
-		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "wr-application-deletion"},
-		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "wr-secret-regeneration"},
-		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-assignment-removal"},
-		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-deletion"},
-		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-permission-removal"},
-		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "wr-group-deletion"},
-		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "wr-group-membership-removal"},
-		ActionDeletionFlow:         flowconfig.FlowTypeConfig{DefaultHandle: "wr-action-deletion"},
-	}
-	ro := flowconfig.FlowSectionConfig{
-		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-user-deletion"},
-		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "ro-application-deletion"},
-		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "ro-secret-regeneration"},
-		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-assignment-removal"},
-		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-deletion"},
-		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-permission-removal"},
-		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-deletion"},
-		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-membership-removal"},
-		ActionDeletionFlow:         flowconfig.FlowTypeConfig{DefaultHandle: "ro-action-deletion"},
-	}
+	wr := everyAdministrationFlow("wr")
+	ro := everyAdministrationFlow("ro")
 
 	merged, ok := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
 

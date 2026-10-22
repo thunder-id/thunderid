@@ -17,6 +17,12 @@ type accountAccessHandler struct {
 	base accountAccessValue
 }
 
+// NewAccountAccessHandler builds the accountAccess server-config handler over the deployment
+// configuration.
+func NewAccountAccessHandler(cfg Config) serverconfig.ServerConfigHandlerInterface {
+	return accountAccessHandler{base: cfg.AccountAccess}
+}
+
 // Decode parses a raw section value. Empty input yields the zero value (an absent layer). Unknown
 // fields are rejected so a misspelled key does not silently drop protection.
 func (h accountAccessHandler) Decode(raw json.RawMessage) (any, error) {

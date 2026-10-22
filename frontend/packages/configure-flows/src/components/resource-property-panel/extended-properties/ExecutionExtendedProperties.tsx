@@ -148,6 +148,7 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       executorSpecificProperties = <AttributeUniquenessValidatorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.CredentialSetter:
+    case ExecutionTypes.IdentityGovernance:
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:
     case ExecutionTypes.AccountLinking:

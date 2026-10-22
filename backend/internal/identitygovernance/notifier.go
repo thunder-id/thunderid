@@ -38,8 +38,6 @@ type lockNotifierInterface interface {
 		episode LockEpisode)
 	// Close stops accepting notices and waits, up to a fixed budget, for the queued ones.
 	Close()
-	// setServerConfigService sets the server-config service the default email sender is read from.
-	setServerConfigService(serverConfigService serverconfig.ServerConfigService)
 }
 
 // lockEmailNotifier delivers lock notices as email through the server's default email sender.
@@ -49,8 +47,7 @@ type lockEmailNotifier struct {
 	entityTypes entitytype.EntityTypeServiceInterface
 	templates   notificationTemplateRenderer
 	senders     notification.NotificationSenderServiceInterface
-	// serverConfig reads the notification section's default email sender; until it is set there is
-	// no sender.
+	// serverConfig reads the notification section's default email sender.
 	serverConfig serverconfig.ServerConfigService
 	queue        chan lockNotice
 	timeout      time.Duration
@@ -66,9 +63,10 @@ type lockEmailNotifier struct {
 }
 
 // newLockEmailNotifier builds the notifier and starts its workers.
-func newLockEmailNotifier(source accountAccessSourceInterface, profiles entityStateProvider,
-	entityTypes entitytype.EntityTypeServiceInterface, templates notificationTemplateRenderer,
-	senders notification.NotificationSenderServiceInterface) *lockEmailNotifier {
+func newLockEmailNotifier(source accountAccessSourceInterface, serverConfig serverconfig.ServerConfigService,
+	profiles entityStateProvider, entityTypes entitytype.EntityTypeServiceInterface,
+	templates notificationTemplateRenderer, senders notification.NotificationSenderServiceInterface,
+) *lockEmailNotifier {
 	ctx, cancel := context.WithCancel(context.Background())
 	notifier := &lockEmailNotifier{
 		source:         source,
@@ -76,6 +74,7 @@ func newLockEmailNotifier(source accountAccessSourceInterface, profiles entitySt
 		entityTypes:    entityTypes,
 		templates:      templates,
 		senders:        senders,
+		serverConfig:   serverConfig,
 		queue:          make(chan lockNotice, noticeQueueCapacity),
 		timeout:        noticeTimeout,
 		ctx:            ctx,
@@ -133,11 +132,6 @@ func (n *lockEmailNotifier) Close() {
 		}
 		n.cancel()
 	})
-}
-
-// setServerConfigService sets the server-config service the notification section is read from.
-func (n *lockEmailNotifier) setServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	n.serverConfig = serverConfigService
 }
 
 // waitWorkers reports whether the workers finished within the timeout.
@@ -260,11 +254,8 @@ func (n *lockEmailNotifier) record(ctx context.Context, entityID string, method 
 }
 
 // defaultSenderID reads the default email sender from the notification section, or "" when none is
-// set or the server-config service is not set yet.
+// set.
 func (n *lockEmailNotifier) defaultSenderID(ctx context.Context) (string, *tidcommon.ServiceError) {
-	if n.serverConfig == nil {
-		return "", nil
-	}
 	value, svcErr := n.serverConfig.GetMergedConfig(ctx, string(serverconfig.ConfigNameNotification))
 	if svcErr != nil {
 		return "", svcErr

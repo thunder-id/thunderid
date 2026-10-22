@@ -651,6 +651,12 @@ spec:
           type: TASK_EXECUTION
           executor:
             name: CredentialSetter
+          onSuccess: release_account_locks
+        - id: release_account_locks
+          type: TASK_EXECUTION
+          executor:
+            name: IdentityGovernanceExecutor
+            mode: unlock
           onSuccess: recovery_complete
         - id: recovery_complete
           type: PROMPT
@@ -821,6 +827,19 @@ spec:
               y: 340
           executor:
             name: CredentialSetter
+          onSuccess: release_account_locks
+        - id: release_account_locks
+          type: TASK_EXECUTION
+          layout:
+            size:
+              width: 206
+              height: 113
+            position:
+              x: 3200
+              y: 340
+          executor:
+            name: IdentityGovernanceExecutor
+            mode: unlock
           onSuccess: recovery_complete
         - id: recovery_complete
           type: PROMPT
@@ -829,7 +848,7 @@ spec:
               width: 350
               height: 340
             position:
-              x: 3140
+              x: 3580
               y: 250
           meta: '{"components":[{"align":"center","id":"recovery_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_heading","label":"{{ t(recovery:forms.complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_message","label":"{{ t(recovery:forms.complete.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
           next: end
@@ -853,7 +872,7 @@ spec:
               width: 85
               height: 34
             position:
-              x: 3600
+              x: 4040
               y: 375
       createdAt: 2026-08-06 04:50:14
       updatedAt: 2026-08-06 04:50:14

@@ -323,7 +323,7 @@ Stores user profiles and credentials.
 
 ### Runtime-persistent Database
 
-Stores SSO sessions, revoked tokens, and consent records. This database is required. <ProductName /> fails to start when `database.runtime_persistent` is not configured.
+Stores SSO sessions, revoked tokens, consent records, and account access state (sign-in locks and failed-attempt counts). This database is required. <ProductName /> fails to start when `database.runtime_persistent` is not configured.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -784,9 +784,10 @@ Use these values in any `categories` list to filter which events a subscriber re
 | Value | Description |
 |-------|-------------|
 | `observability.all` | Matches all events regardless of type (default) |
-| `observability.authentication` | Token issuance events |
+| `observability.authentication` | Token issuance events, automatic account locks, and self-service unlocks from a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
+| `observability.administration` | Administrative changes: operator unlock and server-config writes |
 
 ### Example
 
@@ -1072,6 +1073,8 @@ Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
+The account unlock administration flows have their own types: `userUnlockFlow` and `agentUnlockFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts.
+
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
 1. Application-level override (the flow ID pinned on the application or agent)
@@ -1110,6 +1113,128 @@ Configure flow defaults in either of these ways:
 :::note
 Set `defaultHandle` only for flow types that have a corresponding flow in your deployment. The handle is validated when the configuration is written. An unknown handle or a handle belonging to a different flow type is rejected with `SCF-1003`. For optional types (registration, recovery, user-onboarding, sign-out), omit `defaultHandle` to leave the server-level default empty.
 :::
+
+## Account Access
+
+Controls the automatic account lock: how many failed sign-ins lock a user or an agent, and for how long. The policy is stored in the server-config `accountAccess` section. Only the `user` and `agent` categories can be configured; applications are never locked automatically, and an `application` block is rejected.
+
+Only password and one-time-password failures are counted. A lock:
+
+- Refuses new sign-ins only through the method that failed, or through every method when `lockGranularity` is `entity`.
+- Does not end existing sessions or revoke tokens.
+
+A refused sign-in by a locked identity states that the account is locked, without saying which method is locked or when the lock ends. An unknown identifier keeps its own answer. A wrong password or one-time password presented to an account held for that method gets the same answer as the correct one and is not counted. At the recovery step, a wrong code that the lock gives way to keeps its usual answer.
+
+With observability enabled, every lock that forms, and every unlock, is published as an event. See [Event Categories](#event-categories).
+
+### Settings
+
+These fields of a category (`user`, `agent`) control the lock. All are optional, so a layer states only what it changes.
+
+| Field | Description |
+|-------|-------------|
+| `lockGranularity` | `authentication_method` (default) locks only the sign-in method that failed. `entity` counts every lockable failure together and locks every sign-in method. |
+| `default` | The policy for every sign-in method in the category (see below). |
+
+A policy has these fields:
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Turns the automatic lock on or off. A policy that omits it is enabled when it sets any other policy field. An enabled policy, after it is laid over the base, must have `threshold`, `failureWindowSeconds` and `lockDurationsSeconds`, or the write is rejected. |
+| `threshold` | Failed attempts that form a lock. Must be at least `1` while the policy is enabled. |
+| `failureWindowSeconds` | A failure more than this long after the previous one restarts the count. `0` never restarts it on time. Required while the policy is enabled. |
+| `lockDurationsSeconds` | The lock duration for each consecutive lock, in seconds. The last value repeats. `0` locks until an administrator unlocks or the user completes account recovery. Must have at least one entry while the policy is enabled. |
+| `lockDecaySeconds` | How long after a lock ends the consecutive lock count resets. `0` never resets it. |
+| `maxConsecutiveFailures` | Consecutive failed attempts after which the lock does not expire. Only a successful sign-in with that method (any method with `entity` granularity), a completed recovery, or an unlock resets the count. `0` sets no limit; otherwise it must be at least `threshold`. |
+
+Every seconds value must be a whole number from `0` to the largest number of seconds a duration can hold.
+
+### Product Defaults
+
+The defaults ship as the `account_access` block of `default.json`, with the keys in snake_case (`lock_granularity`, `lock_durations_seconds`, and so on):
+
+| Category | Threshold | Failure window | Lock durations | Decay | Consecutive failures |
+|----------|-----------|----------------|----------------|-------|----------------------|
+| `user` | `5` | `3600` s | `300`, `900`, `1800`, `3600` s | `86400` s | `50` |
+| `agent` | `5` | `900` s | `60`, `300`, `900` s | `3600` s | `50` |
+
+Both categories default to `authentication_method` granularity.
+
+Override the block in `deployment.yaml`, which is the base of the section:
+
+```yaml
+account_access:
+  user:
+    default:
+      threshold: 3
+      lock_durations_seconds: [600, 3600]
+```
+
+### Layers and Locking
+
+The effective policy is built from layers, read each time it is needed, so a change on any node applies without a restart:
+
+1. The base: the `account_access` block from `default.json` and `deployment.yaml`.
+2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected until the declarative value is removed.
+3. Otherwise the runtime value is laid over the base field by field.
+
+Within a category, a non-empty `lockDurationsSeconds` replaces the lower one. If the section cannot be read, the base applies.
+
+### Configure the Policy
+
+Set the section in any of these ways:
+
+- **Declarative**: create `config/resources/server_configs/accountAccess.yaml`, then restart. The section uses camelCase keys:
+  ```yaml
+  name: accountAccess
+  value:
+    user:
+      lockGranularity: authentication_method
+      default:
+        threshold: 3
+        failureWindowSeconds: 1800
+        lockDurationsSeconds: [600, 3600]
+  ```
+- **Runtime**: send the new value to `PUT /server-config/accountAccess`. It is applied immediately:
+  ```http
+  PUT /server-config/accountAccess
+  Content-Type: application/json
+
+  {
+    "user": {
+      "default": {
+        "threshold": 3,
+        "failureWindowSeconds": 1800,
+        "lockDurationsSeconds": [600, 3600]
+      }
+    }
+  }
+  ```
+
+A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. To remove the runtime layer and return to the base, send an empty value.
+
+:::note
+In a Helm deployment, set the base with the `configuration.accountAccess` chart value, in camelCase. The chart's `values.yaml` carries the product defaults, so override only the keys you need. The API and a declarative `server_configs/accountAccess.yaml` mounted with `declarativeResources` (see [Helm Deployment](#helm-deployment)) work as in any other deployment.
+:::
+
+### Validation
+
+An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server configuration value"), and nothing is changed. The section rejects:
+
+- Unknown fields, including a misspelled key and an `application` block.
+- A `lockGranularity` other than `authentication_method` or `entity`.
+- A negative `threshold` or seconds value, and a seconds value above the maximum.
+- A negative `maxConsecutiveFailures`, or one above `0` and below the policy's `threshold`.
+- An enabled policy, after it is laid over the base, that cannot form a lock: it needs a `threshold` of at least `1`, a `failureWindowSeconds` and a non-empty `lockDurationsSeconds`. Set `enabled: false` to switch the policy off.
+- Any write while a declarative `accountAccess` document exists.
+
+The same rules check the base on its own at startup. An enabled policy in the `account_access` block of `default.json` and `deployment.yaml` must have its `threshold`, `failure_window_seconds` and `lock_durations_seconds` without any later layer. An invalid base stops the server from starting.
+
+### Identity Governance Provider
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `identity_governance_provider.type` | `default` | Set to `disabled` to turn off the identity governance checks the flow engine makes, and the unlock flows. A recovery flow still completes and releases no lock. Sign-in through the default authentication provider and the Direct API still enforces locks. With `disabled`, also set `account_access.<category>.default.enabled: false` for `user` and `agent`, and keep it off in the `accountAccess` section: otherwise locks still form and none can be released early. |
 
 ## Passkey Configuration
 

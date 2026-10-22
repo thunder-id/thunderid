@@ -8,7 +8,6 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -135,46 +134,6 @@ func (_c *lockNotifierInterfaceMock_NotifyLockFormed_Call) Return() *lockNotifie
 }
 
 func (_c *lockNotifierInterfaceMock_NotifyLockFormed_Call) RunAndReturn(run func(ctx context.Context, entity GovernedEntity, method providers.AuthenticationMethod, episode LockEpisode)) *lockNotifierInterfaceMock_NotifyLockFormed_Call {
-	_c.Run(run)
-	return _c
-}
-
-// setServerConfigService provides a mock function for the type lockNotifierInterfaceMock
-func (_mock *lockNotifierInterfaceMock) setServerConfigService(serverConfigService serverconfig.ServerConfigService) {
-	_mock.Called(serverConfigService)
-	return
-}
-
-// lockNotifierInterfaceMock_setServerConfigService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'setServerConfigService'
-type lockNotifierInterfaceMock_setServerConfigService_Call struct {
-	*mock.Call
-}
-
-// setServerConfigService is a helper method to define mock.On call
-//   - serverConfigService serverconfig.ServerConfigService
-func (_e *lockNotifierInterfaceMock_Expecter) setServerConfigService(serverConfigService any) *lockNotifierInterfaceMock_setServerConfigService_Call {
-	return &lockNotifierInterfaceMock_setServerConfigService_Call{Call: _e.mock.On("setServerConfigService", serverConfigService)}
-}
-
-func (_c *lockNotifierInterfaceMock_setServerConfigService_Call) Run(run func(serverConfigService serverconfig.ServerConfigService)) *lockNotifierInterfaceMock_setServerConfigService_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 serverconfig.ServerConfigService
-		if args[0] != nil {
-			arg0 = args[0].(serverconfig.ServerConfigService)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *lockNotifierInterfaceMock_setServerConfigService_Call) Return() *lockNotifierInterfaceMock_setServerConfigService_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *lockNotifierInterfaceMock_setServerConfigService_Call) RunAndReturn(run func(serverConfigService serverconfig.ServerConfigService)) *lockNotifierInterfaceMock_setServerConfigService_Call {
 	_c.Run(run)
 	return _c
 }

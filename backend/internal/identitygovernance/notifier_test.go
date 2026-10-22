@@ -95,12 +95,17 @@ func lockEmailConfig(email accountAccessLockEmail) accountAccessValue {
 	}}
 }
 
+// settingsSource is a section source that serves the given lock email settings.
+func (s *NotifierTestSuite) settingsSource(settings accountAccessLockEmail) accountAccessSourceInterface {
+	source := newAccountAccessSourceInterfaceMock(s.T())
+	source.EXPECT().Current(mock.Anything).Return(lockEmailConfig(settings)).Maybe()
+	return source
+}
+
 // newNotifier builds a notifier over the suite's mocks, reading the given settings through the source.
 func (s *NotifierTestSuite) newNotifier(settings accountAccessLockEmail) *lockEmailNotifier {
-	notifier := newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(settings)),
-		s.profiles, s.entityTypes, s.templates, s.senders)
-	notifier.setServerConfigService(s.serverConfig)
-	return notifier
+	return newLockEmailNotifier(s.settingsSource(settings), s.serverConfig, s.profiles, s.entityTypes,
+		s.templates, s.senders)
 }
 
 // notifierFor builds a notifier with newNotifier and closes it when the test ends.
@@ -498,20 +503,6 @@ func (s *NotifierTestSuite) TestAnUnreadableSenderSectionSendsNothing() {
 	s.assertNothingSent()
 }
 
-// Before the server-config service is set there is no default sender, so nothing is sent.
-func (s *NotifierTestSuite) TestNothingIsSentBeforeTheServerConfigServiceIsSet() {
-	entity := testUser()
-	s.expectProfile(entity, map[string]string{"email": "member@example.com"})
-
-	notifier := newLockEmailNotifier(newAccountAccessSource(lockEmailConfig(
-		enabledLockEmail())), s.profiles, s.entityTypes, s.templates, s.senders)
-	notifier.NotifyLockFormed(context.Background(), entity, providers.AuthenticationMethodCredential, testLockEpisode())
-
-	notifier.Close()
-	s.templates.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	s.assertNothingSent()
-}
-
 // The default sender is read from the notification section through the server-config service.
 func (s *NotifierTestSuite) TestTheDefaultSenderIsReadThroughTheServerConfigService() {
 	entity := testUser()
@@ -533,8 +524,7 @@ func (s *NotifierTestSuite) TestTheDefaultSenderIsReadThroughTheServerConfigServ
 // A full queue drops the notice rather than blocking the caller.
 func (s *NotifierTestSuite) TestFullQueueDropsTheNotice() {
 	notifier := &lockEmailNotifier{
-		source: newAccountAccessSource(lockEmailConfig(
-			enabledLockEmail())),
+		source:       s.settingsSource(enabledLockEmail()),
 		profiles:     s.profiles,
 		templates:    s.templates,
 		senders:      s.senders,

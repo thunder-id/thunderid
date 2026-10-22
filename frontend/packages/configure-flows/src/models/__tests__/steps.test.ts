@@ -203,8 +203,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.CriteriaRevocation).toBe('CriteriaRevocationExecutor');
     });
 
-    it('should have exactly 38 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(38);
+    it('should have IdentityGovernance type', () => {
+      expect(ExecutionTypes.IdentityGovernance).toBe('IdentityGovernanceExecutor');
+    });
+
+    it('should have exactly 39 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(39);
     });
   });
 

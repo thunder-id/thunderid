@@ -495,33 +495,44 @@ func (suite *OTPExecutorTestSuite) TestExecuteVerify_Success() {
 	assert.Equal(suite.T(), userID, resp.RuntimeData[userAttributeUserID])
 }
 
-func (suite *OTPExecutorTestSuite) TestExecuteVerify_InvalidOTP_ReturnsUserInputRequired() {
-	suite.mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(
-			providers.AuthUser{},
-			providers.AuthenticatedClaims(nil),
-			&authnprovidermgr.ErrorAuthenticationFailed,
-		)
-
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-8",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeVerify,
-		UserInputs: map[string]string{
-			userInputOTP: "000000",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPSessionToken: "session-tok-1",
-		},
+// Every refusal re-prompts; only a stated hold replaces the wrong-code error.
+func (suite *OTPExecutorTestSuite) TestExecuteVerify_RefusalsRepromptWithTheirError() {
+	cases := []struct {
+		name     string
+		svcErr   *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "wrong code", svcErr: &authnprovidermgr.ErrorAuthenticationFailed, wantCode: ErrInvalidOTP.Code},
+		{name: "invalid request", svcErr: &authnprovidermgr.ErrorInvalidRequest, wantCode: ErrInvalidOTP.Code},
+		{name: "stated lock", svcErr: &authnprovidermgr.ErrorAccountLocked, wantCode: ErrAccountLocked.Code},
+		{name: "stated suspension", svcErr: &authnprovidermgr.ErrorAccountSuspended,
+			wantCode: ErrAccountSuspended.Code},
 	}
 
-	resp, err := suite.executor.Execute(ctx)
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockAuthnProvider.On("AuthenticateUser",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).
+				Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), tc.svcErr)
 
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.NotNil(suite.T(), resp.Error)
-	assert.Equal(suite.T(), ErrInvalidOTP.Code, resp.Error.Code)
+			resp, err := suite.executor.Execute(&providers.NodeContext{
+				ExecutionID:  "exec-8",
+				FlowType:     providers.FlowTypeAuthentication,
+				ExecutorMode: ExecutorModeVerify,
+				UserInputs:   map[string]string{userInputOTP: "000000"},
+				RuntimeData: map[string]string{
+					common.RuntimeKeyOTPSessionToken: "session-tok-1",
+				},
+			})
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+			assert.NotNil(suite.T(), resp.Error)
+			assert.Equal(suite.T(), tc.wantCode, resp.Error.Code)
+		})
+	}
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteVerify_MissingSessionToken_ReturnsError() {

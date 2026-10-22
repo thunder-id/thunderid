@@ -194,6 +194,16 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 		userCredentials, nil, metadata, execResp.AuthUser)
 	execResp.AuthUser = authUser
 	if svcErr != nil {
+		// A stated hold re-prompts with its own message on the sign-in page.
+		if stated := statedHold(svcErr); stated != nil {
+			b.logger.Debug(ctx.Context, "Authentication refused by a stated hold",
+				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("errorCode", stated.Code))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = b.GetRequiredInputs(ctx)
+			execResp.Error = stated
+			return nil
+		}
+
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Inputs = b.GetRequiredInputs(ctx)

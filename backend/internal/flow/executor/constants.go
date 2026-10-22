@@ -64,6 +64,7 @@ const (
 	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 )
 
 // Executor mode constants
@@ -84,6 +85,8 @@ const (
 
 	ExecutorModeRevoke        = executormeta.ExecutorModeRevoke
 	ExecutorModeAdvanceCutoff = executormeta.ExecutorModeAdvanceCutoff
+
+	ExecutorModeUnlock = executormeta.ExecutorModeUnlock
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node provisions into when its
@@ -178,6 +181,7 @@ const (
 	propertyKeyProvisioningMode = "mode"
 	propertyKeyRequiredScopes   = "requiredScopes"
 	propertyKeyEmailTemplate    = "emailTemplate"
+	propertyKeyBestEffort       = "bestEffort"
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"

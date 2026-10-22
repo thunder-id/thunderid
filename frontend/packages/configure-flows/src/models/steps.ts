@@ -118,6 +118,7 @@ export const ExecutionTypes = {
   RoleExecutor: 'RoleExecutor',
   GroupExecutor: 'GroupExecutor',
   ActionDeletion: 'ActionDeletionExecutor',
+  IdentityGovernance: 'IdentityGovernanceExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
   AccountLinking: 'AccountLinkingExecutor',

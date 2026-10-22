@@ -35,6 +35,16 @@ func (s *AccountAccessHandlerTestSuite) mergedOverBase(readOnly,
 	return value
 }
 
+// The exported constructor builds the handler over the deployment configuration.
+func (s *AccountAccessHandlerTestSuite) TestNewAccountAccessHandlerMergesOverTheDeploymentBase() {
+	handler := NewAccountAccessHandler(Config{AccountAccess: testAccountAccessConfig()})
+
+	merged, ok := handler.Merge(nil, accountAccessValue{}).(accountAccessValue)
+
+	s.Require().True(ok)
+	s.Equal(testAccountAccessConfig(), merged)
+}
+
 func (s *AccountAccessHandlerTestSuite) decode(raw string) accountAccessValue {
 	value, err := s.handler.Decode(json.RawMessage(raw))
 	s.Require().NoError(err)

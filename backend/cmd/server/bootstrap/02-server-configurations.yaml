@@ -34,6 +34,10 @@ value:
     defaultHandle: default-group-membership-removal-flow
   actionDeletionFlow:
     defaultHandle: default-action-deletion-flow
+  userUnlockFlow:
+    defaultHandle: default-user-unlock-flow
+  agentUnlockFlow:
+    defaultHandle: default-agent-unlock-flow
 ---
 resource_type: server_config
 name: accountAccess

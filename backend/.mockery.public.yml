@@ -283,6 +283,15 @@ packages:
       pkgname: magiclinkmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/authn/openid4vp:
+    config:
+      dir: tests/mocks/authn/openid4vpmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: openid4vpmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      OpenID4VPServiceInterface:
+
   github.com/thunder-id/thunderid/internal/authn/passkey:
     interfaces:
       PasskeyServiceInterface:
@@ -595,6 +604,12 @@ packages:
           dir: tests/mocks/authnprovider/managermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: managermock
+          filename: "{{.InterfaceName}}_mock.go"
+      IdentityGovernanceProvider:
+        config:
+          dir: tests/mocks/identitygovernanceprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: identitygovernanceprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:

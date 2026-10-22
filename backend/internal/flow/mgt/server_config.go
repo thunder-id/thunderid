@@ -83,6 +83,8 @@ func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
 		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
 		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
 		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
+		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
+		{cfg.AgentUnlockFlow, providers.FlowTypeAdministration, "agentUnlockFlow"},
 	}
 	ctx := context.Background()
 
@@ -131,6 +133,9 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 			ro.GroupMembershipRemovalFlow, wr.GroupMembershipRemovalFlow),
 		ActionDeletionFlow: mergeFlowTypeConfig(
 			ro.ActionDeletionFlow, wr.ActionDeletionFlow),
+
+		UserUnlockFlow:  mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
+		AgentUnlockFlow: mergeFlowTypeConfig(ro.AgentUnlockFlow, wr.AgentUnlockFlow),
 	}
 }
 

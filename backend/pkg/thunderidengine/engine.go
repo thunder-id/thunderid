@@ -153,19 +153,23 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if engineCtx.agentMgtProvider == nil {
 		engineCtx.agentMgtProvider = agentmgtprovider.NewDisabledAgentMgtProvider()
 	}
+	if engineCtx.identityGovernance == nil {
+		logger.Debug(ctx, "No identity governance provider is set, so account suspensions and locks are not enforced")
+	}
 	execDeps := executor.ExecutorDependencies{
-		FlowFactory:       engineCtx.flowFactory,
-		AttributeCacheSvc: engineCtx.attributeCacheService,
-		AuthZService:      engineCtx.authzProvider,
-		ConsentEnforcer:   engineCtx.consentProvider,
-		AuthnProvider:     authnProviderManager,
-		OUService:         engineCtx.ouProvider,
-		IDPService:        engineCtx.idpProvider,
-		JWTService:        engineCtx.jwtService,
-		AuthAssertGen:     engineCtx.authAssertGen,
-		ResourceService:   engineCtx.resourceProvider,
-		UserMgtProvider:   engineCtx.userMgtProvider,
-		AgentMgtProvider:  engineCtx.agentMgtProvider,
+		FlowFactory:        engineCtx.flowFactory,
+		AttributeCacheSvc:  engineCtx.attributeCacheService,
+		AuthZService:       engineCtx.authzProvider,
+		ConsentEnforcer:    engineCtx.consentProvider,
+		AuthnProvider:      authnProviderManager,
+		OUService:          engineCtx.ouProvider,
+		IDPService:         engineCtx.idpProvider,
+		JWTService:         engineCtx.jwtService,
+		AuthAssertGen:      engineCtx.authAssertGen,
+		ResourceService:    engineCtx.resourceProvider,
+		UserMgtProvider:    engineCtx.userMgtProvider,
+		AgentMgtProvider:   engineCtx.agentMgtProvider,
+		IdentityGovernance: engineCtx.identityGovernance,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -406,6 +410,7 @@ type engineContext struct {
 	authzProvider             providers.AuthorizationProvider
 	attestationProvider       providers.AttestationProvider
 	captchaValidationProvider providers.CaptchaValidationProvider
+	identityGovernance        providers.IdentityGovernanceProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -585,6 +590,12 @@ func WithLogConfig(config engineconfig.LogConfig) Option {
 	return func(ctx *engineContext) {
 		ctx.logConfig = config
 	}
+}
+
+// WithIdentityGovernanceProvider supplies optional identity governance.
+// Omitting this option or passing nil disables governance checks and lifecycle operations.
+func WithIdentityGovernanceProvider(provider providers.IdentityGovernanceProvider) Option {
+	return func(c *engineContext) { c.identityGovernance = provider }
 }
 
 // WithAttestationProvider supplies the Attestation provider.

@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 )
 
 type BuiltInExecutorRegistrationTestSuite struct {
@@ -77,6 +78,27 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_E
 		err := registerBuiltInExecutor(reg, catalog, deps, name)
 		require.NoError(suite.T(), err, "registering %q", name)
 		assert.True(suite.T(), reg.IsRegistered(name), "executor %q should be registered", name)
+	}
+}
+
+func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_PassesIdentityGovernance() {
+	deps := suite.depsForBuiltInRegistration()
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(suite.T())
+	deps.IdentityGovernance = governance
+	governanceOf := map[string]func(providers.Executor) providers.IdentityGovernanceProvider{
+		ExecutorNameAuthAssert: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*authAssertExecutor).accessGuard.governance
+		},
+		ExecutorNameIdentityGovernance: func(e providers.Executor) providers.IdentityGovernanceProvider {
+			return e.(*identityGovernanceExecutor).governance
+		},
+	}
+	for name, governanceOfExecutor := range governanceOf {
+		reg := newExecutorRegistry()
+		require.NoError(suite.T(), registerBuiltInExecutor(reg, newBuiltInExecutorRegistrars(), deps, name))
+		registered, err := reg.GetExecutor(name)
+		require.NoError(suite.T(), err)
+		assert.Same(suite.T(), governance, governanceOfExecutor(registered), name)
 	}
 }
 

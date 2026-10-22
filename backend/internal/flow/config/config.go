@@ -29,6 +29,8 @@ type FlowTypeConfig struct {
 
 // FlowSectionConfig is the value of the server-config "flow" section. It carries per-type default
 // handles and context TTLs. A zero ExpirySeconds falls back to the built-in default for that type.
+// The lifecycle entries name the unlock administration flows. Applications never lock, so have no
+// unlock.
 type FlowSectionConfig struct {
 	AuthFlow                FlowTypeConfig `json:"authFlow"`
 	RegistrationFlow        FlowTypeConfig `json:"registrationFlow"`
@@ -46,6 +48,9 @@ type FlowSectionConfig struct {
 	GroupDeletionFlow          FlowTypeConfig `json:"groupDeletionFlow"`
 	GroupMembershipRemovalFlow FlowTypeConfig `json:"groupMembershipRemovalFlow"`
 	ActionDeletionFlow         FlowTypeConfig `json:"actionDeletionFlow"`
+
+	UserUnlockFlow  FlowTypeConfig `json:"userUnlockFlow"`
+	AgentUnlockFlow FlowTypeConfig `json:"agentUnlockFlow"`
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.

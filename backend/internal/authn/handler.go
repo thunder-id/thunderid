@@ -405,7 +405,8 @@ func (
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code:
+		case ErrorInvalidCredentials.Code, ErrorOTPAuthenticationFailed.Code,
+			common.ErrorAccountLocked.Code, common.ErrorAccountSuspended.Code:
 			status = http.StatusUnauthorized
 		case common.ErrorUserNotFound.Code:
 			status = http.StatusNotFound

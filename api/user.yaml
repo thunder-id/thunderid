@@ -2100,7 +2100,12 @@ components:
         details:
           type: object
           readOnly: true
-          description: Why the status applies. Absent for `ACTIVE`.
+          description: |
+            Why the status applies and how it is cleared. Absent for `ACTIVE`.
+
+            An authentication refusal states only that the account is locked or suspended. The
+            locked methods, expiry times and operator note are returned only here, to callers
+            allowed to read the user.
           properties:
             reason:
               type: string
@@ -2123,7 +2128,9 @@ components:
             operatorNote:
               type: string
               readOnly: true
-              description: The note the operator entered when placing the hold. Absent when none was entered.
+              description: |
+                The note the operator entered when placing the hold. Absent when none was entered.
+                Never included in an authentication refusal.
               example: "Credential exposure reported by the security team"
             lockedMethods:
               type: array
@@ -2149,7 +2156,9 @@ components:
                     type: string
                     format: date-time
                     readOnly: true
-                    description: When the lock expires. **Absent when it does not expire.**
+                    description: |
+                      When the lock expires. **Absent when it does not expire**: self-service
+                      recovery or the unlock flow clears it.
                     example: "2026-09-08T10:15:00Z"
 
     Link:

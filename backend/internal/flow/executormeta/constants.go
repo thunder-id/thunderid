@@ -53,6 +53,7 @@ const (
 	ExecutorNameRole                         = "RoleExecutor"
 	ExecutorNameGroup                        = "GroupExecutor"
 	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
+	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
 )
 
 // Executor mode constants
@@ -73,4 +74,6 @@ const (
 
 	ExecutorModeRevoke        = "revoke"
 	ExecutorModeAdvanceCutoff = "advance_cutoff"
+
+	ExecutorModeUnlock = "unlock"
 )

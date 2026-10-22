@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/otpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
@@ -144,6 +145,7 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 		googleService:          suite.mockGoogleService,
 		githubService:          suite.mockGithubService,
 		entityTypeService:      suite.mockEntityTypeSvc,
+		governance:             suite.admitAll(),
 	}
 }
 
@@ -2701,6 +2703,7 @@ func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
 		suite.mockGoogleService,
 		suite.mockGithubService,
 		suite.mockEntityTypeSvc,
+		identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T()),
 	)
 	suite.NotNil(svc)
 }
@@ -2738,4 +2741,161 @@ func (suite *AuthenticationServiceTestSuite) createTestAssertionWithoutAssurance
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
 	return fmt.Sprintf("header.%s.signature", encodedPayload)
+}
+
+// admitAll returns a governance mock that admits every sign-in.
+func (suite *AuthenticationServiceTestSuite) admitAll() *identitygovernancemock.IdentityGovernanceServiceInterfaceMock {
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+	governance.EXPECT().AdmitSignIn(mock.Anything, mock.Anything).
+		Return(providers.AccessDecision{Admitted: true}, nil).Maybe()
+	return governance
+}
+
+// credentialsAuthenticationFor sets up a password sign-in that resolves to testUserID.
+func (suite *AuthenticationServiceTestSuite) credentialsAuthenticationFor() {
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, &providers.EntityReference{
+			EntityID: testUserID, EntityType: testUserType, OUID: testOrgUnit,
+		}, nil).Once()
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(providers.AuthUser{}, &providers.AttributesResponse{}, nil).Maybe()
+}
+
+// governedSignIn is an atomic sign-in endpoint that proves testUserID, and the refusal it gives
+// when the decision names no hold.
+type governedSignIn struct {
+	name    string
+	refusal string
+	run     func() (*common.AuthenticationResponse, *tidcommon.ServiceError)
+}
+
+// governedSignIns sets each endpoint up to prove testUserID without an assertion.
+func (suite *AuthenticationServiceTestSuite) governedSignIns() []governedSignIn {
+	provePasswordless := func() {
+		suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything).
+			Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, nil).Once()
+		suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+			Return(providers.AuthUser{}, &providers.EntityReference{
+				EntityID: testUserID, EntityType: testUserType, OUID: testOrgUnit,
+			}, nil).Once()
+	}
+	return []governedSignIn{
+		{name: "credentials", refusal: ErrorInvalidCredentials.Code,
+			run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+				suite.credentialsAuthenticationFor()
+				return suite.service.AuthenticateWithCredentials(context.Background(),
+					map[string]interface{}{"username": "testuser"},
+					map[string]interface{}{"password": "testpass"}, true, "")
+			}},
+		{name: "otp", refusal: ErrorOTPAuthenticationFailed.Code,
+			run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+				provePasswordless()
+				return suite.service.VerifyOTP(context.Background(), testSessionTkn, true, "", "123456")
+			}},
+		{name: "federated", refusal: ErrorFederatedAuthenticationFailed.Code,
+			run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+				sessionToken := suite.mockFederatedAuthnSuccess(providers.IDPTypeOAuth)
+				return suite.service.FinishIDPAuthentication(context.Background(), providers.IDPTypeOAuth,
+					sessionToken, true, "", testAuthCode)
+			}},
+		{name: "passkey", refusal: ErrorPasskeyAuthenticationFailed.Code,
+			run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+				provePasswordless()
+				return suite.service.FinishPasskeyAuthentication(context.Background(), testCredentialID,
+					testCredentialType, PasskeyCredentialResponseDTO{}, testSessionTkn, true, "")
+			}},
+	}
+}
+
+func (suite *AuthenticationServiceTestSuite) TestAtomicSignInsAskGovernanceBeforeAnswering() {
+	decisions := []struct {
+		name     string
+		decision providers.AccessDecision
+		fault    *tidcommon.ServiceError
+		wantCode func(endpoint governedSignIn) string
+	}{
+		{name: "admitted", decision: providers.AccessDecision{Admitted: true},
+			wantCode: func(governedSignIn) string { return "" }},
+		{name: "unstated hold", wantCode: func(endpoint governedSignIn) string { return endpoint.refusal }},
+		{name: "suspended", decision: providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended},
+			wantCode: func(governedSignIn) string { return common.ErrorAccountSuspended.Code }},
+		{name: "locked", decision: providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked},
+			wantCode: func(governedSignIn) string { return common.ErrorAccountLocked.Code }},
+		{name: "fault", fault: &tidcommon.InternalServerError,
+			wantCode: func(governedSignIn) string { return tidcommon.InternalServerError.Code }},
+	}
+	for _, endpoint := range suite.governedSignIns() {
+		for _, tc := range decisions {
+			suite.Run(endpoint.name+"/"+tc.name, func() {
+				suite.SetupTest()
+				governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+				governance.EXPECT().AdmitSignIn(mock.Anything, testUserID).Return(tc.decision, tc.fault).Once()
+				suite.service.governance = governance
+
+				result, svcErr := endpoint.run()
+
+				if want := tc.wantCode(endpoint); want != "" {
+					suite.Nil(result)
+					suite.Require().NotNil(svcErr)
+					suite.Equal(want, svcErr.Code)
+					return
+				}
+				suite.Require().Nil(svcErr)
+				suite.Equal(testUserID, result.ID)
+			})
+		}
+	}
+}
+
+func (suite *AuthenticationServiceTestSuite) TestAtomicSignInsKeepTheProvidersStatedHold() {
+	endpoints := []struct {
+		name string
+		run  func() (*common.AuthenticationResponse, *tidcommon.ServiceError)
+	}{
+		{name: "credentials", run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+			return suite.service.AuthenticateWithCredentials(context.Background(),
+				map[string]interface{}{"username": "testuser"},
+				map[string]interface{}{"password": "testpass"}, true, "")
+		}},
+		{name: "otp", run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+			return suite.service.VerifyOTP(context.Background(), testSessionTkn, true, "", "123456")
+		}},
+		{name: "federated", run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+			sessionToken := suite.createSessionToken(providers.IDPTypeOAuth)
+			suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).
+				Return(nil)
+			return suite.service.FinishIDPAuthentication(context.Background(), providers.IDPTypeOAuth,
+				sessionToken, true, "", testAuthCode)
+		}},
+		{name: "passkey", run: func() (*common.AuthenticationResponse, *tidcommon.ServiceError) {
+			return suite.service.FinishPasskeyAuthentication(context.Background(), testCredentialID,
+				testCredentialType, PasskeyCredentialResponseDTO{}, testSessionTkn, true, "")
+		}},
+	}
+	for _, endpoint := range endpoints {
+		for _, hold := range []struct{ stated, want tidcommon.ServiceError }{
+			{stated: authnprovidermgr.ErrorAccountLocked, want: common.ErrorAccountLocked},
+			{stated: authnprovidermgr.ErrorAccountSuspended, want: common.ErrorAccountSuspended},
+		} {
+			suite.Run(endpoint.name+"/"+hold.want.Code, func() {
+				suite.SetupTest()
+				governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
+				suite.service.governance = governance
+				suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything).
+					Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), &hold.stated).Once()
+
+				result, svcErr := endpoint.run()
+
+				suite.Nil(result)
+				suite.Require().NotNil(svcErr)
+				suite.Equal(hold.want.Code, svcErr.Code)
+				governance.AssertNotCalled(suite.T(), "AdmitSignIn", mock.Anything, mock.Anything)
+			})
+		}
+	}
 }

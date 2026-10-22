@@ -133,6 +133,12 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 				return authUser, nil, &ErrorAmbiguousUser
 			}
+		case authnprovidercm.ErrorCodeAccountLocked:
+			m.logger.Debug(ctx, "authentication refused a locked account")
+			return authUser, nil, &ErrorAccountLocked
+		case authnprovidercm.ErrorCodeAccountSuspended:
+			m.logger.Debug(ctx, "authentication refused a suspended account")
+			return authUser, nil, &ErrorAccountSuspended
 		}
 		m.logger.Debug(ctx, "authentication failed with client error from provider",
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))

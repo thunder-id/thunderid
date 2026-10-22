@@ -735,6 +735,41 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_InvalidT
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
+func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_StatedHoldIsAFlowFailure() {
+	cases := []struct {
+		name   string
+		svcErr *tidcommon.ServiceError
+		want   string
+	}{
+		{name: "locked", svcErr: &authnprovidermgr.ErrorAccountLocked, want: ErrAccountLocked.Code},
+		{name: "suspended", svcErr: &authnprovidermgr.ErrorAccountSuspended, want: ErrAccountSuspended.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				Context:      context.Background(),
+				ExecutionID:  magicLinkTestExecutionID,
+				FlowType:     providers.FlowTypeAuthentication,
+				ExecutorMode: ExecutorModeVerify,
+				UserInputs: map[string]string{
+					userInputMagicLinkToken: createTestJWTWithClaims(magicLinkTestExecutionID, "jti-held"),
+				},
+				RuntimeData: make(map[string]string),
+			}
+			suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything).Return(
+				providers.AuthUser{}, (providers.AuthenticatedClaims)(nil), tc.svcErr).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(tc.want, resp.Error.Code)
+		})
+	}
+}
+
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_ReplayAttack() {
 	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-replay")
 

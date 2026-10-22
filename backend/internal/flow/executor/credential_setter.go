@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -132,6 +133,9 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 		execResp.Error = &ErrCredentialSetFailed
 		return execResp, nil
 	}
+
+	// Proof of control for a later node, such as an unlock.
+	execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyProvenSubject: userID}
 
 	logger.Debug(ctx.Context, "Successfully set credentials for user",
 		log.MaskedString(log.LoggerKeyUserID, userID))

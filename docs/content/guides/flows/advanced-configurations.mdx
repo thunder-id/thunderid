@@ -554,6 +554,17 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 - User not found in the user store
 - Credential update failed
 
+**Account locks in recovery flows:** setting a credential does not release an account lock. In a recovery flow, place an `IdentityGovernanceExecutor` node in `unlock` mode right after this executor, as the default recovery flows do. Without it, a locked user who completes recovery stays locked. The node releases only the account whose credential this flow set. If identity governance is off or refuses the release, the step completes and the lock stays. If the release fails on a server error, the step fails and the user can run recovery again.
+
+```json
+{
+  "id": "release_account_locks",
+  "type": "TASK_EXECUTION",
+  "executor": { "name": "IdentityGovernanceExecutor", "mode": "unlock" },
+  "onSuccess": "recovery_complete"
+}
+```
+
 </details>
 
 #### Federated Authentication
@@ -1763,6 +1774,7 @@ Sends a transactional email using a configured template. Runs in the background:
 |---|---|---|---|---|
 | `senderId` | Not shown | Yes, at runtime | - | ID of the email provider the step sends through. The step fails without it. The executor schema marks it optional only because built-in flows include email steps before any provider exists. Set it through the Flow Management API or a declarative flow file. |
 | `emailTemplate` | Email Template | No | `user_invite` | The template scenario to use. If absent or empty, defaults to the user invite template. |
+| `bestEffort` | Not shown | No | `false` | When `true`, a send that fails completes the step instead of failing the flow, and the flow response carries `emailSent: false`. Server-side failures are logged. Set it through the Flow Management API or a declarative flow file. |
 
 **Input Configuration:** None. The email executor resolves the recipient and template data from runtime context; it has no configurable node input defaults.
 
@@ -1790,6 +1802,8 @@ Sends a transactional email using a configured template. Runs in the background:
 - Recipient email address not resolvable from context or user entity
 - Template rendering error
 - SMTP server unreachable or rejecting the message (server error)
+
+With `bestEffort` set to `true`, none of these fail the step.
 
 </details>
 

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -1287,6 +1288,28 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_BindFailures()
 		suite.Require().NoError(err)
 		suite.Equal(providers.ExecFailure, resp.Status)
 		suite.Empty(resp.RuntimeData[userAttributeUserID])
+	})
+	suite.Run("a refusal fails the node with the hold it states", func() {
+		cases := []struct {
+			code string
+			want string
+		}{
+			{code: authnprovidermgr.ErrorAccountLocked.Code, want: ErrAccountLocked.Code},
+			{code: authnprovidermgr.ErrorAccountSuspended.Code, want: ErrAccountSuspended.Code},
+			{code: authnprovidermgr.ErrorAuthenticationFailed.Code, want: ErrFailedToIdentifyEntity.Code},
+		}
+		for _, tc := range cases {
+			suite.SetupTest()
+			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
+			suite.expectBind("holder-sales", &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: tc.code})
+
+			resp, err := suite.executor.Execute(linkHolderCtx(nil, map[string]string{"ouHandle": "sales"}))
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(tc.want, resp.Error.Code)
+			suite.Empty(resp.RuntimeData[userAttributeUserID])
+		}
 	})
 	suite.Run("server error is returned", func() {
 		suite.SetupTest()

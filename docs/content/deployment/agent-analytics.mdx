@@ -88,11 +88,14 @@ Every event shares one envelope:
 | `TOKEN_ISSUANCE_FAILED` | A token request fails |
 | `TOKEN_REVOKED` | A token is revoked |
 | `RUNTIME_PERSISTENT_DB_UNAVAILABLE` | Revocation enforcement fails closed |
+| `IDENTITY_LOCKED` | Failed sign-in attempts lock a user or agent. The event names the locked authentication method and, for a lock that expires, when it ends. It has no actor |
+| `IDENTITY_UNLOCKED`, `IDENTITY_UNLOCK_FAILED` | An operator releases every sign-in lock on a user or agent, or the unlock is refused or fails |
+| `IDENTITY_SELF_UNLOCKED`, `IDENTITY_SELF_UNLOCK_FAILED` | A recovery flow releases every sign-in lock on the holder's own account, or the unlock is refused or fails |
 | `FLOW_STARTED`, `FLOW_COMPLETED`, `FLOW_FAILED` | A flow execution starts, succeeds, or fails |
 | `FLOW_NODE_EXECUTION_STARTED`, `FLOW_NODE_EXECUTION_COMPLETED`, `FLOW_NODE_EXECUTION_FAILED` | A single flow node runs |
 | `FLOW_USER_INPUT_REQUIRED` | A flow pauses for user input |
 
-This is the full set. There are no agent lifecycle events, no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
+An operator unlock names the operator as `act_sub` and the agent as `sub`. An automatic lock is `IDENTITY_LOCKED`, with the agent as `sub` and no `act_sub`. There are no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
 
 ### Agent Attribution Keys
 

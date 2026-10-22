@@ -419,10 +419,11 @@ components:
           minimum: 0
           description: |
             Failures with no success in between, counted per authentication method (or for the whole
-            account under `entity` granularity), that leave the lock in place until it is cleared,
-            whatever the window and lock durations say. Neither time nor a lock ending resets this
-            count; a success with that method (under `entity` granularity, a completed sign-in) or
-            clearing the lock does. `0` sets no limit; otherwise it must be at least `threshold`.
+            account under `entity` granularity), that leave the lock in place until a recovery or an
+            unlock, whatever the window and lock durations say. Neither time nor a lock ending resets
+            this count; a success with that method (under `entity` granularity, a completed sign-in),
+            a completed recovery or an unlock does. `0` sets no limit; otherwise it must be at least
+            `threshold`.
           example: 50
       additionalProperties: false
 

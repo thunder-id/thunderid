@@ -46,9 +46,7 @@ func (s *ConfigTestSuite) section(raw string) accountAccessValue {
 
 // readingSource builds a source over base that reads the section through the suite's reader.
 func (s *ConfigTestSuite) readingSource(base accountAccessValue) accountAccessSourceInterface {
-	source := newAccountAccessSource(base)
-	source.setReader(s.reader)
-	return source
+	return newAccountAccessSource(base, s.reader)
 }
 
 // serves makes the reader return value for the accountAccess section.
@@ -71,14 +69,6 @@ func deploymentBase() accountAccessValue {
 			LockDurationsSeconds: []int{300},
 		},
 	}}
-}
-
-func (s *ConfigTestSuite) TestWithNoReaderAndNoBaseNoPolicyIsConfigured() {
-	s.True(newAccountAccessSource(accountAccessValue{}).Current(context.Background()).isEmpty())
-}
-
-func (s *ConfigTestSuite) TestWithNoReaderTheDeploymentPolicyApplies() {
-	s.Equal(4, userThreshold(newAccountAccessSource(deploymentBase())))
 }
 
 func (s *ConfigTestSuite) TestTheReaderSuppliesThePolicy() {
@@ -226,8 +216,10 @@ func (s *ConfigTestSuite) TestTheShippedDefaultsResolveToTheDocumentedPolicy() {
 	s.Require().NoError(sysconfig.InitializeServerRuntime("", &sysconfig.Config{AccountAccess: defaults.AccountAccess}))
 	cfg := FromServerRuntime()
 
-	s.Require().NoError(accountAccessHandler{base: cfg.AccountAccess}.Validate(accountAccessValue{}, nil, nil))
-	source := newAccountAccessSource(cfg.AccountAccess)
+	handler := accountAccessHandler{base: cfg.AccountAccess}
+	s.Require().NoError(handler.Validate(accountAccessValue{}, nil, nil))
+	s.serves(handler.Merge(nil, accountAccessValue{}))
+	source := s.readingSource(cfg.AccountAccess)
 	svc := newIdentityGovernanceService(nil, source, nil, nil, nil)
 	ctx := context.Background()
 

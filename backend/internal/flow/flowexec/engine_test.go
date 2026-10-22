@@ -2737,6 +2737,18 @@ func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOt
 	s.False(ok)
 }
 
+func (s *EngineTestSuite) TestExecuteNodePackage_MarksRecoveryFlow() {
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{})
+
+	s.True(authnprovidercm.IsRecoveryFlow(nodeCtx))
+}
+
+func (s *EngineTestSuite) TestExecuteNodePackage_DoesNotMarkOtherFlowsAsRecovery() {
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{})
+
+	s.False(authnprovidercm.IsRecoveryFlow(nodeCtx))
+}
+
 func (s *EngineTestSuite) TestExecuteNodePackage_CompletesAndReturnsNilNextNode() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)

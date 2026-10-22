@@ -1469,5 +1469,25 @@
         "onFailure": ""
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Identity Governance Executor",
+      "label": "Unlock Identity",
+      "description": "Clear every automatic lock left by failed authentication attempts. In a recovery flow, place it after the credential is set",
+      "image": "LockKeyholeOpen",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "IdentityGovernanceExecutor", "mode": "unlock"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
   }
 ]

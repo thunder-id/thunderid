@@ -1926,6 +1926,18 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByText(`flows:core.executions.${namespace}.mode.label`)).toBeInTheDocument();
       expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
     });
+
+    it('should hide the inputs editor and show no configuration for the identity governance executor', () => {
+      render(
+        <ExecutionExtendedProperties
+          resource={makeResource(ExecutionTypes.IdentityGovernance, 'unlock')}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
   });
 
   describe('Edge Cases', () => {

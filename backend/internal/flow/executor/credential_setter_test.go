@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -263,6 +264,48 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyInputIdentifier() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrCredentialInputInvalid.Code, resp.Error.Code)
+}
+
+// nodeContext builds a context that reaches the credential write.
+func (suite *CredentialSetterTestSuite) nodeContext() *providers.NodeContext {
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeRecovery,
+		UserInputs:  map[string]string{userAttributePassword: "Replaced-Secret-9!"},
+		RuntimeData: map[string]string{"userID": testUserID},
+	}
+
+	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(testUserID)
+	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]providers.Input{
+		{Identifier: userAttributePassword, Type: providers.InputTypePassword, Required: true},
+	})
+
+	return ctx
+}
+
+func (suite *CredentialSetterTestSuite) TestExecute_SuccessfulWriteRecordsTheProvenSubject() {
+	ctx := suite.nodeContext()
+	suite.mockEntityProvider.On("UpdateCredentials", testUserID, mock.Anything).Return(nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), testUserID, resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
+}
+
+func (suite *CredentialSetterTestSuite) TestExecute_FailedWriteRecordsNothing() {
+	ctx := suite.nodeContext()
+	suite.mockEntityProvider.On("UpdateCredentials", testUserID, mock.Anything).
+		Return(&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSchemaValidationFailed})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Empty(suite.T(), resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
 }
 
 func TestCredentialSetterSuite(t *testing.T) {

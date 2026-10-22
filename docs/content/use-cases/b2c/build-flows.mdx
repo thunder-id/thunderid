@@ -213,6 +213,7 @@ The recovery flow drives [Account Recovery](../try-it-out/account-recovery). It:
 - Sends the recovery email.
 - Verifies the token from the email link.
 - Lands the user on a **Set new password** screen and updates the credential.
+- Releases the account's sign-in locks, so a customer locked out by failed attempts can sign in with the new password.
 
 The recovery flow sends its email through an email provider, so create the provider before the flow. The email node names its template by handle in its `emailTemplate` property; to tailor that email's wording, localization, and branding, see [Customize Notifications](../build-notifications).
 
@@ -358,6 +359,12 @@ curl -k -X POST https://localhost:8090/flows \
       "id": "set_credential",
       "type": "TASK_EXECUTION",
       "executor": { "name": "CredentialSetter" },
+      "onSuccess": "release_account_locks"
+    },
+    {
+      "id": "release_account_locks",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "IdentityGovernanceExecutor", "mode": "unlock" },
       "onSuccess": "recovery_complete"
     },
     {
