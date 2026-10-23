@@ -18,11 +18,11 @@ import RoutesContext, {type RoutePaths} from './RoutesContext';
  * A feature package building its own typed accessor on top of this hook:
  * ```ts
  * import { useRoutes } from '@thunderid/contexts';
- * import { defaultOrganizationUnitRoutes, type OrganizationUnitRoutePaths } from './routes';
+ * // In hooks/useOrganizationUnitRoutes.ts, below `OrganizationUnitRoutePaths` and `defaultOrganizationUnitRoutePaths`:
  *
  * export default function useOrganizationUnitRoutes() {
  *   const routes = useRoutes<Partial<OrganizationUnitRoutePaths>>();
- *   return routes.organizationUnits ?? defaultOrganizationUnitRoutes.organizationUnits;
+ *   return routes.organizationUnits ?? defaultOrganizationUnitRoutePaths.organizationUnits;
  * }
  * ```
  *
