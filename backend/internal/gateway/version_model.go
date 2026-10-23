@@ -125,6 +125,15 @@ type ApplyRequest struct {
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty"`
 }
 
+// PromoteRequest asks for the version one gateway runs to be applied to another, as a console promotes
+// one stage to the next.
+type PromoteRequest struct {
+	SourceGatewayID string
+	TargetGatewayID string
+	DryRun          bool
+	ConfirmRemovals bool
+}
+
 // RevertRequest is the body of a revert.
 type RevertRequest struct {
 	DryRun          bool `json:"dryRun,omitempty"`

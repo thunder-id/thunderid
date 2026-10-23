@@ -57,6 +57,9 @@ func (s *stubVersionService) Revert(context.Context, string, RevertRequest) (*Ap
 	time.Sleep(s.delay)
 	return &ApplyResult{}, s.err
 }
+func (s *stubVersionService) Promote(context.Context, PromoteRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	return &ApplyResult{}, s.err
+}
 func (s *stubVersionService) Forget(_ context.Context, id string) { s.forgot = id }
 func serveVersions(stub *stubVersionService, method, path, body string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()

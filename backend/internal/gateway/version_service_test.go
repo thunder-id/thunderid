@@ -465,6 +465,7 @@ type versionFixture struct {
 	exporter *fakeExporter
 	client   *fakeGatewayClient
 	names    *fakeActorNames
+	gateways *fakeStore
 }
 
 // newVersionFixture builds a service administering one registered gateway, gw-1, whose key is sealed.
@@ -484,8 +485,8 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		client:   &fakeGatewayClient{},
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
-	gateways := &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
+	f.gateways = &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
 	return f
 }
 

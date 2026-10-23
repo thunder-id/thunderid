@@ -7,12 +7,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -122,4 +124,38 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_ConfiguredAudienceDrivesGua
 
 	suite.Equal(testConfiguredIdentifier, metadata.Resource)
 	suite.Equal(testConfiguredIdentifier, suite.audienceReachingVerification(guard, accessToken()))
+}
+
+// An MCP request answers after the server's write timeout has passed when the import or apply time
+// allows it, since a tool call can run either; with neither configured the server's timeout applies.
+func TestToolWriteDeadlineOutlastsTheServerWriteTimeout(t *testing.T) {
+	get := func(applySeconds int) (string, error) {
+		config.ResetServerRuntime()
+		cfg := &config.Config{}
+		cfg.Gateway.ApplyTimeoutSeconds = applySeconds
+		require.NoError(t, config.InitializeServerRuntime("", cfg))
+		defer config.ResetServerRuntime()
+		server := httptest.NewUnstartedServer(withToolWriteDeadline(http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) {
+				time.Sleep(300 * time.Millisecond)
+				_, _ = w.Write([]byte("done"))
+			})))
+		server.Config.WriteTimeout = 100 * time.Millisecond
+		server.Start()
+		defer server.Close()
+		resp, err := server.Client().Get(server.URL)
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		return string(body), err
+	}
+
+	body, err := get(3600)
+	require.NoError(t, err)
+	require.Equal(t, "done", body)
+
+	_, err = get(0)
+	require.Error(t, err)
 }
