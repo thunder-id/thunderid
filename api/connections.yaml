@@ -220,11 +220,13 @@ paths:
       tags: [Connections]
       summary: Update an HTTP endpoint connection
       description: |
-        Replaces the connection. A credential omitted from `authentication.properties` keeps its
-        stored value only while the authentication `type`, its non-secret properties (such as the
+        Replaces the connection. An omitted `basic` password or `bearer` token keeps its stored
+        value only while the authentication `type`, its non-secret properties (such as the
         username) and the URL origin (scheme, host and port, with default ports normalized) are
         unchanged. Otherwise the credential is discarded and must be supplied again, so a
-        connection cannot be pointed at another server with its stored password.
+        connection cannot be pointed at another server with its stored password. Each `api_key`
+        header is sent on its own: a header sent as `"******"` keeps its stored value under the
+        same rule, and a header left out is removed.
       requestBody:
         required: true
         content:

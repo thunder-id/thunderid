@@ -374,6 +374,28 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByTestId('wizard-create')).toBeDisabled();
   });
 
+  it('blocks creating an HTTP endpoint while a required authentication field is empty', () => {
+    Object.assign(formExtraValues, {
+      'authentication.type': 'basic',
+      'authentication.properties.username': 'risk-client',
+      'authentication.properties.password': '  ',
+    });
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+
+    expect(screen.getByTestId('wizard-create')).toBeDisabled();
+  });
+
+  it('blocks creating an HTTP endpoint with bearer authentication and no token', () => {
+    Object.assign(formExtraValues, {'authentication.type': 'bearer'});
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-http', 'Risk Engine');
+
+    expect(screen.getByTestId('wizard-create')).toBeDisabled();
+  });
+
   it('blocks creating an HTTP endpoint with API-key authentication over http', () => {
     Object.assign(formExtraValues, {
       url: 'http://risk.example.com/check',

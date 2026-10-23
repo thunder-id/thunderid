@@ -2219,10 +2219,10 @@ const translations = {
     'form.fields.httpEndpointDescription.hint': 'Optional note about what this endpoint does, up to 500 characters.',
     'form.fields.httpEndpointUrl.label': 'Endpoint URL',
     'form.fields.httpEndpointUrl.hint':
-      'The http or https URL ThunderID sends requests to. Setting an authentication method requires https.',
+      'The http or https URL {{productName}} sends requests to. Setting an authentication method requires https.',
     'form.fields.httpEndpointTimeoutMs.label': 'Timeout in milliseconds',
     'form.fields.httpEndpointTimeoutMs.hint':
-      'Maximum time ThunderID waits for a response, from 1 to 20000 milliseconds.',
+      'Maximum time {{productName}} waits for a response, from 1 to 20000 milliseconds.',
     'form.fields.httpEndpointHeaders.label': 'HTTP headers',
     'form.fields.httpEndpointHeaders.hint':
       'Headers sent with every request. Set credentials under Authentication instead.',

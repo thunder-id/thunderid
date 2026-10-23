@@ -32,6 +32,7 @@ import {
   AUTH_ADDITIONAL_PROPERTIES_FIELD,
   AUTH_TYPE_FIELD,
   authenticationAdditionalPropertiesError,
+  authPropertyField,
   type ConnectionFormValues,
   emptyFormValues,
   formValuesToRequest,
@@ -102,9 +103,13 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   const additionalPropertiesMissing: boolean =
     Boolean(selectedAuthenticationMethod?.additionalProperties?.required) &&
     decodeKeyValuePairs(values[AUTH_ADDITIONAL_PROPERTIES_FIELD] ?? '', 'pairs').length === 0;
+  const requiredAuthenticationFieldMissing: boolean = (selectedAuthenticationMethod?.fields ?? []).some(
+    (field) => field.required && (values[authPropertyField(field.key)] ?? '').trim() === '',
+  );
   const formValid: boolean =
     Object.keys(formErrors).length === 0 &&
     !additionalPropertiesMissing &&
+    !requiredAuthenticationFieldMissing &&
     !authenticationAdditionalPropertiesError(values, authenticationMethods);
   // The name is entered on its own step, so a format rule on it is reported there.
   const nameFormatError: string | null = trimmedName && formErrors['name'] ? t(formErrors['name']) : null;
