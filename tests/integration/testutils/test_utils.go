@@ -31,6 +31,10 @@ const (
 	TestDatabaseSchemaDirectory = "resources/dbscripts"
 	DatabaseFileBasePath        = "database/"
 
+	// serverRestartLogFile, in the extracted product home, holds the output of servers started from a
+	// test package.
+	serverRestartLogFile = "thunderid-restart.log"
+
 	// GoogleMockBaseURL and GitHubMockBaseURL point the /connections/google and
 	// /connections/github vendors at the local mock OAuth servers (mock_google_oidc_server.go,
 	// mock_github_oauth_server.go) instead of the real accounts.google.com/github.com endpoints.
@@ -782,7 +786,7 @@ func startServerInternal(port string, extraArgs ...string) error {
 		// drain before declaring the test done, and the long-lived server process
 		// would keep those pipes open indefinitely, causing a 60s WaitDelay timeout.
 		// Redirect to a log file in the extracted product home so output is not lost.
-		logPath := filepath.Join(extractedProductHome, "thunderid-restart.log")
+		logPath := filepath.Join(extractedProductHome, serverRestartLogFile)
 		var openErr error
 		logFile, openErr = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if openErr != nil {
@@ -1081,6 +1085,94 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// PatchServerConfig sets one key of the server section in the live deployment.yaml, keeping the rest
+// of the section. A nil value removes the key. Restart the server for the change to take effect.
+func PatchServerConfig(key string, value interface{}) error {
+	ensureInitialized()
+
+	configPath := filepath.Join(extractedProductHome, "deployment.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read deployment.yaml: %w", err)
+	}
+
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("failed to parse deployment.yaml: %w", err)
+	}
+	if cfg == nil {
+		cfg = make(map[string]interface{})
+	}
+	server, _ := cfg["server"].(map[string]interface{})
+	if server == nil {
+		server = make(map[string]interface{})
+	}
+	if value == nil {
+		delete(server, key)
+	} else {
+		server[key] = value
+	}
+	cfg["server"] = server
+
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated deployment.yaml: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write updated deployment.yaml: %w", err)
+	}
+
+	return nil
+}
+
+// StartServerExpectingExit stops the running server and starts it with the live deployment.yaml,
+// expecting it to refuse to start. It returns nil once the process exits, and an error when it is still
+// running after timeout. Either way, call RestartServer afterwards to bring a working server back.
+func StartServerExpectingExit(timeout time.Duration) error {
+	ensureInitialized()
+
+	StopServer()
+	time.Sleep(3 * time.Second)
+
+	if err := startServerInternal(serverPort); err != nil {
+		return err
+	}
+	cmd := serverCmd
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+
+	var err error
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		// The Wait above already owns the process, so StopServer could not reap it: kill it here.
+		_ = cmd.Process.Kill()
+		<-done
+		err = fmt.Errorf("server was still running %s after start", timeout)
+	}
+	serverCmd = nil
+	serverPid = 0
+	removePidFile()
+	return err
+}
+
+// ReadServerLog returns the output of the servers started from this test package. Servers started
+// before the package ran write elsewhere, so call it after RestartServer or StartServerExpectingExit.
+func ReadServerLog() (string, error) {
+	ensureInitialized()
+
+	data, err := os.ReadFile(filepath.Join(extractedProductHome, serverRestartLogFile))
+	if err != nil {
+		return "", fmt.Errorf("failed to read the server log: %w", err)
+	}
+	return string(data), nil
 }
 
 // ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the

@@ -54,6 +54,40 @@ One registered gateway is the default gateway, marked `isDefault` in the Gateway
 
 When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
 
+### Trusted Proxies
+
+Behind a reverse proxy, the connecting address of every request is the proxy's. To record the real client IP on SSO sessions and in the access log, list the proxies that report it under `server.trusted_proxies`. The list is empty by default, so the client IP is the connecting address.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `server.trusted_proxies[].cidr` | _(required)_ | The range the proxy connects from, such as `10.0.1.0/24`. Use `/32` (IPv4) or `/128` (IPv6) for a single address |
+| `server.trusted_proxies[].header` | `x-forwarded-for` | The header the proxy sets the client IP in, such as `x-real-ip` or `cf-connecting-ip`. Header names are case-insensitive |
+
+```yaml
+server:
+  trusted_proxies:
+    - cidr: "10.0.1.0/24" # internal NGINX
+      header: "x-real-ip"
+    - cidr: "172.28.0.10/32" # header omitted, reads x-forwarded-for
+```
+
+<ProductName /> reads a header only when the connecting address is in a listed range, since any other caller could set it. The first entry whose range contains the connecting address decides the header, so list narrower ranges before broader ones that contain them.
+
+- `x-forwarded-for` is read from right to left, skipping addresses in any listed range. The first address outside them is the client IP. If every address is in a listed range, the leftmost one is used.
+- Any other header is read as one IP. Configure the proxy to set it itself, not to pass on a value sent by the client.
+- When the header is missing or holds no valid IP, the client IP is the connecting address, and <ProductName /> logs a warning once for that entry.
+- `forwarded` (RFC 7239) is not supported. <ProductName /> does not start with it, so use `x-forwarded-for` instead.
+
+Keep the ranges as narrow as possible. A range such as `172.16.0.0/12` covers every Docker network on a host, so any container on it could report any client IP.
+
+**Multi-hop setups:** list every proxy in the chain, not only the nearest one, or the address of a proxy further out is recorded. Only the entry matching the connecting address decides the header, so the other entries only need a `cidr`.
+
+**Load balancers that rewrite the source address:** an L4 load balancer that replaces the source address, such as a Kubernetes Service with `externalTrafficPolicy: Cluster`, removes the client IP before the request reaches <ProductName />, and no setting here can recover it. Preserve it in front of <ProductName />, for example with an L7 load balancer that adds `X-Forwarded-For`, the PROXY protocol at the ingress, or `externalTrafficPolicy: Local`.
+
+**CDN headers:** `cf-connecting-ip` and `true-client-ip` are only safe when the origin accepts traffic only from the CDN. Otherwise, use `x-forwarded-for` with the CDN's ranges listed.
+
+The client IP is for display and logging. Do not rely on it for security decisions.
+
 ## Gate Client Configuration
 
 Configures the connection to <ProductName /> Gate (the login UI). Every setting is optional. By default, the `gate_client` settings are derived from `server.public_url`, so you only need to configure this section when Gate is hosted separately from the server.
@@ -153,6 +187,12 @@ This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines
 ### Access Log
 
 <ProductName /> writes an access log line for every HTTP request. The Gate and Console frontend paths (`/gate/` and `/console/`) are always excluded.
+
+Each line starts with the connecting address and ends with the correlation ID and the client IP, resolved from the [trusted proxies](#trusted-proxies):
+
+```text
+10.0.0.5 - - [09/Oct/2026:10:15:02 +0530] POST /flow/execute HTTP/1.1 200 512 34 3f2a... 203.0.113.10
+```
 
 | Setting | Default | Description |
 |---------|---------|-------------|

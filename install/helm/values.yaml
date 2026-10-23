@@ -143,6 +143,14 @@ configuration:
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
+    # Reverse proxies allowed to report the client IP recorded on SSO sessions and in the access log.
+    # Each entry is the range a proxy connects from and the header it sets the client IP in; header
+    # defaults to x-forwarded-for. Keep the ranges narrow: any caller inside one can report any IP.
+    # Empty by default, so the client IP is the connecting address.
+    # trustedProxies:
+    #   - cidr: "10.0.1.0/24"
+    #     header: "x-real-ip"
+    trustedProxies: []
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
     # every JWKS consumer in the server (trusted issuer validation, federated OIDC

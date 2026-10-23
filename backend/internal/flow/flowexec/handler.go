@@ -67,6 +67,9 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	if h.ssoTransport != nil {
 		ctx = session.WithInbound(ctx, h.ssoTransport.Read(ssoExchange))
 	}
+	// Carry the client's IP and User-Agent so a session established or reused by this request
+	// records where it was used from.
+	ctx = session.WithClientInfo(ctx, session.ClientInfoFromRequest(r))
 
 	// Carry the current step's request headers and query params so flow executors can publish them
 	// via {{request(current.*)}} placeholders. Credential-bearing headers and query params are

@@ -906,6 +906,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 	if err := cfg.Server.SecurityConfig.Validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.Server.ValidateTrustedProxies(); err != nil {
+		return nil, err
+	}
 
 	// Validate ACR-AMR mapping.
 	if err := cfg.OAuth.AuthClass.Validate(); err != nil {
