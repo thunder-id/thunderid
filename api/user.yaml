@@ -3208,6 +3208,9 @@ components:
             display:
               type: string
               description: "The schema attribute to use as the human-readable display name for users of this type"
+            picture:
+              type: string
+              description: "The schema attribute containing the profile image URL for users of this type"
             primaryEmail:
               type: string
               description: "Top-level email attribute used as the primary contact. Defaults to the only top-level email attribute; stays unset when there are several and none is selected. Must reference an email type."
@@ -3418,6 +3421,9 @@ components:
                   display:
                     type: string
                     description: "The schema attribute to use as the human-readable display name for users of this type"
+                  picture:
+                    type: string
+                    description: "The schema attribute containing the profile image URL for users of this type"
                   primaryEmail:
                     type: string
                     description: "Top-level email attribute used as the primary contact. Defaults to the only top-level email attribute; stays unset when there are several and none is selected. Must reference an email type."

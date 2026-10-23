@@ -56,6 +56,8 @@ export default function CreateUserTypePage(): JSX.Element {
     setEnumInput,
     displayAttribute,
     setDisplayAttribute,
+    pictureAttribute,
+    setPictureAttribute,
     error,
     setError,
   } = useUserTypeCreate();
@@ -348,6 +350,7 @@ export default function CreateUserTypePage(): JSX.Element {
     const systemAttributes = {
       ...primaryContactMappings(properties),
       ...(displayAttribute ? {display: displayAttribute} : {}),
+      ...(pictureAttribute ? {picture: pictureAttribute} : {}),
     };
     if (Object.keys(systemAttributes).length) requestBody.systemAttributes = systemAttributes;
 
@@ -439,6 +442,11 @@ export default function CreateUserTypePage(): JSX.Element {
             onEnumInputChange={handleEnumInputChange}
             displayAttribute={displayAttribute}
             onDisplayAttributeChange={handleDisplayAttributeChange}
+            pictureAttribute={pictureAttribute}
+            onPictureAttributeChange={(value) => {
+              clearCreateError();
+              setPictureAttribute(value);
+            }}
             onReadyChange={handlePropertiesStepReadyChange}
             userTypeHandle={handle.trim()}
           />

@@ -16,8 +16,10 @@ export interface EditGeneralSettingsProps {
   editedOuId: string | undefined;
   editedAllowSelfRegistration: boolean | undefined;
   editedDisplayAttribute: string | undefined;
+  editedPictureAttribute: string | undefined;
   onFieldChange: (field: string, value: unknown) => void;
   eligibleDisplayProperties: SchemaPropertyInput[];
+  eligiblePictureProperties: SchemaPropertyInput[];
 }
 
 /**
@@ -29,8 +31,10 @@ export default function EditGeneralSettings({
   editedOuId,
   editedAllowSelfRegistration,
   editedDisplayAttribute,
+  editedPictureAttribute,
   onFieldChange,
   eligibleDisplayProperties,
+  eligiblePictureProperties,
 }: EditGeneralSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
@@ -60,6 +64,7 @@ export default function EditGeneralSettings({
   const effectiveOuId = editedOuId ?? userType.ouId;
   const effectiveAllowSelfRegistration = editedAllowSelfRegistration ?? userType.allowSelfRegistration;
   const effectiveDisplayAttribute = editedDisplayAttribute ?? userType.systemAttributes?.display ?? '';
+  const effectivePictureAttribute = editedPictureAttribute ?? userType.systemAttributes?.picture ?? '';
 
   return (
     <Stack spacing={3}>
@@ -135,6 +140,51 @@ export default function EditGeneralSettings({
             return (
               <MenuItem key={prop.id} value={propName}>
                 {resolved && resolved !== propName ? `${resolved} (${propName})` : propName}
+              </MenuItem>
+            );
+          })}
+        </Select>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('userTypes:edit.general.pictureAttribute.title', 'Profile image attribute')}
+        description={t(
+          'userTypes:edit.general.pictureAttribute.description',
+          'The attribute containing the image URL used for user avatars.',
+        )}
+      >
+        <Select
+          value={effectivePictureAttribute}
+          onChange={(event) => onFieldChange('pictureAttribute', event.target.value)}
+          disabled={userType.isReadOnly}
+          size="small"
+          fullWidth
+          displayEmpty
+          renderValue={(selected) => {
+            const value = typeof selected === 'string' ? selected : '';
+            if (!value) {
+              return (
+                <Typography variant="body2" color="text.secondary">
+                  {t('userTypes:selectPictureAttribute', 'Select a profile image attribute')}
+                </Typography>
+              );
+            }
+            const matchedProperty = eligiblePictureProperties.find((property) => property.name.trim() === value);
+            const resolved = matchedProperty?.displayName ? resolveDisplayName(matchedProperty.displayName) : '';
+            return resolved && resolved !== value ? `${resolved} (${value})` : value;
+          }}
+        >
+          <MenuItem value="">
+            <Typography variant="body2" color="text.secondary">
+              {t('common:none', 'None')}
+            </Typography>
+          </MenuItem>
+          {eligiblePictureProperties.map((property) => {
+            const propertyName = property.name.trim();
+            const resolved = property.displayName ? resolveDisplayName(property.displayName) : '';
+            return (
+              <MenuItem key={property.id} value={propertyName}>
+                {resolved && resolved !== propertyName ? `${resolved} (${propertyName})` : propertyName}
               </MenuItem>
             );
           })}
