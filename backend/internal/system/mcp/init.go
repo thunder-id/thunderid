@@ -13,8 +13,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	mcpauth "github.com/thunder-id/thunderid/internal/system/mcp/auth"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // NewServer creates the MCP server so other packages initializing during startup can register
@@ -39,7 +41,7 @@ func Initialize(
 		return mcpServer
 	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
 
-	securedHandler := guard(httpHandler)
+	securedHandler := guard(withToolWriteDeadline(httpHandler))
 
 	// Register protected resource metadata endpoint, if the guard has an authorization server to
 	// advertise.
@@ -50,6 +52,21 @@ func Initialize(
 	// Register MCP routes
 	mux.Handle(MCPEndpointPath, securedHandler)
 	mux.Handle(MCPEndpointPath+"/", securedHandler)
+}
+
+// withToolWriteDeadline gives an MCP request the time an import or a gateway apply is allowed, in place
+// of the server's write timeout, as the REST handlers for those operations do: a tool call can run
+// either, and its answer is written only when it finishes.
+func withToolWriteDeadline(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := config.GetServerRuntime().Config
+		if err := sysutils.ExtendWriteDeadline(w, max(cfg.Import.Timeout(), cfg.Gateway.ApplyTimeout())); err != nil {
+			log.GetLogger().Warn(r.Context(),
+				"Could not extend the write deadline of an MCP request; the server's write timeout applies",
+				log.Error(err))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // DefaultGuard builds the bearer-token guard and resource metadata for a binary that runs its own

@@ -49,6 +49,9 @@ type VersionServiceInterface interface {
 	// Apply writes a version to a gateway: what the version adds or changes, and the removal of what
 	// the gateway holds that the version no longer has.
 	Apply(ctx context.Context, gatewayID string, req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError)
+	// Promote applies the version one gateway runs to another, as a console promotes one stage to the
+	// next.
+	Promote(ctx context.Context, req PromoteRequest) (*ApplyResult, *tidcommon.ServiceError)
 	// Revert returns a gateway to the version it held before the one it holds now.
 	Revert(ctx context.Context, gatewayID string, req RevertRequest) (*ApplyResult, *tidcommon.ServiceError)
 	// Forget drops what a removed gateway held, so a gateway registered later under the same id does
@@ -417,6 +420,37 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 		return svcErr
 	}
 	return s.refuseUnconfirmedRemovals(ctx, gw, diff, applyOptions{})
+}
+
+// Promote applies the version the source runs to the target: the changes the source holds back are
+// skipped, because the source does not run them.
+func (s *versionService) Promote(ctx context.Context, req PromoteRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	if req.SourceGatewayID == req.TargetGatewayID {
+		return nil, &ErrorPromoteToItself
+	}
+	source, svcErr := s.GetApplied(ctx, req.SourceGatewayID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if source.Applied == "" {
+		return nil, &ErrorSourceRunsNothing
+	}
+	// What the source holds back of the version it runs is what applying it there again leaves alone.
+	// Every change of that dry run is unchanged, since the source runs the version, so a change held
+	// back is skipped whatever its kind; the target's diff reports every key of the version.
+	held, svcErr := s.Apply(ctx, req.SourceGatewayID, ApplyRequest{Version: source.Applied, DryRun: true})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	skip := []string{}
+	for _, change := range held.Diff.Changes {
+		if change.Excluded {
+			skip = append(skip, change.Key)
+		}
+	}
+	return s.Apply(ctx, req.TargetGatewayID, ApplyRequest{
+		Version: source.Applied, DryRun: req.DryRun, Skip: skip, ConfirmRemovals: req.ConfirmRemovals,
+	})
 }
 
 func (s *versionService) Revert(ctx context.Context, gatewayID string,
