@@ -384,7 +384,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, exportService, valueCapture, exporters, changeCapture)
+	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -419,6 +419,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		// A control plane keeps configuration as references and holds no values, so none are resolved.
 		nil,
 	)
+	importer.RegisterMCPTools(mcpServer, importService)
+	export.RegisterMCPTools(mcpServer, exportService)
 
 	// Register the health service.
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
