@@ -145,8 +145,17 @@ func ResumeFlow(flowID string) (*FlowStep, error) {
 // CompleteFlow completes the flow with given inputs, action and challenge token
 func CompleteFlow(executionId string, inputs map[string]string, action string, challengeToken string) (
 	*FlowStep, error) {
+	flowStep, _, err := CompleteFlowWithRawResponse(executionId, inputs, action, challengeToken)
+	return flowStep, err
+}
+
+// CompleteFlowWithRawResponse completes a flow step like CompleteFlow and also returns the raw response
+// body, for tests that must check everything the client received and not only the fields FlowStep
+// models.
+func CompleteFlowWithRawResponse(executionID string, inputs map[string]string, action string,
+	challengeToken string) (*FlowStep, string, error) {
 	flowReqBody := map[string]interface{}{
-		"executionId":    executionId,
+		"executionId":    executionID,
 		"challengeToken": challengeToken,
 	}
 	if len(inputs) > 0 {
@@ -158,12 +167,12 @@ func CompleteFlow(executionId string, inputs map[string]string, action string, c
 
 	reqBody, err := json.Marshal(flowReqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		return nil, "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", testServerURL+"/flow/execute", bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create flow request: %w", err)
+		return nil, "", fmt.Errorf("failed to create flow request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -173,22 +182,24 @@ func CompleteFlow(executionId string, inputs map[string]string, action string, c
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send flow request: %w", err)
+		return nil, "", fmt.Errorf("failed to send flow request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read response body: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, string(bodyBytes), fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var flowStep FlowStep
-	err = json.NewDecoder(resp.Body).Decode(&flowStep)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w", err)
+	if err := json.Unmarshal(bodyBytes, &flowStep); err != nil {
+		return nil, string(bodyBytes), fmt.Errorf("failed to parse response body: %w", err)
 	}
 
-	return &flowStep, nil
+	return &flowStep, string(bodyBytes), nil
 }
 
 // ExecuteAdministrationFlow starts an administration flow, optionally as the admin.

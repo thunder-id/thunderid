@@ -416,36 +416,38 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
-			OUService:             ouProvider,
-			IDPService:            idpService,
-			NotifSenderSvc:        notifSenderSvc,
-			JWTService:            jwtService,
-			AuthAssertGen:         authAssertGen,
-			ConsentEnforcer:       consentEnforcer,
-			AuthnProvider:         authnProvider,
-			OTPService:            otpCoreService,
-			MagicLinkService:      magicLinkService,
-			AuthZService:          authZService,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleService:           roleService,
-			RoleAssignmentService: roleAssignmentService,
-			EntityProvider:        entityProvider,
-			UserMgtProvider:       userMgtProvider,
-			AgentMgtProvider:      agentMgtProvider,
-			AttributeCacheSvc:     attributeCacheService,
-			TemplateRenderer:      notifTemplateRenderer,
-			OAuthSvc:              oauthAuthnService,
-			OIDCSvc:               oidcAuthnService,
-			GithubSvc:             githubAuthnService,
-			GoogleSvc:             googleAuthnService,
-			OpenID4VPVerifierSvc:  openid4vpSvc,
-			SessionService:        sessionService,
-			ResourceService:       resourceServerProvider,
-			UserService:           userService,
-			CriteriaRevoker:       revocationSvc,
-			ResourceMgtService:    resourceService,
-			IdentityGovernance:    governanceProvider,
+			OUService:              ouProvider,
+			IDPService:             idpService,
+			NotifSenderSvc:         notifSenderSvc,
+			JWTService:             jwtService,
+			AuthAssertGen:          authAssertGen,
+			ConsentEnforcer:        consentEnforcer,
+			AuthnProvider:          authnProvider,
+			OTPService:             otpCoreService,
+			MagicLinkService:       magicLinkService,
+			AuthZService:           authZService,
+			EntityTypeService:      entityTypeService,
+			GroupService:           groupService,
+			RoleService:            roleService,
+			RoleAssignmentService:  roleAssignmentService,
+			EntityProvider:         entityProvider,
+			UserMgtProvider:        userMgtProvider,
+			AgentMgtProvider:       agentMgtProvider,
+			AttributeCacheSvc:      attributeCacheService,
+			TemplateRenderer:       notifTemplateRenderer,
+			OAuthSvc:               oauthAuthnService,
+			OIDCSvc:                oidcAuthnService,
+			GithubSvc:              githubAuthnService,
+			GoogleSvc:              googleAuthnService,
+			OpenID4VPVerifierSvc:   openid4vpSvc,
+			SessionService:         sessionService,
+			ResourceService:        resourceServerProvider,
+			UserService:            userService,
+			CriteriaRevoker:        revocationSvc,
+			ResourceMgtService:     resourceService,
+			HTTPConnectionResolver: httpConnectionService,
+			ObservabilitySvc:       observabilitySvc,
+			IdentityGovernance:     governanceProvider,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,
@@ -453,7 +455,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
-		serverConfigService, ouService, notifTemplateSvc, flowConfigHandler)
+		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
 	// Two-phase initialization: inject the flow resolver into the OU service.
@@ -511,20 +513,21 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an
-	// identity provider or notification sender.
+	// identity provider, notification sender or HTTP connection.
 	registerDependencyRegistry(dependencyConsumers{
-		theme:         themeMgtService,
-		layout:        layoutMgtService,
-		flow:          flowMgtService,
-		user:          userService,
-		idp:           idpService,
-		notifSender:   notifSenderMgtSvc,
-		application:   applicationService,
-		agent:         agentService,
-		group:         groupService,
-		ou:            ouService,
-		resource:      resourceService,
-		notifTemplate: notifTemplateSvc,
+		theme:          themeMgtService,
+		layout:         layoutMgtService,
+		flow:           flowMgtService,
+		user:           userService,
+		idp:            idpService,
+		notifSender:    notifSenderMgtSvc,
+		application:    applicationService,
+		agent:          agentService,
+		group:          groupService,
+		ou:             ouService,
+		resource:       resourceService,
+		notifTemplate:  notifTemplateSvc,
+		httpConnection: httpConnectionService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
 		sharingService, notifTemplateSvc)
@@ -634,18 +637,19 @@ func initAttestationProvider(ctx context.Context, logger *log.Logger,
 // dependencyConsumers groups the services that check the dependency registry before deleting their
 // own resources.
 type dependencyConsumers struct {
-	theme         thememgt.ThemeMgtServiceInterface
-	layout        layoutmgt.LayoutMgtServiceInterface
-	flow          flowmgt.FlowMgtServiceInterface
-	user          user.UserServiceInterface
-	idp           idp.IDPServiceInterface
-	notifSender   notification.NotificationSenderMgtSvcInterface
-	application   application.ApplicationServiceInterface
-	agent         agent.AgentServiceInterface
-	group         group.GroupServiceInterface
-	ou            ou.ConfigurableOUService
-	resource      resource.ResourceServiceInterface
-	notifTemplate notificationtemplate.NotificationTemplateServiceInterface
+	theme          thememgt.ThemeMgtServiceInterface
+	layout         layoutmgt.LayoutMgtServiceInterface
+	flow           flowmgt.FlowMgtServiceInterface
+	user           user.UserServiceInterface
+	idp            idp.IDPServiceInterface
+	notifSender    notification.NotificationSenderMgtSvcInterface
+	application    application.ApplicationServiceInterface
+	agent          agent.AgentServiceInterface
+	group          group.GroupServiceInterface
+	ou             ou.ConfigurableOUService
+	resource       resource.ResourceServiceInterface
+	notifTemplate  notificationtemplate.NotificationTemplateServiceInterface
+	httpConnection httpconnection.HTTPConnectionServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -664,6 +668,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.ou.SetDependencyRegistry(registry)
 	consumers.resource.SetDependencyRegistry(registry)
 	consumers.notifTemplate.SetDependencyRegistry(registry)
+	consumers.httpConnection.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

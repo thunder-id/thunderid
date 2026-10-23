@@ -131,4 +131,19 @@ var (
 			DefaultValue: "The HTTP connection description must be at most 500 characters",
 		},
 	}
+	// ErrorHasBlockingDependencies is returned when an HTTP connection cannot be deleted because flows
+	// reference it.
+	ErrorHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_has_blocking_dependencies",
+			DefaultValue: "HTTP connection cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.connectionservice.http_connection_has_blocking_dependencies_description",
+			DefaultValue: "The HTTP connection cannot be deleted because {{param(dependencies)}} depend on it. " +
+				"Remove or reassign them first.",
+		},
+	}
 )

@@ -913,6 +913,44 @@ func (s *HTTPConnectionHandlerTestSuite) TestDelete() {
 	s.Equal(http.StatusNoContent, s.serve(http.MethodDelete, "/connections/http/http-1", "").Code)
 }
 
+func (s *HTTPConnectionHandlerTestSuite) TestDeleteOfAConnectionInUseIsAConflict() {
+	s.mockHTTP.On("DeleteHTTPConnection", mock.Anything, "http-1").
+		Return(&httpconnection.ErrorHasBlockingDependencies)
+
+	rr := s.serve(http.MethodDelete, "/connections/http/http-1", "")
+
+	s.Equal(http.StatusConflict, rr.Code)
+	s.Equal(httpconnection.ErrorHasBlockingDependencies.Code, s.errorCode(rr))
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesListTheReferencingFlows() {
+	total := 1
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "http-1").
+		Return(&resourcedependency.DependenciesResponse{
+			TotalResults: &total, Count: 1, Summary: map[string]int{resourcedependency.ResourceTypeFlow: 1},
+			Usages: []resourcedependency.ResourceDependency{{
+				ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow-1", DisplayName: "Default sign-in",
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			}},
+		}, (*tidcommon.ServiceError)(nil))
+
+	rr := s.serve(http.MethodGet, "/connections/http/http-1/usages", "")
+
+	s.Equal(http.StatusOK, rr.Code)
+	s.JSONEq(`{"totalResults":1,"count":1,"summary":{"flow":1},"usages":[{"resourceType":"flow",
+		"id":"flow-1","displayName":"Default sign-in","behaviorOnDelete":"restrict"}]}`, rr.Body.String())
+}
+
+func (s *HTTPConnectionHandlerTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
+	s.mockHTTP.On("GetHTTPConnectionUsages", mock.Anything, "missing").
+		Return((*resourcedependency.DependenciesResponse)(nil), &httpconnection.ErrorNotFound)
+
+	rr := s.serve(http.MethodGet, "/connections/http/missing/usages", "")
+
+	s.Equal(http.StatusNotFound, rr.Code)
+	s.Equal(httpconnection.ErrorNotFound.Code, s.errorCode(rr))
+}
+
 func (s *HTTPConnectionHandlerTestSuite) TestListReturnsSummaries() {
 	s.mockHTTP.On("ListHTTPConnections", mock.Anything).
 		Return([]httpconnection.HTTPConnection{*s.basicConnection()}, (*tidcommon.ServiceError)(nil))
@@ -929,6 +967,7 @@ func (s *HTTPConnectionHandlerTestSuite) TestServiceErrorsMapToStatus() {
 		want int
 	}{
 		{httpconnection.ErrorAlreadyExists, http.StatusConflict},
+		{httpconnection.ErrorHasBlockingDependencies, http.StatusConflict},
 		{httpconnection.ErrorInvalidName, http.StatusBadRequest},
 		{httpconnection.ErrorInvalidDescription, http.StatusBadRequest},
 		{httpconnection.ErrorInvalidURL, http.StatusBadRequest},

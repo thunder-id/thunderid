@@ -77,14 +77,14 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 
 	// Check if this prompt is handling a failure
 	if ctx.RuntimeData != nil {
-		if jsonStr, exists := ctx.RuntimeData["failureReasonJSON"]; exists && jsonStr != "" {
+		if jsonStr, exists := ctx.RuntimeData[common.RuntimeKeyFailureReasonJSON]; exists && jsonStr != "" {
 			var errResp tidcommon.ServiceError
 			if err := json.Unmarshal([]byte(jsonStr), &errResp); err == nil {
 				nodeResp.Error = &errResp
 				logger.Debug(ctx.Context, "Prompt node is handling a failure",
 					log.String("errorCode", errResp.Code))
 			}
-			delete(ctx.RuntimeData, "failureReasonJSON")
+			delete(ctx.RuntimeData, common.RuntimeKeyFailureReasonJSON)
 			// Clear this prompt's inputs and current action
 			for _, input := range n.getAllInputs() {
 				delete(ctx.UserInputs, input.Identifier)

@@ -513,12 +513,21 @@ func (s *service) updateHTTP(ctx context.Context, id string, connection httpconn
 	return s.httpService.UpdateHTTPConnection(ctx, id, connection)
 }
 
-// deleteHTTP deletes an HTTP connection by ID.
+// deleteHTTP deletes an HTTP connection by ID, unless a flow references it.
 func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceError {
 	if s.httpService == nil {
 		return &tidcommon.InternalServerError
 	}
 	return s.httpService.DeleteHTTPConnection(ctx, id)
+}
+
+// usagesHTTP returns the resources that reference an HTTP connection.
+func (s *service) usagesHTTP(ctx context.Context, id string) (
+	*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	if s.httpService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.httpService.GetHTTPConnectionUsages(ctx, id)
 }
 
 // usagesByType verifies the instance is of the expected type, then returns the resources that

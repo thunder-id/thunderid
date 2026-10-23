@@ -484,6 +484,36 @@ func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsRequ
 	suite.Equal("value", sanitized["keep_me"], "unrelated runtime data must still be snapshotted")
 }
 
+// TestFreshSave_LeavesExtensionDataOutOfTheSnapshot verifies that data an extension step stored, its
+// failure fields and its attempt count, never reach the session another application joins.
+func (suite *SessionExecutorTestSuite) TestFreshSave_LeavesExtensionDataOutOfTheSnapshot() {
+	answer, ok := decodeJSONObject([]byte(`{"actionStatus":"SUCCESS","riskScore":"12","email":"svc@example.com"}`))
+	suite.Require().True(ok)
+	ctx := freshCtx()
+	for key, value := range extensionRuntimeData(answer, "risk_check", nil) {
+		ctx.RuntimeData[key] = value
+	}
+	ctx.RuntimeData[common.ExtensionAttemptCountKey("risk_check")] = "1"
+	ctx.RuntimeData[extensionFieldFailureReason] = "high_risk"
+	ctx.RuntimeData[extensionFieldFailureDescription] = "Sign-in blocked."
+	suite.Require().Contains(ctx.RuntimeData, "extension.risk_check.riskScore")
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+
+	_, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+
+	for key := range in.RuntimeData {
+		suite.False(strings.HasPrefix(key, common.ExtensionDataKeyPrefix), "%s entered the snapshot", key)
+	}
+	suite.NotContains(in.RuntimeData, common.ExtensionAttemptCountKey("risk_check"))
+	suite.NotContains(in.RuntimeData, extensionFieldFailureReason)
+	suite.NotContains(in.RuntimeData, extensionFieldFailureDescription)
+	suite.Equal("alice@example.com", in.RuntimeData["email"], "the flow's own data is still snapshotted")
+}
+
 // TestFreshSave_PublishesSessionID verifies a save publishes the session id on RuntimeData, and not
 // on the transport channel the handle uses.
 func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesSessionID() {

@@ -1525,6 +1525,25 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_StoredProfil
 	assert.Equal(suite.T(), "https://example.com/alice.png", attrs["picture"])
 }
 
+// An extension's answer is stored under its own namespace, so a returned email or pin is never read
+// as the signed-in user's attribute.
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_ExtensionAnswerDoesNotReplaceProfile() {
+	answer, ok := decodeJSONObject([]byte(`{"actionStatus":"SUCCESS","email":"mallory@example.com","pin":"1234"}`))
+	suite.Require().True(ok)
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		Context:     context.Background(),
+		RuntimeData: extensionRuntimeData(answer, "pin_check", nil),
+	}
+	suite.Require().Equal("mallory@example.com", ctx.RuntimeData["extension.pin_check.email"])
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{"email", "pin"},
+		map[string]interface{}{"email": "alice@corp.com"}, "user-123", "", "", "")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), map[string]interface{}{"email": "alice@corp.com"}, attrs)
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithUserType() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",

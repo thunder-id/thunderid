@@ -54,6 +54,7 @@ const (
 	ExecutorNameGroup                        = "GroupExecutor"
 	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
 	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
+	ExecutorNameExtension                    = "ExtensionExecutor"
 )
 
 // Executor mode constants

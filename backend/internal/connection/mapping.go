@@ -172,7 +172,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			notification.ErrorSenderHasBlockingDependencies.Code,
 			authzenpdp.ErrorHasBlockingDependencies.Code,
 			authzenpdp.ErrorAlreadyExists.Code,
-			httpconnection.ErrorAlreadyExists.Code:
+			httpconnection.ErrorAlreadyExists.Code,
+			httpconnection.ErrorHasBlockingDependencies.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

@@ -15,6 +15,8 @@ const (
 	ComponentAuthHandler = "AuthHandler"
 	// ComponentBackchannelLogout identifies the back-channel logout dispatcher.
 	ComponentBackchannelLogout = "BackchannelLogout"
+	// ComponentExtensionExecutor identifies the flow step that calls an organization's service.
+	ComponentExtensionExecutor = "ExtensionExecutor"
 	// ComponentIdentityGovernance identifies the identity governance service.
 	ComponentIdentityGovernance = "IdentityGovernance"
 	// ComponentServerConfig identifies the server-config service.
@@ -97,4 +99,8 @@ const (
 
 	// EventTypeFlowFailed is triggered when flow execution fails.
 	EventTypeFlowFailed providers.EventType = "FLOW_FAILED"
+
+	// EventTypeExtensionCall is triggered once for every execution of an extension step, whatever its
+	// outcome.
+	EventTypeExtensionCall providers.EventType = "EXTENSION_CALL"
 )

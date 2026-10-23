@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -339,9 +340,9 @@ func (s *flowMgtService) GetFlowUsages(
 // GetResourceDependencies returns the flows that reference the resource identified by
 // (resourceType, id). It implements the resourcedependency.Provider interface: an active flow
 // references an identity provider or notification sender when one of its nodes carries the matching
-// ID in its properties, and references a notification template when a node carries the matching
-// email/SMS template handle. Such a reference blocks deletion of the target, since the flow would
-// break without it.
+// ID in its properties, an HTTP connection when one of its extension steps does, and a notification
+// template when a node carries the matching email/SMS template handle. Such a reference blocks
+// deletion of the target, since the flow would break without it.
 func (s *flowMgtService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	// Templates are referenced by handle, not id, so they need a channel-aware path.
@@ -349,12 +350,14 @@ func (s *flowMgtService) GetResourceDependencies(
 		return s.notificationTemplateUsages(ctx, id)
 	}
 
-	var propertyKey string
+	var propertyKey, executorName string
 	switch resourceType {
 	case resourcedependency.ResourceTypeIDP:
 		propertyKey = nodePropertyKeyIDPID
 	case resourcedependency.ResourceTypeNotificationSender:
 		propertyKey = nodePropertyKeyNotificationSenderID
+	case resourcedependency.ResourceTypeHTTPConnection:
+		propertyKey, executorName = common.NodePropertyConnectionID, executormeta.ExecutorNameExtension
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
@@ -367,7 +370,7 @@ func (s *flowMgtService) GetResourceDependencies(
 
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, flow := range flows {
-		if flowReferencesResource(flow, propertyKey, id) {
+		if flowReferencesResource(flow, executorName, propertyKey, id) {
 			usages = append(usages, resourcedependency.ResourceDependency{
 				ResourceType:     resourcedependency.ResourceTypeFlow,
 				ID:               flow.ID,
@@ -380,14 +383,19 @@ func (s *flowMgtService) GetResourceDependencies(
 	return usages, nil
 }
 
-// flowReferencesResource reports whether any node in the flow carries the given ID in the named
-// property key.
-func flowReferencesResource(flow *providers.CompleteFlowDefinition, propertyKey, id string) bool {
+// flowReferencesResource reports whether any node in the flow carries the given ID, ignoring
+// surrounding whitespace, in the named property key. A non-empty executorName counts only the nodes
+// that run that executor.
+func flowReferencesResource(flow *providers.CompleteFlowDefinition, executorName, propertyKey, id string) bool {
 	for i := range flow.Nodes {
 		if flow.Nodes[i].Properties == nil {
 			continue
 		}
-		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && val == id {
+		if executorName != "" &&
+			(flow.Nodes[i].Executor == nil || flow.Nodes[i].Executor.Name != executorName) {
+			continue
+		}
+		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && strings.TrimSpace(val) == id {
 			return true
 		}
 	}

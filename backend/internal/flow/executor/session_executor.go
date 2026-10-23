@@ -329,17 +329,18 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyForceReauth:    {},
 	common.RuntimeKeyMaxAge:         {},
 	common.RuntimeKeySilentAuthOnly: {},
-	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
-	"applicationId": {},
+	common.RuntimeKeyApplicationID:  {},
 }
 
-// sanitizeSnapshotRuntimeData copies RuntimeData for the durable snapshot, dropping the transient SSO
-// control keys (the per-checkpoint present/saved flags and the shared handle hint) and the
-// request-scoped keys in requestScopedSnapshotDenyList. Persisting the control keys would let a
-// reused snapshot reinject a prior run's control state when its RuntimeData is replayed on load;
-// persisting the request-scoped keys would override a joining app's own request. RuntimeData is
-// otherwise persisted in full pending the flow-context data-classification revisit. Returns nil when
-// nothing durable remains.
+// sanitizeSnapshotRuntimeData copies RuntimeData for the durable snapshot, dropping the transient
+// SSO control keys (the per-checkpoint present/saved flags and the shared handle hint), the
+// request-scoped keys in requestScopedSnapshotDenyList, and extension data with the per-step
+// extension attempt counts and the failure fields an extension stores. Persisting the control keys
+// would let a reused snapshot reinject a prior run's control state when its RuntimeData is replayed
+// on load; persisting the request-scoped keys would override a joining app's own request. Extension
+// data is a service's answer to this application's flow, so a joining application's flow calls its
+// own extension instead. RuntimeData is otherwise persisted in full pending the flow-context
+// data-classification revisit. Returns nil when nothing durable remains.
 func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
 	if len(rd) == 0 {
 		return nil
@@ -351,7 +352,10 @@ func sanitizeSnapshotRuntimeData(rd map[string]string) map[string]string {
 		}
 		if k == common.RuntimeKeySSOSessionHandle ||
 			strings.HasPrefix(k, common.RuntimeKeySSOSessionPresent+":") ||
-			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") {
+			strings.HasPrefix(k, common.RuntimeKeySSOSessionSaved+":") ||
+			strings.HasPrefix(k, common.ExtensionDataKeyPrefix) ||
+			strings.HasPrefix(k, common.ExtensionAttemptCountKey("")) ||
+			k == extensionFieldFailureReason || k == extensionFieldFailureDescription {
 			continue
 		}
 		out[k] = v

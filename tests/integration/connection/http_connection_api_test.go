@@ -804,15 +804,17 @@ func (s *HTTPConnectionAPITestSuite) TestUnknownConnectionIsNotFound() {
 	const unknownID = "00000000-0000-0000-0000-00000000c0de"
 	for _, tc := range []struct {
 		method string
+		suffix string
 		body   interface{}
 	}{
-		{http.MethodGet, nil},
-		{http.MethodPut, httpConnRequest{Name: "http-conn-api-ghost", URL: "https://ext.example.com"}},
-		{http.MethodDelete, nil},
+		{http.MethodGet, "", nil},
+		{http.MethodPut, "", httpConnRequest{Name: "http-conn-api-ghost", URL: "https://ext.example.com"}},
+		{http.MethodDelete, "", nil},
+		{http.MethodGet, "/usages", nil},
 	} {
-		res, err := doRequest(tc.method, httpConnPath+"/"+unknownID, tc.body)
-		s.Require().NoError(err, "%s unknown connection request failed", tc.method)
-		s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, tc.method+" unknown connection")
+		res, err := doRequest(tc.method, httpConnPath+"/"+unknownID+tc.suffix, tc.body)
+		s.Require().NoError(err, "%s%s unknown connection request failed", tc.method, tc.suffix)
+		s.assertError(res, http.StatusNotFound, httpConnNotFoundCode, tc.method+tc.suffix+" unknown connection")
 	}
 
 	created, _ := s.create(httpConnRequest{Name: "http-conn-api-isolation", URL: "https://ext.example.com"})

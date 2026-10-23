@@ -89,6 +89,13 @@ export interface ConnectionListResponse {
 }
 
 /**
+ * Resource types reported in a connection's usages.
+ */
+export const ConnectionUsageResourceTypes = {
+  FLOW: 'flow',
+} as const;
+
+/**
  * A single resource that references a connection (e.g. a flow that uses it).
  */
 export interface ConnectionUsage {
@@ -490,6 +497,8 @@ export interface ConnectionVendorMeta {
   supportsAuthentication?: boolean;
   /** Changing the `url` origin requires the stored credentials to be entered again. */
   reentersCredentialsOnOriginChange?: boolean;
+  /** Whether the detail page lists the resources that use this connection. */
+  showsUsages?: boolean;
   /** Whether this connection exposes subject attribute mappings for authorization requests. */
   supportsSubjectMapping?: boolean;
   /** Copy variant for the General tab settings card. */

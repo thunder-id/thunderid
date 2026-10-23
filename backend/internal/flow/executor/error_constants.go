@@ -1610,6 +1610,88 @@ var (
 			DefaultValue: "This account is suspended. Contact an administrator",
 		},
 	}
+
+	// ErrExtensionConfigInvalid is returned when an extension step names no HTTP connection, or names
+	// one that does not exist. No call is made.
+	ErrExtensionConfigInvalid = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1115",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_config_invalid",
+			DefaultValue: "Configuration error",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_config_invalid_desc",
+			DefaultValue: "The HTTP connection configured for this step is missing or cannot be used",
+		},
+	}
+
+	// ErrExtensionCallFailed is returned when an extension call ends in ERROR for any reason. It
+	// carries nothing from the service's answer.
+	ErrExtensionCallFailed = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1116",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed",
+			DefaultValue: "Extension call failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_call_failed_desc",
+			DefaultValue: "The step could not get a valid answer from the external service",
+		},
+	}
+
+	// ErrExtensionActionFailed is returned when an extension answers FAILED with a reason other than a
+	// credential failure. Its description params carry the shown text and the reason.
+	ErrExtensionActionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1117",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed",
+			DefaultValue: "Request rejected",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_action_failed_desc",
+			DefaultValue: "{{param(description)}}",
+		},
+	}
+
+	// extensionRejectedDescription is the description a FAILED extension answer shows when it carries
+	// none of its own.
+	extensionRejectedDescription = tidcommon.I18nMessage{
+		Key:          "flows.executor.errors.extension_action_rejected_desc",
+		DefaultValue: "The request was rejected",
+	}
+
+	// ErrExtensionInputRequired is returned when an extension answers INCOMPLETE with a message for
+	// the user. Its description params carry the shown text and the reason.
+	ErrExtensionInputRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1118",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required",
+			DefaultValue: "Additional input required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_input_required_desc",
+			DefaultValue: "{{param(description)}}",
+		},
+	}
+
+	// ErrExtensionAttemptsExceeded is returned when an extension step has had maxAttempts FAILED and
+	// INCOMPLETE answers in this flow execution. No call is made.
+	ErrExtensionAttemptsExceeded = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1119",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded",
+			DefaultValue: "Too many attempts",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.extension_attempts_exceeded_desc",
+			DefaultValue: "The maximum number of attempts for this step has been reached",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

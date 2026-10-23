@@ -432,6 +432,17 @@ func (h *handler) deleteHTTPConnection(w http.ResponseWriter, r *http.Request) {
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// usagesHTTPConnection lists the resources that reference an HTTP connection.
+func (h *handler) usagesHTTPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	usages, svcErr := h.svc.usagesHTTP(ctx, r.PathValue("id"))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
+}
+
 // writeHTTPConnection writes an HTTP connection with its secret masked.
 func writeHTTPConnection(ctx context.Context, w http.ResponseWriter, status int,
 	connection *httpconnection.HTTPConnection) {

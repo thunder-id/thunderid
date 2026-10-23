@@ -142,6 +142,21 @@ const (
 	// checkpoint it guards. The checkpoint id is that join node's id, so the skip and join of one
 	// checkpoint pair by it. Absent/empty means the node is not part of a checkpoint pair.
 	NodePropertyCheckpointRef = "checkpointRef"
+	// NodePropertyIDPID names the identity provider a task node uses.
+	NodePropertyIDPID = "idpId"
+	// NodePropertySenderID names the notification sender a task node uses.
+	NodePropertySenderID = "senderId"
+	// NodePropertyConnectionID names the HTTP endpoint connection an extension step calls.
+	NodePropertyConnectionID = "connectionId"
+	// NodePropertyInputKeys names the user inputs an extension step sends.
+	NodePropertyInputKeys = "inputKeys"
+	// NodePropertyRuntimeDataKeys restricts the runtime data an extension step sends.
+	NodePropertyRuntimeDataKeys = "runtimeDataKeys"
+	// NodePropertyResponseKeys restricts the response fields an extension step stores.
+	NodePropertyResponseKeys = "responseKeys"
+	// NodePropertyMaxAttempts bounds the FAILED and INCOMPLETE answers an extension step accepts in
+	// one flow execution.
+	NodePropertyMaxAttempts = "maxAttempts"
 )
 
 // RuntimeData keys.
@@ -320,7 +335,34 @@ const (
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeyApplicationID holds the ID of the application the flow runs for, set by the engine
+	// before every task execution.
+	RuntimeKeyApplicationID = "applicationId"
+	// RuntimeKeyIDPID holds the identity provider ID a task node names in its idpId property.
+	RuntimeKeyIDPID = "idpId"
+	// RuntimeKeySenderID holds the notification sender ID a task node names in its senderId property.
+	RuntimeKeySenderID = "senderId"
+	// RuntimeKeyFailureReasonJSON holds the JSON-encoded error of a failed or incomplete node, for the
+	// prompt node its onFailure or onIncomplete route leads to.
+	RuntimeKeyFailureReasonJSON = "failureReasonJSON"
+	// RuntimeKeyUserIDCamelCase holds a user ID under the camel-case "userId" key, distinct from
+	// "userID". The {{ctx(userId)}} placeholder resolves from it ahead of the authenticated user.
+	RuntimeKeyUserIDCamelCase = "userId"
+	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
+	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
+	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
 )
+
+// ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
+// answer, as extension.<nodeId>.<field>, so a returned field never names an engine key, a profile
+// attribute or a credential.
+const ExtensionDataKeyPrefix = "extension."
+
+// ExtensionAttemptCountKey scopes RuntimeKeyExtensionAttemptCount to an extension step's node ID, so
+// two extension steps in one flow count separately.
+func ExtensionAttemptCountKey(nodeID string) string {
+	return RuntimeKeyExtensionAttemptCount + ":" + nodeID
+}
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,
 // RuntimeKeySSOSessionSaved) to a checkpoint id, so multiple skip/join checkpoints in one flow keep

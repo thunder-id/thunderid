@@ -4,6 +4,9 @@
 package httpconnection
 
 import (
+	"net/http"
+	"time"
+
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 )
 
@@ -23,4 +26,13 @@ type HTTPConnection struct {
 	TimeoutMS      int
 	Headers        []Header
 	AuthProperties []cmodels.Property
+}
+
+// ResolvedHTTPConnection is a connection ready to call: its URL, its timeout, and its headers with
+// the authentication applied. Header values can carry a decrypted credential, so a resolved
+// connection is built for one call and never stored or logged.
+type ResolvedHTTPConnection struct {
+	URL     string
+	Timeout time.Duration
+	Headers http.Header
 }

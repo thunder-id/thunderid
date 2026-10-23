@@ -88,6 +88,7 @@ const (
 	ResourceTypeResource             = "resource"
 	ResourceTypeAction               = "action"
 	ResourceTypeSharingPolicy        = "sharingPolicy"
+	ResourceTypeHTTPConnection       = "httpConnection"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

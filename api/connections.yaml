@@ -245,8 +245,25 @@ paths:
     delete:
       tags: [Connections]
       summary: Delete an HTTP endpoint connection
+      description: |
+        Refused while a flow references the connection through an extension step's `connectionId`,
+        and while those references cannot be determined.
       responses:
         "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
+        "409": { $ref: '#/components/responses/HTTPConnectionDependencyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get HTTP endpoint connection usages
+      description: Returns the flows whose extension steps reference this HTTP endpoint connection.
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -1385,6 +1402,19 @@ components:
             description:
               key: "error.connectionservice.http_connection_not_found_description"
               defaultValue: "No HTTP connection exists for the supplied identifier"
+    HTTPConnectionDependencyConflict:
+      description: The HTTP endpoint connection cannot be deleted because a flow uses it
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1023"
+            message:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies"
+              defaultValue: "HTTP connection cannot be deleted"
+            description:
+              key: "error.connectionservice.http_connection_has_blocking_dependencies_description"
+              defaultValue: "The HTTP connection cannot be deleted because 1 flow(s) depend on it. Remove or reassign them first."
     ConnectionDependencyConflict:
       description: The connection cannot be deleted because it is still in use
       content:

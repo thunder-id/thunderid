@@ -599,6 +599,32 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "Extension Executor",
+      "label": "Extension",
+      "description": "Call your own service through a service endpoint connection",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "ExtensionExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      },
+      "properties": {
+        "connectionId": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "User Type Resolver",
       "label": "User Type Resolver",
       "description": "Determine the type of the signing-in user",

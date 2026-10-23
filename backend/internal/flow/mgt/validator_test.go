@@ -11,9 +11,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
@@ -56,6 +59,7 @@ type ValidatorTestSuite struct {
 	mockExecutorRegistry    *executormock.ExecutorRegistryInterfaceMock
 	mockInterceptorRegistry *interceptormock.InterceptorRegistryInterfaceMock
 	mockGraphBuilder        *graphBuilderInterfaceMock
+	mockConnections         *httpConnectionProviderMock
 }
 
 func TestValidatorTestSuite(t *testing.T) {
@@ -66,11 +70,9 @@ func (s *ValidatorTestSuite) SetupTest() {
 	s.mockExecutorRegistry = executormock.NewExecutorRegistryInterfaceMock(s.T())
 	s.mockInterceptorRegistry = interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	s.mockGraphBuilder = newGraphBuilderInterfaceMock(s.T())
-	s.v = &flowValidator{
-		executorRegistry:    s.mockExecutorRegistry,
-		interceptorRegistry: s.mockInterceptorRegistry,
-		graphBuilder:        s.mockGraphBuilder,
-	}
+	s.mockConnections = newHttpConnectionProviderMock(s.T())
+	s.v = newFlowValidator(s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockGraphBuilder,
+		s.mockConnections)
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,6 +1157,114 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_Valid() {
 	s.mockGraphBuilder.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil)
 	err := s.v.ValidateFlowDefinition(context.Background(), minimalValidFlow())
 	s.Nil(err)
+}
+
+// extensionFlow returns a minimal flow whose task is an extension step with the given properties.
+func extensionFlow(properties map[string]interface{}) *FlowDefinition {
+	fd := minimalValidFlow()
+	fd.Nodes[1].Executor = &providers.ExecutorDefinition{Name: executormeta.ExecutorNameExtension}
+	fd.Nodes[1].Properties = properties
+	return fd
+}
+
+// expectExtensionMeta registers the extension executor with its catalog metadata.
+func (s *ValidatorTestSuite) expectExtensionMeta() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameExtension)
+	s.Require().True(ok)
+	s.mockExecutorRegistry.EXPECT().IsRegistered(executormeta.ExecutorNameExtension).Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta(executormeta.ExecutorNameExtension).Return(&meta, nil)
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionStepWithAnExistingConnection() {
+	for name, connectionID := range map[string]string{"exact": "conn-1", "padded": "  conn-1\t"} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.expectExtensionMeta()
+			s.mockConnections.EXPECT().GetHTTPConnection(mock.Anything, "conn-1").
+				Return(&httpconnection.HTTPConnection{ID: "conn-1"}, nil)
+			s.mockGraphBuilder.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil)
+
+			err := s.v.ValidateFlowDefinition(context.Background(), extensionFlow(map[string]interface{}{
+				common.NodePropertyConnectionID:    connectionID,
+				common.NodePropertyInputKeys:       []interface{}{"username"},
+				common.NodePropertyRuntimeDataKeys: []interface{}{"extension.risk_check.riskScore"},
+				common.NodePropertyResponseKeys:    "riskScore, challengeId",
+				common.NodePropertyMaxAttempts:     float64(20),
+			}))
+
+			s.Nil(err)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionStepWithAMissingConnectionIsRefused() {
+	for name, connectionID := range map[string]string{"exact": "conn-gone", "padded": " conn-gone "} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.expectExtensionMeta()
+			s.mockConnections.EXPECT().GetHTTPConnection(mock.Anything, "conn-gone").
+				Return(nil, &httpconnection.ErrorNotFound)
+
+			err := s.v.ValidateFlowDefinition(context.Background(),
+				extensionFlow(map[string]interface{}{common.NodePropertyConnectionID: connectionID}))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(map[string]string{"nodeID": "task", "connectionID": "conn-gone"}, err.ErrorDescription.Params)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionConnectionLookupFailureRefusesTheSave() {
+	s.expectExtensionMeta()
+	s.mockConnections.EXPECT().GetHTTPConnection(mock.Anything, "conn-1").
+		Return(nil, &tidcommon.InternalServerError)
+
+	err := s.v.ValidateFlowDefinition(context.Background(),
+		extensionFlow(map[string]interface{}{common.NodePropertyConnectionID: "conn-1"}))
+
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionStepWithAnUnusablePropertyIsRefused() {
+	cases := []struct {
+		name     string
+		property string
+		value    interface{}
+	}{
+		{"blank connection", common.NodePropertyConnectionID, "   "},
+		{"empty input keys", common.NodePropertyInputKeys, []interface{}{}},
+		{"blank input key", common.NodePropertyInputKeys, []interface{}{"username", ""}},
+		{"non-string input key", common.NodePropertyInputKeys, []interface{}{1}},
+		{"input keys as a string", common.NodePropertyInputKeys, "username"},
+		{"empty runtime data keys", common.NodePropertyRuntimeDataKeys, []interface{}{}},
+		{"blank runtime data key", common.NodePropertyRuntimeDataKeys, []interface{}{" "}},
+		{"non-string runtime data key", common.NodePropertyRuntimeDataKeys, []interface{}{false}},
+		{"empty response keys", common.NodePropertyResponseKeys, []interface{}{}},
+		{"blank response key", common.NodePropertyResponseKeys, []interface{}{"riskScore", " "}},
+		{"non-string response key", common.NodePropertyResponseKeys, []interface{}{2}},
+		{"empty response keys string", common.NodePropertyResponseKeys, ""},
+		{"max attempts zero", common.NodePropertyMaxAttempts, float64(0)},
+		{"max attempts 21", common.NodePropertyMaxAttempts, float64(21)},
+		{"max attempts fractional", common.NodePropertyMaxAttempts, 1.5},
+		{"max attempts a string", common.NodePropertyMaxAttempts, "5"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.expectExtensionMeta()
+			properties := map[string]interface{}{common.NodePropertyConnectionID: "conn-1"}
+			properties[tc.property] = tc.value
+
+			err := s.v.ValidateFlowDefinition(context.Background(), extensionFlow(properties))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(tc.property, err.ErrorDescription.Params["propertyKey"])
+			s.mockConnections.AssertNotCalled(s.T(), "GetHTTPConnection", mock.Anything, mock.Anything)
+		})
+	}
 }
 
 // A linking node that sits between the federated executor and provisioning with no onIncomplete has

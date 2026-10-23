@@ -6,8 +6,10 @@ package httpconnection
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -15,7 +17,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
 )
 
 type HTTPConnectionServiceTestSuite struct {
@@ -293,7 +297,6 @@ func (s *HTTPConnectionServiceTestSuite) TestStoreFailuresAreServerErrors() {
 	s.mockStore.On("ListHTTPConnections", mock.Anything).Return(nil, failure)
 	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(nil, failure)
 	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.Anything).Return(failure)
-	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(failure)
 
 	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL}, tidcommon.InternalServerError)
 	_, svcErr := s.service.ListHTTPConnections(s.ctx)
@@ -348,8 +351,11 @@ func (s *HTTPConnectionServiceTestSuite) TestUpdateAndDeleteReportMissingAndConf
 	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.MatchedBy(func(c HTTPConnection) bool {
 		return c.ID == "taken"
 	})).Return(errNameConflict)
-	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "missing").Return(errConnectionNotFound)
-	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "deleted-meanwhile").
+		Return(&HTTPConnection{ID: "deleted-meanwhile"}, nil)
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "deleted-meanwhile").Return(errConnectionNotFound)
+	s.service.SetDependencyRegistry(s.registryReporting("deleted-meanwhile"))
 
 	_, svcErr := s.service.UpdateHTTPConnection(s.ctx, "missing", HTTPConnection{Name: "Risk", URL: testURL})
 	s.Equal(ErrorNotFound.Code, svcErr.Code)
@@ -357,7 +363,181 @@ func (s *HTTPConnectionServiceTestSuite) TestUpdateAndDeleteReportMissingAndConf
 	s.Equal(ErrorAlreadyExists.Code, svcErr.Code)
 	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, "missing").Code)
 	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, " ").Code)
+	s.Equal(ErrorNotFound.Code, s.service.DeleteHTTPConnection(s.ctx, "deleted-meanwhile").Code)
+}
+
+// registryReporting returns a dependency registry that reports the given usages of connection id.
+func (s *HTTPConnectionServiceTestSuite) registryReporting(id string,
+	usages ...resourcedependency.ResourceDependency) *resourcedependencymock.RegistryMock {
+	total := len(usages)
+	registry := resourcedependencymock.NewRegistryMock(s.T())
+	registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, id).
+		Return(&resourcedependency.DependenciesResponse{
+			TotalResults: &total, Count: total, Summary: map[string]int{}, Usages: usages,
+		}, nil)
+	return registry
+}
+
+func flowUsage(id, name string) resourcedependency.ResourceDependency {
+	return resourcedependency.ResourceDependency{
+		ResourceType: resourcedependency.ResourceTypeFlow, ID: id, DisplayName: name,
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesListTheFlowsThatReferenceTheConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.service.SetDependencyRegistry(s.registryReporting("id", flowUsage("flow-1", "Default sign-in")))
+
+	usages, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal([]resourcedependency.ResourceDependency{flowUsage("flow-1", "Default sign-in")}, usages.Usages)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesOfAMissingConnectionIsNotFound() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+
+	_, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "missing")
+
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestUsagesAreUnknownWithoutARegistry() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+
+	usages, svcErr := s.service.GetHTTPConnectionUsages(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Nil(usages.TotalResults)
+	s.Empty(usages.Usages)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteIsRefusedWhileAFlowUsesTheConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.service.SetDependencyRegistry(s.registryReporting("id", flowUsage("flow-1", "Default sign-in")))
+
+	svcErr := s.service.DeleteHTTPConnection(s.ctx, "id")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorHasBlockingDependencies.Code, svcErr.Code)
+	s.Contains(svcErr.ErrorDescription.String(), "1 flow(s)")
+	s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteSucceedsWithoutUsages() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "id").Return(nil).Once()
+	s.service.SetDependencyRegistry(s.registryReporting("id"))
+
 	s.Nil(s.service.DeleteHTTPConnection(s.ctx, "id"))
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeleteFailsClosedWhenUsagesCannotBeDetermined() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{ID: "id"}, nil)
+
+	s.Run("no registry", func() {
+		s.service.SetDependencyRegistry(nil)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.Run("registry error", func() {
+		registry := resourcedependencymock.NewRegistryMock(s.T())
+		registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, "id").
+			Return(nil, errors.New("flow store unavailable"))
+		s.service.SetDependencyRegistry(registry)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.Run("a provider failed to report", func() {
+		registry := resourcedependencymock.NewRegistryMock(s.T())
+		registry.EXPECT().GetDependencies(mock.Anything, resourcedependency.ResourceTypeHTTPConnection, "id").
+			Return(&resourcedependency.DependenciesResponse{TotalResults: nil}, nil)
+		s.service.SetDependencyRegistry(registry)
+		s.Equal(tidcommon.InternalServerError.Code, s.service.DeleteHTTPConnection(s.ctx, "id").Code)
+	})
+	s.mockStore.AssertNotCalled(s.T(), "DeleteHTTPConnection", mock.Anything, mock.Anything)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolvedConnectionCarriesHeadersTimeoutAndBasicCredential() {
+	stored := &HTTPConnection{
+		ID: "id", Name: "Risk", URL: testURL, TimeoutMS: 2500,
+		Headers:        []Header{{Name: "X-Tenant", Value: "acme"}},
+		AuthProperties: basicAuthProperties(s.T()),
+	}
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(stored, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal(testURL, resolved.URL)
+	s.Equal(2500*time.Millisecond, resolved.Timeout)
+	s.Equal("acme", resolved.Headers.Get("X-Tenant"))
+	username, password, ok := (&http.Request{Header: resolved.Headers}).BasicAuth()
+	s.True(ok)
+	s.Equal("svc-user", username)
+	s.Equal(testPassword, password)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolvedConnectionCarriesBearerAndAPIKeyCredentials() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "bearer").Return(&HTTPConnection{
+		ID: "bearer", URL: testURL, TimeoutMS: defaultTimeoutMS,
+		AuthProperties: authProperties(s.T(), outboundauth.TypeBearer,
+			map[string]string{outboundauth.FieldBearerToken: testPassword}),
+	}, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "api_key").Return(&HTTPConnection{
+		ID: "api_key", URL: testURL, TimeoutMS: defaultTimeoutMS,
+		Headers:        []Header{{Name: "X-Tenant", Value: "acme"}},
+		AuthProperties: authProperties(s.T(), outboundauth.TypeAPIKey, map[string]string{"x-tenant-key": testPassword}),
+	}, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "bearer")
+	s.Require().Nil(svcErr)
+	s.Equal("Bearer "+testPassword, resolved.Headers.Get("Authorization"))
+
+	resolved, svcErr = s.service.GetResolvedConnection(s.ctx, "api_key")
+	s.Require().Nil(svcErr)
+	s.Equal(http.Header{"X-Tenant": {"acme"}, "X-Tenant-Key": {testPassword}}, resolved.Headers)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolveRefusesACredentialOverClearHTTP() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{
+		ID: "id", URL: "http://risk.example.com/evaluate", TimeoutMS: defaultTimeoutMS,
+		AuthProperties: basicAuthProperties(s.T()),
+	}, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "id")
+
+	s.Nil(resolved)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolvedConnectionWithoutAuthenticationSendsNoCredential() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "id").Return(&HTTPConnection{
+		ID: "id", URL: "http://localhost:3000/hook", TimeoutMS: defaultTimeoutMS, AuthProperties: s.noneAuth(),
+	}, nil)
+
+	resolved, svcErr := s.service.GetResolvedConnection(s.ctx, "id")
+
+	s.Require().Nil(svcErr)
+	s.Equal(http.Header{}, resolved.Headers)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestResolveFailsForAMissingOrUnusableConnection() {
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "missing").Return(nil, nil)
+	s.mockStore.On("GetHTTPConnection", mock.Anything, "unsupported").Return(&HTTPConnection{
+		ID: "unsupported", URL: testURL, AuthProperties: s.unsupportedAuth(),
+	}, nil)
+
+	_, svcErr := s.service.GetResolvedConnection(s.ctx, "missing")
+	s.Equal(ErrorNotFound.Code, svcErr.Code)
+	_, svcErr = s.service.GetResolvedConnection(s.ctx, "unsupported")
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// unsupportedAuth is a stored authentication whose type the HTTP transport cannot present.
+func (s *HTTPConnectionServiceTestSuite) unsupportedAuth() []cmodels.Property {
+	prop, err := cmodels.NewProperty("authentication_type", "digest", false)
+	s.Require().NoError(err)
+	return []cmodels.Property{*prop}
 }
 
 func (s *HTTPConnectionServiceTestSuite) TestWritesAreRejectedInDeclarativeMode() {

@@ -213,17 +213,10 @@ func registerAuthZENPDPVendorRoutes(
 	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteAuthZENPDPConnection, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
 
-	usagesOpts := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", h.usagesAuthZENPDPConnection, usagesOpts))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
+	registerUsagesRoute(mux, base, h.usagesAuthZENPDPConnection)
 }
 
-// registerHTTPConnectionRoutes registers CRUD and CORS routes for HTTP endpoint connections.
+// registerHTTPConnectionRoutes registers CRUD, CORS, and usage routes for HTTP endpoint connections.
 func registerHTTPConnectionRoutes(mux *http.ServeMux, h *handler, base string,
 	collectionOpts, itemOpts middleware.CORSOptions) {
 	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listHTTPConnections, collectionOpts))
@@ -234,4 +227,19 @@ func registerHTTPConnectionRoutes(mux *http.ServeMux, h *handler, base string,
 	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", h.updateHTTPConnection, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteHTTPConnection, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
+
+	registerUsagesRoute(mux, base, h.usagesHTTPConnection)
+}
+
+// registerUsagesRoute registers the GET and CORS routes that list the resources referencing an
+// instance under base.
+func registerUsagesRoute(mux *http.ServeMux, base string, usages http.HandlerFunc) {
+	usagesOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", usages, usagesOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
 }

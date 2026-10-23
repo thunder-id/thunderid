@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
@@ -25,12 +26,19 @@ type FlowValidatorInterface interface {
 	ValidateFlowDefinition(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError
 }
 
+// httpConnectionProvider is the subset of the HTTP connection service that flow validation uses to
+// check that an extension step's connection exists.
+type httpConnectionProvider interface {
+	GetHTTPConnection(ctx context.Context, id string) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+}
+
 // flowValidator is responsible for validating flow definitions,
 // including metadata, structure, node configurations, and registry-dependent checks.
 type flowValidator struct {
 	executorRegistry    core.ExecutorMetadataProvider
 	interceptorRegistry interceptor.InterceptorRegistryInterface
 	graphBuilder        graphbuilder.GraphBuilderInterface
+	httpConnections     httpConnectionProvider
 	logger              *log.Logger
 }
 
@@ -39,11 +47,13 @@ func newFlowValidator(
 	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphBuilder graphbuilder.GraphBuilderInterface,
+	httpConnections httpConnectionProvider,
 ) *flowValidator {
 	return &flowValidator{
 		executorRegistry:    executorRegistry,
 		interceptorRegistry: interceptorRegistry,
 		graphBuilder:        graphBuilder,
+		httpConnections:     httpConnections,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowValidator")),
 	}
 }
@@ -70,6 +80,10 @@ func (v *flowValidator) ValidateFlowDefinition(
 	}
 
 	if err := v.validateInterceptors(flowDef.Interceptors, nodeIndex); err != nil {
+		return err
+	}
+
+	if err := v.validateExtensionConnections(ctx, flowDef.Nodes); err != nil {
 		return err
 	}
 
@@ -918,6 +932,8 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateSessionExecutor(node, nodes)
 	case executormeta.ExecutorNameAccountLinking:
 		return v.validateAccountLinkingExecutor(node, nodeIndex)
+	case executormeta.ExecutorNameExtension:
+		return v.validateExtensionExecutor(node)
 	}
 	return nil
 }
@@ -1108,6 +1124,55 @@ func (v *flowValidator) validateSessionExecutor(
 			"by any SSOCheckExecutor via checkpointRef",
 		Params: map[string]string{"nodeID": node.ID},
 	})
+}
+
+// validateExtensionExecutor refuses an extension step with a property value the executor cannot use,
+// applying the rule the executor applies at run time.
+func (v *flowValidator) validateExtensionExecutor(node *providers.NodeDefinition) *tidcommon.ServiceError {
+	if _, invalidProperty := common.ParseExtensionProperties(node.Properties); invalidProperty != "" {
+		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.invalid_executor_property_value_description",
+			DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' " +
+				"has an invalid value for property '{{param(propertyKey)}}'",
+			Params: map[string]string{
+				"nodeID":       node.ID,
+				"executorName": node.Executor.Name,
+				"propertyKey":  invalidProperty,
+			},
+		})
+	}
+	return nil
+}
+
+// validateExtensionConnections refuses a flow whose extension step names an HTTP connection that does
+// not exist. The connection ID is compared after trimming, as the executor calls it. A failure to look
+// a connection up refuses the save.
+func (v *flowValidator) validateExtensionConnections(
+	ctx context.Context, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	for i := range nodes {
+		node := &nodes[i]
+		if node.Executor == nil || node.Executor.Name != executormeta.ExecutorNameExtension {
+			continue
+		}
+		props, _ := common.ParseExtensionProperties(node.Properties)
+		_, svcErr := v.httpConnections.GetHTTPConnection(ctx, props.ConnectionID)
+		if svcErr == nil {
+			continue
+		}
+		if svcErr.Code == httpconnection.ErrorNotFound.Code {
+			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.extension_connection_not_found_description",
+				DefaultValue: "Node '{{param(nodeID)}}': HTTP connection '{{param(connectionID)}}' " +
+					"does not exist",
+				Params: map[string]string{"nodeID": node.ID, "connectionID": props.ConnectionID},
+			})
+		}
+		v.logger.Error(ctx, "Failed to look up the HTTP connection of an extension step",
+			log.String("nodeID", node.ID), log.String("errorCode", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	return nil
 }
 
 // validateAccountLinkingExecutor checks that a linking node has an onIncomplete prompt whose

@@ -65,6 +65,7 @@ const (
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
+	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
 )
 
 // Executor mode constants

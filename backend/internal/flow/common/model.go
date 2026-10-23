@@ -6,7 +6,9 @@ package common
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
+	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -29,6 +31,95 @@ func PrepareValidationRules(rules []providers.ValidationRule) error {
 		rules[i].CompiledRegex = re
 	}
 	return nil
+}
+
+// Bounds and default of an extension step's maxAttempts property.
+const (
+	extensionMinAttempts     = 1
+	extensionMaxAttempts     = 20
+	extensionDefaultAttempts = 5
+)
+
+// ExtensionProperties is an extension step's configuration, read from its node properties.
+type ExtensionProperties struct {
+	ConnectionID    string
+	InputKeys       []string
+	RuntimeDataKeys []string
+	ResponseKeys    []string
+	MaxAttempts     int
+}
+
+// ParseExtensionProperties reads an extension step's node properties, with the connection ID
+// trimmed. It returns the name of the first property whose value cannot be used, or "" when all can.
+// An absent or null list is unset; an empty list, a blank or non-string name, or a maxAttempts that
+// is not an integer from 1 to 20 is unusable and never read as unset. Flow save and the executor
+// both apply it, so a value refused at save also fails at run time.
+func ParseExtensionProperties(properties map[string]interface{}) (ExtensionProperties, string) {
+	var props ExtensionProperties
+	connectionID, _ := properties[NodePropertyConnectionID].(string)
+	if props.ConnectionID = strings.TrimSpace(connectionID); props.ConnectionID == "" {
+		return props, NodePropertyConnectionID
+	}
+	var ok bool
+	if props.InputKeys, ok = extensionKeyList(properties[NodePropertyInputKeys], false); !ok {
+		return props, NodePropertyInputKeys
+	}
+	if props.RuntimeDataKeys, ok = extensionKeyList(properties[NodePropertyRuntimeDataKeys], false); !ok {
+		return props, NodePropertyRuntimeDataKeys
+	}
+	if props.ResponseKeys, ok = extensionKeyList(properties[NodePropertyResponseKeys], true); !ok {
+		return props, NodePropertyResponseKeys
+	}
+	if props.MaxAttempts, ok = extensionMaxAttemptsValue(properties[NodePropertyMaxAttempts]); !ok {
+		return props, NodePropertyMaxAttempts
+	}
+	return props, ""
+}
+
+// extensionKeyList reads a list of names given as a JSON array of strings or, when commaSeparated
+// allows it, as a comma-separated string. nil is unset.
+func extensionKeyList(value interface{}, commaSeparated bool) ([]string, bool) {
+	var items []interface{}
+	switch v := value.(type) {
+	case nil:
+		return nil, true
+	case []interface{}:
+		items = v
+	case string:
+		if !commaSeparated {
+			return nil, false
+		}
+		for _, item := range strings.Split(v, ",") {
+			items = append(items, item)
+		}
+	default:
+		return nil, false
+	}
+	if len(items) == 0 {
+		return nil, false
+	}
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		key, isString := item.(string)
+		if key = strings.TrimSpace(key); !isString || key == "" {
+			return nil, false
+		}
+		keys = append(keys, key)
+	}
+	return keys, true
+}
+
+// extensionMaxAttemptsValue reads maxAttempts as a whole number within its bounds. nil is the default.
+func extensionMaxAttemptsValue(value interface{}) (int, bool) {
+	if value == nil {
+		return extensionDefaultAttempts, true
+	}
+	n, ok := utils.ToInt64(value)
+	if f, isFloat := value.(float64); !ok || (isFloat && f != float64(n)) ||
+		n < extensionMinAttempts || n > extensionMaxAttempts {
+		return 0, false
+	}
+	return int(n), true
 }
 
 // FieldError represents a single validation rule failure for a specific input field.

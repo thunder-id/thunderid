@@ -4,7 +4,7 @@
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import type {OutboundAuthMethod} from '../../models/connection';
+import type {ConnectionUsagesResponse, OutboundAuthMethod} from '../../models/connection';
 import ConnectionDetailPage from '../ConnectionDetailPage';
 
 const updateMock = vi.fn().mockResolvedValue({});
@@ -148,6 +148,8 @@ const USERNAME_FIELD_ID = 'connection-field-authentication.properties.username';
 const mockParams: {type: string; id: string} = {type: 'google', id: 'g1'};
 const mockConn: {data: Record<string, unknown>} = {data: CONNECTION};
 const mockMeta: {methods: OutboundAuthMethod[]; isError: boolean} = {methods: [], isError: false};
+const NO_USAGES: ConnectionUsagesResponse = {totalResults: 0, count: 0, summary: {}, usages: []};
+const mockUsages: {data: ConnectionUsagesResponse} = {data: NO_USAGES};
 
 const SMTP_METHODS: OutboundAuthMethod[] = [
   {type: 'none', displayName: 'None'},
@@ -250,7 +252,7 @@ vi.mock('../../api/useUpdateConnection', () => ({
 }));
 vi.mock('../../api/useDeleteConnection', () => ({default: () => ({mutate: deleteMock, isPending: false})}));
 vi.mock('../../api/useGetConnectionUsages', () => ({
-  default: () => ({data: {totalResults: 0, count: 0, summary: {}, usages: []}, isLoading: false}),
+  default: () => ({data: mockUsages.data, isLoading: false, error: null, refetch: vi.fn()}),
 }));
 
 vi.mock('../../components/ConnectionForm', () => ({
@@ -443,6 +445,7 @@ describe('ConnectionDetailPage', () => {
     updateMutationState.isError = false;
     mockMeta.methods = [];
     mockMeta.isError = false;
+    mockUsages.data = NO_USAGES;
   });
 
   it('renders the general tab with quick-copy and the credentials form', () => {
@@ -1283,5 +1286,52 @@ describe('ConnectionDetailPage', () => {
         ),
       ).toBeInTheDocument();
     });
+
+    it('lists the flows that use the connection in the Usages section', () => {
+      mockUsages.data = {
+        totalResults: 2,
+        count: 2,
+        summary: {flow: 2},
+        usages: [
+          {resourceType: 'flow', id: 'f1', displayName: 'Default sign-in', behaviorOnDelete: 'restrict'},
+          {resourceType: 'flow', id: 'f2', displayName: 'Step-up', behaviorOnDelete: 'restrict'},
+        ],
+      };
+      render(<ConnectionDetailPage />);
+
+      const usages = screen.getByRole('region', {name: 'Usages'});
+      expect(usages).toHaveTextContent('Default sign-in');
+      expect(usages).toHaveTextContent('Step-up');
+      expect(usages).toHaveTextContent('Flow');
+    });
+
+    it('says no flows use the connection when it has no usages', () => {
+      render(<ConnectionDetailPage />);
+
+      expect(screen.getByRole('region', {name: 'Usages'})).toHaveTextContent('No flows use this connection.');
+    });
+
+    it('shows the localized message when the server refuses to delete a connection in use', () => {
+      deleteMock.mockImplementationOnce((_id: string, opts: {onSuccess: () => void; onError?: (e: unknown) => void}) =>
+        opts.onError?.({response: {status: 409, data: {code: 'CON-1023'}}}),
+      );
+      render(<ConnectionDetailPage />);
+
+      fireEvent.click(screen.getByTestId('connection-tab-advanced'));
+      fireEvent.click(screen.getByTestId('connection-delete-button'));
+      fireEvent.click(screen.getByTestId('connection-delete-confirm'));
+
+      expect(
+        screen.getByText(
+          'This connection is used by one or more flows. Remove it from those flows before deleting it.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('does not show a Usages section for connections that do not list usages', () => {
+    render(<ConnectionDetailPage />);
+
+    expect(screen.queryByRole('region', {name: 'Usages'})).not.toBeInTheDocument();
   });
 });

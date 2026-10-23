@@ -42,6 +42,12 @@ var DataKey = struct {
 	RedirectTo    string
 	FailedStep    string
 
+	// Extension Call Keys
+	ConnectionID  string
+	Outcome       string
+	ErrorKind     string
+	FailureReason string
+
 	// OAuth/Token Keys
 	Scope            string
 	GrantType        string
@@ -101,6 +107,12 @@ var DataKey = struct {
 	AuthMethod:    "auth_method",
 	RedirectTo:    "redirect_to",
 	FailedStep:    "failed_step",
+
+	// Extension Call Keys
+	ConnectionID:  "connection_id",
+	Outcome:       "outcome",
+	ErrorKind:     "error_kind",
+	FailureReason: "failure_reason",
 
 	// OAuth/Token Keys
 	Scope:            "scope",
