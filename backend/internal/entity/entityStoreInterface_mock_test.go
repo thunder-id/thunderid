@@ -1292,6 +1292,80 @@ func (_c *entityStoreInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// IdentifyEntityInCategory provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) IdentifyEntityInCategory(ctx context.Context, category string, filters map[string]interface{}) (*string, error) {
+	ret := _mock.Called(ctx, category, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IdentifyEntityInCategory")
+	}
+
+	var r0 *string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) (*string, error)); ok {
+		return returnFunc(ctx, category, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) *string); ok {
+		r0 = returnFunc(ctx, category, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, map[string]interface{}) error); ok {
+		r1 = returnFunc(ctx, category, filters)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_IdentifyEntityInCategory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyEntityInCategory'
+type entityStoreInterfaceMock_IdentifyEntityInCategory_Call struct {
+	*mock.Call
+}
+
+// IdentifyEntityInCategory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category string
+//   - filters map[string]interface{}
+func (_e *entityStoreInterfaceMock_Expecter) IdentifyEntityInCategory(ctx any, category any, filters any) *entityStoreInterfaceMock_IdentifyEntityInCategory_Call {
+	return &entityStoreInterfaceMock_IdentifyEntityInCategory_Call{Call: _e.mock.On("IdentifyEntityInCategory", ctx, category, filters)}
+}
+
+func (_c *entityStoreInterfaceMock_IdentifyEntityInCategory_Call) Run(run func(ctx context.Context, category string, filters map[string]interface{})) *entityStoreInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_IdentifyEntityInCategory_Call) Return(s *string, err error) *entityStoreInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_IdentifyEntityInCategory_Call) RunAndReturn(run func(ctx context.Context, category string, filters map[string]interface{}) (*string, error)) *entityStoreInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsEntityDeclarative provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) IsEntityDeclarative(ctx context.Context, id string) (bool, error) {
 	ret := _mock.Called(ctx, id)

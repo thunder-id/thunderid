@@ -512,9 +512,6 @@
           },
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "provisioning",
-          "properties": {
-            "mode": "agent"
-          },
           "type": "TASK_EXECUTION"
         },
         {

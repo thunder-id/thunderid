@@ -4350,17 +4350,6 @@ const translations = {
     'core.executions.userTypeResolver.allowedUserTypes.hint':
       'Comma-separated list of allowed user type handles to filter available types.',
 
-    // Entity category shared by mode-driven executors
-    'core.executions.entityMode.user': 'User',
-    'core.executions.entityMode.agent': 'Agent',
-
-    // Attribute uniqueness validator executor
-    'core.executions.attributeUniquenessValidator.description':
-      'Check the unique attributes of the entity being created against existing records.',
-    'core.executions.attributeUniquenessValidator.mode.label': 'Entity category',
-    'core.executions.attributeUniquenessValidator.mode.hint':
-      'Which kind of entity the uniqueness check runs against. Must match the provisioning node in the same flow.',
-
     // Agent type resolver executor
     'core.executions.agentTypeResolver.description': 'Configure the agent type resolver settings.',
     'core.executions.agentTypeResolver.allowedAgentTypes.label': 'Allowed agent types',

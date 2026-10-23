@@ -127,6 +127,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_AuthenticationFlow_WithAllow
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Empty(suite.T(), result.RuntimeData[categoryTypeKey])
+	assert.Empty(suite.T(), result.RuntimeData[categoryNameKey])
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByHandle")
 }
 
@@ -189,6 +190,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UnsupportedFlowType() {
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 			assert.Empty(suite.T(), result.RuntimeData[categoryTypeKey])
+			assert.Empty(suite.T(), result.RuntimeData[categoryNameKey])
 			suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByHandle")
 		})
 	}
@@ -242,6 +244,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserTypeProvidedInInput_Succ
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 			assert.Equal(suite.T(), tc.providedUserType, result.RuntimeData[categoryTypeKey])
+			assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 			assert.Equal(suite.T(), tc.expectedOUID, result.RuntimeData[defaultOUIDKey])
 
 			suite.mockEntityTypeService.AssertExpectations(suite.T())
@@ -401,6 +404,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_SingleAllowedUserType_Succes
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
@@ -679,6 +683,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_MultipleAllowedUserTypes_Onl
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "customer", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-customer", result.RuntimeData[defaultOUIDKey])
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
@@ -835,6 +840,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_RegistrationFlow_NodeAllowed
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 }
 
@@ -983,6 +989,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_UserTypeP
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
@@ -1097,6 +1104,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 }
 
@@ -1163,6 +1171,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 }
 
@@ -1276,6 +1285,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "ou-123", result.RuntimeData[defaultOUIDKey])
 }
 
@@ -1387,6 +1397,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_UserT
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "parent-ou-123", result.RuntimeData[defaultOUIDKey])
 	suite.mockOUService.AssertExpectations(suite.T())
 }
@@ -1532,6 +1543,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 	assert.Equal(suite.T(), "employee", result.RuntimeData[categoryTypeKey])
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), result.RuntimeData[categoryNameKey])
 	assert.Equal(suite.T(), "parent-ou-123", result.RuntimeData[defaultOUIDKey])
 	suite.mockOUService.AssertExpectations(suite.T())
 }

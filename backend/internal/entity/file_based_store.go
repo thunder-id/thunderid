@@ -149,8 +149,21 @@ func (f *entityFileBasedStore) ResolveLinkedAccounts(ctx context.Context,
 	return matches, nil
 }
 
-// IdentifyEntity identifies an entity with the given filters by linear search.
+// IdentifyEntity identifies an entity of any category with the given filters by linear search.
 func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
+	filters map[string]interface{}) (*string, error) {
+	return f.identifyEntity("", filters)
+}
+
+// IdentifyEntityInCategory identifies an entity of the given category with the given filters.
+// An empty category matches any category.
+func (f *entityFileBasedStore) IdentifyEntityInCategory(ctx context.Context, category string,
+	filters map[string]interface{}) (*string, error) {
+	return f.identifyEntity(category, filters)
+}
+
+// identifyEntity searches the declarative entities, limited to category when it is not empty.
+func (f *entityFileBasedStore) identifyEntity(category string,
 	filters map[string]interface{}) (*string, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
@@ -159,6 +172,9 @@ func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
 
 	var matches []string
 	for _, resource := range resources {
+		if category != "" && string(resource.Entity.Category) != category {
+			continue
+		}
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
 		if matchesFilters(combined, filters) {
 			matches = append(matches, resource.Entity.ID)

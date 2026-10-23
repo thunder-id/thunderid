@@ -39,6 +39,18 @@ func (p *defaultEntityProvider) IdentifyEntity(
 	return entityID, nil
 }
 
+// IdentifyEntityInCategory resolves an entity ID from attribute filters, limited to the given category.
+func (p *defaultEntityProvider) IdentifyEntityInCategory(
+	category providers.EntityCategory, filters map[string]interface{},
+) (*string, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	entityID, err := p.entitySvc.IdentifyEntityInCategory(ctx, category, filters)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	return entityID, nil
+}
+
 // SearchEntities searches for all entities matching the given filters.
 // OUHandle is not resolved here — callers that need it (e.g. disambiguation flows)
 // resolve it on demand via the OU service.

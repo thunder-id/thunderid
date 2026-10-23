@@ -63,6 +63,42 @@ func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntity() {
 	suite.Equal(ErrorCodeSystemError, err.Code)
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntityInCategory() {
+	filters := map[string]interface{}{"name": "Foo"}
+	idAddr := testEntityID
+
+	suite.mockService.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryAgent, filters).
+		Return(&idAddr, nil).Once()
+
+	id, err := suite.provider.IdentifyEntityInCategory(providers.EntityCategoryAgent, filters)
+	suite.Nil(err)
+	suite.Equal(testEntityID, *id)
+
+	suite.mockService.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryAgent, filters).
+		Return(nil, entity.ErrEntityNotFound).Once()
+
+	id, err = suite.provider.IdentifyEntityInCategory(providers.EntityCategoryAgent, filters)
+	suite.Nil(id)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeEntityNotFound, err.Code)
+
+	suite.mockService.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryAgent, filters).
+		Return(nil, entity.ErrAmbiguousEntity).Once()
+
+	id, err = suite.provider.IdentifyEntityInCategory(providers.EntityCategoryAgent, filters)
+	suite.Nil(id)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeAmbiguousEntity, err.Code)
+
+	suite.mockService.On("IdentifyEntityInCategory", mock.Anything, providers.EntityCategoryAgent, filters).
+		Return(nil, errors.New("db error")).Once()
+
+	id, err = suite.provider.IdentifyEntityInCategory(providers.EntityCategoryAgent, filters)
+	suite.Nil(id)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestGetLinkedEntities() {
 	holders := []providers.Entity{{ID: "e1", OUHandle: "sales"}, {ID: "e2", OUHandle: "support"}}
 	suite.mockService.On("GetLinkedEntities", mock.Anything, "idp-a", "sub-1").Return(holders, nil).Once()

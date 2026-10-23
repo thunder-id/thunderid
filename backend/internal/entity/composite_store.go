@@ -139,6 +139,17 @@ func (c *entityCompositeStore) IdentifyEntity(ctx context.Context,
 	)
 }
 
+// IdentifyEntityInCategory identifies an entity of the given category from either store
+// (DB first, then file fallback).
+func (c *entityCompositeStore) IdentifyEntityInCategory(ctx context.Context, category string,
+	filters map[string]interface{}) (*string, error) {
+	return declarativeresource.CompositeGetHelper(
+		func() (*string, error) { return c.dbStore.IdentifyEntityInCategory(ctx, category, filters) },
+		func() (*string, error) { return c.fileStore.IdentifyEntityInCategory(ctx, category, filters) },
+		ErrEntityNotFound,
+	)
+}
+
 // SearchEntities searches for entities matching the given filters from both stores.
 func (c *entityCompositeStore) SearchEntities(ctx context.Context,
 	filters map[string]interface{}) ([]providers.Entity, error) {

@@ -2088,6 +2088,80 @@ func (_c *EntityServiceInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(
 	return _c
 }
 
+// IdentifyEntityInCategory provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) IdentifyEntityInCategory(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (*string, error) {
+	ret := _mock.Called(ctx, category, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IdentifyEntityInCategory")
+	}
+
+	var r0 *string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) (*string, error)); ok {
+		return returnFunc(ctx, category, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, map[string]interface{}) *string); ok {
+		r0 = returnFunc(ctx, category, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, map[string]interface{}) error); ok {
+		r1 = returnFunc(ctx, category, filters)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_IdentifyEntityInCategory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyEntityInCategory'
+type EntityServiceInterfaceMock_IdentifyEntityInCategory_Call struct {
+	*mock.Call
+}
+
+// IdentifyEntityInCategory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category providers.EntityCategory
+//   - filters map[string]interface{}
+func (_e *EntityServiceInterfaceMock_Expecter) IdentifyEntityInCategory(ctx any, category any, filters any) *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call {
+	return &EntityServiceInterfaceMock_IdentifyEntityInCategory_Call{Call: _e.mock.On("IdentifyEntityInCategory", ctx, category, filters)}
+}
+
+func (_c *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call) Run(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{})) *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.EntityCategory
+		if args[1] != nil {
+			arg1 = args[1].(providers.EntityCategory)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call) Return(s *string, err error) *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, filters map[string]interface{}) (*string, error)) *EntityServiceInterfaceMock_IdentifyEntityInCategory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IncrementFailure provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) IncrementFailure(ctx context.Context, entityID string, method providers.AuthenticationMethod, now time.Time, windowStart time.Time) (identitygovernance.LockEntry, bool, error) {
 	ret := _mock.Called(ctx, entityID, method, now, windowStart)

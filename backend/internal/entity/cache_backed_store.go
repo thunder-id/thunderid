@@ -187,6 +187,12 @@ func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 	return s.store.IdentifyEntity(ctx, filters)
 }
 
+// IdentifyEntityInCategory bypasses the identifier cache, whose keys carry no category.
+func (s *cacheBackedEntityStore) IdentifyEntityInCategory(ctx context.Context, category string,
+	filters map[string]interface{}) (*string, error) {
+	return s.store.IdentifyEntityInCategory(ctx, category, filters)
+}
+
 // Pass-through methods.
 
 func (s *cacheBackedEntityStore) SearchEntities(ctx context.Context,

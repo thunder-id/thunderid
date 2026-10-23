@@ -197,6 +197,44 @@ func (s *CompositeStoreTestSuite) TestIdentifyEntity_DBError() {
 	s.Error(err)
 }
 
+func (s *CompositeStoreTestSuite) TestIdentifyEntityInCategory_DBFound() {
+	id := "found"
+	filters := map[string]interface{}{"name": "Foo"}
+	s.dbStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(&id, nil)
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", filters)
+	s.NoError(err)
+	s.Equal(&id, got)
+}
+
+func (s *CompositeStoreTestSuite) TestIdentifyEntityInCategory_DBNotFound_FileFallback() {
+	id := "file-id"
+	filters := map[string]interface{}{"name": "Foo"}
+	s.dbStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), ErrEntityNotFound)
+	s.fileStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).Return(&id, nil)
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", filters)
+	s.NoError(err)
+	s.Equal(&id, got)
+}
+
+func (s *CompositeStoreTestSuite) TestIdentifyEntityInCategory_NotFoundInEither() {
+	filters := map[string]interface{}{"name": "Foo"}
+	s.dbStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), ErrEntityNotFound)
+	s.fileStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), ErrEntityNotFound)
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", filters)
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *CompositeStoreTestSuite) TestIdentifyEntityInCategory_DBError() {
+	filters := map[string]interface{}{"name": "Foo"}
+	s.dbStore.On("IdentifyEntityInCategory", mock.Anything, "agent", filters).
+		Return((*string)(nil), s.testErr)
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", filters)
+	s.Error(err)
+}
+
 func (s *CompositeStoreTestSuite) TestResolveLinkedAccounts_MergesStores() {
 	s.dbStore.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").Return([]string{"e1"}, nil)
 	s.fileStore.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").Return([]string{"decl-1"}, nil)

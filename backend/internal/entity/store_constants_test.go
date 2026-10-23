@@ -156,12 +156,12 @@ func (s *StoreConstantsTestSuite) TestBuildEntityQueryBySystemAttributes_Errors(
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_EmptyFilters() {
-	_, _, err := buildIdentifyQuery(map[string]interface{}{}, testDeploymentID)
+	_, _, err := buildIdentifyQuery(map[string]interface{}{}, "", testDeploymentID)
 	s.Error(err)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_WithFilters() {
-	q, args, err := buildIdentifyQuery(map[string]interface{}{"email": "a@b.com"}, testDeploymentID)
+	q, args, err := buildIdentifyQuery(map[string]interface{}{"email": "a@b.com"}, "", testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -236,12 +236,12 @@ func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithFilters() {
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_EmptyFilters() {
-	_, _, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{}, testDeploymentID)
+	_, _, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{}, "", testDeploymentID)
 	s.Error(err)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_SingleFilter() {
-	q, args, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{"email": "a@b.com"}, testDeploymentID)
+	q, args, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{"email": "a@b.com"}, "", testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -249,7 +249,7 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_SingleFi
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_MultipleFilters() {
 	filters := map[string]interface{}{"email": "a@b.com", "username": "user1"}
-	q, args, err := buildIdentifyQueryFromIdentifiers(filters, testDeploymentID)
+	q, args, err := buildIdentifyQueryFromIdentifiers(filters, "", testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.Contains(q.Query, "INNER JOIN")
@@ -257,14 +257,15 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_Multiple
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_EmptyIndexedFilters() {
-	_, _, err := buildIdentifyQueryHybrid(map[string]interface{}{}, map[string]interface{}{"k": "v"}, testDeploymentID)
+	_, _, err := buildIdentifyQueryHybrid(
+		map[string]interface{}{}, map[string]interface{}{"k": "v"}, "", testDeploymentID)
 	s.Error(err)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_Success() {
 	indexed := map[string]interface{}{"email": "a@b.com"}
 	nonIndexed := map[string]interface{}{"username": "user1"}
-	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, testDeploymentID)
+	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, "", testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -273,10 +274,74 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_Success() {
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_MultipleIndexed() {
 	indexed := map[string]interface{}{"email": "a@b.com", "phone": "123"}
 	nonIndexed := map[string]interface{}{"username": "user1"}
-	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, testDeploymentID)
+	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, "", testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_WithCategory() {
+	q, args, err := buildIdentifyQuery(map[string]interface{}{"name": "Foo"}, "agent", testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "AND CATEGORY = $2 AND DEPLOYMENT_ID = $3")
+	s.Contains(q.SQLiteQuery, "AND CATEGORY = ? AND DEPLOYMENT_ID = ?")
+	s.Equal([]interface{}{"Foo", "agent", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_EmptyCategoryAddsNoCondition() {
+	q, args, err := buildIdentifyQuery(map[string]interface{}{"name": "Foo"}, "", testDeploymentID)
+	s.NoError(err)
+	s.NotContains(q.PostgresQuery, "CATEGORY")
+	s.NotContains(q.SQLiteQuery, "CATEGORY")
+	s.Equal([]interface{}{"Foo", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_WithCategory() {
+	q, args, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{"name": "Foo"}, "agent", testDeploymentID)
+	s.NoError(err)
+	entityJoin := `INNER JOIN "ENTITY" e ON ia1.ENTITY_ID = e.ID AND ia1.DEPLOYMENT_ID = e.DEPLOYMENT_ID`
+	s.Contains(q.PostgresQuery, entityJoin)
+	s.Contains(q.SQLiteQuery, entityJoin)
+	s.Contains(q.PostgresQuery, "AND e.CATEGORY = $3 AND ia1.DEPLOYMENT_ID = $4")
+	s.Contains(q.SQLiteQuery, "AND e.CATEGORY = ? AND ia1.DEPLOYMENT_ID = ?")
+	s.Equal([]interface{}{"name", "Foo", "agent", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_WithCategoryMultipleFilters() {
+	filters := map[string]interface{}{"email": "a@b.com", "username": "user1"}
+	q, args, err := buildIdentifyQueryFromIdentifiers(filters, "user", testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "AND e.CATEGORY = $5 AND ia1.DEPLOYMENT_ID = $6")
+	s.Equal([]interface{}{"email", "a@b.com", "username", "user1", "user", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_EmptyCategoryAddsNoJoin() {
+	q, args, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{"name": "Foo"}, "", testDeploymentID)
+	s.NoError(err)
+	s.NotContains(q.PostgresQuery, `"ENTITY" e`)
+	s.NotContains(q.PostgresQuery, "CATEGORY")
+	s.NotContains(q.SQLiteQuery, "CATEGORY")
+	s.Equal([]interface{}{"name", "Foo", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_WithCategory() {
+	indexed := map[string]interface{}{"email": "a@b.com"}
+	nonIndexed := map[string]interface{}{"username": "user1"}
+	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, "agent", testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "AND e.CATEGORY = $4 AND e.DEPLOYMENT_ID = $5")
+	s.Contains(q.SQLiteQuery, "AND e.CATEGORY = ? AND e.DEPLOYMENT_ID = ?")
+	s.Equal([]interface{}{"email", "a@b.com", "user1", "agent", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_EmptyCategoryAddsNoCondition() {
+	indexed := map[string]interface{}{"email": "a@b.com"}
+	nonIndexed := map[string]interface{}{"username": "user1"}
+	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, "", testDeploymentID)
+	s.NoError(err)
+	s.NotContains(q.PostgresQuery, "CATEGORY")
+	s.NotContains(q.SQLiteQuery, "CATEGORY")
+	s.Equal([]interface{}{"email", "a@b.com", "user1", testDeploymentID}, args)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildGetEntitiesByIDsQuery_Success() {
@@ -335,7 +400,7 @@ func (s *StoreConstantsTestSuite) TestBuildFilterQueryWithOffset_IndexedKeyMatch
 // ATTRIBUTES and SYSTEM_ATTRIBUTES using COALESCE so that an entity can be found
 // regardless of which column holds the filter key (e.g. clientId in SYSTEM_ATTRIBUTES).
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_PostgresQuery() {
-	q, args, err := buildIdentifyQuery(map[string]interface{}{"clientId": "app123"}, testDeploymentID)
+	q, args, err := buildIdentifyQuery(map[string]interface{}{"clientId": "app123"}, "", testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.PostgresQuery, "COALESCE")
 	s.Contains(q.PostgresQuery, "ATTRIBUTES->>'clientId'")
@@ -348,7 +413,7 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_PostgresQuery(
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_SQLiteQuery() {
-	q, args, err := buildIdentifyQuery(map[string]interface{}{"clientId": "app123"}, testDeploymentID)
+	q, args, err := buildIdentifyQuery(map[string]interface{}{"clientId": "app123"}, "", testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.SQLiteQuery, "COALESCE")
 	s.Contains(q.SQLiteQuery, "json_extract(ATTRIBUTES, '$.clientId')")
@@ -359,7 +424,7 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_SQLiteQuery() 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_MultipleFilters_CorrectParamIndexes() {
 	// keys are sorted: clientId < name, so clientId=$1, name=$2, deploymentID=$3
 	filters := map[string]interface{}{"clientId": "app123", "name": "myapp"}
-	q, args, err := buildIdentifyQuery(filters, testDeploymentID)
+	q, args, err := buildIdentifyQuery(filters, "", testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.PostgresQuery, "$1")
 	s.Contains(q.PostgresQuery, "$2")
@@ -369,7 +434,7 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_MultipleFilters_Correct
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_NestedKey_UsesPathSyntax() {
-	q, _, err := buildIdentifyQuery(map[string]interface{}{"address.city": "NYC"}, testDeploymentID)
+	q, _, err := buildIdentifyQuery(map[string]interface{}{"address.city": "NYC"}, "", testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.PostgresQuery, "#>>")
 	s.Contains(q.PostgresQuery, "{address,city}")
@@ -380,7 +445,7 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_NestedKey_UsesPathSynta
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_NonIndexed_UsesCOALESCE() {
 	indexed := map[string]interface{}{"email": "a@b.com"}
 	nonIndexed := map[string]interface{}{"clientId": "app123"}
-	q, _, err := buildIdentifyQueryHybrid(indexed, nonIndexed, testDeploymentID)
+	q, _, err := buildIdentifyQueryHybrid(indexed, nonIndexed, "", testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.PostgresQuery, "COALESCE")
 	s.Contains(q.PostgresQuery, "e.ATTRIBUTES->>'clientId'")

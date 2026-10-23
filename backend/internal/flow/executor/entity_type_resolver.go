@@ -65,7 +65,7 @@ func (r *entityTypeResolution) resolve(ctx *providers.NodeContext, category enti
 	}
 
 	if len(candidates) == 1 {
-		return r.accept(ctx, candidates[0].Handle, candidates[0].OUID, execResp, logger), nil
+		return r.accept(ctx, category, candidates[0].Handle, candidates[0].OUID, execResp, logger), nil
 	}
 
 	options := make([]string, 0, len(candidates))
@@ -116,7 +116,7 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Entity type resolved from input", log.String(categoryTypeKey, selected),
 		log.String(ouIDKey, entityType.OUID))
 
-	return r.accept(ctx, selected, ouID, execResp, logger), nil
+	return r.accept(ctx, category, selected, ouID, execResp, logger), nil
 }
 
 // candidates lists the types the node may resolve to, narrowed by the allowed list and by the
@@ -162,12 +162,13 @@ func (r *entityTypeResolution) candidates(ctx *providers.NodeContext,
 	return candidates, true, nil
 }
 
-// accept records the resolved type handle and the organization unit it lives in.
-func (r *entityTypeResolution) accept(ctx *providers.NodeContext, handle, ouID string,
-	execResp *providers.ExecutorResponse, logger *log.Logger,
+// accept records the resolved type handle, its category and the organization unit it lives in.
+func (r *entityTypeResolution) accept(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	handle, ouID string, execResp *providers.ExecutorResponse, logger *log.Logger,
 ) *providers.ExecutorResponse {
 	logger.Debug(ctx.Context, "Entity type resolved", log.String(categoryTypeKey, handle),
 		log.String(ouIDKey, ouID))
+	execResp.RuntimeData[categoryNameKey] = string(category)
 	execResp.RuntimeData[categoryTypeKey] = handle
 	execResp.RuntimeData[defaultOUIDKey] = ouID
 	execResp.Status = providers.ExecComplete

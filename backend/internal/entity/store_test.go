@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -592,6 +593,100 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_Empty_FallbackSearchesBot
 	got, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"clientId": "my-client"})
 	s.NoError(err)
 	s.Equal("app-entity-1", *got)
+}
+
+// queryWith matches a query whose PostgreSQL text contains every fragment.
+func queryWith(fragments ...string) interface{} {
+	return mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+		for _, fragment := range fragments {
+			if !strings.Contains(q.PostgresQuery, fragment) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_FastPath_JoinsCategory() {
+	s.store.indexedAttributes = map[string]bool{"name": true}
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith(`INNER JOIN "ENTITY" e`, "e.CATEGORY = $3"),
+		"name", "Foo", "agent", mock.Anything).
+		Return([]map[string]interface{}{{"id": "a1"}}, nil).Once()
+
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", map[string]interface{}{"name": "Foo"})
+	s.NoError(err)
+	s.Equal("a1", *got)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_FastPath_MultipleInCategory_Ambiguous() {
+	s.store.indexedAttributes = map[string]bool{"name": true}
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith("e.CATEGORY = $3"),
+		"name", "Foo", "agent", mock.Anything).
+		Return([]map[string]interface{}{{"id": "a1"}, {"id": "a2"}}, nil).Once()
+
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", map[string]interface{}{"name": "Foo"})
+	s.ErrorIs(err, ErrAmbiguousEntity)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_NotFoundInCategory() {
+	s.store.indexedAttributes = map[string]bool{"name": true}
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith("e.CATEGORY = $3"),
+		"name", "Foo", "agent", mock.Anything).
+		Return([]map[string]interface{}{}, nil).Once()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith("AND CATEGORY = $2 AND DEPLOYMENT_ID = $3"),
+		"Foo", "agent", mock.Anything).
+		Return([]map[string]interface{}{}, nil).Once()
+
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", map[string]interface{}{"name": "Foo"})
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_JSONSearch_FiltersCategory() {
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith("AND CATEGORY = $2 AND DEPLOYMENT_ID = $3"),
+		"Alice", "user", mock.Anything).
+		Return([]map[string]interface{}{{"id": "u1"}}, nil).Once()
+
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "user", map[string]interface{}{"given_name": "Alice"})
+	s.NoError(err)
+	s.Equal("u1", *got)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_HybridQuery_FiltersCategory() {
+	s.store.indexedAttributes = map[string]bool{"email": true}
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, queryWith("e.CATEGORY = $4"),
+		"email", "a@b.com", "u1", "user", mock.Anything).
+		Return([]map[string]interface{}{{"id": "e1"}}, nil).Once()
+
+	filters := map[string]interface{}{"email": "a@b.com", "username": "u1"}
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "user", filters)
+	s.NoError(err)
+	s.Equal("e1", *got)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_EmptyCategory_MatchesAnyCategory() {
+	s.store.indexedAttributes = map[string]bool{"name": true}
+	s.expectClient()
+	s.client.EXPECT().QueryContext(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, q dbmodel.DBQuery, _ ...interface{}) (
+			[]map[string]interface{}, error) {
+			s.NotContains(q.PostgresQuery, "CATEGORY")
+			return []map[string]interface{}{{"id": "e1"}}, nil
+		}).Once()
+
+	got, err := s.store.IdentifyEntityInCategory(s.ctx, "", map[string]interface{}{"name": "Foo"})
+	s.NoError(err)
+	s.Equal("e1", *got)
+}
+
+func (s *DBStoreTestSuite) TestIdentifyEntityInCategory_ProviderError() {
+	s.expectClientError()
+	_, err := s.store.IdentifyEntityInCategory(s.ctx, "agent", map[string]interface{}{"name": "Foo"})
+	s.Error(err)
 }
 
 func (s *DBStoreTestSuite) TestGetEntityListCount_ProviderError() {

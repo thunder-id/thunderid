@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 
 ## Summary
 
@@ -78,7 +78,7 @@ The onboarding design will depend on these management capabilities being availab
 
 ### Shared flow executors
 
-`ProvisioningExecutor` will provision both users and agents. Its `mode` node property will select the category. Missing or empty mode will retain user behavior for existing flows; supported explicit values will be `user` and `agent`. An unknown category name must fail.
+`ProvisioningExecutor` will provision both users and agents. Its `mode` node property will select the category. A category that the type resolvers write into the runtime data takes precedence over `mode`, so a flow with a type resolver does not need to set it; `mode` names the category for a flow with no resolver. When the two differ, the runtime data wins. With neither present, user behavior is retained for existing flows; supported explicit values will be `user` and `agent`. An unknown category name must fail.
 
 Input collection, schema lookup, existing-entity handling, creation error handling, and post-creation processing will share one execution path. Category-specific facts, such as the application type list, conflict code, required record fields, and group or role assignment type, will be centralized. Creation dispatch will remain explicit because users and agents have different management contracts.
 
@@ -201,7 +201,7 @@ An agent that supplies its required attributes and no optional schema attributes
 
 ### Uniqueness and existing entities
 
-The uniqueness validator will load unique attributes from the resolved type in the selected category. If a supplied value conflicts, it will return an input-required response with an error identifying the attribute. The flow can then return to the relevant prompt without discarding other inputs.
+The uniqueness validator requires the category and the resolved type in the runtime data, and fails as an unmet prerequisite when either is missing. It will load unique attributes from the resolved type in that category. If a supplied value conflicts, it will return an input-required response with an error identifying the attribute. The flow can then return to the relevant prompt without discarding other inputs.
 
 This is an early correction step. Management-service validation will remain authoritative at creation, including when another request creates a conflicting record after the precheck. Attribute-conflict errors from the user or agent service will map to the shared flow conflict error with the correct category. Other service errors will retain their codes and parameters.
 
@@ -311,7 +311,7 @@ The flow keeps orchestration in the executor layer and creation ownership in the
 6. Check the submitted unique attributes before creation and create the agent.
 7. Display the created agent's identifiers and client secret, then finish the flow.
 
-The provisioning node will set `mode: agent` and `includeOptional: true`. Its incomplete path will return to the details prompt, and its failure path will return to the details prompt with the service error, supporting correction of the attributes validated during agent creation. The uniqueness validator will also use agent mode. The details prompt will submit through that validator, whose incomplete path will return to the same details prompt for schema-attribute correction and whose success path will return to provisioning. The validator will declare no failure connection of its own.
+The provisioning node will set `mode: agent` and `includeOptional: true`. Its incomplete path will return to the details prompt, and its failure path will return to the details prompt with the service error, supporting correction of the attributes validated during agent creation. The uniqueness validator takes the agent category from the runtime data that the agent type resolver writes, and has no `mode` property. The details prompt will submit through that validator, whose incomplete path will return to the same details prompt for schema-attribute correction and whose success path will return to provisioning. The validator will declare no failure connection of its own.
 
 The default flow will create a non-delegated agent unless delegation input is added. Flow authors will be able to add the delegation widget and collect callback URIs without changing the Console creation page. The flow will determine screen order, branching, and which optional details are requested.
 
@@ -363,7 +363,7 @@ The builder will expose the flow capabilities through its existing resource pane
 | Provision Agent | Insert the same executor with `mode: agent`. |
 | Agent Type Resolver | Insert `AgentTypeResolver` and edit its allowed agent types. |
 | Owner Resolver | Insert owner verification with a user-selection prompt. |
-| Attribute Uniqueness Validator | Select the category whose schema defines the unique attributes. |
+| Attribute Uniqueness Validator | Insert `AttributeUniquenessValidator`. It has no properties: the category comes from the type resolver earlier in the flow. |
 | Owner Resolution widget | Compose the owner prompt and resolver. |
 | Agent Delegation widget | Collect delegation intent and callback information. |
 | Agent Onboarding Flow template | Start a flow from the permission check, owner resolution, details prompt, provisioning node, and credentials screen. |
@@ -379,7 +379,8 @@ The template is a starting point, not a runnable onboarding flow. It omits agent
 | `flow.agentOnboardingFlow.defaultHandle` | `default-agent-onboarding-flow` | Server configuration | Must resolve to an administration flow before onboarding can start. |
 | `user_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject user provisioning. |
 | `agent_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject agent provisioning. |
-| Provisioning or uniqueness node `mode` | `user` when absent or empty | Flow node | Accept `user` or `agent`; reject unknown category names. |
+| Runtime `categoryName` | Absent | Written by the user and agent type resolvers | Required by the uniqueness node, which fails as an unmet prerequisite without it. Takes precedence over `mode` on the provisioning node. Accept `user` or `agent`, reject unknown category names. |
+| Provisioning node `mode` | `user` when absent or empty and no runtime `categoryName` is set | Flow node | Accept `user` or `agent`; reject unknown category names. |
 | Agent resolver `allowedAgentTypes` | `default` in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction. |
 | Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
 
@@ -516,7 +517,7 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 
 - **AC11.1:** Given the builder resource panel, when agent onboarding is authored, then the agent provisioning entry, agent type resolver, owner resolver, related widgets, and template are available.
 - **AC11.2:** Given an agent provisioning node, when the flow is reopened, then the canvas labels it as Provision Agent and retains agent mode.
-- **AC11.3:** Given an agent resolver or uniqueness validator, when its properties are edited, then the corresponding allowed types or category can be configured.
+- **AC11.3:** Given an agent resolver, when its properties are edited, then the allowed types can be configured. Given a uniqueness validator, then it offers no properties.
 - **AC11.4:** Given another valid administration flow handle in the merged server configuration, when onboarding starts, then the Console runs that flow.
 - **AC11.5:** Given a flow authored from the Agent Onboarding Flow template with no agent type resolver added, when it runs, then provisioning fails rather than creating an agent under an assumed type.
 
@@ -525,3 +526,4 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-07 | Initial specification. |
+| 0.2 | 2026-10-20 | The provisioning node reads the category from the runtime data written by the type resolvers, then from `mode`, then defaults to user. The uniqueness node requires the runtime category and has no `mode` property; its builder panel and the bundled flow and template no longer set one. |

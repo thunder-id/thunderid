@@ -120,7 +120,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		AuthUser:       ctx.AuthUser,
 	}
 
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		return execResp, err
 	}
@@ -283,16 +283,19 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 	return nil
 }
 
-// categoryFromMode maps the node's mode property onto the entity category it works on. A mode is
-// the category name, and a node that sets none works on the default category.
-func categoryFromMode(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
-	mode, ok := ctx.NodeProperties[propertyKeyProvisioningMode].(string)
-	if !ok || mode == "" {
+// categoryFromContext resolves the category a provisioning node works on. The category a type
+// resolver put in the runtime data wins, then the node's mode property, then the default category.
+func categoryFromContext(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
+	name := ctx.RuntimeData[categoryNameKey]
+	if name == "" {
+		name, _ = ctx.NodeProperties[propertyKeyProvisioningMode].(string)
+	}
+	if name == "" {
 		return defaultProvisioningCategory, nil
 	}
-	category := entitytype.TypeCategory(mode)
+	category := entitytype.TypeCategory(name)
 	if !category.IsValid() {
-		return "", fmt.Errorf("invalid provisioning mode: %s", mode)
+		return "", fmt.Errorf("invalid category: %s", name)
 	}
 	return category, nil
 }
@@ -611,7 +614,7 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 // the category once and calls hasRequiredInputs with it directly.
 func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) bool {
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)).
 			Warn(ctx.Context, "Failed to resolve the provisioning category", log.Any("error", err))

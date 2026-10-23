@@ -48,6 +48,8 @@ type EntityServiceInterface interface {
 
 	// Identification
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
+	IdentifyEntityInCategory(ctx context.Context, category providers.EntityCategory,
+		filters map[string]interface{}) (*string, error)
 	ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error)
 	GetLinkedEntities(ctx context.Context, idpID, sub string) ([]providers.Entity, error)
 	LinkAccount(ctx context.Context, entityID, idpID, sub string) error
@@ -498,6 +500,13 @@ func (s *entityService) IdentifyEntity(ctx context.Context,
 		return nil, err
 	}
 	return id, nil
+}
+
+// IdentifyEntityInCategory identifies an entity of the given category using the given filters.
+// An empty category matches any category.
+func (s *entityService) IdentifyEntityInCategory(ctx context.Context, category providers.EntityCategory,
+	filters map[string]interface{}) (*string, error) {
+	return s.store.IdentifyEntityInCategory(ctx, string(category), filters)
 }
 
 // ResolveLinkedAccounts returns the entities linked to an identity provider subject. A subject no
@@ -1263,7 +1272,7 @@ func (s *entityService) validateEntityType(
 	// Validate attribute uniqueness
 	isValid, svcErr = s.entityTypeService.ValidateEntityUniqueness(ctx, schemaCategory, entityType, attributes,
 		func(filters map[string]interface{}) (bool, error) {
-			id, err := s.IdentifyEntity(ctx, filters)
+			id, err := s.IdentifyEntityInCategory(ctx, category, filters)
 			if err != nil {
 				if errors.Is(err, ErrEntityNotFound) {
 					return false, nil // Not found = unique

@@ -31,6 +31,12 @@ func (suite *DisabledEntityProviderTestSuite) TestIdentifyEntity() {
 	suite.Equal(errNotImplemented, err)
 }
 
+func (suite *DisabledEntityProviderTestSuite) TestIdentifyEntityInCategory() {
+	id, err := suite.provider.IdentifyEntityInCategory(providers.EntityCategoryAgent, map[string]interface{}{})
+	suite.Nil(id)
+	suite.Equal(errNotImplemented, err)
+}
+
 func (suite *DisabledEntityProviderTestSuite) TestGetLinkedEntities() {
 	entities, err := suite.provider.GetLinkedEntities("idp-a", "sub-1")
 	suite.Nil(entities)
