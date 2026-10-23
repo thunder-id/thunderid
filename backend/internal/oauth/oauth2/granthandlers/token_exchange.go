@@ -75,10 +75,18 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 		}
 	}
 
-	if !constants.TokenTypeIdentifier(tokenRequest.SubjectTokenType).IsValid() {
+	subjectType := constants.TokenTypeIdentifier(tokenRequest.SubjectTokenType)
+	if !subjectType.IsValid() {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
 			ErrorDescription: "Unsupported subject_token_type",
+		}
+	}
+
+	if !subjectType.IsValidSubjectTokenType() {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorInvalidRequest,
+			ErrorDescription: tokenRequest.SubjectTokenType + " is not supported as a subject_token_type",
 		}
 	}
 
@@ -100,10 +108,17 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 				ErrorDescription: "actor_token_type must not be provided without actor_token",
 			}
 		}
-		if !constants.TokenTypeIdentifier(tokenRequest.ActorTokenType).IsValid() {
+		actorType := constants.TokenTypeIdentifier(tokenRequest.ActorTokenType)
+		if !actorType.IsValid() {
 			return &model.ErrorResponse{
 				Error:            constants.ErrorInvalidRequest,
 				ErrorDescription: "Unsupported actor_token_type",
+			}
+		}
+		if !actorType.IsValidActorTokenType() {
+			return &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: tokenRequest.ActorTokenType + " is not supported as an actor_token_type",
 			}
 		}
 	}
@@ -117,10 +132,8 @@ func (h *tokenExchangeGrantHandler) ValidateGrant(ctx context.Context, tokenRequ
 				ErrorDescription: "Unsupported requested_token_type",
 			}
 		}
-		// TODO: Add support for other token types if needed
-		if requestedType != constants.TokenTypeIdentifierAccessToken &&
-			requestedType != constants.TokenTypeIdentifierJWT &&
-			requestedType != constants.TokenTypeIdentifierIDJAG {
+
+		if !requestedType.IsValidRequestedTokenType() {
 			return &model.ErrorResponse{
 				Error: constants.ErrorInvalidRequest,
 				ErrorDescription: "Unsupported requested_token_type. Only access tokens, JWT tokens, " +

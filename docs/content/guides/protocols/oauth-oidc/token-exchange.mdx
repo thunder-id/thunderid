@@ -29,7 +29,7 @@ Typical uses:
 |---|---|
 | Endpoint | `POST /oauth2/token` |
 | Grant type | `urn:ietf:params:oauth:grant-type:token-exchange` |
-| `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:refresh_token` · `:id_token` · `:jwt` |
+| `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:id_token` · `:jwt`. |
 | `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
 | `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` · `:id-jag`. **`id_token` and `refresh_token` outputs are not supported.** When `:id-jag` is requested, the flow switches to the [Identity Assertion Grant](../identity-assertion-grant) path. |
 | `audience` parameter | Accepted for RFC 8693 compatibility but does not determine the issued access token's `aud` claim |
