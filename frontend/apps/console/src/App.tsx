@@ -17,6 +17,8 @@ import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import {SAMPLE_BUNDLES} from './data/sampleBundles';
+import {useEmbed} from './embed/EmbedContext';
+import EmbedRouterBridge from './embed/EmbedRouterBridge';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
@@ -185,8 +187,12 @@ const TryoutSecuringMCPPage = lazy(() =>
 const WelcomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.WelcomePage})));
 
 export default function App(): JSX.Element {
+  // Embedded in a host, the console lives under the host's mount path instead of its build base.
+  const embed = useEmbed();
+
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
+    <BrowserRouter basename={embed?.ctx.basename ?? import.meta.env.BASE_URL}>
+      <EmbedRouterBridge />
       <RoutesProvider paths={RouteConfig}>
         <ToastProvider>
           <SampleBundlesProvider bundles={SAMPLE_BUNDLES}>

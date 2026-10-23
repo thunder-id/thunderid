@@ -44,6 +44,7 @@ import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
 import RouteConfig from '../configs/RouteConfig';
+import {useEmbed} from '../embed/EmbedContext';
 
 const ICON_BUTTON_SX = {
   minWidth: 40,
@@ -142,7 +143,20 @@ function SidebarPreference({collapsed}: {collapsed: boolean}): null {
   return null;
 }
 
+/** Embedded in a host, the host draws the top bar and sidebar, so only the page content renders here. */
+function EmbeddedLayout(): ReactNode {
+  return (
+    <Box sx={{p: 3, width: '100%'}}>
+      <Outlet />
+    </Box>
+  );
+}
+
 export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
+  return useEmbed() ? <EmbeddedLayout /> : <StandaloneDashboardLayout collapseSidebar={collapseSidebar} />;
+}
+
+function StandaloneDashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();

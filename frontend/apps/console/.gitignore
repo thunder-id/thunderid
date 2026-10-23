@@ -28,3 +28,4 @@ coverage
 *.sw?
 public/version.txt
 src/data/sample-bundles/
+dist-remote

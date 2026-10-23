@@ -32,9 +32,12 @@
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:remote": "vite build --config vite.config.remote.ts",
+    "preview:remote": "vite preview --config vite.config.remote.ts"
   },
   "dependencies": {
+    "@thunderid/browser": "catalog:",
     "@thunderid/react": "catalog:",
     "@thunderid/react-router": "catalog:",
     "@dnd-kit/abstract": "0.4.0",
