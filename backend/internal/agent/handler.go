@@ -8,14 +8,15 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
-	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -247,30 +248,33 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 	return limit, offset, nil
 }
 
-// parseFilterParams parses the filter query parameter using the same simple eq syntax used
-// across other resources (attribute eq "value").
+// parseFilterParams parses the filter query parameter: one `attribute eq "value"` term, or terms on the kind,
+// the owner and the name joined with "and", each at most once.
 func parseFilterParams(query url.Values) (map[string]interface{}, *tidcommon.ServiceError) {
-	if !query.Has("filter") {
-		return map[string]interface{}{}, nil
-	}
-	raw := strings.TrimSpace(query.Get("filter"))
-	if raw == "" {
+	group, err := filter.ParseFilterParam(query)
+	if err != nil {
 		return nil, &ErrorInvalidFilter
 	}
-	parts := strings.SplitN(raw, " eq ", 2)
-	if len(parts) != 2 {
-		return nil, &ErrorInvalidFilter
+	filters := map[string]interface{}{}
+	if group == nil {
+		return filters, nil
 	}
-	attr := strings.TrimSpace(parts[0])
-	val := strings.TrimSpace(parts[1])
-	if len(val) < 2 || !strings.HasPrefix(val, "\"") || !strings.HasSuffix(val, "\"") {
-		return nil, &ErrorInvalidFilter
+	for _, clause := range group.Clauses {
+		value, ok := clause.Expr.Value.(string)
+		if !ok || value == "" || clause.Expr.Operator != tidcommon.OperatorEq ||
+			(clause.Connector != "" && clause.Connector != tidcommon.LogicalAnd) {
+			return nil, &ErrorInvalidFilter
+		}
+		attribute := clause.Expr.Attribute
+		if _, duplicate := filters[attribute]; duplicate {
+			return nil, &ErrorInvalidFilter
+		}
+		if len(group.Clauses) > 1 && !slices.Contains(combinableFilterAttributes, attribute) {
+			return nil, &ErrorInvalidFilter
+		}
+		filters[attribute] = value
 	}
-	val = val[1 : len(val)-1]
-	if attr == "" || val == "" {
-		return nil, &ErrorInvalidFilter
-	}
-	return map[string]interface{}{attr: val}, nil
+	return filters, nil
 }
 
 // writeServiceError converts a service error into the appropriate HTTP error response.

@@ -4489,6 +4489,28 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnit() {
 		mock.Anything, mock.Anything, mock.Anything)
 }
 
+// A filter on the kind or the owner is matched against the system attributes, with the rest of the filter on
+// the schema attributes.
+func (suite *AgentServiceTestSuite) TestGetAgentList_FilterOnSystemAttributes() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	filters := map[string]interface{}{fieldKind: "personal-assistant", "name": "x"}
+	want := entity.SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{fieldKind: "personal-assistant"},
+		Attributes:       map[string]interface{}{"name": "x"},
+	}
+	mockEntity.On("GetEntityListCountBySystemAttributes", mock.Anything, providers.EntityCategoryAgent, want).
+		Return(1, nil).Once()
+	mockEntity.On("GetEntityListBySystemAttributes", mock.Anything, providers.EntityCategoryAgent, want, 10, 0).
+		Return([]providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")}, nil).Once()
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, filters, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A caller who cannot list agents from the filtered organization unit gets an empty page.
 func (suite *AgentServiceTestSuite) TestGetAgentList_InOrganizationUnitWithoutAccess() {
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
@@ -4560,6 +4582,45 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_InvalidOrganizationUnitFilt
 			assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
 		})
 	}
+}
+
+// The system attribute lookup keeps the caller's OU scope.
+func (suite *AgentServiceTestSuite) TestGetAgentList_FilterOnSystemAttributesInAccessibleOUs() {
+	accessibleOUIDs := []string{testOUID}
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: accessibleOUIDs}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	want := entity.SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{fieldOwnerID: "user-1"},
+		Attributes:       map[string]interface{}{},
+	}
+	mockEntity.On("GetEntityListCountBySystemAttributesAndOUIDs", mock.Anything, providers.EntityCategoryAgent,
+		want, accessibleOUIDs).Return(1, nil).Once()
+	mockEntity.On("GetEntityListBySystemAttributesAndOUIDs", mock.Anything, providers.EntityCategoryAgent,
+		want, accessibleOUIDs, 10, 0).
+		Return([]providers.Entity{*buildAgentEntityFixture(testAgentName, "", "user-1", "")}, nil).Once()
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0,
+		map[string]interface{}{fieldOwner: "user-1"}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityListByOUIDs", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestSystemAttributeQuery() {
+	assert.Nil(suite.T(), systemAttributeQuery(nil))
+	assert.Nil(suite.T(), systemAttributeQuery(map[string]interface{}{"name": "x"}),
+		"a filter on schema attributes only keeps the existing lookup")
+	assert.Equal(suite.T(), &entity.SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{fieldKind: "personal-assistant", fieldOwnerID: "user-1"},
+		Attributes:       map[string]interface{}{"name": "x"},
+	}, systemAttributeQuery(map[string]interface{}{
+		fieldKind: "personal-assistant", fieldOwner: "user-1", "name": "x",
+	}))
 }
 
 // A failed authorization check is a refusal, not a pass.
