@@ -180,6 +180,19 @@ type resourceServerAdapter interface {
 	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
+type authorizationDetailTypeAdapter interface {
+	CreateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) (
+		*providers.AuthorizationDetailType, *tidcommon.ServiceError)
+	GetAuthorizationDetailType(ctx context.Context, id string) (*providers.AuthorizationDetailType,
+		*tidcommon.ServiceError)
+	UpdateAuthorizationDetailType(ctx context.Context, id string, t providers.AuthorizationDetailType) (
+		*providers.AuthorizationDetailType, *tidcommon.ServiceError)
+	GetAuthorizationDetailTypeByValue(ctx context.Context, value string) (*providers.AuthorizationDetailType,
+		*tidcommon.ServiceError)
+	ValidateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) *tidcommon.ServiceError
+	DeleteAuthorizationDetailType(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
 type themeAdapter interface {
 	CreateTheme(ctx context.Context,
 		theme thememgt.CreateThemeRequestWithID) (*thememgt.Theme, *tidcommon.ServiceError)
@@ -293,6 +306,7 @@ type importService struct {
 	serverConfigService            serverConfigAdapter
 	gatewayService                 gatewayAdapter
 	notifTemplateService           notificationTemplateAdapter
+	authorizationDetailTypeService authorizationDetailTypeAdapter
 	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
@@ -572,6 +586,8 @@ func (s *importService) importDocument(
 		return s.importGroup(ctx, doc, options, dryRun)
 	case resourceTypeResourceServer:
 		return s.importResourceServer(ctx, doc, options, dryRun)
+	case resourceTypeAuthorizationDetailType:
+		return s.importAuthorizationDetailType(ctx, doc, options, dryRun)
 	case resourceTypeTheme:
 		return s.importTheme(ctx, doc, options, dryRun)
 	case resourceTypeLayout:
@@ -990,6 +1006,7 @@ var resourceDependencyOrder = []string{
 	// A gateway refers to no other resource and nothing refers to it, so its position is free.
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
+	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,

@@ -3,6 +3,8 @@
 
 package consent
 
+import "encoding/json"
+
 // PurposeElement represents an element reference within a consent purpose.
 type PurposeElement struct {
 	Name        string
@@ -59,9 +61,13 @@ type ConsentPurposeItem struct {
 
 // ConsentElementApproval represents a user's approval decision for a specific element.
 type ConsentElementApproval struct {
-	Name           string    `json:"name"`
-	Namespace      Namespace `json:"namespace"`
-	IsUserApproved bool      `json:"isUserApproved"`
+	Name           string          `json:"name"`
+	Namespace      Namespace       `json:"namespace"`
+	IsUserApproved bool            `json:"isUserApproved"`
+	TypeID         string          `json:"typeId,omitempty"`
+	TypeVersion    int             `json:"typeVersion,omitempty"`
+	Requested      json.RawMessage `json:"requested,omitempty"`
+	Granted        json.RawMessage `json:"granted,omitempty"`
 }
 
 // Namespace represents the consent namespace that classifies a consent element.
@@ -74,12 +80,15 @@ const (
 	// NamespacePermission represents the permission consent namespace.
 	// Used for managing consent over resource action permissions (e.g. booking:reservations:read).
 	NamespacePermission Namespace = "permission"
+	// NamespaceAuthorizationDetail represents the authorization detail consent namespace.
+	// Used for managing consent over RFC 9396 authorization details (e.g. one payment).
+	NamespaceAuthorizationDetail Namespace = "authorization_detail"
 )
 
 // IsValid reports whether the namespace is one of the known consent namespaces.
 func (n Namespace) IsValid() bool {
 	switch n {
-	case NamespaceAttribute, NamespacePermission:
+	case NamespaceAttribute, NamespacePermission, NamespaceAuthorizationDetail:
 		return true
 	default:
 		return false

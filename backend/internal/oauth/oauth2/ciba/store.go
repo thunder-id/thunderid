@@ -22,10 +22,12 @@ type CIBARequestStoreInterface interface {
 	Add(ctx context.Context, request *CIBAAuthRequest) error
 	GetByID(ctx context.Context, authReqID string) (*CIBAAuthRequest, error)
 	MarkAuthenticated(ctx context.Context, authReqID, userID, authorizedScopes, attributeCacheID,
-		completedACR, sessionID string, authTime time.Time) error
+		completedACR, sessionID string, authTime time.Time,
+		authorizationDetails []providers.AuthorizationDetail) error
 	MarkConsumed(ctx context.Context, authReqID string) (bool, error)
 	UpdateLastPolled(ctx context.Context, authReqID string, polledAt time.Time) error
 	UpdateState(ctx context.Context, authReqID string, state CIBARequestState) error
+	MarkFailed(ctx context.Context, authReqID string, state CIBARequestState, description string) error
 }
 
 // cibaStore adapts a runtime store provider to CIBA authentication request storage. Requests are
@@ -79,10 +81,11 @@ func (s *cibaStore) GetByID(ctx context.Context, authReqID string) (*CIBAAuthReq
 
 // MarkAuthenticated transitions a pending request to authenticated and records the user ID (from
 // the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, SSO session id,
-// authentication time, and the time of this transition. The compare-and-swap on the State field prevents
-// a double-callback race condition.
+// authentication time, approved authorization details, and the time of this transition. The
+// compare-and-swap on the State field prevents a double-callback race condition.
 func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
-	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time) error {
+	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time,
+	authorizationDetails []providers.AuthorizationDetail) error {
 	record, err := s.GetByID(ctx, authReqID)
 	if err != nil {
 		return err
@@ -99,6 +102,7 @@ func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
 	record.SessionID = sessionID
 	record.AuthTime = authTime
 	record.AuthorizedAt = time.Now()
+	record.AuthorizationDetails = authorizationDetails
 
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -163,6 +167,18 @@ func (s *cibaStore) UpdateState(ctx context.Context, authReqID string, state CIB
 		return err
 	}
 	record.State = state
+	return s.save(ctx, record)
+}
+
+// MarkFailed ends a request in a denied or failed state, recording why it was denied.
+func (s *cibaStore) MarkFailed(ctx context.Context, authReqID string, state CIBARequestState,
+	description string) error {
+	record, err := s.GetByID(ctx, authReqID)
+	if err != nil {
+		return err
+	}
+	record.State = state
+	record.FailureDescription = description
 	return s.save(ctx, record)
 }
 

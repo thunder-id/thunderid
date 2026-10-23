@@ -33,6 +33,8 @@ type OAuthParameters struct {
 	DPoPJkt             string
 	Prompt              string
 	IDTokenHint         string
+	// AuthorizationDetails holds the validated RFC 9396 authorization details.
+	AuthorizationDetails json.RawMessage `json:",omitempty"`
 }
 
 // VerifiedClaimsMember is the OIDC Identity Assurance member name that may appear in the

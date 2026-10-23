@@ -6,6 +6,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -181,12 +182,15 @@ type IDPProvider interface {
 // record user consent decisions during runtime authentication flows.
 type ConsentProvider interface {
 	// ResolveConsent checks whether the user has provided required consents for the given
-	// application, attribute set, and authorized permission set. Returns nil if all required
-	// consents are active; otherwise returns ConsentPromptData describing which purposes /
-	// elements still need user consent. When forceReprompt is true, consent is re-prompted for
-	// all required claims regardless of existing active consent.
+	// application, attribute set, authorized permission set, and authorization details. Returns nil
+	// if all required consents are active; otherwise returns ConsentPromptData describing which
+	// purposes / elements still need user consent. When forceReprompt is true, consent is re-prompted
+	// for all required claims and details regardless of existing active consent. Returning nil grants
+	// every requested authorization detail, so a provider must prompt for or refuse any detail no
+	// earlier approval covers.
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 		essentialAttributes, optionalAttributes, authorizedPermissions []string,
+		authorizationDetails []AuthorizationDetail,
 		availableAttributes *AttributesResponse, forceReprompt bool,
 		runtimeMetadata map[string][]string) (
 		*ConsentPromptData, *common.ServiceError)
@@ -197,6 +201,38 @@ type ConsentProvider interface {
 		decisions *ConsentDecisions, sessionToken string, validityPeriod int64,
 		runtimeMetadata map[string][]string) (
 		*Consent, *common.ServiceError)
+}
+
+// AuthorizationDetailProvider validates, prepares and processes RFC 9396 authorization details at runtime.
+type AuthorizationDetailProvider interface {
+	// ValidateAuthorizationDetails validates the authorization_details a client requested.
+	ValidateAuthorizationDetails(ctx context.Context, raw string) (json.RawMessage, *common.ServiceError)
+	// PrepareAuthorizationDetails stamps validated details with identifiers and type versions for a flow.
+	PrepareAuthorizationDetails(ctx context.Context, validated json.RawMessage) (
+		[]AuthorizationDetail, *common.ServiceError)
+	// ProcessAuthorizationDetails runs the type processors on the details and returns those admitted, each with
+	// Admitted set: consent refuses a detail of a type that declares a processor unless it is admitted. A
+	// detail is returned with any value the processor filled in or lowered. It fails with a client error when
+	// every detail is refused.
+	ProcessAuthorizationDetails(ctx context.Context, details []AuthorizationDetail, client *Application,
+		subject EntityReference, resourceServer string) ([]AuthorizationDetail, *common.ServiceError)
+	// RefreshableAuthorizationDetails returns the granted details a refresh token may carry.
+	RefreshableAuthorizationDetails(ctx context.Context, granted []AuthorizationDetail) (
+		[]AuthorizationDetail, *common.ServiceError)
+	// ModifyAuthorizationDetails checks a token request's authorization_details against a grant.
+	ModifyAuthorizationDetails(ctx context.Context, granted []AuthorizationDetail,
+		raw string) (json.RawMessage, *common.ServiceError)
+}
+
+// AuthorizationDetailTypeProvider provides the registered RFC 9396 authorization details types.
+type AuthorizationDetailTypeProvider interface {
+	// GetAuthorizationDetailTypeByValue returns the type registered under the given value, or nil if none.
+	GetAuthorizationDetailTypeByValue(ctx context.Context, value string) (
+		*AuthorizationDetailType, *common.ServiceError)
+	// ListAuthorizationDetailTypeValues returns the value of every registered type.
+	ListAuthorizationDetailTypeValues(ctx context.Context) ([]string, *common.ServiceError)
+	// ListAllAuthorizationDetailTypes returns every registered type.
+	ListAllAuthorizationDetailTypes(ctx context.Context) ([]AuthorizationDetailType, *common.ServiceError)
 }
 
 // CaptchaValidationProvider defines the contract for verifying captcha tokens.

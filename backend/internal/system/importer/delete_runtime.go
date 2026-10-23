@@ -180,6 +180,10 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.resourceService != nil {
 			return s.resourceService.DeleteResourceServer
 		}
+	case resourceTypeAuthorizationDetailType:
+		if s.authorizationDetailTypeService != nil {
+			return s.authorizationDetailTypeService.DeleteAuthorizationDetailType
+		}
 	case resourceTypeTheme:
 		if s.themeService != nil {
 			return s.themeService.DeleteTheme
@@ -196,6 +200,16 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.agentService != nil {
 			return s.agentService.DeleteAgent
 		}
+	case resourceTypePresentationDefinition, resourceTypeCredentialConfiguration:
+		return s.verifiableCredentialDeleterFor(resourceType)
+	}
+	return nil
+}
+
+// verifiableCredentialDeleterFor returns the delete for a verifiable credential resource type, or nil when
+// the deployment was not configured with its adapter.
+func (s *importService) verifiableCredentialDeleterFor(resourceType string) deleteFunc {
+	switch resourceType {
 	case resourceTypePresentationDefinition:
 		if s.presentationDefinitionService != nil {
 			return s.presentationDefinitionService.DeletePresentationDefinition

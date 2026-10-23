@@ -6,6 +6,7 @@ package authz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
@@ -69,6 +71,8 @@ type authorizeService struct {
 	// session store (the embedded engine), where prompt=none keeps answering login_required.
 	ssoSession   flowsession.Service
 	flowProvider providers.FlowProvider
+	// authzDetails validates and prepares the requested RFC 9396 authorization details.
+	authzDetails providers.AuthorizationDetailProvider
 	logger       *log.Logger
 }
 
@@ -87,6 +91,7 @@ func newAuthorizeService(
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
 	jtiStore jti.JTIStoreInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) AuthorizeServiceInterface {
 	return &authorizeService{
 		cfg:             cfg,
@@ -103,6 +108,7 @@ func newAuthorizeService(
 		ssoSession:      ssoSession,
 		flowProvider:    flowProvider,
 		jtiStore:        jtiStore,
+		authzDetails:    authzDetails,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeService")),
 	}
 }
@@ -475,6 +481,24 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		return nil, authErr
 	}
 
+	var authorizationDetails json.RawMessage
+	if raw := queryParams.Get(oauth2const.RequestParamAuthorizationDetails); raw != "" {
+		details, errResp := oauth2utils.ValidateAuthorizationDetails(ctx, as.authzDetails, raw)
+		if errResp != nil {
+			authErr := &AuthorizationError{
+				Code:    errResp.Error,
+				Message: errResp.ErrorDescription,
+				State:   state,
+			}
+			if redirectURI != "" {
+				authErr.SendErrorToClient = true
+				authErr.ClientRedirectURI = redirectURI
+			}
+			return nil, authErr
+		}
+		authorizationDetails = details
+	}
+
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scope, app.ScopeClaims)
 
 	// The single target resource server, downscoping, and audience binding are resolved in
@@ -482,25 +506,26 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 
 	// Construct authorization request context.
 	oauthParams := &oauth2model.OAuthParameters{
-		State:               state,
-		ClientID:            app.ClientID,
-		RedirectURI:         redirectURI,
-		RedirectURIProvided: redirectURI != "",
-		ResponseType:        responseType,
-		StandardScopes:      oidcScopes,
-		PermissionScopes:    nonOidcScopes,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
-		Resources:           resources,
-		ClaimsRequest:       claimsRequest,
-		ClaimsLocales:       claimsLocales,
-		UILocales:           uiLocales,
-		Nonce:               nonce,
-		AcrValues:           acrValues,
-		MaxAge:              maxAge,
-		DPoPJkt:             dpopJkt,
-		Prompt:              prompt,
-		IDTokenHint:         queryParams.Get(oauth2const.RequestParamIDTokenHint),
+		State:                state,
+		ClientID:             app.ClientID,
+		RedirectURI:          redirectURI,
+		RedirectURIProvided:  redirectURI != "",
+		ResponseType:         responseType,
+		StandardScopes:       oidcScopes,
+		PermissionScopes:     nonOidcScopes,
+		CodeChallenge:        codeChallenge,
+		CodeChallengeMethod:  codeChallengeMethod,
+		Resources:            resources,
+		ClaimsRequest:        claimsRequest,
+		ClaimsLocales:        claimsLocales,
+		UILocales:            uiLocales,
+		Nonce:                nonce,
+		AcrValues:            acrValues,
+		MaxAge:               maxAge,
+		DPoPJkt:              dpopJkt,
+		Prompt:               prompt,
+		IDTokenHint:          queryParams.Get(oauth2const.RequestParamIDTokenHint),
+		AuthorizationDetails: authorizationDetails,
 	}
 
 	// Set the redirect URI if not provided in the request. Invalid cases are already handled at this point.
@@ -541,11 +566,11 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 
 	// Bind the request to a single target resource server before the flow starts. OIDC-only or
 	// scopeless requests stay unbound and their audience is the client_id. A permission-bearing
-	// request resolves an explicit resource or the configured default, rejecting with invalid_target
-	// when neither is available. The resolved resource server id is threaded into the flow so the
-	// authorization executor scopes its permission evaluation to it.
-	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, as.resourceService, oauthParams.Resources, oauthParams.PermissionScopes)
+	// request (or one with authorization details) resolves an explicit resource or the configured
+	// default, rejecting with invalid_target when neither is available. The resolved resource server
+	// id is threaded into the flow so the authorization executor scopes its permission evaluation to it.
+	targetRS, errResp := resourceindicators.ResolveAudienceBinding(ctx, as.resourceService,
+		oauthParams.Resources, oauthParams.PermissionScopes, len(oauthParams.AuthorizationDetails) > 0)
 	if errResp != nil {
 		return nil, &AuthorizationError{
 			Code:              errResp.Error,
@@ -576,6 +601,34 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	effectiveAcrValues := requestvalidator.ResolveACRValues(oauthParams.AcrValues, app.AcrValues)
 	essentialAttributes, optionalAttributes := getRequiredAttributes(
 		oauthParams.StandardScopes, oauthParams.ClaimsRequest, app)
+
+	// The details are prepared before the request is stored, so a refused request leaves nothing behind.
+	var preparedDetails string
+	if len(oauthParams.AuthorizationDetails) > 0 {
+		details, prepErr := as.authzDetails.PrepareAuthorizationDetails(ctx, oauthParams.AuthorizationDetails)
+		if prepErr != nil {
+			errResp := oauth2utils.AuthorizationDetailsErrorResponse(prepErr)
+			return nil, &AuthorizationError{
+				Code:              errResp.Error,
+				Message:           errResp.ErrorDescription,
+				SendErrorToClient: true,
+				ClientRedirectURI: oauthParams.RedirectURI,
+				State:             oauthParams.State,
+			}
+		}
+		encoded, err := json.Marshal(details)
+		if err != nil {
+			as.logger.Error(ctx, "Failed to encode authorization details", log.Error(err))
+			return nil, &AuthorizationError{
+				Code:              oauth2const.ErrorServerError,
+				Message:           "Failed to process authorization request",
+				SendErrorToClient: true,
+				ClientRedirectURI: oauthParams.RedirectURI,
+				State:             oauthParams.State,
+			}
+		}
+		preparedDetails = string(encoded)
+	}
 
 	authRequestCtx := authRequestContext{
 		OAuthParameters: *oauthParams,
@@ -627,6 +680,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	}
 	if oauthParams.MaxAge != "" {
 		runtimeData[flowcm.RuntimeKeyMaxAge] = oauthParams.MaxAge
+	}
+	if preparedDetails != "" {
+		runtimeData[flowcm.RuntimeKeyRequestedAuthorizationDetails] = preparedDetails
 	}
 	flowInitCtx := &flowexec.FlowInitContext{
 		ApplicationID:    app.ID,
@@ -892,6 +948,22 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			authRequestCtx.OAuthParameters.PermissionScopes = []string{}
 		}
 
+		// A flow that did not decide on the requested details is refused rather than issuing unapproved ones.
+		var grantedDetails []providers.AuthorizationDetail
+		if len(authRequestCtx.OAuthParameters.AuthorizationDetails) > 0 {
+			if claims.grantedAuthorizationDetails == nil {
+				authErr = &AuthorizationError{
+					Code:              oauth2const.ErrorAccessDenied,
+					Message:           "Authorization details were not approved",
+					SendErrorToClient: true,
+					ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+					State:             authRequestCtx.OAuthParameters.State,
+				}
+				return errors.New("the flow did not record a decision on the authorization details")
+			}
+			grantedDetails = claims.grantedAuthorizationDetails
+		}
+
 		// Generate the authorization code.
 		authzCode, err := createAuthorizationCode(as.cfg, authRequestCtx, &claims, authTime)
 		if err != nil {
@@ -904,6 +976,7 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			}
 			return err
 		}
+		authzCode.AuthorizationDetails = grantedDetails
 
 		// Persist the authorization code.
 		if persistErr := as.authCodeStore.InsertAuthorizationCode(ctx, authzCode); persistErr != nil {
@@ -1090,6 +1163,19 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[flowcm.ClaimFlowErrorType].(string); ok {
 		claims.flowErrorType = v
+	}
+
+	// Read from the claim's JSON text so numbers are kept exactly.
+	grantedClaim, hasGranted, err := jwt.DecodeJWTClaim(assertion, oauth2const.ClaimGrantedAuthorizationDetails)
+	if err != nil {
+		return claims, time.Time{}, err
+	}
+	if hasGranted {
+		granted, err := authzdetailexec.GrantedFromClaim(grantedClaim)
+		if err != nil {
+			return claims, time.Time{}, err
+		}
+		claims.grantedAuthorizationDetails = granted
 	}
 
 	if v, ok := payload[oauth2const.ClaimAuthorizationRequestID]; ok {

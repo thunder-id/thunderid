@@ -232,13 +232,9 @@ func (e *connectionExporter) GetResourceRulesForResource(
 // identity provider client secret, each message vendor's own secret, and the credential fields of
 // every outbound authentication method an email connection can use.
 func (e *connectionExporter) SecretFields() []string {
-	keys := outboundauth.CredentialFieldKeys()
-	fields := make([]string, 0, 3+len(keys))
-	fields = append(fields, "clientSecret", "authToken", "apiSecret")
-	for _, key := range keys {
-		fields = append(fields, "authentication.properties."+key)
-	}
-	return fields
+	// The outbound authentication's credentials are named by their method, an API key by its header, so any
+	// of its properties may hold one.
+	return []string{"clientSecret", "authToken", "apiSecret", "authentication.properties.*"}
 }
 
 // authenticationResourceRules externalizes each secret field of a connection's outbound

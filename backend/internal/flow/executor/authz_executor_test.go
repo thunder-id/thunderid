@@ -189,6 +189,145 @@ func TestAuthorizationExecutor_Execute_ScopesEvaluationToResourceServer(t *testi
 	mockAuthzService.AssertExpectations(t)
 }
 
+func TestAuthorizationExecutor_Execute_AuthorizationDetailsInEvaluationContext(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	executor := createTestAuthzExecutor(t, mockAuthzService, mockEntityProvider, mockAuthnProvider)
+
+	requestedPayment := `{"type":"payment_initiation","instructedAmount":{"currency":"EUR","amount":"123.50"}}`
+	requestedAccount := `{"type":"account_information","actions":["list_accounts"]}`
+	encodedDetails, err := json.Marshal([]providers.AuthorizationDetail{
+		{
+			ID: "detail-internal-1", Type: "payment_initiation", TypeID: "type-internal-1", TypeVersion: 1,
+			Requested: json.RawMessage(requestedPayment), Value: json.RawMessage(requestedPayment),
+		},
+		{
+			ID: "detail-internal-2", Type: "account_information", TypeID: "type-internal-2", TypeVersion: 1,
+			Requested: json.RawMessage(requestedAccount), Value: json.RawMessage(requestedAccount),
+		},
+	})
+	assert.NoError(t, err)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{
+			requestedPermissionsKey:                        "read write",
+			common.RuntimeKeyResourceServerIdentifier:      "rs-A",
+			common.RuntimeKeyRequestedAuthorizationDetails: string(encodedDetails),
+		},
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", testUser123ID).Return(
+		[]providers.EntityGroup{}, nil)
+
+	var captured providers.AccessEvaluationsRequest
+	mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			captured = args.Get(1).(providers.AccessEvaluationsRequest)
+		}).
+		Return(&providers.AccessEvaluationsResponse{
+			Evaluations: []providers.AccessEvaluationResponse{{Decision: true}, {Decision: true}},
+		}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	assert.Len(t, captured.Evaluations, 2)
+	for _, evaluation := range captured.Evaluations {
+		contextDetails, ok := evaluation.Context[providers.AccessEvaluationContextAuthorizationDetails]
+		assert.True(t, ok)
+		encoded, marshalErr := json.Marshal(contextDetails)
+		assert.NoError(t, marshalErr)
+		assert.JSONEq(t, "["+requestedPayment+","+requestedAccount+"]", string(encoded))
+		assert.NotContains(t, string(encoded), "detail-internal-1")
+		assert.NotContains(t, string(encoded), "type-internal-1")
+		assert.NotContains(t, string(encoded), "typeId")
+	}
+
+	mockAuthzService.AssertExpectations(t)
+}
+
+func TestAuthorizationExecutor_Execute_NoAuthorizationDetailsLeavesEvaluationContextEmpty(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	executor := createTestAuthzExecutor(t, mockAuthzService, mockEntityProvider, mockAuthnProvider)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{
+			requestedPermissionsKey:                   "read",
+			common.RuntimeKeyResourceServerIdentifier: "rs-A",
+		},
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", testUser123ID).Return(
+		[]providers.EntityGroup{}, nil)
+
+	mockAuthzService.On("EvaluateAccessBatch",
+		mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			if len(req.Evaluations) != 1 {
+				return false
+			}
+			_, ok := req.Evaluations[0].Context[providers.AccessEvaluationContextAuthorizationDetails]
+			return !ok && req.Evaluations[0].Context == nil
+		})).Return(&providers.AccessEvaluationsResponse{
+		Evaluations: []providers.AccessEvaluationResponse{{Decision: true}},
+	}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+
+	mockAuthzService.AssertExpectations(t)
+}
+
+func TestAuthorizationExecutor_Execute_MalformedAuthorizationDetailsReturnsError(t *testing.T) {
+	mockAuthzService := new(authzmock.AuthorizationProviderMock)
+	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	executor := createTestAuthzExecutor(t, mockAuthzService, mockEntityProvider, mockAuthnProvider)
+
+	authUser := newAuthzAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{
+			requestedPermissionsKey:                        "read",
+			common.RuntimeKeyResourceServerIdentifier:      "rs-A",
+			common.RuntimeKeyRequestedAuthorizationDetails: "not-json",
+		},
+	}
+
+	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authUser, &providers.EntityReference{EntityID: testUser123ID}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", testUser123ID).Return(
+		[]providers.EntityGroup{}, nil)
+
+	resp, err := executor.Execute(ctx)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	mockAuthzService.AssertNotCalled(t, "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
 func TestAuthorizationExecutor_Execute_DropsPermissionsWhenNoResourceServerBinding(t *testing.T) {
 	mockAuthzService := new(authzmock.AuthorizationProviderMock)
 	mockEntityProvider := new(entityprovidermock.EntityProviderInterfaceMock)

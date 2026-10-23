@@ -7,6 +7,7 @@ import (
 	"time"
 
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // OAuthMessage represents the OAuth message.
@@ -62,6 +63,8 @@ type AuthorizationCode struct {
 	// SessionID is the SSO session id carried on the flow assertion, emitted in the ID token as the
 	// sid claim. Empty when the flow established no session; unlike TokenFamilyID it is never minted here.
 	SessionID string
+	// AuthorizationDetails holds the RFC 9396 authorization details the user approved.
+	AuthorizationDetails []providers.AuthorizationDetail `json:",omitempty"`
 }
 
 // AuthZPostResponse represents the response body for the authorization POST request.
@@ -100,4 +103,6 @@ type assertionClaims struct {
 	flowErrorType          string
 	jti                    string
 	expiresAt              time.Time
+	// grantedAuthorizationDetails is nil when the assertion carries no decision on them.
+	grantedAuthorizationDetails []providers.AuthorizationDetail
 }

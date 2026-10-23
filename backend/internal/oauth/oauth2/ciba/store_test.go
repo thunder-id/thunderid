@@ -5,6 +5,7 @@ package ciba
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const testDeploymentID = "test-deployment"
@@ -89,7 +91,8 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_TransitionsAndRecordsClaims()
 	s.Require().NoError(s.store.Add(s.ctx, req))
 
 	authTime := time.Now().Truncate(time.Second)
-	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "cache-1", "urn:acr", "sess-1", authTime)
+	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "cache-1", "urn:acr", "sess-1",
+		authTime, nil)
 	s.NoError(err)
 
 	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
@@ -110,7 +113,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsWhenTheRequestWasAutho
 
 	before := time.Now()
 	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "", "", "",
-		sessionAuthTime))
+		sessionAuthTime, nil))
 	after := time.Now()
 
 	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
@@ -120,7 +123,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsWhenTheRequestWasAutho
 }
 
 func (s *CIBAStoreTestSuite) TestMarkAuthenticated_Missing_ReturnsNotFound() {
-	err := s.store.MarkAuthenticated(s.ctx, "no-such-req", "u", "", "", "", "", time.Now())
+	err := s.store.MarkAuthenticated(s.ctx, "no-such-req", "u", "", "", "", "", time.Now(), nil)
 	s.ErrorIs(err, ErrCIBARequestNotFound)
 }
 
@@ -129,7 +132,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_NotPending_ReturnsError() {
 	s.Require().NoError(s.store.Add(s.ctx, req))
 	s.Require().NoError(s.store.UpdateState(s.ctx, req.AuthReqID, CIBAStateConsumed))
 
-	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now())
+	err := s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now(), nil)
 	s.Error(err)
 }
 
@@ -147,7 +150,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_ConcurrentCallbacks() {
 		go func(i int) {
 			defer wg.Done()
 			results[i] = s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "user-1", "openid", "cache-1",
-				"urn:acr", "", time.Now())
+				"urn:acr", "", time.Now(), nil)
 		}(i)
 	}
 	wg.Wait()
@@ -164,7 +167,7 @@ func (s *CIBAStoreTestSuite) TestMarkAuthenticated_ConcurrentCallbacks() {
 func (s *CIBAStoreTestSuite) TestMarkConsumed_OnceThenFalse() {
 	req := s.sampleRequest()
 	s.Require().NoError(s.store.Add(s.ctx, req))
-	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now()))
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now(), nil))
 
 	consumed, err := s.store.MarkConsumed(s.ctx, req.AuthReqID)
 	s.NoError(err)
@@ -198,7 +201,7 @@ func (s *CIBAStoreTestSuite) TestMarkConsumed_Missing_ReturnsFalseNoError() {
 func (s *CIBAStoreTestSuite) TestMarkConsumed_ConcurrentPolls() {
 	req := s.sampleRequest()
 	s.Require().NoError(s.store.Add(s.ctx, req))
-	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now()))
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now(), nil))
 
 	const workers = 10
 	var wg sync.WaitGroup
@@ -231,6 +234,33 @@ func (s *CIBAStoreTestSuite) TestUpdateState() {
 	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
 	s.Require().NoError(err)
 	s.Equal(CIBAStateDenied, got.State)
+}
+
+func (s *CIBAStoreTestSuite) TestMarkFailed_RecordsTheReason() {
+	req := s.sampleRequest()
+	s.Require().NoError(s.store.Add(s.ctx, req))
+
+	s.Require().NoError(s.store.MarkFailed(s.ctx, req.AuthReqID, CIBAStateDenied, "over limit"))
+
+	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
+	s.Require().NoError(err)
+	s.Equal(CIBAStateDenied, got.State)
+	s.Equal("over limit", got.FailureDescription)
+	s.Error(s.store.MarkFailed(s.ctx, "no-such-req", CIBAStateDenied, ""))
+}
+
+func (s *CIBAStoreTestSuite) TestMarkAuthenticated_RecordsAuthorizationDetails() {
+	req := s.sampleRequest()
+	s.Require().NoError(s.store.Add(s.ctx, req))
+	granted := []providers.AuthorizationDetail{{ID: "d-1", Type: "payment_initiation", TypeID: "type-2",
+		TypeVersion: 2, Requested: json.RawMessage(`{"type":"payment_initiation"}`),
+		Value: json.RawMessage(`{"type":"payment_initiation","amount":45.00}`), Admitted: true}}
+
+	s.Require().NoError(s.store.MarkAuthenticated(s.ctx, req.AuthReqID, "u", "", "", "", "", time.Now(), granted))
+
+	got, err := s.store.GetByID(s.ctx, req.AuthReqID)
+	s.Require().NoError(err)
+	s.Equal(granted, got.AuthorizationDetails)
 }
 
 func (s *CIBAStoreTestSuite) TestUpdateLastPolled() {

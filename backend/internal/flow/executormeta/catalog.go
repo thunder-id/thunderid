@@ -38,7 +38,8 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "callbackType"},
 		},
 	},
-	ExecutorNameAuthorization: {},
+	ExecutorNameAuthorization:       {},
+	ExecutorNameAuthorizationDetail: {},
 	ExecutorNameClientSecret: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},

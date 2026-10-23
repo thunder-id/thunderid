@@ -188,6 +188,10 @@
         "reject_private_addresses" : true
       }
     },
+    "authorization_details": {
+      "processor_timeout": 5,
+      "type_metadata_enabled": true
+    },
     "revocation": {
       "token_family": {
         "on_refresh_replay": true,
@@ -319,6 +323,9 @@
   },
   "resource": {
     "default_delimiter": ":",
+    "store": "composite"
+  },
+  "authorization_detail_type": {
     "store": "composite"
   },
   "resource_sharing": {

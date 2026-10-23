@@ -2843,6 +2843,112 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesSessionID() {
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthorizationDetails() {
+	details := json.RawMessage(`[{"type":"payment_initiation","id":"d1"}]`)
+	buildCtx := &AccessTokenBuildContext{
+		Subject:              "user123",
+		Audiences:            []string{"app123"},
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:             suite.oauthApp,
+		AuthorizationDetails: details,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			value, ok := claims[constants.ClaimAuthorizationDetails].(json.RawMessage)
+			return ok && string(value) == string(details)
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), details, result.AuthorizationDetails)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_OmitsAuthorizationDetailsWhenNone() {
+	buildCtx := &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:  suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, exists := claims[constants.ClaimAuthorizationDetails]
+			return !exists
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result.AuthorizationDetails)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesAuthorizationDetails() {
+	buildCtx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+		AuthorizationDetails: testPaymentDetails,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "test-client", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			value, ok := claims[constants.ClaimRefreshAuthorizationDetails].(json.RawMessage)
+			_, onAccessClaim := claims[constants.ClaimAuthorizationDetails]
+			versions, err := json.Marshal(claims[constants.ClaimRefreshAuthorizationDetailVersions])
+			return ok && string(value) == `[{"type":"payment_initiation","id":"d1"}]` && !onAccessClaim &&
+				err == nil && string(versions) == `{"payment_initiation":{"id":"type-2","version":2}}`
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testRefreshToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_OmitsAuthorizationDetailsWhenNone() {
+	buildCtx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "test-client", "https://example.com", mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, exists := claims[constants.ClaimRefreshAuthorizationDetails]
+			_, versionsExist := claims[constants.ClaimRefreshAuthorizationDetailVersions]
+			return !exists && !versionsExist
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	_, err := suite.builder.BuildRefreshToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 // sidAllowListedApp is an application that allow-lists a user attribute named sid for the ID token,
 // the configuration under which the attribute merge would otherwise emit a user-supplied sid.
 func sidAllowListedApp() *providers.OAuthClient {
@@ -3233,3 +3339,9 @@ func (s *OUAttributesTestSuite) TestOnlyTheClaimsSuppliedAreReplaced() {
 	s.Equal("customer-a", claims[constants.ClaimOUID])
 	s.Equal("owner", claims[constants.ClaimOUHandle])
 }
+
+// testPaymentDetails is a granted detail as a refresh token carries it.
+var testPaymentDetails = []providers.AuthorizationDetail{{
+	Type: "payment_initiation", TypeID: "type-2", TypeVersion: 2,
+	Value: json.RawMessage(`{"type":"payment_initiation","id":"d1"}`), Admitted: true,
+}}

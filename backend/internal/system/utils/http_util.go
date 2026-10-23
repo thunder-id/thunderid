@@ -584,13 +584,14 @@ func FilterSensitiveHeaders(h map[string][]string) map[string][]string {
 // so they never reach the flow-context store or a {{request(query.*)}} placeholder. The query-param
 // counterpart of sensitiveHeaders.
 var sensitiveQueryParams = map[string]bool{
-	constants.ClientSecretParamName:        true,
-	constants.ClientAssertionParamName:     true,
-	constants.ClientAssertionTypeParamName: true,
+	constants.ClientSecretParamName:         true,
+	constants.ClientAssertionParamName:      true,
+	constants.ClientAssertionTypeParamName:  true,
+	constants.AuthorizationDetailsParamName: true,
 }
 
-// IsSensitiveQueryParam reports whether a request query parameter carries client credentials and
-// must not be exposed through a captured InitiatorRequest.QueryParams.
+// IsSensitiveQueryParam reports whether a request query parameter carries client credentials or
+// raw authorization details and must not be exposed through a captured InitiatorRequest.QueryParams.
 func IsSensitiveQueryParam(name string) bool {
 	return sensitiveQueryParams[name]
 }

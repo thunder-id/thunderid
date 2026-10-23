@@ -373,6 +373,30 @@ type OAuthConfig struct {
 
 	TokenRevocation OAuthTokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
 	Logout          LogoutConfig               `yaml:"logout" json:"logout"`
+	// AuthorizationDetails holds the RFC 9396 authorization details configuration.
+	AuthorizationDetails AuthorizationDetailsConfig `yaml:"authorization_details" json:"authorization_details"`
+}
+
+// AuthorizationDetailsConfig holds the RFC 9396 authorization details configuration.
+type AuthorizationDetailsConfig struct {
+	// ProcessorTimeout bounds one authorization details processor call, in seconds.
+	ProcessorTimeout int64 `yaml:"processor_timeout" json:"processor_timeout"`
+	// TypeMetadataEnabled serves the type metadata endpoint and advertises it in discovery.
+	TypeMetadataEnabled *bool `yaml:"type_metadata_enabled" json:"type_metadata_enabled"`
+}
+
+// ProcessorTimeoutOrDefault reports the authorization details processor call timeout, five seconds by default.
+func (c AuthorizationDetailsConfig) ProcessorTimeoutOrDefault() time.Duration {
+	if c.ProcessorTimeout <= 0 {
+		return 5 * time.Second
+	}
+	return time.Duration(c.ProcessorTimeout) * time.Second
+}
+
+// IsTypeMetadataEnabled returns whether the type metadata endpoint is served, defaulting to true if unset, as
+// default.json does.
+func (c AuthorizationDetailsConfig) IsTypeMetadataEnabled() bool {
+	return c.TypeMetadataEnabled == nil || *c.TypeMetadataEnabled
 }
 
 // SendServerErrorsToClientEnabled reports whether server errors reach the client, defaulting to

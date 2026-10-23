@@ -465,6 +465,12 @@ configuration:
     # MCP clients should register through Dynamic Client Registration instead.
     cimd:
       enabled: true
+    # RFC 9396 rich authorization requests. processorTimeout bounds one call to an authorization details
+    # type's processor, in seconds (at most 30). typeMetadataEnabled serves the type metadata endpoint and
+    # advertises it in the authorization server metadata.
+    authorizationDetails:
+      processorTimeout: 5
+      typeMetadataEnabled: true
     # Maximum revocation entries one role, group or scope change may record; a larger change is refused.
     revocation:
       criteria:
@@ -647,7 +653,7 @@ configuration:
   #   identity_provider: declarative
   # Supported keys: user, group, role, theme, layout, translation, agent, user_type,
   # organization_unit, identity_provider, application, server_config, resource,
-  # notification_template.
+  # authorization_detail_type, notification_template.
   stores: {}
 
 

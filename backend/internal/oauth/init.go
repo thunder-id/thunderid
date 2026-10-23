@@ -60,6 +60,8 @@ func Initialize(
 	ssoSession session.Service,
 	ssoTransport session.HandleTransportInterface,
 	flowProvider providers.FlowProvider,
+	authzDetails providers.AuthorizationDetailProvider,
+	authzDetailTypes providers.AuthorizationDetailTypeProvider,
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -68,7 +70,7 @@ func Initialize(
 	})
 	resolver := jwksresolver.Initialize(httpClient)
 	scopeValidator := scope.Initialize()
-	discoveryService := discovery.Initialize(mux, runtimeCrypto, jweService, cfg)
+	discoveryService := discovery.Initialize(mux, runtimeCrypto, jweService, authzDetailTypes, cfg)
 	jtiStore := jti.Initialize(runtimeStore)
 	// The revocation services are constructed by the service manager, not here: the session service
 	// needs the same criteria revoker, and it is wired before the OAuth engine. This registers the
@@ -84,10 +86,10 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
 		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
+		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore, authzDetails)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
 		jwtService, flowExecService, parService, revocationSvc, ssoSession, ssoTransport, flowProvider, cfg,
-		runtimeStore, transactioner, jtiStore)
+		runtimeStore, transactioner, jtiStore, authzDetails)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -96,13 +98,13 @@ func Initialize(
 	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
 		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeCIBA)) {
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-			discoveryService, resourceService, runtimeStore, jtiStore, cfg)
+			discoveryService, resourceService, runtimeStore, jtiStore, authzDetails, cfg)
 	}
 
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
-		cibaService, revocationSvc, revocationSvc, enforcementService, cfg)
+		cibaService, revocationSvc, revocationSvc, enforcementService, authzDetails, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, cfg)

@@ -25,6 +25,8 @@ type IntrospectResponse struct {
 	Iss       string    `json:"iss,omitempty"`
 	Jti       string    `json:"jti,omitempty"`
 	Cnf       *CnfClaim `json:"cnf,omitempty"`
+	// AuthorizationDetails carries the RFC 9396 authorization details of the token.
+	AuthorizationDetails any `json:"authorization_details,omitempty"`
 }
 
 // CnfClaim represents the confirmation claim. For DPoP-bound tokens this carries

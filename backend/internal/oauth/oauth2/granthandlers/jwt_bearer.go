@@ -152,7 +152,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		tokenservice.JoinScopes(grantedScopes), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, resources, permissionScopes)
+		ctx, h.resourceService, resources, permissionScopes, false)
 	if errResp != nil {
 		return nil, errResp
 	}

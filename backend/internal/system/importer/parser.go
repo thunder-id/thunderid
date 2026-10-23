@@ -17,6 +17,7 @@ const (
 	resourceTypeEntityType              = "user_type"
 	resourceTypeAgentType               = "agent_type"
 	resourceTypeResourceServer          = "resource_server"
+	resourceTypeAuthorizationDetailType = "authorization_detail_type"
 	resourceTypeRole                    = "role"
 	resourceTypeGroup                   = "group"
 	resourceTypeConnection              = "connection"
@@ -98,6 +99,7 @@ func isKnownResourceType(resourceType string) bool {
 		resourceTypeEntityType:              {},
 		resourceTypeAgentType:               {},
 		resourceTypeResourceServer:          {},
+		resourceTypeAuthorizationDetailType: {},
 		resourceTypeRole:                    {},
 		resourceTypeConnection:              {},
 		resourceTypeFlow:                    {},

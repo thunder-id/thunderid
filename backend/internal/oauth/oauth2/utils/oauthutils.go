@@ -5,6 +5,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -16,8 +17,38 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
+
+// ValidateAuthorizationDetails validates a request's authorization_details, mapping a refusal to an OAuth error.
+func ValidateAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	raw string) (json.RawMessage, *model.ErrorResponse) {
+	details, svcErr := authzDetails.ValidateAuthorizationDetails(ctx, raw)
+	if svcErr != nil {
+		return nil, AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return details, nil
+}
+
+// AuthorizationDetailsErrorResponse maps an authorization details error to an OAuth error response.
+func AuthorizationDetailsErrorResponse(svcErr *tidcommon.ServiceError) *model.ErrorResponse {
+	if svcErr.Type != tidcommon.ClientErrorType {
+		return &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to process authorization details",
+		}
+	}
+	description := SanitizeErrorDescription(svcErr.ErrorDescription.String())
+	if description == "" {
+		description = SanitizeErrorDescription(svcErr.Error.String())
+	}
+	return &model.ErrorResponse{
+		Error:            constants.ErrorInvalidAuthorizationDetails,
+		ErrorDescription: description,
+	}
+}
 
 // GetURIWithQueryParams constructs a URI with the given query parameters.
 // It validates the error code and error description according to the spec.

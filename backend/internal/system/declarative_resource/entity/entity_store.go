@@ -44,6 +44,7 @@ const (
 	KeyTypeServerConfig            KeyType = "server-config"
 	KeyTypeGateway                 KeyType = "gateway"
 	KeyTypeNotificationTemplate    KeyType = "notification-template"
+	KeyTypeAuthorizationDetailType KeyType = "authorization-detail-type"
 )
 
 // String returns the string representation of KeyType
@@ -58,7 +59,7 @@ func (kt KeyType) IsValid() bool {
 		KeyTypeEntityType, KeyTypeOU, KeyTypeFlow, KeyTypeTranslation, KeyTypeTheme, KeyTypeLayout,
 		KeyTypeResourceServer, KeyTypeResource, KeyTypeAction, KeyTypeRole, KeyTypeUser, KeyTypeTemplate,
 		KeyTypeInboundAuth, KeyTypeGroup, KeyTypePresentationDefinition, KeyTypeCredentialConfiguration,
-		KeyTypeServerConfig, KeyTypeGateway, KeyTypeNotificationTemplate,
+		KeyTypeServerConfig, KeyTypeGateway, KeyTypeNotificationTemplate, KeyTypeAuthorizationDetailType,
 		KeyTypeEntity:
 		return true
 	default:

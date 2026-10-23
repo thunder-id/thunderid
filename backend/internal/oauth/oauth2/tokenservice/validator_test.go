@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
@@ -1380,6 +1381,123 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_WithoutDP
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Empty(suite.T(), result.DPoPJkt)
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_WithAuthorizationDetails() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "test-client",
+		"exp":              float64(now + 3600),
+		"iat":              float64(now),
+		"scope":            "read",
+		"access_token_sub": "user123",
+		"access_token_aud": testAppID,
+		"grant_type":       "authorization_code",
+		constants.ClaimRefreshAuthorizationDetails: []interface{}{
+			map[string]interface{}{"type": "payment_initiation", "id": "d1"},
+		},
+		constants.ClaimRefreshAuthorizationDetailVersions: map[string]interface{}{
+			"payment_initiation": map[string]interface{}{"id": "type-2", "version": float64(2)},
+		},
+	}
+	token := suite.createTestJWT(claims)
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.Require().Len(result.AuthorizationDetails, 1)
+	assert.JSONEq(suite.T(), `{"type":"payment_initiation","id":"d1"}`, string(result.AuthorizationDetails[0].Value))
+	detail := result.AuthorizationDetails[0]
+	detail.Value = testPaymentDetails[0].Value
+	assert.Equal(suite.T(), testPaymentDetails[0], detail)
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_AuthorizationDetailsWithoutVersions() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "test-client",
+		"exp":              float64(now + 3600),
+		"iat":              float64(now),
+		"scope":            "read",
+		"access_token_sub": "user123",
+		"access_token_aud": testAppID,
+		"grant_type":       "authorization_code",
+		constants.ClaimRefreshAuthorizationDetails: []interface{}{
+			map[string]interface{}{"type": "payment_initiation", "amount": 9007199254740995},
+		},
+	}
+	token := suite.createTestJWT(claims)
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	suite.Require().Len(result.AuthorizationDetails, 1)
+	assert.Equal(suite.T(), "payment_initiation", result.AuthorizationDetails[0].Type)
+	assert.Empty(suite.T(), result.AuthorizationDetails[0].TypeID, "no type version was recorded")
+	assert.Contains(suite.T(), string(result.AuthorizationDetails[0].Value), "9007199254740995",
+		"numbers are kept exactly")
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_MalformedAuthorizationDetails() {
+	for name, extra := range map[string]map[string]interface{}{
+		"details not a list":    {constants.ClaimRefreshAuthorizationDetails: "payment"},
+		"detail not an object":  {constants.ClaimRefreshAuthorizationDetails: []interface{}{"payment"}},
+		"versions not a object": {constants.ClaimRefreshAuthorizationDetailVersions: []interface{}{"payment"}},
+	} {
+		now := time.Now().Unix()
+		claims := map[string]interface{}{
+			"sub":              "test-client",
+			"iss":              "https://example.com",
+			"aud":              "test-client",
+			"exp":              float64(now + 3600),
+			"iat":              float64(now),
+			"scope":            "read",
+			"access_token_sub": "user123",
+			"access_token_aud": testAppID,
+			"grant_type":       "authorization_code",
+		}
+		for k, v := range extra {
+			claims[k] = v
+		}
+		token := suite.createTestJWT(claims)
+		suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+		_, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+		assert.Error(suite.T(), err, name)
+	}
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_WithoutAuthorizationDetails() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "test-client",
+		"exp":              float64(now + 3600),
+		"iat":              float64(now),
+		"scope":            "read",
+		"access_token_sub": "user123",
+		"access_token_aud": testAppID,
+		"grant_type":       "authorization_code",
+	}
+	token := suite.createTestJWT(claims)
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.AuthorizationDetails)
 }
 
 // ============================================================================

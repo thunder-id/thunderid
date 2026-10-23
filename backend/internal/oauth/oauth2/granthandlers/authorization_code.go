@@ -5,11 +5,14 @@ package granthandlers
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -30,6 +33,7 @@ type authorizationCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
+	authzDetails       providers.AuthorizationDetailProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -39,6 +43,7 @@ func newAuthorizationCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
+	authzDetails providers.AuthorizationDetailProvider,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
 		authzService:       authzService,
@@ -46,6 +51,7 @@ func newAuthorizationCodeGrantHandler(
 		attributeCache:     attributeCache,
 		resourceService:    resourceService,
 		enforcementService: enforcementService,
+		authzDetails:       authzDetails,
 	}
 }
 
@@ -89,6 +95,14 @@ func (h *authorizationCodeGrantHandler) ValidateGrant(ctx context.Context, token
 
 	if errResp := resourceindicators.ValidateResourceURIs(tokenRequest.Resources); errResp != nil {
 		return errResp
+	}
+
+	// Refused before the code is consumed so that a malformed request does not use up the grant.
+	if tokenRequest.AuthorizationDetails != "" {
+		if _, err := authzdetailcommon.ParseRequestedDetails(tokenRequest.AuthorizationDetails); err != nil {
+			return oauth2utils.AuthorizationDetailsErrorResponse(
+				authzdetailexec.ErrorMalformedAuthorizationDetails.WithParams(map[string]string{"reason": err.Error()}))
+		}
 	}
 
 	return nil
@@ -140,7 +154,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(authorizedScopes, " "), oauthApp.ScopeClaims)
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, effectiveResources, nonOidcScopes)
+		ctx, h.resourceService, effectiveResources, nonOidcScopes, len(authCode.AuthorizationDetails) > 0)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -173,24 +187,31 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResp
 	}
 
+	authorizationDetails, errResp := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
+		authCode.AuthorizationDetails, tokenRequest.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Generate access token using tokenBuilder (attributes will be filtered in BuildAccessToken)
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
-		Subject:           authCode.AuthorizedUserID,
-		Audiences:         accessTokenAudiences,
-		ClientID:          tokenRequest.ClientID,
-		Scopes:            accessTokenScopes,
-		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
-		AttributeCacheID:  authCode.AttributeCacheID,
-		GrantType:         string(providers.GrantTypeAuthorizationCode),
-		OAuthApp:          oauthApp,
-		ClaimsRequest:     authCode.ClaimsRequest,
-		ClaimsLocales:     authCode.ClaimsLocales,
-		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
-		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     authCode.TokenFamilyID,
-		SubjectEntityID:   authCode.SubjectID,
-		SubjectCategory:   authCode.SubjectCategory,
+		Subject:              authCode.AuthorizedUserID,
+		Audiences:            accessTokenAudiences,
+		ClientID:             tokenRequest.ClientID,
+		Scopes:               accessTokenScopes,
+		SubjectAttributes:    tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
+		AttributeCacheID:     authCode.AttributeCacheID,
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:             oauthApp,
+		ClaimsRequest:        authCode.ClaimsRequest,
+		ClaimsLocales:        authCode.ClaimsLocales,
+		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
+		DPoPJkt:              dpop.GetJkt(ctx),
+		TokenFamilyID:        authCode.TokenFamilyID,
+		SubjectEntityID:      authCode.SubjectID,
+		SubjectCategory:      authCode.SubjectCategory,
+		AuthorizationDetails: authorizationDetails,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -206,11 +227,19 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	// The refresh token preserves this single audience for continuity.
 	accessToken.OriginalAudiences = accessTokenAudiences
 
+	// A one-off detail is not carried on the refresh token.
+	refreshableDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
+		authCode.AuthorizationDetails)
+	if errResp != nil {
+		return nil, errResp
+	}
+
 	// Build token response
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken:   *accessToken,
-		CorrelationID: authCode.CorrelationID,
-		SessionID:     authCode.SessionID,
+		AccessToken:                 *accessToken,
+		CorrelationID:               authCode.CorrelationID,
+		SessionID:                   authCode.SessionID,
+		GrantedAuthorizationDetails: refreshableDetails,
 	}
 
 	// Generate ID token if 'openid' scope is present
@@ -321,4 +350,37 @@ func validateAuthorizationCode(tokenRequest *model.TokenRequest,
 	}
 
 	return nil
+}
+
+// refreshableAuthorizationDetails returns the granted details a refresh token may carry.
+func refreshableAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider,
+	granted []providers.AuthorizationDetail) ([]providers.AuthorizationDetail, *model.ErrorResponse) {
+	refreshable, svcErr := authzDetails.RefreshableAuthorizationDetails(ctx, granted)
+	if svcErr != nil {
+		return nil, oauth2utils.AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return refreshable, nil
+}
+
+// modifyGrantedAuthorizationDetails returns the values of the requested subset of the granted details,
+// or of the whole grant, as the access token carries them.
+func modifyGrantedAuthorizationDetails(ctx context.Context,
+	authzDetails providers.AuthorizationDetailProvider, granted []providers.AuthorizationDetail,
+	requested string) (json.RawMessage, *model.ErrorResponse) {
+	if requested == "" {
+		values, err := authzdetailcommon.EncodeDetailValues(granted)
+		if err != nil {
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorServerError,
+				ErrorDescription: "Failed to generate token",
+			}
+		}
+		return values, nil
+	}
+	modified, svcErr := authzDetails.ModifyAuthorizationDetails(ctx, granted, requested)
+	if svcErr != nil {
+		return nil, oauth2utils.AuthorizationDetailsErrorResponse(svcErr)
+	}
+	return modified, nil
 }

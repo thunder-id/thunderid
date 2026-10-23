@@ -86,6 +86,7 @@ func (suite *InitTestSuite) TestInitialize() {
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),
+		nil,
 	)
 
 	assert.NoError(suite.T(), err)
@@ -105,6 +106,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),
+		nil,
 	)
 	assert.NoError(suite.T(), err)
 
@@ -126,6 +128,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 		testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 		jti.Initialize(inmemory.Initialize("test-deployment")),
+		nil,
 	)
 	assert.NoError(suite.T(), err)
 

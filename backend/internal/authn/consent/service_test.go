@@ -16,9 +16,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/authzdetailtypeprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
@@ -75,7 +77,7 @@ func attributesPurpose(elements ...string) consent.ConsentPurpose {
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestNewConsentEnforcerService() {
-	svc := newConsentEnforcerService(s.mockJWTSvc)
+	svc := newConsentEnforcerService(s.mockJWTSvc, nil)
 	s.NotNil(svc)
 
 	// The consent service is injected after construction.
@@ -94,7 +96,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_ListPurposesClientE
 	s.mockConsentSvc.On("ListPurposes", mock.Anything, mock.Anything).Return(nil, clientErr)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.NotNil(svcErr)
@@ -110,7 +112,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_ListPurposesServerE
 	s.mockConsentSvc.On("ListPurposes", mock.Anything, mock.Anything).Return(nil, serverErr)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.NotNil(svcErr)
@@ -124,7 +126,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PassesGroupIDFilter
 
 	// No purposes and no authorized permissions -> consent is skipped.
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.Nil(svcErr)
@@ -135,7 +137,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_NoPurposesConfigure
 		Return([]consent.ConsentPurpose{}, nil)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.Nil(svcErr)
@@ -152,7 +154,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_SearchConsentsClien
 	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(nil, clientErr)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.NotNil(svcErr)
@@ -170,7 +172,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_SearchConsentsServe
 	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(nil, serverErr)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.NotNil(svcErr)
@@ -199,7 +201,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AllConsentsActive()
 	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(existingConsents, nil)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.Nil(svcErr)
@@ -214,7 +216,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_ForceRepromptIgnore
 	// forceReprompt is honored: existing active consent is ignored, the element is prompted again,
 	// and SearchConsents is never called.
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, true, nil)
+		[]string{"email"}, nil, nil, nil, nil, true, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -233,7 +235,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PromptNeeded() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("test-session-token", int64(0), nil)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, []string{"phone"}, nil, nil, false, nil)
+		[]string{"email"}, []string{"phone"}, nil, nil, nil, false, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -253,7 +255,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_RequiredAttributesF
 
 	// Only request "email" — "phone" and "address" should be filtered out
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -278,7 +280,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_UserProfileFilter()
 	// Both "email" and "phone" are requested as optional; the user-profile filter must
 	// drop "phone" because it is not present in availableAttributes.
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		nil, []string{"email", "phone"}, nil, availableAttributes, false, nil)
+		nil, []string{"email", "phone"}, nil, nil, availableAttributes, false, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -310,7 +312,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PartialConsentsExis
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("test-session-token", int64(0), nil)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, []string{"phone"}, nil, nil, false, nil)
+		[]string{"email"}, []string{"phone"}, nil, nil, nil, false, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -329,7 +331,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_PermissionsPurposeP
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("test-session-token", int64(0), nil)
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		nil, nil, []string{"booking:read"}, nil, false, nil)
+		nil, nil, []string{"booking:read"}, nil, nil, false, nil)
 
 	s.Nil(svcErr)
 	s.NotNil(result)
@@ -352,7 +354,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_CreateConsentSessio
 		})
 
 	result, svcErr := s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
-		[]string{"email"}, nil, nil, nil, false, nil)
+		[]string{"email"}, nil, nil, nil, nil, false, nil)
 
 	s.Nil(result)
 	s.NotNil(svcErr)
@@ -365,10 +367,13 @@ func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_CreateConsentSessio
 // The token is structured as a valid 3-part JWT so DecodeJWTPayload can parse it.
 // VerifyJWT is mocked to pass, so the signature is a placeholder.
 func buildTestSessionToken(purposes []consentSessionPurpose) string {
+	return encodeTestSessionToken(consentSessionData{Purposes: purposes})
+}
+
+func encodeTestSessionToken(sessionData consentSessionData) string {
 	header := map[string]string{"alg": "RS256", "typ": "JWT"}
 	headerJSON, _ := json.Marshal(header)
 
-	sessionData := consentSessionData{Purposes: purposes}
 	sessionJSON, _ := json.Marshal(sessionData)
 	payload := map[string]interface{}{
 		consentSessionClaimKey: json.RawMessage(sessionJSON),
@@ -402,7 +407,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestCreateConsentSessionToken_Generate
 			},
 		})
 
-	token, err := s.service.createConsentSessionToken(context.Background(), promptData)
+	token, err := s.service.createConsentSessionToken(context.Background(), promptData, nil)
 
 	s.Empty(token)
 	s.Error(err)
@@ -1848,4 +1853,556 @@ func (s *ConsentEnforcerServiceTestSuite) TestElementNames() {
 	s.Nil(elementNames(nil))
 	s.Nil(elementNames([]providers.PromptElement{}))
 	s.Equal([]string{"a", "b"}, elementNames([]providers.PromptElement{{Name: "a"}, {Name: "b", Parent: "a"}}))
+}
+
+// Authorization details tests
+
+const (
+	testFlightType   = "flight"
+	testFlightSchema = `{"type":"object","properties":{"route":{"type":"string"},` +
+		`"maxFare":{"type":"number","policy":{"modification":"decrease","modifiableBy":["user"]}}}}`
+)
+
+// flightType is a registered flight type whose approvals a later request may reuse.
+func flightType() *providers.AuthorizationDetailType {
+	return &providers.AuthorizationDetailType{ID: "type-1", Type: testFlightType, Name: "Flight", Version: 2,
+		Schema: json.RawMessage(testFlightSchema), Reuse: true}
+}
+
+func flightDetail(detailID, fare string) providers.AuthorizationDetail {
+	value := json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-SIN","maxFare":` + fare + `}`)
+	return providers.AuthorizationDetail{ID: detailID, Type: testFlightType, TypeID: "type-1", TypeVersion: 2,
+		Requested: value, Value: value, Admitted: true}
+}
+
+var testDetailPurpose = consent.AuthorizationDetailPurposeName("app1")
+
+// flightRecord is an active consent record holding an approval of a flight with the given fare cap.
+func flightRecord(fare string) *consent.Consent {
+	return &consent.Consent{ID: "consent-1", GroupID: "app1", Purposes: []consent.ConsentPurposeItem{{
+		Name: testDetailPurpose,
+		Elements: []consent.ConsentElementApproval{{Name: "d-0", Namespace: consent.NamespaceAuthorizationDetail,
+			IsUserApproved: true, TypeID: "type-1", TypeVersion: 2,
+			Granted: json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-SIN","maxFare":` + fare + `}`)}},
+	}}}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) withDetailTypes(t *providers.AuthorizationDetailType) {
+	types := authzdetailtypeprovidermock.NewAuthorizationDetailTypeProviderMock(s.T())
+	types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).Return(t, nil).Maybe()
+	s.service.detailTypes = types
+}
+
+func (s *ConsentEnforcerServiceTestSuite) resolveDetails(forceReprompt bool,
+	details ...providers.AuthorizationDetail) (*providers.ConsentPromptData, *tidcommon.ServiceError) {
+	s.mockConsentSvc.On("ListPurposes", mock.Anything, mock.Anything).Return([]consent.ConsentPurpose{}, nil)
+	return s.service.ResolveConsent(context.Background(), "ou1", "app1", "App 1", "user1",
+		nil, nil, nil, details, nil, forceReprompt, nil)
+}
+
+// expectSessionToken captures the consent session the enforcer signs.
+func (s *ConsentEnforcerServiceTestSuite) expectSessionToken() *consentSessionData {
+	session := &consentSessionData{}
+	s.mockJWTSvc.On("GenerateJWT", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			raw, err := json.Marshal(claims[consentSessionClaimKey])
+			return err == nil && json.Unmarshal(raw, session) == nil
+		}), mock.Anything, mock.Anything).Return("session-token", int64(0), nil).Once()
+	return session
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AuthorizationDetailsPrompted() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("500")}, nil)
+	session := s.expectSessionToken()
+
+	result, svcErr := s.resolveDetails(false, flightDetail("d-1", "450"), flightDetail("d-2", "900"))
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(result)
+	s.Require().Len(result.Purposes, 1)
+	purpose := result.Purposes[0]
+	s.Equal(testDetailPurpose, purpose.PurposeName)
+	s.Equal(consentPromptTypeAuthorizationDetails, purpose.Type)
+	s.Require().Len(purpose.Optional, 1, "d-1 is covered by the earlier approval")
+	s.Equal("d-2", purpose.Optional[0].Name)
+	s.Equal(testFlightType, purpose.Optional[0].DetailType)
+	s.NotEmpty(purpose.Optional[0].Rows)
+	s.Equal("session-token", result.SessionToken)
+	s.Require().Len(session.Purposes, 1)
+	s.Equal([]string{"d-2"}, session.Purposes[0].Optional)
+	s.Require().Len(session.Purposes[0].Details, 1, "the session holds the detail it prompts for")
+	s.Equal("d-2", session.Purposes[0].Details[0].ID)
+	s.JSONEq(string(flightDetail("d-2", "900").Value), string(session.Purposes[0].Details[0].Value))
+	s.Require().Len(session.CoveredDetails, 1, "the session holds the detail the earlier approval covers")
+	s.Equal("d-1", session.CoveredDetails[0].ID)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AuthorizationDetailsAllCovered() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("500")}, nil)
+
+	result, svcErr := s.resolveDetails(false, flightDetail("d-1", "450"))
+
+	s.Nil(svcErr)
+	s.Nil(result, "covered details need no prompt")
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AuthorizationDetailsForcedReprompt() {
+	s.withDetailTypes(flightType())
+	s.expectSessionToken()
+
+	result, svcErr := s.resolveDetails(true, flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(result)
+	s.Len(result.Purposes, 1, "a forced prompt ignores earlier approvals")
+	s.mockConsentSvc.AssertNotCalled(s.T(), "SearchConsents", mock.Anything, mock.Anything)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AuthorizationDetailsFailures() {
+	notAdmitted := flightDetail("d-1", "450")
+	notAdmitted.Admitted = false
+	edited := flightType()
+	edited.Version++
+	recreated := flightType()
+	recreated.ID = "type-1-recreated"
+	typeChanged := authzdetail.ErrorAuthorizationDetailTypeChanged.Code
+
+	cases := []struct {
+		name   string
+		types  *providers.AuthorizationDetailType
+		detail providers.AuthorizationDetail
+		code   string
+	}{
+		{"not admitted", flightType(), notAdmitted, ErrorAuthorizationDetailsNotAdmitted.Code},
+		{"type edited", edited, flightDetail("d-1", "450"), typeChanged},
+		{"type deleted", nil, flightDetail("d-1", "450"), typeChanged},
+		{"type created again", recreated, flightDetail("d-1", "450"), typeChanged},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.withDetailTypes(tc.types)
+			s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+
+			result, svcErr := s.resolveDetails(false, tc.detail)
+
+			s.Nil(result)
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.code, svcErr.Code)
+		})
+	}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestResolveConsent_AuthorizationDetailsTypeLookupFails() {
+	types := authzdetailtypeprovidermock.NewAuthorizationDetailTypeProviderMock(s.T())
+	types.EXPECT().GetAuthorizationDetailTypeByValue(mock.Anything, testFlightType).
+		Return(nil, &tidcommon.InternalServerError).Once()
+	s.service.detailTypes = types
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+
+	_, svcErr := s.resolveDetails(false, flightDetail("d-1", "450"))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func detailSessionToken(details ...providers.AuthorizationDetail) string {
+	optional := make([]string, 0, len(details))
+	for _, detail := range details {
+		optional = append(optional, detail.ID)
+	}
+	return buildTestSessionToken([]consentSessionPurpose{{PurposeName: testDetailPurpose, Optional: optional,
+		Details: details}})
+}
+
+func detailDecision(detailID string, approved bool) providers.PurposeDecision {
+	return providers.PurposeDecision{PurposeName: testDetailPurpose,
+		Approved: approved, Elements: []providers.ElementDecision{{Name: detailID, Approved: approved}}}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) recordDetails(decisions *providers.ConsentDecisions,
+	details ...providers.AuthorizationDetail) (*providers.Consent, *tidcommon.ServiceError) {
+	token := detailSessionToken(details...)
+	s.mockJWTSvc.On("VerifyJWT", mock.Anything, token, consentSessionTokenAudience, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil))
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil).Maybe()
+	return s.service.RecordConsent(context.Background(), "ou1", "app1", "user1", decisions, token, 0, nil)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_KeepsReusableApprovalsInTheSameRecord() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("500")}, nil)
+	var written *consent.ConsentRequest
+	captureWrite := func(r *consent.ConsentRequest) bool {
+		written = r
+		return true
+	}
+	s.mockConsentSvc.On("UpdateConsent", mock.Anything, "consent-1", mock.MatchedBy(captureWrite)).
+		Return(&consent.Consent{ID: "consent-1"}, nil).Once()
+
+	result, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true, Purposes: []providers.PurposeDecision{
+		detailDecision("d-1", true), detailDecision("d-2", false)}},
+		flightDetail("d-1", "450"), flightDetail("d-2", "900"))
+
+	s.Require().Nil(svcErr)
+	s.Equal("consent-1", result.ID)
+	s.Require().Len(result.GrantedAuthorizationDetails, 1)
+	s.Equal("d-1", result.GrantedAuthorizationDetails[0].ID)
+	s.Require().Len(written.Purposes, 1)
+	elements := written.Purposes[0].Elements
+	s.Require().Len(elements, 2, "the earlier approval is kept beside the new one, and the denial is not kept")
+	s.Equal("d-1", elements[1].Name)
+	s.Equal("type-1", elements[1].TypeID)
+	s.Equal(2, elements[1].TypeVersion)
+	s.JSONEq(string(flightDetail("d-1", "450").Value), string(elements[1].Granted))
+	s.JSONEq(string(flightDetail("d-1", "450").Requested), string(elements[1].Requested))
+	s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_CreatesARecordForApprovedDetails() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+	s.mockConsentSvc.On("CreateConsent", mock.Anything, mock.MatchedBy(func(r *consent.ConsentRequest) bool {
+		return len(r.Purposes) == 1 && r.Purposes[0].Name == testDetailPurpose
+	})).Return(&consent.Consent{ID: "consent-new"}, nil).Once()
+
+	result, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-1", true)}}, flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Equal("consent-new", result.ID)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_DetailsKeepingNothingWriteNothing() {
+	oneOff := flightType()
+	oneOff.Reuse = false
+	cases := map[string]struct {
+		types     *providers.AuthorizationDetailType
+		decisions *providers.ConsentDecisions
+		granted   int
+	}{
+		"denied": {flightType(), &providers.ConsentDecisions{Approved: false,
+			Purposes: []providers.PurposeDecision{detailDecision("d-1", true)}}, 0},
+		"declined": {flightType(), &providers.ConsentDecisions{Approved: true,
+			Purposes: []providers.PurposeDecision{detailDecision("d-1", false)}}, 0},
+		"approved on a type that is never reused": {oneOff, &providers.ConsentDecisions{Approved: true,
+			Purposes: []providers.PurposeDecision{detailDecision("d-1", true)}}, 1},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.withDetailTypes(tc.types)
+			s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+
+			result, svcErr := s.recordDetails(tc.decisions, flightDetail("d-1", "450"))
+
+			s.Require().Nil(svcErr)
+			s.Empty(result.ID)
+			s.Len(result.GrantedAuthorizationDetails, tc.granted)
+			s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+			s.mockConsentSvc.AssertNotCalled(s.T(), "UpdateConsent", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func modifiedDecision(detailID string, modified map[string]json.RawMessage) providers.PurposeDecision {
+	decision := detailDecision(detailID, true)
+	decision.Elements[0].Modified = modified
+	return decision
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_KeepsAModifiedApprovalAtItsModifiedValue() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+	var written *consent.ConsentRequest
+	s.mockConsentSvc.On("CreateConsent", mock.Anything, mock.MatchedBy(func(r *consent.ConsentRequest) bool {
+		written = r
+		return true
+	})).Return(&consent.Consent{ID: "consent-new"}, nil).Once()
+
+	result, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{modifiedDecision("d-1",
+			map[string]json.RawMessage{"maxFare": json.RawMessage(`300`)})}}, flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(result.GrantedAuthorizationDetails, 1)
+	s.JSONEq(string(flightDetail("d-1", "300").Value), string(result.GrantedAuthorizationDetails[0].Value))
+	s.JSONEq(string(flightDetail("d-1", "450").Requested), string(result.GrantedAuthorizationDetails[0].Requested),
+		"the request is kept as the client sent it")
+	s.Require().Len(written.Purposes, 1)
+	s.Require().Len(written.Purposes[0].Elements, 1)
+	s.JSONEq(string(flightDetail("d-1", "300").Value), string(written.Purposes[0].Elements[0].Granted))
+	s.JSONEq(string(flightDetail("d-1", "450").Requested), string(written.Purposes[0].Elements[0].Requested))
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_RefusesChangesTheUserMayNotMake() {
+	cases := map[string]map[string]json.RawMessage{
+		"raises the value":               {"maxFare": json.RawMessage(`900`)},
+		"changes a field with no policy": {"route": json.RawMessage(`"CMB-LHR"`)},
+		"adds a field":                   {"note": json.RawMessage(`"x"`)},
+		"breaks the schema":              {"maxFare": json.RawMessage(`"low"`)},
+		"path through a value":           {"route.code": json.RawMessage(`"x"`)},
+		"changes the type":               {"type": json.RawMessage(`"other"`)},
+	}
+	for name, change := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.withDetailTypes(flightType())
+
+			_, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true,
+				Purposes: []providers.PurposeDecision{modifiedDecision("d-1", change)}}, flightDetail("d-1", "450"))
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorAuthorizationDetailModificationRefused.Code, svcErr.Code)
+			s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+			s.mockConsentSvc.AssertNotCalled(s.T(), "UpdateConsent", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_ApprovedDetailOfAChangedType() {
+	edited := flightType()
+	edited.Version++
+	s.withDetailTypes(edited)
+
+	_, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-1", true)}}, flightDetail("d-1", "450"))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(authzdetail.ErrorAuthorizationDetailTypeChanged.Code, svcErr.Code)
+	s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+}
+
+// recordWithCovered records the given decisions on a prompt for the prompted detail, with the covered
+// detail an earlier approval covers.
+func (s *ConsentEnforcerServiceTestSuite) recordWithCovered(decisions *providers.ConsentDecisions,
+	prompted, covered providers.AuthorizationDetail) (*providers.Consent, *tidcommon.ServiceError) {
+	token := encodeTestSessionToken(consentSessionData{
+		Purposes: []consentSessionPurpose{{PurposeName: testDetailPurpose, Optional: []string{prompted.ID},
+			Details: []providers.AuthorizationDetail{prompted}}},
+		CoveredDetails: []providers.AuthorizationDetail{covered},
+	})
+	s.mockJWTSvc.On("VerifyJWT", mock.Anything, token, consentSessionTokenAudience, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil))
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil).Maybe()
+	return s.service.RecordConsent(context.Background(), "ou1", "app1", "user1", decisions, token, 0, nil)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_GrantsCoveredDetailsAsRequested() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("450")}, nil)
+
+	result, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", false)}},
+		flightDetail("d-2", "900"), flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(result.GrantedAuthorizationDetails, 1, "the declined prompted detail is not granted")
+	s.Equal("d-1", result.GrantedAuthorizationDetails[0].ID)
+	s.JSONEq(string(flightDetail("d-1", "450").Value), string(result.GrantedAuthorizationDetails[0].Value))
+	s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+}
+
+// An approval given on the same prompt never grants a prompted detail the user declined, even one it covers.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_DeclinedDetailIsNotGrantedByAnotherApproval() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+	s.mockConsentSvc.On("CreateConsent", mock.Anything, mock.Anything).
+		Return(&consent.Consent{ID: "consent-new"}, nil).Once()
+	decision := providers.PurposeDecision{PurposeName: testDetailPurpose, Approved: true,
+		Elements: []providers.ElementDecision{{Name: "d-1", Approved: true}, {Name: "d-2", Approved: false}}}
+
+	result, svcErr := s.recordDetails(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{decision}}, flightDetail("d-1", "450"), flightDetail("d-2", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Require().Len(result.GrantedAuthorizationDetails, 1)
+	s.Equal("d-1", result.GrantedAuthorizationDetails[0].ID)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_DeniedPromptGrantsNoCoveredDetails() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+
+	result, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: false,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", true)}},
+		flightDetail("d-2", "900"), flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Empty(result.GrantedAuthorizationDetails)
+}
+
+// A covered detail whose type changed after the prompt was shown fails the decision before anything is
+// recorded, as a prompted one does.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_CoveredDetailOfAChangedType() {
+	edited := flightType()
+	edited.Version++
+	s.withDetailTypes(edited)
+
+	_, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", false)}},
+		flightDetail("d-2", "900"), flightDetail("d-1", "450"))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(authzdetail.ErrorAuthorizationDetailTypeChanged.Code, svcErr.Code)
+	s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
+	s.mockConsentSvc.AssertNotCalled(s.T(), "UpdateConsent", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A covered detail whose approval was revoked while the prompt was open is not granted.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_RevokedApprovalNoLongerCovers() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
+
+	result, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", false)}},
+		flightDetail("d-2", "900"), flightDetail("d-1", "450"))
+
+	s.Require().Nil(svcErr)
+	s.Empty(result.GrantedAuthorizationDetails)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildConsentElementApprovals_SkipsAuthorizationDetailPurposes() {
+	session := &consentSessionData{Purposes: []consentSessionPurpose{{
+		PurposeName: testDetailPurpose, Optional: []string{"d-1"},
+		Details: []providers.AuthorizationDetail{flightDetail("d-1", "450")}}}}
+	decisions := &providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-1", true)}}
+
+	s.Empty(buildConsentElementApprovals(session, decisions))
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestPromptedDetails() {
+	details := []providers.AuthorizationDetail{flightDetail("d-1", "450"), flightDetail("d-2", "900")}
+
+	prompted := promptedDetails(providers.ConsentPurposePrompt{Type: consentPromptTypeAuthorizationDetails,
+		Optional: []providers.PromptElement{{Name: "d-2"}, {Name: "d-3"}}}, details)
+	s.Require().Len(prompted, 1)
+	s.Equal("d-2", prompted[0].ID)
+	s.Nil(promptedDetails(providers.ConsentPurposePrompt{
+		Optional: []providers.PromptElement{{Name: "d-2"}}}, details),
+		"only an authorization details purpose prompts for details")
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestApprovedAuthorizationDetails_ReadsOnlyApprovedDetailElements() {
+	records := []*consent.Consent{{Purposes: []consent.ConsentPurposeItem{
+		{Name: "attributes:app-1", Elements: []consent.ConsentElementApproval{{Name: "email", IsUserApproved: true}}},
+		{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{
+			{Name: "d1", Namespace: consent.NamespaceAuthorizationDetail, IsUserApproved: true, TypeID: "t-1",
+				TypeVersion: 2, Granted: json.RawMessage(`{"type":"pay","amount":35}`)},
+			{Name: "d2", Namespace: consent.NamespaceAuthorizationDetail, TypeVersion: 2},
+		}},
+		{Name: consent.AuthorizationDetailPurposeName("other-app"), Elements: []consent.ConsentElementApproval{
+			{Name: "d3", Namespace: consent.NamespaceAuthorizationDetail, IsUserApproved: true, TypeID: "t-1",
+				TypeVersion: 2, Granted: json.RawMessage(`{"type":"pay","amount":99}`)},
+		}},
+	}}}
+
+	approvals := approvedAuthorizationDetails(records, testDetailPurpose)
+
+	s.Require().Len(approvals, 1)
+	s.Equal("t-1", approvals[0].TypeID)
+	s.Equal(2, approvals[0].TypeVersion)
+	s.JSONEq(`{"type":"pay","amount":35}`, string(approvals[0].Granted))
+}
+
+// typedElement is an authorization detail approval of the given type value, type identifier and version.
+func typedElement(name, typ, typeID string, version int) consent.ConsentElementApproval {
+	return consent.ConsentElementApproval{Name: name, Namespace: consent.NamespaceAuthorizationDetail,
+		IsUserApproved: true, TypeID: typeID, TypeVersion: version,
+		Granted: json.RawMessage(`{"type":"` + typ + `"}`)}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes() {
+	d1 := typedElement("d1", "a", "t-a", 1)
+	d1.Granted = json.RawMessage(`{"type":"a","scope":"other"}`)
+	existing := []consent.ConsentPurposeItem{
+		{Name: "attributes:app1", Elements: []consent.ConsentElementApproval{{Name: "email"}}},
+		{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{d1}},
+	}
+	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
+		testDetailPurpose: {typedElement("d2", "a", "t-a", 1), typedElement("d3", "b", "t-b", 1)},
+	}, nil)
+	s.Require().Len(merged, 2)
+	s.Equal("attributes:app1", merged[0].Name)
+	names := make([]string, 0, len(merged[1].Elements))
+	for _, element := range merged[1].Elements {
+		names = append(names, element.Name)
+	}
+	s.Equal([]string{"d1", "d2", "d3"}, names, "approvals of every type share the purpose")
+	s.Len(existing[1].Elements, 1, "the existing record is not modified")
+	s.Equal(existing, mergeAuthorizationDetailPurposes(existing, nil, nil))
+
+	created := mergeAuthorizationDetailPurposes(existing[:1], map[string][]consent.ConsentElementApproval{
+		testDetailPurpose: {typedElement("d2", "a", "t-a", 1)},
+	}, nil)
+	s.Require().Len(created, 2)
+	s.Equal(testDetailPurpose, created[1].Name, "the purpose is added when the record has none")
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes_DropsElementsOfOtherVersions() {
+	d2 := typedElement("d2", "a", "t-1", 2)
+	d2.Granted = json.RawMessage(`{"type":"a","scope":"other"}`)
+	existing := []consent.ConsentPurposeItem{{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{
+		typedElement("d1", "a", "t-1", 1),
+		d2,
+		typedElement("d4", "a", "t-0", 2),
+		typedElement("d5", "b", "t-b", 1),
+	}}}
+	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
+		testDetailPurpose: {typedElement("d3", "a", "t-1", 2)},
+	}, nil)
+	s.Require().Len(merged, 1)
+	names := make([]string, 0, len(merged[0].Elements))
+	for _, element := range merged[0].Elements {
+		names = append(names, element.Name)
+	}
+	s.Equal([]string{"d2", "d5", "d3"}, names,
+		"approvals on an earlier version, or on a deleted type of the same value, no longer count; "+
+			"those of other types are kept")
+	s.Len(existing[0].Elements, 4, "the existing record is not modified")
+}
+
+// flightElement is an approval of a flight with the given fare cap on the flight type's current version.
+func flightElement(name, fare string) consent.ConsentElementApproval {
+	return consent.ConsentElementApproval{Name: name, Namespace: consent.NamespaceAuthorizationDetail,
+		IsUserApproved: true, TypeID: "type-1", TypeVersion: 2,
+		Granted: json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-SIN","maxFare":` + fare + `}`)}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes_DropsApprovalsTheAddedOneCovers() {
+	existing := []consent.ConsentPurposeItem{{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{
+		flightElement("d1", "300"), flightElement("d2", "900"),
+	}}}
+	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
+		testDetailPurpose: {flightElement("d3", "500")},
+	}, map[string]providers.AuthorizationDetailType{testFlightType: *flightType()})
+
+	s.Require().Len(merged, 1)
+	names := make([]string, 0, len(merged[0].Elements))
+	for _, element := range merged[0].Elements {
+		names = append(names, element.Name)
+	}
+	s.Equal([]string{"d2", "d3"}, names,
+		"an approval of 300 is redundant beside one of 500; one of 900 still covers more")
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestSupersedes() {
+	typ := *flightType()
+	added := flightElement("d2", "500")
+
+	s.True(supersedes(added, flightElement("d1", "500"), typ), "an equal approval is redundant")
+	s.False(supersedes(added, flightElement("d1", "600"), typ))
+	otherRoute := flightElement("d1", "100")
+	otherRoute.Granted = json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-LHR","maxFare":100}`)
+	s.False(supersedes(added, otherRoute, typ), "a field without a modification rule must be equal")
+	s.False(supersedes(added, typedElement("d1", "other", "type-9", 2), typ), "other types are kept")
+	s.False(supersedes(added, consent.ConsentElementApproval{Name: "email",
+		Namespace: consent.NamespaceAttribute, IsUserApproved: true}, typ))
 }
