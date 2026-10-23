@@ -145,8 +145,8 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 		RuntimeData:    make(map[string]string),
 	}
 
-	// After a federated sign-in the link decides the user, so no mode takes typed inputs or matches on
-	// attributes: the candidates come from the link.
+	// After a federated sign-in the link decides the user, so no mode prompts for inputs or searches the
+	// store on attributes: the candidates come from the link, and attributes only narrow them.
 	if federated := federatedIdentityFrom(ctx); federated != nil {
 		switch ctx.ExecutorMode {
 		case ExecutorModeResolve:
@@ -191,7 +191,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	userSearchAttributes := i.buildSearchAttributes(ctx)
+	userSearchAttributes := i.buildSearchAttributes(ctx, nil)
 
 	userID, err := i.IdentifyEntity(ctx.Context, userSearchAttributes, execResp, categoryUnscoped)
 	if err != nil {
@@ -275,7 +275,7 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing identifying executor in resolve mode")
 
-	userSearchAttributes := i.buildSearchAttributes(ctx)
+	userSearchAttributes := i.buildSearchAttributes(ctx, nil)
 
 	// Include dynamic user inputs from disambiguation prompts. The disambiguation step
 	// may generate inputs (e.g., ouHandle, userType) that are not defined in the node's
@@ -330,8 +330,9 @@ func (i *identifyingExecutor) executeResolveFederated(ctx *providers.NodeContext
 }
 
 // executeResolveLinkHolders narrows the users holding a federated identity's link down to one and
-// binds it to the AuthUser. The candidates come from the link, and only the options offered for them
-// filter it, so the user picks between its holders and nothing else.
+// binds it to the AuthUser. The candidates come from the link. The search attributes narrow them first
+// as they narrow candidates in a local resolve, then the options offered for them filter it, so the
+// user picks between its holders and nothing else.
 func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -349,6 +350,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
+	holders = i.narrowLinkHolders(ctx, holders)
 
 	picked := make(map[string]interface{})
 	for _, option := range extractDisambiguationOptions(holders) {
@@ -364,7 +366,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 	switch len(candidates) {
 	case 0:
 		if len(holders) == 0 {
-			logger.Debug(ctx.Context, "No user is linked to the federated identity")
+			logger.Debug(ctx.Context, "No user linked to the federated identity matches")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 			return execResp, nil
@@ -425,7 +427,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Executing identifying executor in check_state mode")
 
-	userSearchAttributes := i.buildSearchAttributes(ctx)
+	userSearchAttributes := i.buildSearchAttributes(ctx, nil)
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
@@ -445,7 +447,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 }
 
 // executeCheckStateFederated sets the entity state from the users holding the federated identity's
-// link, never from attributes or claims. A provider that cannot list the holders keeps the state the
+// link, narrowed by the search attributes. A provider that cannot list the holders keeps the state the
 // federated executor recorded.
 func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
@@ -464,6 +466,8 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 		return execResp, nil
 	}
 
+	holders = i.narrowLinkHolders(ctx, holders)
+
 	setEntityStateFromCount(execResp, len(holders))
 	logger.Debug(ctx.Context, "Entity state checked from the federated identity's link",
 		log.Int("holderCount", len(holders)))
@@ -471,9 +475,9 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 	return execResp, nil
 }
 
-// executeIdentifyFederated identifies the one user holding the federated identity's link. No holder
-// fails rather than prompting, since a typed identifier would name a user the sign-in never proved.
-// Several holders fail too: picking between them is resolve mode's job.
+// executeIdentifyFederated identifies the one user holding the federated identity's link, narrowed by
+// the search attributes. No holder fails rather than prompting, since a typed identifier would name a
+// user the sign-in never proved. Several holders fail too: picking between them is resolve mode's job.
 func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -486,6 +490,7 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
+	holders = i.narrowLinkHolders(ctx, holders)
 
 	switch len(holders) {
 	case 0:
@@ -502,6 +507,17 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 	return execResp, nil
 }
 
+// narrowLinkHolders keeps the link holders the search attributes match, as they match candidates in a
+// local search, with the federated identity's claims filling attributes nothing else supplies. It only
+// drops holders, so a claim never reaches a user the federated sign-in did not prove.
+func (i *identifyingExecutor) narrowLinkHolders(ctx *providers.NodeContext,
+	holders []*providers.Entity) []*providers.Entity {
+	if searchAttrs := i.buildSearchAttributes(ctx, federatedIdentityFrom(ctx)); len(searchAttrs) > 0 {
+		return filterUsersByAttributes(holders, searchAttrs)
+	}
+	return holders
+}
+
 // setEntityStateFromCount records whether no entity, one, or several matched.
 func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
 	switch count {
@@ -514,11 +530,14 @@ func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
 	}
 }
 
-// buildSearchAttributes collects search attributes from user inputs and runtime data.
+// buildSearchAttributes collects search attributes from user inputs and runtime data, falling back to
+// the claims of claimSource when it is set. Only callers that filter users the link already proved
+// pass one: a store search on a claim would name a user the End-User never proved.
 // When the loginHintAttribute node property is set, the login_hint value from UserInputs is
 // mapped to the configured attribute so the flow admin controls which user attribute resolves
 // the identifier without hardcoding a specific attribute.
-func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
+func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext,
+	claimSource *core.ExternalIdentity) map[string]interface{} {
 	if hintAttr, ok := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); ok && hintAttr != "" {
 		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
@@ -526,14 +545,13 @@ func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) 
 	}
 
 	attrs := map[string]interface{}{}
-	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, inputData := range i.GetRequiredInputs(ctx) {
-		// External claims are only a fallback and must never take priority over runtime data.
+		// Claims are only a fallback and must never take priority over runtime data.
 		if value, ok := ctx.UserInputs[inputData.Identifier]; ok {
 			attrs[inputData.Identifier] = value
 		} else if value, ok := ctx.RuntimeData[inputData.Identifier]; ok {
 			attrs[inputData.Identifier] = value
-		} else if value, ok := extIdentity.Claim(inputData.Identifier); ok {
+		} else if value, ok := claimSource.Claim(inputData.Identifier); ok {
 			attrs[inputData.Identifier] = value
 		}
 	}
