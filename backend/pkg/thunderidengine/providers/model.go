@@ -1101,6 +1101,33 @@ type ConsentPurposePrompt struct {
 	Optional []PromptElement `json:"optional"`
 }
 
+// AuthorizationDetailType is a registered RFC 9396 authorization details type.
+type AuthorizationDetailType struct {
+	ID string
+	// Type is the type value clients send in authorization_details.
+	Type        string
+	Name        string
+	Description string
+	// Version starts at 1 and increments when the schema or the consent template changes, or the processor is
+	// added or removed. An approval holds only for the version it was given on.
+	Version int
+	// Schema is the JSON Schema 2020-12 schema, with field policies, that details of the type conform to.
+	Schema          json.RawMessage
+	ConsentTemplate string
+	Processor       *AuthorizationDetailProcessor
+	// Reuse lets a covering earlier approval skip the prompt and keeps the details in the refresh token.
+	Reuse bool
+	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
+	IsReadOnly bool
+}
+
+// AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.
+type AuthorizationDetailProcessor struct {
+	Endpoint string `json:"endpoint" yaml:"endpoint"`
+	// AuthenticationProperties hold the outbound authentication for processor calls, credentials encrypted.
+	AuthenticationProperties []cmodels.Property `json:"-" yaml:"-"`
+}
+
 // PromptElement represents a single element within a consent purpose prompt. Parent carries
 // rollup linkage for permission elements (zero value, omitted on the wire, for attribute elements).
 type PromptElement struct {

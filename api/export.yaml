@@ -179,6 +179,11 @@ components:
           items:
             type: string
           description: IDs of resource servers to export, or ["*"] for all.
+        authorizationDetailTypes:
+          type: array
+          items:
+            type: string
+          description: IDs of RFC 9396 authorization details types to export, or ["*"] for all.
         roles:
           type: array
           items:

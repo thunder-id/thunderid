@@ -713,6 +713,14 @@ Authorization resource settings.
 |---------|---------|-------------|
 | `resource.default_delimiter` | `:` | Default delimiter for resource hierarchies |
 
+## Authorization Details Type Configuration
+
+Settings for the registry of RFC 9396 authorization details types.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `authorization_detail_type.store` | `composite` | Where authorization details types are read from. `mutable` is the database alone. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a type declared in a file is read-only through the API. If unset, `declarative_resources.enabled` decides between `declarative` and `mutable` |
+
 ## Resource Sharing Configuration
 
 Controls whether a resource can reach an organization unit outside the tree that owns it.

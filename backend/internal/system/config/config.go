@@ -485,6 +485,16 @@ type RoleConfig struct {
 	Store string `yaml:"store" json:"store"`
 }
 
+// AuthorizationDetailTypeConfig holds the authorization details type registry configuration.
+type AuthorizationDetailTypeConfig struct {
+	// Store defines the storage mode for authorization details types.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+}
+
 // ThemeConfig holds the theme service configuration.
 type ThemeConfig struct {
 	// Store defines the storage mode for themes.
@@ -735,6 +745,7 @@ type Config struct {
 	User                 UserConfig                        `yaml:"user"                  json:"user"`
 	DeclarativeResources DeclarativeResources              `yaml:"declarative_resources" json:"declarative_resources"`
 	Resource             engineconfig.ResourceConfig       `yaml:"resource"              json:"resource"`
+	AuthorizationDetail  AuthorizationDetailTypeConfig     `yaml:"authorization_detail_type" json:"authorization_detail_type"` //nolint:lll
 	OrganizationUnit     OrganizationUnitConfig            `yaml:"organization_unit"     json:"organization_unit"`
 	IdentityProvider     IdentityProviderConfig            `yaml:"identity_provider"     json:"identity_provider"`
 	Application          ApplicationConfig                 `yaml:"application"           json:"application"`

@@ -238,6 +238,26 @@ CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMEN
 CREATE UNIQUE INDEX uq_resource_server_identifier
     ON "RESOURCE_SERVER"(IDENTIFIER, DEPLOYMENT_ID);
 
+-- Table to store RFC 9396 authorization details types.
+CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    -- An imported type keeps its id, which a declarative file may have given it, so it is not always a UUID.
+    ID VARCHAR(255) NOT NULL,
+    TYPE VARCHAR(512) NOT NULL,
+    NAME VARCHAR(100) NOT NULL,
+    DESCRIPTION TEXT,
+    VERSION INTEGER NOT NULL DEFAULT 1,
+    SCHEMA_DEFINITION TEXT NOT NULL,
+    PROPERTIES TEXT,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    UPDATED_AT TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
+);
+
+-- Unique constraint: an authorization details type value is unique per deployment
+CREATE UNIQUE INDEX uq_authorization_detail_type
+    ON "AUTHORIZATION_DETAIL_TYPE"(DEPLOYMENT_ID, TYPE);
+
 -- Table to store resources within resource servers.
 CREATE TABLE "RESOURCE" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

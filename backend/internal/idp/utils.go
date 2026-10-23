@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/rule"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -150,11 +151,8 @@ func normalizeClaimValueTokens(value interface{}, delimiter string) []string {
 func conditionMatches(
 	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value string, tokens []string,
 ) bool {
-	switch operator {
-	case providers.AuthorizationOperatorIncludes:
-		return slices.Contains(tokens, value)
-	case providers.AuthorizationOperatorNotIncludes:
-		return !slices.Contains(tokens, value)
+	if operator.IsMembership() {
+		return rule.EvaluateSet(operator, tokens, value, rule.TypeString)
 	}
 	for _, token := range tokens {
 		if evaluateScalarCondition(valueType, operator, value, token) {
@@ -169,51 +167,23 @@ func conditionMatches(
 func evaluateScalarCondition(
 	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value, token string,
 ) bool {
+	t := compareType(valueType)
+	if t != rule.TypeString {
+		// Whitespace around a number or boolean is never significant, so both sides are trimmed.
+		value, token = strings.TrimSpace(value), strings.TrimSpace(token)
+	}
+	return rule.Evaluate(operator, token, value, t)
+}
+
+// compareType returns the rule type a mapping's values are compared as.
+func compareType(valueType providers.AuthorizationValueType) rule.Type {
 	switch valueType {
 	case providers.AuthorizationValueTypeNumber:
-		// Whitespace around a number is never significant, unlike in a string comparison, so both
-		// sides are trimmed before parsing.
-		tokenNum, tokenErr := strconv.ParseFloat(strings.TrimSpace(token), 64)
-		ruleNum, ruleErr := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if tokenErr != nil || ruleErr != nil {
-			return false
-		}
-		switch operator {
-		case providers.AuthorizationOperatorEquals:
-			return tokenNum == ruleNum
-		case providers.AuthorizationOperatorNotEquals:
-			return tokenNum != ruleNum
-		case providers.AuthorizationOperatorGreaterThan:
-			return tokenNum > ruleNum
-		case providers.AuthorizationOperatorLessThan:
-			return tokenNum < ruleNum
-		case providers.AuthorizationOperatorGreaterThanOrEqual:
-			return tokenNum >= ruleNum
-		case providers.AuthorizationOperatorLessThanOrEqual:
-			return tokenNum <= ruleNum
-		}
-		return false
+		return rule.TypeNumber
 	case providers.AuthorizationValueTypeBoolean:
-		tokenBool, tokenErr := strconv.ParseBool(strings.TrimSpace(token))
-		ruleBool, ruleErr := strconv.ParseBool(strings.TrimSpace(value))
-		if tokenErr != nil || ruleErr != nil {
-			return false
-		}
-		switch operator {
-		case providers.AuthorizationOperatorEquals:
-			return tokenBool == ruleBool
-		case providers.AuthorizationOperatorNotEquals:
-			return tokenBool != ruleBool
-		}
-		return false
-	default: // AuthorizationValueTypeString
-		switch operator {
-		case providers.AuthorizationOperatorEquals:
-			return token == value
-		case providers.AuthorizationOperatorNotEquals:
-			return token != value
-		}
-		return false
+		return rule.TypeBoolean
+	default:
+		return rule.TypeString
 	}
 }
 

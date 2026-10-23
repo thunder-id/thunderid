@@ -321,6 +321,9 @@
     "default_delimiter": ":",
     "store": "composite"
   },
+  "authorization_detail_type": {
+    "store": "composite"
+  },
   "resource_sharing": {
     "allow_child_ou_cross_tree_sharing": false
   },

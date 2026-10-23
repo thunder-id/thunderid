@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -1468,4 +1469,92 @@ func (s *importService) importNotificationTemplate(
 		return serviceErrorOutcome(resourceTypeNotificationTemplate, existingID, raw.Handle, operationUpdate, updErr)
 	}
 	return successOutcome(resourceTypeNotificationTemplate, updated.ID, updated.Handle, operationUpdate)
+}
+
+// importAuthorizationDetailType imports an authorization_detail_type document.
+func (s *importService) importAuthorizationDetailType(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.authorizationDetailTypeService == nil {
+		return unsupportedAdapterOutcome(resourceTypeAuthorizationDetailType, "authorization details type")
+	}
+
+	id, name := extractDocumentIdentity(doc)
+	t, err := authzdetailmgt.ParseAuthorizationDetailTypeNode(doc.Node)
+	if err != nil {
+		return decodeErrorOutcome(resourceTypeAuthorizationDetailType, id, name, err)
+	}
+
+	if dryRun {
+		return s.dryRunAuthorizationDetailType(ctx, t, options)
+	}
+
+	if options.IsUpsertEnabled() && t.ID != "" {
+		updated, svcErr := s.authorizationDetailTypeService.UpdateAuthorizationDetailType(ctx, t.ID, *t)
+		if svcErr == nil {
+			return successOutcome(resourceTypeAuthorizationDetailType, updated.ID, updated.Name, operationUpdate)
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+	}
+
+	created, svcErr := s.authorizationDetailTypeService.CreateAuthorizationDetailType(ctx, *t)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeAuthorizationDetailType, created.ID, created.Name, operationCreate)
+}
+
+// dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
+// real update or create would.
+func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
+	options *ImportOptions) ImportItemOutcome {
+	var existing *providers.AuthorizationDetailType
+	if t.ID != "" {
+		found, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailType(ctx, t.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+		existing = found
+	}
+	if existing != nil && options.IsUpsertEnabled() {
+		if existing.IsReadOnly {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
+				&authzdetailmgt.ErrorImmutableType)
+		}
+		if existing.Type != t.Type {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
+				&authzdetailmgt.ErrorTypeValueImmutable)
+		}
+		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+		return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate)
+	}
+
+	if authzdetailmgt.IsDeclarativeModeEnabled() {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorDeclarativeModeCreateNotAllowed)
+	}
+	// A create takes the credential as sent, so it is not checked against a stored type that holds the id.
+	candidate := *t
+	candidate.ID = ""
+	if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, candidate); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	byValue, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailTypeByValue(ctx, t.Type)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+	if byValue != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorTypeConflict)
+	}
+	if existing != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate,
+			&authzdetailmgt.ErrorTypeIDConflict)
+	}
+	return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate)
 }

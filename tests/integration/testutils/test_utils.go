@@ -422,6 +422,7 @@ func CopyDeclarativeResources(zipFilePattern string) error {
 	resourceDirs := []string{
 		"agents",
 		"applications",
+		"authorization_detail_types",
 		"connections",
 		"credential_configurations",
 		"flows",

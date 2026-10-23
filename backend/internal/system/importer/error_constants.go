@@ -7,6 +7,7 @@ package importer
 import (
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -37,6 +38,7 @@ var notFoundErrorCodes = map[string]struct{}{
 	role.ErrorRoleNotFound.Code:                     {},
 	group.ErrorGroupNotFound.Code:                   {},
 	resource.ErrorResourceServerNotFound.Code:       {},
+	authzdetailmgt.ErrorTypeNotFound.Code:           {},
 	thememgt.ErrorThemeNotFound.Code:                {},
 	layoutmgt.ErrorLayoutNotFound.Code:              {},
 	user.ErrorUserNotFound.Code:                     {},
