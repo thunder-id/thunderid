@@ -1,0 +1,6 @@
+# Spec
+
+## MCP exposure
+
+Decision: not required
+Reason: Wrong heading level.

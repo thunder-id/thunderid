@@ -36,6 +36,28 @@ an existing table is reused. Omit this subsection when the feature has no databa
 <Conditional. Describe endpoints, request and response models, authorization, validation, and error
 responses. Omit this subsection when the feature has no API changes.>
 
+### MCP exposure
+
+<Required, and checked in CI. Decide whether AI agents get a ThunderID MCP tool for the feature. Write
+one `Decision:` line with one of the values below, then what that value needs.
+
+- `required`: a table with a row for every API operation the feature adds or changes. The tool is
+  `thunderid_<snake_case>`, `not exposed: <reason>`, or `deferred <issue>`. The tier is `read`,
+  `write` or `destructive`; a `not exposed` row may leave it empty. An operation backing several
+  tools takes a row per tool, and a tool combining several operations a row per operation.
+- `not required`: a `Reason:` line saying why no operation becomes a tool.
+- `deferred`: an `Issue:` line holding `#<n>` or `https://github.com/thunder-id/thunderid/issues/<n>`.
+
+For example:>
+
+    Decision: required
+
+    | Operation | Tool | Tier |
+    |---|---|---|
+    | GET /connections | thunderid_list_connections | read |
+    | POST /connections/{id}/test | not exposed: runs a live request against the endpoint | |
+    | DELETE /connections/{id} | deferred #1234 | destructive |
+
 ### UI
 
 <Conditional. Include a mockup for every new or changed screen.

@@ -1,0 +1,6 @@
+# Spec
+
+### MCP exposure
+
+Decision: deferred
+Reason: Later.

@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: Apps
+  version: "1.0"
+paths:
+  /apps:
+    parameters:
+      - name: limit
+        in: query
+    get:
+      operationId: listApps
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}
+          - {name: search_apps, tier: read}
+    post:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: create_app, tier: write}
+  /apps/{id}:
+    get:
+      x-thunderid-mcp:
+        expose: false
+        reason: Agents read an app through list_apps.
+    put:
+      x-thunderid-mcp:
+        expose: deferred
+        reason: Planned for a later phase.
+    patch:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: create_app, tier: destructive}
+    delete:
+      x-thunderid-mcp:
+        expose: deferred
+        reason: Waits for soft delete.
+  /apps/search:
+    get:
+      x-thunderid-mcp:
+        expose: true
+        tools:
+          - {name: list_apps, tier: read}

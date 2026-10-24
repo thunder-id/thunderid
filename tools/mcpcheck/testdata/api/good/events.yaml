@@ -1,0 +1,11 @@
+openapi: 3.0.3
+info:
+  title: Events
+  version: "1.0"
+x-thunderid-mcp:
+  expose: deferred
+  reason: Planned once the event model settles.
+paths:
+  /events:
+    get:
+      operationId: listEvents

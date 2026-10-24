@@ -1,0 +1,6 @@
+# Spec
+
+### MCP exposure
+
+Decision: deferred
+Issue: https://github.com/someone/else/issues/42

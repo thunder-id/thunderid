@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: File-level expose false without a reason
+  version: "1.0"
+x-thunderid-mcp:
+  expose: false
+paths:
+  /covered:
+    get:
+      operationId: covered
+  /own:
+    get:
+      x-thunderid-mcp:
+        expose: false

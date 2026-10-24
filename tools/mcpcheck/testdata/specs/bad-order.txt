@@ -1,0 +1,10 @@
+# Spec
+
+### MCP exposure
+
+Decision: not required
+Reason: No operations.
+
+### API
+
+Endpoints.
