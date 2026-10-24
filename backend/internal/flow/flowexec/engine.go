@@ -751,6 +751,9 @@ func (fe *flowEngine) updateContextWithInterceptorResponse(
 	if len(resp.EngineOutputs) > 0 {
 		engineCtx.mergeRuntimeData(resp.EngineOutputs)
 	}
+	for key, val := range resp.SharedRuntimeOutputs {
+		engineCtx.setSharedRuntimeData(key, val)
+	}
 }
 
 // processInterceptorResponse processes the interceptor response and determines whether to continue

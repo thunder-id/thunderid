@@ -97,12 +97,14 @@ func (r *interceptorRegistry) IsRegistered(name string) bool {
 type InterceptorDependencies struct {
 	FlowFactory    core.FlowFactoryInterface
 	CaptchaService providers.CaptchaValidationProvider
+	I18nService    providers.I18nProvider
 }
 
 // builtinRegistrars maps each built-in interceptor name to its registration function.
 var builtinRegistrars = map[string]func(InterceptorDependencies, InterceptorRegistryInterface) error{
 	ChallengeTokenInterceptor: registerChallengeTokenInterceptor,
 	CaptchaInterceptor:        registerCaptchaInterceptor,
+	LocaleInterceptor:         registerLocaleInterceptor,
 }
 
 // registerInterceptors registers the given interceptors in the registry. If the list is empty,
@@ -182,6 +184,19 @@ func registerCaptchaInterceptor(deps InterceptorDependencies, registry Intercept
 	return nil
 }
 
+// registerLocaleInterceptor registers the locale interceptor in the registry.
+//
+//nolint:unparam // error return kept for signature consistency with other register* functions
+func registerLocaleInterceptor(deps InterceptorDependencies, registry InterceptorRegistryInterface) error {
+	if deps.FlowFactory == nil || deps.I18nService == nil {
+		log.GetLogger().Debug(context.Background(), "Skipping locale interceptor registration: missing dependencies",
+			log.String("interceptorName", LocaleInterceptor))
+		return nil
+	}
+	registry.RegisterInterceptor(LocaleInterceptor, newLocaleInterceptor(deps.FlowFactory, deps.I18nService))
+	return nil
+}
+
 // ----- Default Interceptors -----
 
 // DefaultInterceptors lists all default (always-enforced) interceptors.
@@ -201,6 +216,8 @@ func initDefaultInterceptorUnits(factory core.FlowFactoryInterface) {
 			ChallengeTokenInterceptor, providers.InterceptorModePreRequest, "", nil, nil),
 		factory.CreateInterceptorUnit(
 			ChallengeTokenInterceptor, providers.InterceptorModePostRequest, "", nil, nil),
+		factory.CreateInterceptorUnit(
+			LocaleInterceptor, providers.InterceptorModePreRequest, "", nil, nil),
 	}
 
 	DefaultInterceptors = defaults

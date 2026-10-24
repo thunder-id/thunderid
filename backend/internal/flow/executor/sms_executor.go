@@ -122,10 +122,11 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	templateData := e.resolveTemplateData(ctx)
 
-	// SMS has no theme; Locale omitted (renderer falls back to system language).
+	// SMS has no theme. Render in the flow locale; empty falls back to the system language.
 	rendered, svcErr := e.templateRenderer.Resolve(ctx.Context, notificationtemplate.ChannelTypeSMS, handle,
 		notificationtemplate.RenderInput{
-			Data: templateData,
+			Locale: ctx.SharedRuntimeData[common.RuntimeKeyEffectiveLocale],
+			Data:   templateData,
 		})
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to render SMS template: %s", svcErr.Code)

@@ -89,6 +89,43 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_Success() {
 	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
 }
 
+// The flow locale in shared runtime data is passed to the renderer so the SMS is localized.
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_PassesFlowLocaleToRenderer() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		ExecutorMode: ExecutorModeSend,
+		UserInputs: map[string]string{
+			common.AttributeMobileNumber: "+94714627887",
+		},
+		RuntimeData: make(map[string]string),
+		SharedRuntimeData: map[string]string{
+			common.RuntimeKeyEffectiveLocale: "fr-FR",
+		},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          smsSelfRegistrationProperty,
+		},
+	}
+
+	suite.mockBaseExecutor.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
+	}).Maybe()
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
+		smsSelfRegistrationHandle,
+		mock.MatchedBy(func(in notificationtemplate.RenderInput) bool { return in.Locale == "fr-FR" }),
+	).Return(&notificationtemplate.ResolvedContent{Body: testRenderedSMSBody}, nil)
+	suite.mockSMSSenderSvc.On("SendMessage",
+		mock.Anything, mock.Anything, "sender-uuid-001",
+		notifcm.MessageData{Recipient: "+94714627887", Body: testRenderedSMSBody},
+	).Return(nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataSMSSent])
+}
+
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_RecipientFromRuntimeData() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-flow-id",
