@@ -375,7 +375,7 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 		return nil, fmt.Errorf("failed to terminate session: %w", txErr)
 	}
 
-	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowId", sess.FlowID))
+	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowID", sess.FlowID))
 	if notify {
 		s.terminationTopic.Notify(ctx, TerminatedSession{
 			SessionID:    sess.SessionID,
@@ -618,7 +618,7 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 	}
 	created := established.HandleID == handle
 	if created {
-		s.logger.Debug(ctx, "Established SSO session", log.String("flowId", in.FlowID))
+		s.logger.Debug(ctx, "Established SSO session", log.String("flowID", in.FlowID))
 	}
 	return established, created, nil
 }

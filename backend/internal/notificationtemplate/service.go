@@ -504,7 +504,7 @@ func (ts *notificationTemplateService) resolveOU(ctx context.Context, ouID strin
 	}
 	exists, svcErr := ts.ouService.IsOrganizationUnitExists(ctx, ouID)
 	if svcErr != nil {
-		ts.logger.Error(ctx, "Failed to verify organization unit", log.String("ouId", ouID),
+		ts.logger.Error(ctx, "Failed to verify organization unit", log.String("ouID", ouID),
 			log.Any("error", svcErr))
 		return &tidcommon.InternalServerError
 	}

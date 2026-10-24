@@ -137,7 +137,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 // fetches user info, and builds the federated token. The entity is resolved later through recorded links.
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
-	logger := g.logger.With(log.String("idpId", idpID))
+	logger := g.logger.With(log.String(log.LoggerKeyIDPID, idpID))
 	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 
 	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)

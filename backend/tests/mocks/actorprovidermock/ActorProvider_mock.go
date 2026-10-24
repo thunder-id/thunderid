@@ -114,8 +114,8 @@ func (_c *ActorProviderMock_AuthenticateActor_Call) RunAndReturn(run func(ctx co
 }
 
 // GetActor provides a mock function for the type ActorProviderMock
-func (_mock *ActorProviderMock) GetActor(actorID string) (*providers.Entity, *common.ServiceError) {
-	ret := _mock.Called(actorID)
+func (_mock *ActorProviderMock) GetActor(ctx context.Context, actorID string) (*providers.Entity, *common.ServiceError) {
+	ret := _mock.Called(ctx, actorID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActor")
@@ -123,18 +123,18 @@ func (_mock *ActorProviderMock) GetActor(actorID string) (*providers.Entity, *co
 
 	var r0 *providers.Entity
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (*providers.Entity, *common.ServiceError)); ok {
-		return returnFunc(actorID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.Entity, *common.ServiceError)); ok {
+		return returnFunc(ctx, actorID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *providers.Entity); ok {
-		r0 = returnFunc(actorID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.Entity); ok {
+		r0 = returnFunc(ctx, actorID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*providers.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *common.ServiceError); ok {
-		r1 = returnFunc(actorID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, actorID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -149,19 +149,25 @@ type ActorProviderMock_GetActor_Call struct {
 }
 
 // GetActor is a helper method to define mock.On call
+//   - ctx context.Context
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActor(actorID any) *ActorProviderMock_GetActor_Call {
-	return &ActorProviderMock_GetActor_Call{Call: _e.mock.On("GetActor", actorID)}
+func (_e *ActorProviderMock_Expecter) GetActor(ctx any, actorID any) *ActorProviderMock_GetActor_Call {
+	return &ActorProviderMock_GetActor_Call{Call: _e.mock.On("GetActor", ctx, actorID)}
 }
 
-func (_c *ActorProviderMock_GetActor_Call) Run(run func(actorID string)) *ActorProviderMock_GetActor_Call {
+func (_c *ActorProviderMock_GetActor_Call) Run(run func(ctx context.Context, actorID string)) *ActorProviderMock_GetActor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -172,14 +178,14 @@ func (_c *ActorProviderMock_GetActor_Call) Return(entity *providers.Entity, serv
 	return _c
 }
 
-func (_c *ActorProviderMock_GetActor_Call) RunAndReturn(run func(actorID string) (*providers.Entity, *common.ServiceError)) *ActorProviderMock_GetActor_Call {
+func (_c *ActorProviderMock_GetActor_Call) RunAndReturn(run func(ctx context.Context, actorID string) (*providers.Entity, *common.ServiceError)) *ActorProviderMock_GetActor_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetActorGroups provides a mock function for the type ActorProviderMock
-func (_mock *ActorProviderMock) GetActorGroups(actorID string) ([]providers.EntityGroup, *common.ServiceError) {
-	ret := _mock.Called(actorID)
+func (_mock *ActorProviderMock) GetActorGroups(ctx context.Context, actorID string) ([]providers.EntityGroup, *common.ServiceError) {
+	ret := _mock.Called(ctx, actorID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActorGroups")
@@ -187,18 +193,18 @@ func (_mock *ActorProviderMock) GetActorGroups(actorID string) ([]providers.Enti
 
 	var r0 []providers.EntityGroup
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) ([]providers.EntityGroup, *common.ServiceError)); ok {
-		return returnFunc(actorID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]providers.EntityGroup, *common.ServiceError)); ok {
+		return returnFunc(ctx, actorID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) []providers.EntityGroup); ok {
-		r0 = returnFunc(actorID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []providers.EntityGroup); ok {
+		r0 = returnFunc(ctx, actorID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]providers.EntityGroup)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *common.ServiceError); ok {
-		r1 = returnFunc(actorID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, actorID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -213,19 +219,25 @@ type ActorProviderMock_GetActorGroups_Call struct {
 }
 
 // GetActorGroups is a helper method to define mock.On call
+//   - ctx context.Context
 //   - actorID string
-func (_e *ActorProviderMock_Expecter) GetActorGroups(actorID any) *ActorProviderMock_GetActorGroups_Call {
-	return &ActorProviderMock_GetActorGroups_Call{Call: _e.mock.On("GetActorGroups", actorID)}
+func (_e *ActorProviderMock_Expecter) GetActorGroups(ctx any, actorID any) *ActorProviderMock_GetActorGroups_Call {
+	return &ActorProviderMock_GetActorGroups_Call{Call: _e.mock.On("GetActorGroups", ctx, actorID)}
 }
 
-func (_c *ActorProviderMock_GetActorGroups_Call) Run(run func(actorID string)) *ActorProviderMock_GetActorGroups_Call {
+func (_c *ActorProviderMock_GetActorGroups_Call) Run(run func(ctx context.Context, actorID string)) *ActorProviderMock_GetActorGroups_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -236,14 +248,14 @@ func (_c *ActorProviderMock_GetActorGroups_Call) Return(entityGroups []providers
 	return _c
 }
 
-func (_c *ActorProviderMock_GetActorGroups_Call) RunAndReturn(run func(actorID string) ([]providers.EntityGroup, *common.ServiceError)) *ActorProviderMock_GetActorGroups_Call {
+func (_c *ActorProviderMock_GetActorGroups_Call) RunAndReturn(run func(ctx context.Context, actorID string) ([]providers.EntityGroup, *common.ServiceError)) *ActorProviderMock_GetActorGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetActorRoles provides a mock function for the type ActorProviderMock
-func (_mock *ActorProviderMock) GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError) {
-	ret := _mock.Called(actorID, groupIDs)
+func (_mock *ActorProviderMock) GetActorRoles(ctx context.Context, actorID string, groupIDs []string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, actorID, groupIDs)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActorRoles")
@@ -251,18 +263,18 @@ func (_mock *ActorProviderMock) GetActorRoles(actorID string, groupIDs []string)
 
 	var r0 []string
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string, []string) ([]string, *common.ServiceError)); ok {
-		return returnFunc(actorID, groupIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, actorID, groupIDs)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string, []string) []string); ok {
-		r0 = returnFunc(actorID, groupIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) []string); ok {
+		r0 = returnFunc(ctx, actorID, groupIDs)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string, []string) *common.ServiceError); ok {
-		r1 = returnFunc(actorID, groupIDs)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, actorID, groupIDs)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -277,25 +289,31 @@ type ActorProviderMock_GetActorRoles_Call struct {
 }
 
 // GetActorRoles is a helper method to define mock.On call
+//   - ctx context.Context
 //   - actorID string
 //   - groupIDs []string
-func (_e *ActorProviderMock_Expecter) GetActorRoles(actorID any, groupIDs any) *ActorProviderMock_GetActorRoles_Call {
-	return &ActorProviderMock_GetActorRoles_Call{Call: _e.mock.On("GetActorRoles", actorID, groupIDs)}
+func (_e *ActorProviderMock_Expecter) GetActorRoles(ctx any, actorID any, groupIDs any) *ActorProviderMock_GetActorRoles_Call {
+	return &ActorProviderMock_GetActorRoles_Call{Call: _e.mock.On("GetActorRoles", ctx, actorID, groupIDs)}
 }
 
-func (_c *ActorProviderMock_GetActorRoles_Call) Run(run func(actorID string, groupIDs []string)) *ActorProviderMock_GetActorRoles_Call {
+func (_c *ActorProviderMock_GetActorRoles_Call) Run(run func(ctx context.Context, actorID string, groupIDs []string)) *ActorProviderMock_GetActorRoles_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 []string
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].([]string)
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -306,7 +324,7 @@ func (_c *ActorProviderMock_GetActorRoles_Call) Return(strings []string, service
 	return _c
 }
 
-func (_c *ActorProviderMock_GetActorRoles_Call) RunAndReturn(run func(actorID string, groupIDs []string) ([]string, *common.ServiceError)) *ActorProviderMock_GetActorRoles_Call {
+func (_c *ActorProviderMock_GetActorRoles_Call) RunAndReturn(run func(ctx context.Context, actorID string, groupIDs []string) ([]string, *common.ServiceError)) *ActorProviderMock_GetActorRoles_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -592,8 +610,8 @@ func (_c *ActorProviderMock_GetOAuthProfileByID_Call) RunAndReturn(run func(ctx 
 }
 
 // GetTransitiveGroupAncestors provides a mock function for the type ActorProviderMock
-func (_mock *ActorProviderMock) GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError) {
-	ret := _mock.Called(groupID)
+func (_mock *ActorProviderMock) GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, groupID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTransitiveGroupAncestors")
@@ -601,18 +619,18 @@ func (_mock *ActorProviderMock) GetTransitiveGroupAncestors(groupID string) ([]s
 
 	var r0 []string
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *common.ServiceError)); ok {
-		return returnFunc(groupID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, groupID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
-		r0 = returnFunc(groupID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []string); ok {
+		r0 = returnFunc(ctx, groupID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *common.ServiceError); ok {
-		r1 = returnFunc(groupID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, groupID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -627,19 +645,25 @@ type ActorProviderMock_GetTransitiveGroupAncestors_Call struct {
 }
 
 // GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - ctx context.Context
 //   - groupID string
-func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(groupID any) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
-	return &ActorProviderMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(ctx any, groupID any) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	return &ActorProviderMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", ctx, groupID)}
 }
 
-func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Run(run func(ctx context.Context, groupID string)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -650,7 +674,7 @@ func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Return(strings []s
 	return _c
 }
 
-func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *common.ServiceError)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(ctx context.Context, groupID string) ([]string, *common.ServiceError)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
 	_c.Call.Return(run)
 	return _c
 }

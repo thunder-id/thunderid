@@ -142,7 +142,7 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 	}
 
 	// Update user credentials
-	if providerErr := e.entityProvider.UpdateCredentials(userID, credentials); providerErr != nil {
+	if providerErr := e.entityProvider.UpdateCredentials(ctx.Context, userID, credentials); providerErr != nil {
 		logger.Debug(ctx.Context, "Failed to update user credentials",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 		execResp.Status = providers.ExecFailure

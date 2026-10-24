@@ -374,7 +374,7 @@ func idJagEnabledFromRow(ctx context.Context, logger *log.Logger, idpID string, 
 	properties, err := cmodels.DeserializePropertiesFromJSONObject(propertiesJSON)
 	if err != nil {
 		logger.Warn(ctx, "Failed to deserialize IDP properties; omitting idJagEnabled flag",
-			log.String("idpID", idpID), log.Error(err))
+			log.String(log.LoggerKeyIDPID, idpID), log.Error(err))
 		return nil
 	}
 	return idJagEnabledFromProperties(properties)

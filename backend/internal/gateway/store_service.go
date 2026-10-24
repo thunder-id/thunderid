@@ -157,7 +157,7 @@ func callGatewayStore[T any](ctx context.Context, s *storeService, gatewayID str
 		if errors.As(err, &refusal) && json.Valid(refusal.Body) {
 			return &StoreAnswer[T]{Refusal: refusal}, nil
 		}
-		s.logger.Error(ctx, "Failed to reach a gateway's store", log.String("gatewayId", gw.ID), log.Error(err))
+		s.logger.Error(ctx, "Failed to reach a gateway's store", log.String("gatewayID", gw.ID), log.Error(err))
 		return nil, unreachable(err)
 	}
 	return &StoreAnswer[T]{Value: value, Created: created}, nil

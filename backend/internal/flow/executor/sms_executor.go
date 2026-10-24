@@ -212,7 +212,7 @@ func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAt
 		return mobile
 	}
 	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" && e.entityProvider != nil {
-		user, err := e.entityProvider.GetEntityProfile(userID)
+		user, err := e.entityProvider.GetEntityProfile(ctx.Context, userID)
 		if err == nil {
 			if mobile, attrErr := GetUserAttribute(user, phoneAttr); attrErr == nil {
 				return mobile

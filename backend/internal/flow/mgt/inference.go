@@ -591,7 +591,7 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 	err := s.insertNodeBefore(nodes, phonePromptNode, otpGenerateNodeID)
 	if err != nil {
 		s.logger.Warn(ctx, "Failed to insert phone input prompt before OTP generate node",
-			log.String("nodeID", otpGenerateNodeID), log.Error(err))
+			log.String(log.LoggerKeyNodeID, otpGenerateNodeID), log.Error(err))
 		return
 	}
 
