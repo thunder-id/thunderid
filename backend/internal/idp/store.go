@@ -33,6 +33,23 @@ type idpStoreInterface interface {
 // idpStore is the default implementation of IDPStoreInterface.
 type idpStore struct {
 	dbProvider provider.DBProviderInterface
+	// hasOUColumn tells whether the IDP table has the OU_ID column, which a deployment created before it was added
+	// does not have. Without it identity providers are read and written without an organization unit.
+	hasOUColumn bool
+}
+
+// recordsOU reports whether the store keeps the organization unit of an identity provider, which it does only when
+// the IDP table has the OU_ID column.
+func (s *idpStore) recordsOU() bool {
+	return s.hasOUColumn
+}
+
+// ouAware returns withOU when the IDP table has the OU_ID column, and plain when it does not.
+func (s *idpStore) ouAware(plain, withOU dbmodel.DBQuery) dbmodel.DBQuery {
+	if s.hasOUColumn {
+		return withOU
+	}
+	return plain
 }
 
 // newIDPStore creates a new instance of IDPStore.
@@ -46,9 +63,35 @@ func newIDPStore() (idpStoreInterface, providers.Transactioner, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	hasOUColumn, err := detectOUColumn(dbProvider)
+	if err != nil {
+		return nil, nil, err
+	}
 	return &idpStore{
-		dbProvider: dbProvider,
+		dbProvider:  dbProvider,
+		hasOUColumn: hasOUColumn,
 	}, transactioner, nil
+}
+
+// detectOUColumn reports whether the IDP table has the OU_ID column. A failure to check is returned as an error
+// and not taken for a missing column: the answer is kept for the life of the store, so a transient failure read as
+// "no column" would silently drop the owners of the identity providers created afterwards.
+func detectOUColumn(dbProvider provider.DBProviderInterface) (bool, error) {
+	dbClient, err := dbProvider.GetConfigDBClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to check the IDP table for the OU_ID column: %w", err)
+	}
+	results, err := dbClient.QueryContext(context.Background(), queryCheckIdentityProviderOUColumn)
+	if err != nil {
+		return false, fmt.Errorf("failed to check the IDP table for the OU_ID column: %w", err)
+	}
+	if len(results) == 0 {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPStore")).Warn(context.Background(),
+			"The IDP table has no OU_ID column, so identity providers are not tied to an organization unit. "+
+				"Add the OU_ID column to the IDP table and restart to record owners")
+		return false, nil
+	}
+	return true, nil
 }
 
 // scope returns the deployment id this request acts for, falling back to the configured
@@ -77,10 +120,17 @@ func (s *idpStore) CreateIdentityProvider(ctx context.Context, idp providers.IDP
 		return err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx,
-		queryCreateIdentityProvider, idp.ID, idp.Name, idp.Description, idp.Type, propertiesJSON,
-		attributeConfigurationJSON, s.scope(ctx),
-	)
+	if s.hasOUColumn {
+		_, err = dbClient.ExecuteContext(ctx,
+			queryCreateIdentityProviderWithOU, idp.ID, idp.Name, idp.Description, idp.Type, idp.OUID,
+			propertiesJSON, attributeConfigurationJSON, s.scope(ctx),
+		)
+	} else {
+		_, err = dbClient.ExecuteContext(ctx,
+			queryCreateIdentityProvider, idp.ID, idp.Name, idp.Description, idp.Type, propertiesJSON,
+			attributeConfigurationJSON, s.scope(ctx),
+		)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -95,7 +145,8 @@ func (s *idpStore) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, 
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetIdentityProviderList, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx,
+		s.ouAware(queryGetIdentityProviderList, queryGetIdentityProviderListWithOU), s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -150,12 +201,12 @@ func (s *idpStore) GetIdentityProviderListCount(ctx context.Context) (int, error
 
 // GetIdentityProvider retrieves a specific idp by its ID from the database.
 func (s *idpStore) GetIdentityProvider(ctx context.Context, id string) (*providers.IDPDTO, error) {
-	return s.getIDP(ctx, queryGetIdentityProviderByID, id)
+	return s.getIDP(ctx, s.ouAware(queryGetIdentityProviderByID, queryGetIdentityProviderByIDWithOU), id)
 }
 
 // GetIdentityProviderByName retrieves a specific idp by its name from the database.
 func (s *idpStore) GetIdentityProviderByName(ctx context.Context, name string) (*providers.IDPDTO, error) {
-	return s.getIDP(ctx, queryGetIdentityProviderByName, name)
+	return s.getIDP(ctx, s.ouAware(queryGetIdentityProviderByName, queryGetIdentityProviderByNameWithOU), name)
 }
 
 // GetIdentityProvidersByProperty retrieves IDPs matching a given property key and value.
@@ -166,7 +217,8 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetIdentityProvidersByProperty,
+	results, err := dbClient.QueryContext(ctx,
+		s.ouAware(queryGetIdentityProvidersByProperty, queryGetIdentityProvidersByPropertyWithOU),
 		propertyKey, propertyValue, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
@@ -207,6 +259,7 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 			Name:                   basicIDP.Name,
 			Description:            basicIDP.Description,
 			Type:                   basicIDP.Type,
+			OUID:                   basicIDP.OUID,
 			Properties:             properties,
 			AttributeConfiguration: attributeConfiguration,
 		})
@@ -268,6 +321,7 @@ func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier
 		Name:                   basicIDP.Name,
 		Description:            basicIDP.Description,
 		Type:                   basicIDP.Type,
+		OUID:                   basicIDP.OUID,
 		Properties:             properties,
 		AttributeConfiguration: attributeConfiguration,
 	}
@@ -351,9 +405,23 @@ func buildIDPFromResultRow(row map[string]interface{}) (*BasicIDPDTO, error) {
 		Name:        idpName,
 		Description: idpDescription,
 		Type:        providers.IDPType(idpType),
+		OUID:        optionalString(row, "ou_id"),
 	}
 
 	return &idp, nil
+}
+
+// optionalString extracts a string value that may be missing or NULL from a database row, as the owning
+// organization unit of an identity provider is, and returns an empty string for it.
+func optionalString(row map[string]interface{}, key string) string {
+	switch v := row[key].(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return ""
+	}
 }
 
 // idJagEnabledFromRow extracts and parses the id_jag_enabled property from a query result row's

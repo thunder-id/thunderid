@@ -33,6 +33,7 @@ type connectionInstance struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
+	OUID        string   `json:"ouId,omitempty"`
 	Type        string   `json:"type"`
 	Categories  []string `json:"categories"`
 }
@@ -103,6 +104,7 @@ func doRequest(method, path string, body interface{}) (httpResult, error) {
 
 type googleConnectionRequest struct {
 	Name                   string                            `json:"name"`
+	OUID                   string                            `json:"ouId,omitempty"`
 	ClientID               string                            `json:"clientId"`
 	ClientSecret           string                            `json:"clientSecret,omitempty"`
 	RedirectURI            string                            `json:"redirectUri"`
@@ -195,6 +197,7 @@ func basicAuth(username, password string) *outboundAuthentication {
 type connectionResponse struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
+	OUID         string `json:"ouId,omitempty"`
 	Type         string `json:"type"`
 	ClientID     string `json:"clientId,omitempty"`
 	ClientSecret string `json:"clientSecret,omitempty"`

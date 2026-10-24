@@ -26,6 +26,7 @@ func Initialize(
 	roleService role.RoleServiceInterface,
 	groupService group.GroupServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	ouService ouProvider,
 ) (IDPServiceInterface, error) {
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
@@ -33,7 +34,8 @@ func Initialize(
 		return nil, err
 	}
 
-	idpService := newIDPService(idpStore, entityTypeService, roleService, groupService, resourceService, transactioner)
+	idpService := newIDPService(idpStore, entityTypeService, roleService, groupService, resourceService, transactioner,
+		ouService)
 	return idpService, nil
 }
 

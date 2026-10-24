@@ -64,6 +64,7 @@ schema: {
 resource_type: connection
 id: 019e201d-5634-7533-a971-538b66914721
 name: Sample Vanilla Google
+ouHandle: default
 description: Google identity provider for the sample vanilla flows
 type: google
 clientId: "{{.SAMPLE_APP_GOOGLE_CLIENT_ID}}"
@@ -78,6 +79,7 @@ scopes:
 resource_type: connection
 id: 019e3a5e-2ff3-7bfb-ae19-27aada871b80
 name: Sample Vanilla GitHub
+ouHandle: default
 description: GitHub identity provider for the sample vanilla flows
 type: github
 clientId: "{{.SAMPLE_APP_GITHUB_CLIENT_ID}}"

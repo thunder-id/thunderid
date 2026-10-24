@@ -34,6 +34,12 @@ func newCompositeIDPStore(fileStore, dbStore idpStoreInterface) *compositeIDPSto
 	}
 }
 
+// recordsOU reports whether the database store, the one identity providers are written to, keeps their organization
+// unit.
+func (c *compositeIDPStore) recordsOU() bool {
+	return storeRecordsOU(c.dbStore)
+}
+
 // CreateIdentityProvider creates a new identity provider in the database store only.
 func (c *compositeIDPStore) CreateIdentityProvider(ctx context.Context, idp providers.IDPDTO) error {
 	return c.dbStore.CreateIdentityProvider(ctx, idp)

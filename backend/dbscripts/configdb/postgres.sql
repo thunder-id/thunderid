@@ -139,6 +139,7 @@ CREATE TABLE "IDP" (
     NAME VARCHAR(255) NOT NULL,
     DESCRIPTION VARCHAR(500),
     TYPE VARCHAR(20) NOT NULL,
+    OU_ID VARCHAR(36) NOT NULL,
     PROPERTIES JSONB,
     ATTRIBUTE_CONFIGURATION JSONB,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -148,6 +149,9 @@ CREATE TABLE "IDP" (
 
 -- Composite index for name-based IDP lookups
 CREATE INDEX idx_idp_name_deployment ON "IDP" (DEPLOYMENT_ID, NAME);
+
+-- Composite index for deployment + owning organization unit lookups.
+CREATE INDEX idx_idp_ou_deployment ON "IDP" (DEPLOYMENT_ID, OU_ID);
 
 -- Expression index for issuer-based IDP lookups
 CREATE INDEX idx_idp_issuer ON "IDP" (DEPLOYMENT_ID, (PROPERTIES->'issuer'->>'value'));

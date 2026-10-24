@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
 const (
@@ -95,7 +96,7 @@ func (s *IDPInitTestSuite) TestInitialize() {
 	_ = config.InitializeServerRuntime("", testConfig)
 
 	service, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 	s.NoError(err)
 	s.NotNil(service)
 	s.Implements((*IDPServiceInterface)(nil), service)
@@ -103,7 +104,7 @@ func (s *IDPInitTestSuite) TestInitialize() {
 
 func (s *IDPInitTestSuite) TestNewIDPService() {
 	store := &idpStore{}
-	service := newIDPService(store, nil, nil, nil, nil, &mockTransactioner{})
+	service := newIDPService(store, nil, nil, nil, nil, &mockTransactioner{}, nil)
 
 	s.NotNil(service)
 	s.Implements((*IDPServiceInterface)(nil), service)
@@ -206,7 +207,7 @@ func (suite *IDPInitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled()
 
 	// Execute
 	service, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	// Assert
 	suite.NoError(err)
@@ -348,7 +349,7 @@ func (s *IDPInitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	_, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	s.Error(err)
 	s.Equal("mock db client error", err.Error())
@@ -372,10 +373,37 @@ func (s *IDPInitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	_, err := Initialize(
-		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil)
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
 
 	s.Error(err)
 	s.Equal("mock transactioner error", err.Error())
 	mockProvider.AssertExpectations(s.T())
+	mockClient.AssertExpectations(s.T())
+}
+
+// TestInitialize_OUColumnCheckError tests that Initialize fails when the IDP table cannot be checked for the OU_ID
+// column, and does not carry on as if the column were missing.
+func (s *IDPInitTestSuite) TestInitialize_OUColumnCheckError() {
+	mockClient := &providermock.DBClientInterfaceMock{}
+	mockClient.On("GetTransactioner").Return(transactionmock.NewTransactionerMock(s.T()), nil)
+	mockClient.On("QueryContext", context.Background(), queryCheckIdentityProviderOUColumn).
+		Return(nil, errors.New("mock schema query error"))
+
+	mockProvider := &providermock.DBProviderInterfaceMock{}
+	mockProvider.On("GetConfigDBClient").Return(mockClient, nil)
+
+	originalGetDBProvider := getDBProvider
+	getDBProvider = func() provider.DBProviderInterface {
+		return mockProvider
+	}
+	defer func() {
+		getDBProvider = originalGetDBProvider
+	}()
+
+	_, err := Initialize(
+		cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), nil, nil, nil, nil, nil)
+
+	s.ErrorContains(err, "OU_ID column")
+	s.ErrorContains(err, "mock schema query error")
 	mockClient.AssertExpectations(s.T())
 }

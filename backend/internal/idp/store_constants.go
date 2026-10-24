@@ -54,4 +54,47 @@ var (
 		SQLiteQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
 			`WHERE json_extract(PROPERTIES, '$.' || $1 || '.value') = $2 AND DEPLOYMENT_ID = $3`,
 	}
+
+	// queryCheckIdentityProviderOUColumn checks whether the IDP table has the OU_ID column. A deployment created
+	// before the column was added keeps working without it. On PostgreSQL the table is resolved from the search path,
+	// as the unqualified "IDP" of the other queries is, so the check looks at the table the store reads and writes.
+	queryCheckIdentityProviderOUColumn = model.DBQuery{
+		ID: "IPQ-IDP_MGT-09",
+		PostgresQuery: `SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass('"IDP"') ` +
+			`AND attname = 'ou_id' AND attnum > 0 AND NOT attisdropped`,
+		SQLiteQuery: `SELECT 1 FROM pragma_table_info('IDP') WHERE name = 'OU_ID'`,
+	}
+	// queryCreateIdentityProviderWithOU is the query to create a new IdP that records its owning organization unit.
+	queryCreateIdentityProviderWithOU = model.DBQuery{
+		ID: "IPQ-IDP_MGT-10",
+		Query: `INSERT INTO "IDP" (ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION, ` +
+			`DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+	}
+	// queryGetIdentityProviderByIDWithOU is the query to get a IdP by IdP ID, with its owning organization unit.
+	queryGetIdentityProviderByIDWithOU = model.DBQuery{
+		ID: "IPQ-IDP_MGT-11",
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+			`WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+	// queryGetIdentityProviderListWithOU is the query to get a list of IdPs, with their owning organization units.
+	queryGetIdentityProviderListWithOU = model.DBQuery{
+		ID: "IPQ-IDP_MGT-12",
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+			`WHERE DEPLOYMENT_ID = $1`,
+	}
+	// queryGetIdentityProviderByNameWithOU is the query to get a IdP by IdP name, with its owning organization unit.
+	queryGetIdentityProviderByNameWithOU = model.DBQuery{
+		ID: "IPQ-IDP_MGT-13",
+		Query: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+			`WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
+	}
+	// queryGetIdentityProvidersByPropertyWithOU is the query to get IDPs by a property key and value, with their
+	// owning organization units.
+	queryGetIdentityProvidersByPropertyWithOU = model.DBQuery{
+		ID: "IPQ-IDP_MGT-14",
+		PostgresQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+			`WHERE PROPERTIES->$1->>'value' = $2 AND DEPLOYMENT_ID = $3`,
+		SQLiteQuery: `SELECT ID, NAME, DESCRIPTION, TYPE, OU_ID, PROPERTIES, ATTRIBUTE_CONFIGURATION FROM "IDP" ` +
+			`WHERE json_extract(PROPERTIES, '$.' || $1 || '.value') = $2 AND DEPLOYMENT_ID = $3`,
+	}
 )

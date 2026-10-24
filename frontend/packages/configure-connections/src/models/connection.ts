@@ -60,6 +60,11 @@ export interface ConnectionInstance {
   name: string;
   description?: string;
   type: ConnectionType;
+  /**
+   * The organization unit the connection belongs to. Only identity-provider connections have one, and it is
+   * absent when the server has not recorded an owner.
+   */
+  ouId?: string;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -429,6 +434,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   id: string;
   type: ConnectionType;
   name: string;
+  /** The organization unit the connection belongs to (identity-provider connections only). */
+  ouId?: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;

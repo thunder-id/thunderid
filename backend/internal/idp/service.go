@@ -16,11 +16,13 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -47,6 +49,11 @@ type IDPServiceInterface interface {
 	) ([]providers.AuthorizationTarget, *tidcommon.ServiceError)
 }
 
+// ouProvider looks up organization units, to check the one an identity provider is given.
+type ouProvider interface {
+	GetOrganizationUnit(ctx context.Context, id string) (ou.OrganizationUnit, *tidcommon.ServiceError)
+}
+
 // idpService is the default implementation of the IdPServiceInterface.
 type idpService struct {
 	idpStore           idpStoreInterface
@@ -55,6 +62,7 @@ type idpService struct {
 	groupService       group.GroupServiceInterface
 	resourceService    providers.ResourceServerProvider
 	transactioner      providers.Transactioner
+	ouService          ouProvider
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
 	uuidGenerator      func() (string, error)
@@ -83,7 +91,8 @@ func (u userTypeAttributes) isRequired(attr string) bool {
 // newIDPService creates a new instance of IdPService.
 func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	roleService role.RoleServiceInterface, groupService group.GroupServiceInterface,
-	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner) IDPServiceInterface {
+	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner,
+	ouService ouProvider) IDPServiceInterface {
 	return &idpService{
 		idpStore:          idpStore,
 		entityTypeService: entityTypeService,
@@ -91,6 +100,7 @@ func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.Enti
 		groupService:      groupService,
 		resourceService:   resourceService,
 		transactioner:     transactioner,
+		ouService:         ouService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:     utils.GenerateUUIDv7,
 	}
@@ -112,6 +122,14 @@ func (is *idpService) CreateIdentityProvider(
 	is.ApplySchemaAwareDefaults(ctx, idp)
 	if svcErr := is.validateAttributeConfiguration(ctx, idp); svcErr != nil {
 		return nil, svcErr
+	}
+	if storeRecordsOU(is.idpStore) {
+		if svcErr := is.resolveIDPOU(ctx, idp); svcErr != nil {
+			return nil, svcErr
+		}
+	} else {
+		// The IDP table has no OU_ID column yet, so no owner is kept: none is defaulted, checked or returned.
+		idp.OUID = ""
 	}
 
 	if idp.ID == "" {
@@ -156,6 +174,41 @@ func (is *idpService) CreateIdentityProvider(
 	}
 
 	return idp, nil
+}
+
+// storeRecordsOU reports whether a store keeps the organization unit of an identity provider. A store that does not say
+// is taken to, as the declarative one does.
+func storeRecordsOU(store idpStoreInterface) bool {
+	if reporter, ok := store.(interface{ recordsOU() bool }); ok {
+		return reporter.recordsOU()
+	}
+	return true
+}
+
+// resolveIDPOU sets the organization unit a new identity provider is owned by. One created without an
+// organization unit is owned by the caller's organization unit, and is refused when the caller has none. One that names
+// an organization unit has to name one that exists. It is only recorded: nothing restricts what an organization unit
+// can do with an identity provider it does not own.
+func (is *idpService) resolveIDPOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError {
+	if idp.OUID == "" {
+		idp.OUID = security.GetOUID(ctx)
+		if idp.OUID == "" {
+			return &ErrorIDPOURequired
+		}
+		return nil
+	}
+	if is.ouService == nil {
+		return nil
+	}
+	if _, ouErr := is.ouService.GetOrganizationUnit(ctx, idp.OUID); ouErr != nil {
+		if ouErr.Type == tidcommon.ClientErrorType {
+			return &ErrorInvalidIDPOU
+		}
+		is.logger.Error(ctx, "Failed to look up the organization unit of an identity provider",
+			log.String("ouID", idp.OUID), log.String("error", ouErr.Error.DefaultValue))
+		return &tidcommon.InternalServerError
+	}
+	return nil
 }
 
 // GetIdentityProviderList retrieves the list of all Identity Providers.
@@ -276,6 +329,18 @@ func (is *idpService) UpdateIdentityProvider(
 				return err
 			}
 			return err
+		}
+
+		// Prevent changing the organization unit. Leaving it out keeps the one the identity provider has. Without
+		// the OU_ID column there is no owner to keep or to change.
+		if storeRecordsOU(is.idpStore) {
+			if idp.OUID != "" && idp.OUID != existingIDP.OUID {
+				svcErr = &ErrorIDPOUUpdateNotAllowed
+				return errors.New("organization unit of an identity provider cannot be changed")
+			}
+			idp.OUID = existingIDP.OUID
+		} else {
+			idp.OUID = ""
 		}
 
 		// If the name is being updated, check whether another IdP with the same name exists

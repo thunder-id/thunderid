@@ -22,6 +22,11 @@ type connectionExportModel struct {
 	Name        string `yaml:"name"                  json:"name"`
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 
+	// OUID is the organization unit an IdP-backed connection (google, github, oidc, oauth) belongs to. A document may
+	// name it by OUHandle instead, which is resolved to its id; when both are given the id wins.
+	OUID     string `yaml:"ouId,omitempty"     json:"ouId,omitempty"`
+	OUHandle string `yaml:"ouHandle,omitempty" json:"ouHandle,omitempty"`
+
 	// IdP-backed vendor fields (google, github, oidc, oauth).
 	ClientID              string   `yaml:"clientId,omitempty"              json:"clientId,omitempty"`
 	ClientSecret          string   `yaml:"clientSecret,omitempty"          json:"clientSecret,omitempty"`

@@ -41,6 +41,11 @@ func newCacheBackedIDPStore(
 	}
 }
 
+// recordsOU reports whether the wrapped store keeps the organization unit of an identity provider.
+func (s *cacheBackedIDPStore) recordsOU() bool {
+	return storeRecordsOU(s.inner)
+}
+
 // CreateIdentityProvider delegates to the inner store and caches the created IDP.
 func (s *cacheBackedIDPStore) CreateIdentityProvider(ctx context.Context, idp providers.IDPDTO) error {
 	if err := s.inner.CreateIdentityProvider(ctx, idp); err != nil {

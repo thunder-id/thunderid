@@ -24,6 +24,8 @@ import (
 // returns the connection exporter for the export API. Given an MCP server, it also registers the
 // HTTP endpoint connection tools.
 //
+// ouService resolves the ouHandle a declarative connection may name in place of an ouId, and is optional.
+//
 // valueCapturer is optional. Given one, the service hands it every connection it creates or changes,
 // so the values the connection's export refers to are kept where a reference finds them.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPServiceInterface,
@@ -31,6 +33,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	httpService httpconnection.HTTPConnectionServiceInterface,
+	ouService ouHandleResolver,
 	valueCapturer declarativeresource.ValueCapturer) (
 	declarativeresource.ResourceExporter, error) {
 	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
@@ -42,7 +45,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 		registerMCPTools(mcpServer, svc)
 	}
 
-	if err := loadDeclarativeResources(idpService); err != nil {
+	if err := loadDeclarativeResources(idpService, ouService); err != nil {
 		return nil, err
 	}
 

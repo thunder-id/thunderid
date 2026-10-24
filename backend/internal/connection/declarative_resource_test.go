@@ -384,8 +384,8 @@ func (s *DeclarativeResourceTestSuite) TestConnectionResourceID() {
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapper() {
-	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: ""}, nil))
-	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: "Google"}, nil),
+	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: ""}, nil, nil))
+	s.Error(validateConnectionDTOWrapper(&providers.IDPDTO{ID: "idp-1", Name: "Google"}, nil, nil),
 		"a name-only IdP DTO must fail full validation (missing type and required properties)")
 	s.NoError(validateConnectionDTOWrapper(&providers.IDPDTO{
 		ID: "idp-1", Name: "Google", Type: providers.IDPTypeGoogle,
@@ -394,10 +394,10 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapper() {
 			mustProperty(s.T(), idp.PropClientSecret, "client-secret", true),
 			mustProperty(s.T(), idp.PropRedirectURI, "https://app/cb", false),
 		},
-	}, nil))
-	s.Error(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: ""}, nil))
-	s.NoError(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: "Twilio"}, nil))
-	s.NoError(validateConnectionDTOWrapper("not-a-dto", nil))
+	}, nil, nil))
+	s.Error(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: ""}, nil, nil))
+	s.NoError(validateConnectionDTOWrapper(&ncommon.NotificationSenderDTO{ID: "s-1", Name: "Twilio"}, nil, nil))
+	s.NoError(validateConnectionDTOWrapper("not-a-dto", nil, nil))
 }
 
 // An email sender takes the API's validation path on load, so a provider that cannot deliver
@@ -413,7 +413,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidates
 
 	valid := "id: sm-1\ntype: email-smtp\nname: SMTP\nhost: smtp.example.com\nport: 587\n" +
 		"fromAddress: noreply@example.com\n"
-	s.NoError(validateConnectionDTOWrapper(parse(valid), nil))
+	s.NoError(validateConnectionDTOWrapper(parse(valid), nil, nil))
 
 	cases := map[string]string{
 		"missing port": "id: sm-1\ntype: email-smtp\nname: SMTP\nhost: smtp.example.com\n" +
@@ -425,7 +425,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOWrapperValidates
 			"  properties:\n    username: mailer\n    password: s3cret\n",
 	}
 	for name, doc := range cases {
-		err := validateConnectionDTOWrapper(parse(doc), nil)
+		err := validateConnectionDTOWrapper(parse(doc), nil, nil)
 		s.Require().Error(err, name)
 		s.Contains(err.Error(), `connection resource "sm-1" is invalid`, name)
 	}

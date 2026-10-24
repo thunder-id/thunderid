@@ -189,4 +189,47 @@ var (
 				"Remove or reassign them first.",
 		},
 	}
+	// ErrorInvalidIDPOU is the error returned when the organization unit given for an identity provider does not
+	// exist.
+	ErrorInvalidIDPOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IDP-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.idpservice.invalid_idp_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.idpservice.invalid_idp_ou_description",
+			DefaultValue: "The organization unit given for the identity provider does not exist",
+		},
+	}
+	// ErrorIDPOURequired is the error returned when an identity provider is created without an organization unit by
+	// a caller that has none to default to.
+	ErrorIDPOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IDP-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.idpservice.idp_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.idpservice.idp_ou_required_description",
+			DefaultValue: "An identity provider needs an organization unit, and the caller has none to default to. " +
+				"Give one in the request",
+		},
+	}
+	// ErrorIDPOUUpdateNotAllowed is the error returned when attempting to change the organization unit of an
+	// identity provider.
+	ErrorIDPOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IDP-1015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.idpservice.idp_ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.idpservice.idp_ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of an identity provider cannot be changed",
+		},
+	}
 )

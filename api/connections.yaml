@@ -1509,6 +1509,13 @@ components:
         id: { type: string, format: uuid }
         name: { type: string, example: "My Google" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Only identity-provider connections (google, github,
+            oidc, oauth) have one, and it is only recorded: it does not restrict who can use the connection. Absent only
+            on a deployment whose IDP table does not have the OU_ID column yet.
+          example: "01900000-0000-7000-8000-000000000001"
         type:
           type: string
           description: >-
@@ -1605,6 +1612,14 @@ components:
       properties:
         name: { type: string, example: "My Google" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Defaults to the organization unit of the caller, and is
+            required when the caller has none (IDP-1016). The organization unit has to exist, and cannot be changed once the connection is created: when it is given on
+            an update, it has to be the one the connection has. It is only recorded, and does not restrict who can use
+            the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1625,6 +1640,12 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. It is only recorded, and does not restrict who can
+            use the connection. Absent only on a deployment whose IDP table does not have the OU_ID column yet.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "google" }
         clientId: { type: string }
         clientSecret: { type: string, description: "Masked as \"******\".", example: "******" }
@@ -1642,6 +1663,14 @@ components:
       properties:
         name: { type: string, example: "My GitHub" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Defaults to the organization unit of the caller, and is
+            required when the caller has none (IDP-1016). The organization unit has to exist, and cannot be changed once the connection is created: when it is given on
+            an update, it has to be the one the connection has. It is only recorded, and does not restrict who can use
+            the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1659,6 +1688,12 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. It is only recorded, and does not restrict who can
+            use the connection. Absent only on a deployment whose IDP table does not have the OU_ID column yet.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "github" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }
@@ -1673,6 +1708,14 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Defaults to the organization unit of the caller, and is
+            required when the caller has none (IDP-1016). The organization unit has to exist, and cannot be changed once the connection is created: when it is given on
+            an update, it has to be the one the connection has. It is only recorded, and does not restrict who can use
+            the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1698,6 +1741,12 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. It is only recorded, and does not restrict who can
+            use the connection. Absent only on a deployment whose IDP table does not have the OU_ID column yet.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "oidc" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }
@@ -1725,6 +1774,14 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. Defaults to the organization unit of the caller, and is
+            required when the caller has none (IDP-1016). The organization unit has to exist, and cannot be changed once the connection is created: when it is given on
+            an update, it has to be the one the connection has. It is only recorded, and does not restrict who can use
+            the connection.
+          example: "01900000-0000-7000-8000-000000000001"
         clientId: { type: string }
         clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update." }
         redirectUri: { type: string }
@@ -1745,6 +1802,12 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. It is only recorded, and does not restrict who can
+            use the connection. Absent only on a deployment whose IDP table does not have the OU_ID column yet.
+          example: "01900000-0000-7000-8000-000000000001"
         type: { type: string, example: "oauth" }
         clientId: { type: string }
         clientSecret: { type: string, example: "******" }

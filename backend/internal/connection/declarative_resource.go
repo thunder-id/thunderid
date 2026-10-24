@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -315,6 +316,7 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 		Type:                   vendor,
 		Name:                   dto.Name,
 		Description:            dto.Description,
+		OUID:                   dto.OUID,
 		ClientID:               values[idp.PropClientID],
 		ClientSecret:           values[idp.PropClientSecret],
 		RedirectURI:            values[idp.PropRedirectURI],
@@ -418,7 +420,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 	switch model.Type {
 	case "google":
 		dto, err := googleToIDPDTO(googleConnectionRequest{
-			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
+			Name: model.Name, Description: model.Description, OUID: model.OUID, ClientID: model.ClientID,
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI, Scopes: model.Scopes,
 			Prompt: model.Prompt, JwksEndpoint: model.JwksEndpoint, Issuer: model.Issuer,
 			TokenExchangeEnabled: model.TokenExchangeEnabled, AttributeConfiguration: model.AttributeConfiguration,
@@ -427,10 +429,11 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			return nil, nil, err
 		}
 		dto.ID = model.ID
+		dto.OUHandle = model.OUHandle
 		return dto, nil, nil
 	case "github":
 		dto, err := githubToIDPDTO(githubConnectionRequest{
-			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
+			Name: model.Name, Description: model.Description, OUID: model.OUID, ClientID: model.ClientID,
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI, Scopes: model.Scopes,
 			Prompt: model.Prompt, AttributeConfiguration: model.AttributeConfiguration,
 		})
@@ -438,10 +441,11 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			return nil, nil, err
 		}
 		dto.ID = model.ID
+		dto.OUHandle = model.OUHandle
 		return dto, nil, nil
 	case "oidc":
 		dto, err := oidcToIDPDTO(oidcConnectionRequest{
-			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
+			Name: model.Name, Description: model.Description, OUID: model.OUID, ClientID: model.ClientID,
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI,
 			AuthorizationEndpoint: model.AuthorizationEndpoint, TokenEndpoint: model.TokenEndpoint,
 			UserInfoEndpoint: model.UserInfoEndpoint, JwksEndpoint: model.JwksEndpoint,
@@ -453,10 +457,11 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			return nil, nil, err
 		}
 		dto.ID = model.ID
+		dto.OUHandle = model.OUHandle
 		return dto, nil, nil
 	case "oauth":
 		dto, err := oauthToIDPDTO(oauthConnectionRequest{
-			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
+			Name: model.Name, Description: model.Description, OUID: model.OUID, ClientID: model.ClientID,
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI,
 			AuthorizationEndpoint: model.AuthorizationEndpoint, TokenEndpoint: model.TokenEndpoint,
 			UserInfoEndpoint: model.UserInfoEndpoint, Scopes: model.Scopes, Prompt: model.Prompt,
@@ -466,6 +471,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			return nil, nil, err
 		}
 		dto.ID = model.ID
+		dto.OUHandle = model.OUHandle
 		return dto, nil, nil
 	case "twilio":
 		dto, err := twilioToSenderDTO(twilioConnectionRequest{
@@ -604,13 +610,17 @@ func connectionResourceID(dto interface{}) string {
 //
 // idpService may be nil, in which case the schema-aware defaults the live API applies are skipped
 // and the declarative document stands entirely on its own.
-func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInterface) error {
+func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInterface,
+	ouService ouHandleResolver) error {
 	switch d := dto.(type) {
 	case *providers.IDPDTO:
 		if d.Name == "" {
 			return fmt.Errorf("connection resource %q is missing a name", d.ID)
 		}
 		if err := idp.ValidateIDP(d); err != nil {
+			return err
+		}
+		if err := resolveOUHandle(d, ouService); err != nil {
 			return err
 		}
 		if idpService != nil {
@@ -668,8 +678,34 @@ func (s *connectionDeclarativeStore) Create(id string, data interface{}) error {
 	}
 }
 
+// ouHandleResolver looks up an organization unit by its handle, to resolve the ouHandle a connection document may name
+// in place of an ouId.
+type ouHandleResolver interface {
+	GetOrganizationUnitByPath(ctx context.Context, handlePath string) (ou.OrganizationUnit, *tidcommon.ServiceError)
+}
+
+// resolveOUHandle sets the organization unit id of an identity provider that names its organization unit by handle.
+// A document that gives both an ouId and an ouHandle keeps its ouId. Declarative resources load at startup with no
+// authenticated subject, so the lookup runs with the runtime context.
+func resolveOUHandle(dto *providers.IDPDTO, ouService ouHandleResolver) error {
+	if dto.OUID != "" || dto.OUHandle == "" {
+		return nil
+	}
+	if ouService == nil {
+		return fmt.Errorf("connection resource %q names organization unit %q by handle, which cannot be resolved here",
+			dto.ID, dto.OUHandle)
+	}
+	ctx := security.WithRuntimeContext(context.Background())
+	resolved, svcErr := ouService.GetOrganizationUnitByPath(ctx, dto.OUHandle)
+	if svcErr != nil {
+		return fmt.Errorf("organization unit with handle %q not found for connection %q", dto.OUHandle, dto.ID)
+	}
+	dto.OUID = resolved.ID
+	return nil
+}
+
 // loadDeclarativeResources loads connection files when a connection file store is enabled.
-func loadDeclarativeResources(idpService idp.IDPServiceInterface) error {
+func loadDeclarativeResources(idpService idp.IDPServiceInterface, ouService ouHandleResolver) error {
 	if !declarativeresource.IsDeclarativeModeEnabled() &&
 		!idp.ShouldLoadDeclarativeIDPResources() &&
 		!authzenpdp.ShouldLoadDeclarativeAuthZENPDPResources() {
@@ -686,7 +722,7 @@ func loadDeclarativeResources(idpService idp.IDPServiceInterface) error {
 		DirectoryName: "connections",
 		Parser:        parseToConnectionDTOWrapper,
 		Validator: func(dto interface{}) error {
-			return validateConnectionDTOWrapper(dto, idpService)
+			return validateConnectionDTOWrapper(dto, idpService, ouService)
 		},
 		IDExtractor: connectionResourceID,
 	}

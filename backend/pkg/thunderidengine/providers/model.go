@@ -842,6 +842,8 @@ type IDPDTO struct {
 	Name                   string                  `yaml:"name"`
 	Description            string                  `yaml:"description,omitempty"`
 	Type                   IDPType                 `yaml:"type"`
+	OUID                   string                  `yaml:"ouId,omitempty"`
+	OUHandle               string                  `yaml:"ouHandle,omitempty"`
 	Properties             []cmodels.Property      `yaml:"properties,omitempty"`
 	AttributeConfiguration *AttributeConfiguration `yaml:"attribute_configuration,omitempty"`
 }

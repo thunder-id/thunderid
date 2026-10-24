@@ -109,7 +109,7 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
 	_, err := Initialize(s.mux, nil, s.mockIDP, s.mockNotif, s.mockResource,
-		s.authZENPDP, s.mockHTTP, nil)
+		s.authZENPDP, s.mockHTTP, nil, nil)
 	s.Require().NoError(err)
 }
 

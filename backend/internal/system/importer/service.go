@@ -709,6 +709,13 @@ func (s *importService) importConnectionIDP(
 		}
 	}
 
+	resolvedOUID, svcErr := s.resolveImportOUHandle(
+		ctx, resourceTypeConnection, req.ID, req.Name, req.OUID, req.OUHandle)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
+	}
+	req.OUID = resolvedOUID
+
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)

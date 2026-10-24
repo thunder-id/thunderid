@@ -320,7 +320,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	authZService := authz.Initialize(
 		roleService, resourceService, entityService, authZENPDPService)
 
-	idpService, err := idp.Initialize(cacheManager, entityTypeService, roleService, groupService, resourceService)
+	idpService, err := idp.Initialize(
+		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	notifTemplateSvc, notifTemplateRenderer, notifTemplateExporter, err :=
@@ -331,7 +332,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender services.
 	connectionExporter, err := connection.Initialize(
-		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService, nil)
+		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
+		ouService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 

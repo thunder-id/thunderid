@@ -20,6 +20,7 @@ import AuthenticationSection from '../components/AuthenticationSection';
 import AuthorizationMappingSection from '../components/AuthorizationMappingSection';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
 import ConnectionForm from '../components/ConnectionForm';
+import OrganizationUnitSection from '../components/OrganizationUnitSection';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
 import ServiceAuthenticationMethods from '../components/ServiceAuthenticationMethods';
 import SubjectMappingSection from '../components/SubjectMappingSection';
@@ -572,6 +573,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   helperText={t('detail.connectionId.hint')}
                 />
               </SettingsCard>
+
+              {data?.ouId && <OrganizationUnitSection ouId={data.ouId} />}
 
               <SettingsCard
                 title={

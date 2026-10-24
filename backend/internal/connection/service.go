@@ -112,6 +112,7 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 				Name:         instance.Name,
 				Description:  instance.Description,
 				Type:         vendor,
+				OUID:         instance.OUID,
 				Categories:   []connectionCategory{categoryIdentityProvider},
 				IDJagEnabled: instance.IDJagEnabled,
 			})

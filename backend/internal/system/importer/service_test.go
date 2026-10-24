@@ -4326,3 +4326,64 @@ func TestImportUserRefusesPoliciesWithoutASharingAdapter(t *testing.T) {
 	assert.Contains(t, resp.Results[0].Message, "sharing")
 	assert.Equal(t, []string{"user-5"}, userSvc.deleted)
 }
+
+// TestImportConnection_OUHandleResolved verifies that ouHandle on an identity provider connection document is
+// resolved to ouId through the OU service before the connection is created.
+func TestImportConnection_OUHandleResolved(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	svc := newImportService(
+		nil, idpSvc, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nname: idp-one\ntype: google\nouHandle: default\nclientId: abc\n",
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, idpSvc.created, 1)
+	assert.Equal(t, "ou-default", idpSvc.created[0].OUID)
+}
+
+// TestImportConnection_OUHandleNotFound verifies that an unknown ouHandle on a connection document fails that
+// item without creating anything.
+func TestImportConnection_OUHandleNotFound(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	svc := newImportService(
+		nil, idpSvc, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nname: idp-one\ntype: google\nouHandle: missing\nclientId: abc\n",
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Empty(t, idpSvc.created)
+}
+
+// TestImportConnection_OUIDWinsOverHandle verifies that ouId wins when a connection document gives both, and the OU
+// service is not consulted for the handle.
+func TestImportConnection_OUIDWinsOverHandle(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
+	svc := newImportService(
+		nil, idpSvc, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nname: idp-one\ntype: google\nouId: ou-other\nouHandle: default\n" +
+			"clientId: abc\n",
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, idpSvc.created, 1)
+	assert.Equal(t, "ou-other", idpSvc.created[0].OUID)
+}
