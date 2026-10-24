@@ -19,9 +19,9 @@ type BearerAuthenticator struct {
 }
 
 // NewBearerAuthenticator creates a new BearerAuthenticator. expectedAud, if non-empty, is required
-// as the audience (RFC 8707 resource indicator) of a self-issued token; pass "" for the REST gate's
-// behavior of not restricting by audience. It has no effect on a trusted-issuer token, which is
-// always checked against that issuer's own configured audience regardless of expectedAud.
+// as the audience (RFC 8707 resource indicator) of a self-issued token and of a trusted-issuer
+// token alike. Pass "" to skip the self-issued check; a trusted-issuer token is then checked
+// against trusted_issuer.audience.
 func NewBearerAuthenticator(
 	jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface, expectedAud string,
 ) *BearerAuthenticator {
@@ -32,8 +32,8 @@ func NewBearerAuthenticator(
 
 // Authenticate verifies token — routing on issuer exactly as the REST gate does (self-issued, or a
 // configured trusted issuer verified via JWKS), and against expectedAud if this authenticator was
-// constructed with one — and rejects it if revocationEnforcer reports it as revoked. It returns the
-// resulting SecurityContext on success.
+// constructed with one, for trusted-issuer tokens too — and rejects it if revocationEnforcer
+// reports it as revoked. It returns the resulting SecurityContext on success.
 func (a *BearerAuthenticator) Authenticate(ctx context.Context, token string) (*SecurityContext, error) {
 	securityCtx, err := AuthenticateBearerToken(ctx, a.jwtService, token, a.expectedAud)
 	if err != nil {
