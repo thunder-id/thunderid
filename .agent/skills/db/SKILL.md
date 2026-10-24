@@ -90,6 +90,8 @@ CREATE TABLE "IDP" (
 
 Although UUID v7 identifiers are globally unique, queries must still filter by `DEPLOYMENT_ID` to prevent data from leaking across deployments.
 
+A store reads the id with `deployment.Resolve(ctx)` from `internal/system/deployment`, never from configuration and never as a parameter when a context is available. Caches holding rows are keyed by deployment as well. The `control-plane` skill explains how the id reaches the context and what the Control Plane does with it.
+
 ### Query Patterns
 
 `DEPLOYMENT_ID` is the last parameter in all parameterized queries. Follow these patterns consistently.

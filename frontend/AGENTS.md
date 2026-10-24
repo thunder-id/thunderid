@@ -7,6 +7,9 @@ shell plus gateway management, with every administration operation running nativ
 
 For feature-package layout and app boundaries, see the
 [Frontend Development overview](../docs/community/contributing/contributing-code/frontend-development/overview.mdx).
+For what belongs in `console-cp` and in `@thunderid/configure-gateways`, and which app mounts gateway and deploy
+routes, read [.agent/skills/control-plane/SKILL.md](../.agent/skills/control-plane/SKILL.md). A change to a shared
+feature package is verified against both console apps.
 
 ## Feature Packages
 
