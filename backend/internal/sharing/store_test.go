@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -131,6 +132,16 @@ func (s *StoreTestSuite) expectHydrate(policyID string, units, rules []map[strin
 	s.client.On("QueryContext", mock.Anything, queryListUnits, policyID, storeDeploymentID).
 		Return(units, nil).Once()
 	s.client.On("QueryContext", mock.Anything, queryListRules, policyID, storeDeploymentID).
+		Return(rules, nil).Once()
+}
+
+// expectHydrateAll answers the two batched queries hydrateAll makes for a set of policies.
+func (s *StoreTestSuite) expectHydrateAll(policyIDs []string, units, rules []map[string]interface{}) {
+	query, args := buildListUnitsForPoliciesQuery(policyIDs, storeDeploymentID)
+	s.client.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return(units, nil).Once()
+	query, args = buildListRulesForPoliciesQuery(policyIDs, storeDeploymentID)
+	s.client.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
 		Return(rules, nil).Once()
 }
 
@@ -750,9 +761,8 @@ func (s *StoreTestSuite) TestHydrateAllFailsRatherThanReturningPartialResults() 
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
 		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
-	// The first row hydrates, the second fails on its targets.
-	s.expectHydrate("p1", nil, nil)
-	s.client.On("QueryContext", mock.Anything, queryListUnits, "p2", storeDeploymentID).
+	query, args := buildListUnitsForPoliciesQuery([]string{"p1", "p2"}, storeDeploymentID)
+	s.client.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
 		Return(nil, failure).Once()
 
 	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
@@ -768,14 +778,90 @@ func (s *StoreTestSuite) TestHydrateAllReturnsEveryPolicy() {
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
 		string(testType), testResource, storeDeploymentID, 100, 0).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
-	s.expectHydrate("p1", nil, nil)
-	s.expectHydrate("p2", nil, nil)
+	s.expectHydrateAll([]string{"p1", "p2"}, nil, nil)
 
 	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
 
 	s.Require().NoError(err)
 	s.Require().Len(got, 2)
 	s.Equal([]string{"p1", "p2"}, []string{got[0].ID, got[1].ID})
+}
+
+// The units and rules of a whole set come back in one statement each, and every row lands on the
+// policy it names.
+func (s *StoreTestSuite) TestHydrateAllAttachesEachRowToItsPolicy() {
+	s.clientAvailable()
+	s.client.On("QueryContext", mock.Anything, queryListPoliciesForResource,
+		string(testType), testResource, storeDeploymentID, 100, 0).
+		Return([]map[string]interface{}{
+			sectionsRow(`{"childUnits":{"mode":"selected"}}`),
+			func() map[string]interface{} {
+				row := sectionsRow(`{"otherTreeRoots":{"mode":"selected"}}`)
+				row["id"] = "p2"
+				return row
+			}(),
+		}, nil).Once()
+	s.expectHydrateAll([]string{"p1", "p2"},
+		[]map[string]interface{}{
+			{"policy_id": "p2", "section": "otherTreeRoots", "ou_id": "root-b", "reach": "unit"},
+			{"policy_id": "p1", "section": "childUnits", "ou_id": "child-a", "reach": "subtree"},
+		},
+		[]map[string]interface{}{
+			{"policy_id": "p1", "section": "childUnits", "ou_id": "child-a", "field_key": "assignments",
+				"resolved": `{}`, "requested": `{}`},
+		})
+
+	got, err := s.store.ListPoliciesForResource(context.Background(), testType, testResource, 100, 0)
+
+	s.Require().NoError(err)
+	s.Require().Len(got, 2)
+	s.Equal([]ChildUnit{{OUID: "child-a", Reach: ReachSubtree}}, got[0].ChildUnits.Units)
+	s.Require().Len(got[0].Rules, 1)
+	s.Equal("assignments", got[0].Rules[0].FieldKey)
+	s.Equal([]string{"root-b"}, got[1].OtherTreeRoots.Units)
+	s.Empty(got[1].Rules)
+}
+
+// A set larger than one batch is hydrated in batches, so no statement binds more IDs than the batch
+// allows.
+func (s *StoreTestSuite) TestHydrateAllSplitsALargeSetIntoBatches() {
+	s.clientAvailable()
+	rows := make([]map[string]interface{}, 0, hydrateBatchSize+1)
+	ids := make([]string, 0, hydrateBatchSize+1)
+	for i := range hydrateBatchSize + 1 {
+		id := fmt.Sprintf("p%d", i)
+		rows = append(rows, policyRow(id))
+		ids = append(ids, id)
+	}
+	s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).Return(rows, nil).Once()
+	s.expectHydrateAll(ids[:hydrateBatchSize], nil, nil)
+	s.expectHydrateAll(ids[hydrateBatchSize:], nil, nil)
+
+	got, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
+
+	s.Require().NoError(err)
+	s.Len(got, hydrateBatchSize+1)
+}
+
+// A failed rule read fails the whole set, the same way a failed unit read does.
+func (s *StoreTestSuite) TestHydrateAllFailsOnARuleReadFailure() {
+	s.clientAvailable()
+	failure := errors.New("query error")
+	s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
+		string(testType), testResource, storeDeploymentID).
+		Return([]map[string]interface{}{policyRow("p1")}, nil).Once()
+	query, args := buildListUnitsForPoliciesQuery([]string{"p1"}, storeDeploymentID)
+	s.client.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return(nil, nil).Once()
+	query, args = buildListRulesForPoliciesQuery([]string{"p1"}, storeDeploymentID)
+	s.client.On("QueryContext", append([]interface{}{mock.Anything, query}, args...)...).
+		Return(nil, failure).Once()
+
+	got, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
+
+	s.ErrorIs(err, failure)
+	s.Nil(got)
 }
 
 // Each clearing statement in a replace wraps its own failure, so a half-cleared policy says which
@@ -1078,8 +1164,7 @@ func (s *StoreTestSuite) TestTheWholeSetReadHydratesEveryPolicy() {
 	s.client.On("QueryContext", mock.Anything, queryListAllPoliciesForResource,
 		string(testType), testResource, storeDeploymentID).
 		Return([]map[string]interface{}{policyRow("p1"), policyRow("p2")}, nil).Once()
-	s.expectHydrate("p1", nil, nil)
-	s.expectHydrate("p2", nil, nil)
+	s.expectHydrateAll([]string{"p1", "p2"}, nil, nil)
 
 	got, err := s.store.ListAllPoliciesForResource(context.Background(), testType, testResource)
 
@@ -1158,7 +1243,7 @@ func (s *StoreTestSuite) TestListPoliciesIssuedByHydrates() {
 	s.clientAvailable()
 	s.client.On("QueryContext", mock.Anything, queryListPoliciesIssuedBy, rootOU, storeDeploymentID).
 		Return([]map[string]interface{}{sectionsRow(`{"childUnits":{"mode":"all"}}`)}, nil).Once()
-	s.expectHydrate("p1", nil, nil)
+	s.expectHydrateAll([]string{"p1"}, nil, nil)
 
 	got, err := s.store.ListPoliciesIssuedBy(context.Background(), rootOU)
 

@@ -296,7 +296,15 @@ curl -kL "https://localhost:8090/organization-units/{id}/users?include=display" 
   -H 'Authorization: Bearer <access-token>'
 ```
 
-The response includes pagination fields (`totalResults`, `startIndex`, `count`) and a `users` array. Each user entry contains an `id` and `type`, and optionally a `display` name when `include=display` is requested.
+The list holds the users the OU owns, followed by the users [shared into it](../../key-concepts/resource-sharing). The response includes pagination fields (`totalResults`, `startIndex`, `count`) and a `users` array. Each user entry contains an `id`, a `type`, and an `isOwned` field that is `true` for a user the OU owns and `false` for a shared user. It also contains a `display` name when `include=display` is requested.
+
+The users API returns the same users when you filter on the OU ID:
+
+```bash
+curl -kL -G "https://localhost:8090/users" \
+  --data-urlencode 'filter=ouId eq "{id}"' \
+  -H 'Authorization: Bearer <access-token>'
+```
 
 ## List Groups in an Organization Unit
 

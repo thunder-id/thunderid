@@ -520,6 +520,9 @@ paths:
       tags:
         - Organization Units
       summary: List users in organization unit
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwned` field says which of the two it is.
       parameters:
         - in: path
           name: id
@@ -544,8 +547,10 @@ paths:
                 users:
                   - id: "3f9d5c8e-3c56-4f09-a1db-bb3d5e3f4b5d"
                     display: "John Doe"
+                    isOwned: true
                   - id: "9f4bc2ee-8d1e-4e21-a3b4-17d9b612e320"
                     display: "Jane Smith"
+                    isOwned: false
                 links:
                   - href: "organization-units/afc77cfd-620b-4cf0-a31c-7377b0ea8902/users?offset=2&limit=2"
                     rel: "next"
@@ -1094,6 +1099,9 @@ paths:
       tags:
         - organization-units-by-path
       summary: List users in organization unit by handle path
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwned` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -1553,6 +1561,9 @@ components:
             display attribute. Falls back to the user ID when no display
             attribute is configured or the value cannot be resolved. Only
             included when include=display is specified.
+        isOwned:
+          type: boolean
+          description: "Whether the organization unit owns the user rather than being shared it."
 
     Group:
       type: object

@@ -334,27 +334,24 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 			expectedErr: &ErrorInvalidHandlePath,
 		},
 		{
-			name: "ReturnsInvalidLimitWhenListingUsersFails",
+			name: "ReturnsServerErrorWhenListingUsersFails",
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
 					Return(oupkg.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
 					Once()
-				ouServiceMock.
-					On("GetOrganizationUnitUsers", mock.Anything, "ou-id", 10, 0, false).
-					Return((*oupkg.UserListResponse)(nil), &tidcommon.ServiceError{
-						Type: tidcommon.ClientErrorType,
-						Code: oupkg.ErrorInvalidLimit.Code,
-					}).
-					Once()
+				sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+				sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-id").
+					Return(nil, &tidcommon.InternalServerError).Once()
 
 				return &userService{
-					ouService:    ouServiceMock,
-					authzService: newAllowAllAuthz(t),
+					ouService:      ouServiceMock,
+					authzService:   newAllowAllAuthz(t),
+					sharingService: sharingMock,
 				}
 			},
-			expectedErr: &ErrorInvalidLimit,
+			expectedErr: &tidcommon.InternalServerError,
 		},
 	}
 
@@ -1697,6 +1694,7 @@ func TestUserService_GetUserList(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, 5, resp.TotalResults)
 	require.Len(t, resp.Users, 1)
+	require.True(t, *resp.Users[0].IsOwned, "an unfiltered list holds every user in the unit that owns it")
 }
 
 func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
@@ -1728,6 +1726,7 @@ func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, 3, resp.TotalResults)
 	require.Len(t, resp.Users, 1)
+	require.True(t, *resp.Users[0].IsOwned)
 }
 
 func TestUserService_GetUserList_EmptyOUIDs(t *testing.T) {
@@ -1749,6 +1748,159 @@ func TestUserService_GetUserList_EmptyOUIDs(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, 0, resp.TotalResults)
 	require.Empty(t, resp.Users)
+}
+
+// ouFilteredService returns a service whose sharing reports sharedIDs for testOrgID and whose entity
+// service answers the page request for them with page.
+func ouFilteredService(
+	t *testing.T, authz sysauthz.SystemAuthorizationServiceInterface, sharedIDs []string,
+	page *entitypkg.OUEntityPage,
+) *userService {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, testOrgID).
+		Return(sharedIDs, nil).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, testOrgID, sharedIDs, 2, 0,
+		map[string]interface{}{}).Return(page, nil).Once()
+	return &userService{
+		entityService:  storeMock,
+		sharingService: sharingMock,
+		authzService:   authz,
+		governance:     activeGovernance(t),
+	}
+}
+
+func TestUserService_GetUserList_FilteredByOU_ListsOwnedThenShared(t *testing.T) {
+	service := ouFilteredService(t, newAllowAllAuthz(t), []string{"shared-1"}, &entitypkg.OUEntityPage{
+		Owned:        []providers.Entity{{ID: "owned-1", OUID: testOrgID}},
+		Shared:       []providers.Entity{{ID: "shared-1", OUID: "other-ou"}},
+		TotalResults: 3,
+	})
+
+	resp, err := service.GetUserList(context.Background(), 2, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, resp.TotalResults)
+	require.Len(t, resp.Users, 2)
+	require.Equal(t, "owned-1", resp.Users[0].ID)
+	require.True(t, *resp.Users[0].IsOwned)
+	require.Equal(t, "shared-1", resp.Users[1].ID)
+	require.False(t, *resp.Users[1].IsOwned)
+	require.Len(t, resp.Links, 2)
+	for _, link := range resp.Links {
+		require.Contains(t, link.Href, "filter=ouId+eq+%22"+testOrgID+"%22",
+			"link %q has to list the same organization unit", link.Rel)
+	}
+}
+
+func TestUserService_GetUserList_FilteredByOU_ScopedCallerWithAccess(t *testing.T) {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{IDs: []string{"another-ou", testOrgID}}, nil).Once()
+	service := ouFilteredService(t, authzMock, []string{}, &entitypkg.OUEntityPage{
+		Owned:        []providers.Entity{{ID: "owned-1", OUID: testOrgID}},
+		Shared:       []providers.Entity{},
+		TotalResults: 1,
+	})
+
+	resp, err := service.GetUserList(context.Background(), 2, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 1, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+}
+
+func TestUserService_GetUserList_FilteredByOU_CallerWithoutAccessSeesNone(t *testing.T) {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{IDs: []string{"another-ou"}}, nil).Once()
+	service := &userService{
+		entityService:  entitymock.NewEntityServiceInterfaceMock(t),
+		sharingService: sharingmock.NewSharingServiceInterfaceMock(t),
+		authzService:   authzMock,
+	}
+
+	resp, err := service.GetUserList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Zero(t, resp.TotalResults)
+	require.Empty(t, resp.Users)
+}
+
+func TestUserService_GetUserList_FilteredByOU_UnknownOUHasNone(t *testing.T) {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, testOrgID).
+		Return(nil, &oupkg.ErrorOrganizationUnitNotFound).Once()
+	service := &userService{
+		entityService:  entitymock.NewEntityServiceInterfaceMock(t),
+		sharingService: sharingMock,
+		authzService:   newAllowAllAuthz(t),
+		governance:     activeGovernance(t),
+	}
+
+	resp, err := service.GetUserList(context.Background(), 10, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Zero(t, resp.TotalResults)
+	require.Empty(t, resp.Users)
+}
+
+func TestUserService_GetUserList_FilteredByOU_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		filters map[string]interface{}
+		setup   func(t *testing.T) *userService
+		wantErr *tidcommon.ServiceError
+	}{
+		{
+			name:    "an organization unit that is not a string",
+			filters: map[string]interface{}{"ouId": int64(5)},
+			setup: func(t *testing.T) *userService {
+				return &userService{authzService: sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)}
+			},
+			wantErr: &ErrorInvalidFilter,
+		},
+		{
+			name:    "the sharing lookup fails",
+			filters: map[string]interface{}{"ouId": testOrgID},
+			setup: func(t *testing.T) *userService {
+				sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+				sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, testOrgID).
+					Return(nil, &tidcommon.InternalServerError).Once()
+				return &userService{sharingService: sharingMock, authzService: newAllowAllAuthz(t)}
+			},
+			wantErr: &tidcommon.InternalServerError,
+		},
+		{
+			name:    "the page read fails",
+			filters: map[string]interface{}{"ouId": testOrgID},
+			setup: func(t *testing.T) *userService {
+				sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+				sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, testOrgID).
+					Return([]string{}, nil).Once()
+				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+				storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, testOrgID,
+					[]string{}, 10, 0, map[string]interface{}{}).Return(nil, errors.New("db error")).Once()
+				return &userService{
+					entityService: storeMock, sharingService: sharingMock, authzService: newAllowAllAuthz(t),
+				}
+			},
+			wantErr: &tidcommon.InternalServerError,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := tc.setup(t).GetUserList(context.Background(), 10, 0, tc.filters, false)
+
+			require.Nil(t, resp)
+			require.NotNil(t, err)
+			require.Equal(t, tc.wantErr.Code, err.Code)
+		})
+	}
 }
 
 func TestUserService_GetUserGroups(t *testing.T) {
@@ -1899,85 +2051,82 @@ func TestUserService_CRUD_ErrorCases(t *testing.T) {
 
 func TestUserService_GetUsersByPath(t *testing.T) {
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	service := &userService{ouService: mockOU, authzService: newAllowAllAuthz(t)}
-	ctx := context.Background()
-
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
 		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
 		Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).Return(&oupkg.UserListResponse{
-		TotalResults: 20,
-		Users:        []oupkg.User{{ID: "u1"}},
-	}, nil).Once()
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").
+		Return([]string{"u2"}, nil).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1", []string{"u2"}, 10, 0,
+		(map[string]interface{})(nil)).
+		Return(&entitypkg.OUEntityPage{
+			Owned:        []providers.Entity{{ID: "u1", OUID: "ou-1"}},
+			Shared:       []providers.Entity{{ID: "u2", OUID: "ou-2"}},
+			TotalResults: 20,
+		}, nil).Once()
+	service := &userService{
+		ouService:      mockOU,
+		authzService:   newAllowAllAuthz(t),
+		entityService:  storeMock,
+		sharingService: sharingMock,
+		governance:     activeGovernance(t),
+	}
 
-	resp, err := service.GetUsersByPath(ctx, "root", 10, 0, nil, false)
+	resp, err := service.GetUsersByPath(context.Background(), "root", 10, 0, nil, false)
+
 	require.Nil(t, err)
 	require.Equal(t, 20, resp.TotalResults)
+	require.Equal(t, 2, resp.Count)
+	require.Equal(t, "u1", resp.Users[0].ID)
+	require.True(t, *resp.Users[0].IsOwned)
+	require.Equal(t, "u2", resp.Users[1].ID)
+	require.Equal(t, "ou-2", resp.Users[1].OUID)
+	require.False(t, *resp.Users[1].IsOwned)
 	require.NotEmpty(t, resp.Links)
+	require.Contains(t, resp.Links[0].Href, "/users/tree/root")
 }
 
 func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
+	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
+	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything,
+		mock.MatchedBy(func(ids []string) bool { return len(ids) == 2 })).
+		Return(map[string]string{"ou-1": "root", "ou-2": "partner"}, nil).Once()
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").
+		Return([]string{"u2"}, nil).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1", []string{"u2"}, 10, 0,
+		(map[string]interface{})(nil)).
+		Return(&entitypkg.OUEntityPage{
+			Owned: []providers.Entity{{ID: "u1", OUID: "ou-1", Type: "employee",
+				Attributes: json.RawMessage(`{"email":"alice@example.com"}`)}},
+			Shared: []providers.Entity{{ID: "u2", OUID: "ou-2", Type: "employee",
+				Attributes: json.RawMessage(`{"email":"bob@example.com"}`)}},
+			TotalResults: 2,
+		}, nil).Once()
 	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockSchema.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
+		Return(map[string]string{"employee": "email"}, nil).Once()
 	service := &userService{
 		ouService:         mockOU,
 		authzService:      newAllowAllAuthz(t),
-		entityService:     mockStore,
+		entityService:     storeMock,
 		entityTypeService: mockSchema,
+		sharingService:    sharingMock,
+		governance:        activeGovernance(t),
 	}
-	ctx := context.Background()
 
-	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
-		Return(&oupkg.UserListResponse{
-			TotalResults: 2,
-			Users:        []oupkg.User{{ID: "u1"}},
-		}, nil).Once()
-	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]providers.Entity{{
-			ID:         "u1",
-			Type:       "employee",
-			Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
-		}}, nil).Once()
-	mockSchema.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
-		Return(map[string]string{"employee": "email"}, nil).Once()
+	resp, err := service.GetUsersByPath(context.Background(), "root", 10, 0, nil, true)
 
-	resp, err := service.GetUsersByPath(ctx, "root", 10, 0, nil, true)
 	require.Nil(t, err)
 	require.Equal(t, 2, resp.TotalResults)
 	require.Equal(t, "alice@example.com", resp.Users[0].Display)
-}
-
-func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testing.T) {
-	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
-	service := &userService{
-		ouService:     mockOU,
-		authzService:  newAllowAllAuthz(t),
-		entityService: mockStore,
-	}
-	ctx := context.Background()
-
-	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
-	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
-		Return(&oupkg.UserListResponse{
-			TotalResults: 1,
-			StartIndex:   1,
-			Count:        1,
-			Users:        []oupkg.User{{ID: "u1"}},
-		}, nil).Once()
-	mockStore.On("GetEntitiesByIDs", mock.Anything, []string{"u1"}).
-		Return([]providers.Entity(nil), errors.New("db connection lost")).Once()
-
-	resp, svcErr := service.GetUsersByPath(ctx, "root", 10, 0, nil, true)
-	require.Nil(t, svcErr)
-	require.Equal(t, 1, resp.TotalResults)
-	// Falls back to bare ID when batch fetch fails
-	require.Equal(t, "u1", resp.Users[0].ID)
-	require.Empty(t, resp.Users[0].Display)
+	require.Equal(t, "root", resp.Users[0].OUHandle)
+	require.Equal(t, "bob@example.com", resp.Users[1].Display)
+	require.Equal(t, "partner", resp.Users[1].OUHandle, "a shared user shows the unit that owns it")
 }
 
 func TestNewFunctions(t *testing.T) {

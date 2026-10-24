@@ -1032,6 +1032,96 @@ func (s *ServiceTestSuite) TestGetEntityListByOUIDs_Delegates() {
 	s.Len(list, 1)
 }
 
+func (s *ServiceTestSuite) TestGetEntityPageInOU_PageSpansOwnedAndShared() {
+	owned := testEntity("owned-3")
+	shared := testEntity("shared-1")
+	s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", []string{"ou1"}, mock.Anything).
+		Return(3, nil).Once()
+	s.store.On("GetEntityListByOUIDs", mock.Anything, "user", []string{"ou1"}, 1, 2, mock.Anything).
+		Return([]providers.Entity{*owned}, nil).Once()
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{"shared-1"}).
+		Return([]providers.Entity{*shared}, nil).Once()
+
+	page, err := s.svc.GetEntityPageInOU(s.ctx, providers.EntityCategoryUser, "ou1",
+		[]string{"shared-1", "shared-2"}, 2, 2, nil)
+
+	s.Require().NoError(err)
+	s.Equal(5, page.TotalResults)
+	s.Require().Len(page.Owned, 1)
+	s.Equal("owned-3", page.Owned[0].ID)
+	s.Require().Len(page.Shared, 1)
+	s.Equal("shared-1", page.Shared[0].ID)
+}
+
+func (s *ServiceTestSuite) TestGetEntityPageInOU_PastOwned_ReadsOnlyShared() {
+	s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", []string{"ou1"}, mock.Anything).
+		Return(2, nil).Once()
+	app := testEntity("shared-app")
+	app.Category = providers.EntityCategoryApp
+	s.store.On("GetEntitiesByIDs", mock.Anything, []string{"shared-b", "shared-app", "shared-c"}).
+		Return([]providers.Entity{*testEntity("shared-c"), *app, *testEntity("shared-b")}, nil).Once()
+
+	page, err := s.svc.GetEntityPageInOU(s.ctx, providers.EntityCategoryUser, "ou1",
+		[]string{"shared-a", "shared-b", "shared-app", "shared-c"}, 3, 3, nil)
+
+	s.Require().NoError(err)
+	s.Equal(6, page.TotalResults)
+	s.Empty(page.Owned)
+	s.Require().Len(page.Shared, 2, "an entity of another category is left out")
+	s.Equal([]string{"shared-b", "shared-c"}, []string{page.Shared[0].ID, page.Shared[1].ID})
+	s.store.AssertNotCalled(s.T(), "GetEntityListByOUIDs", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestGetEntityPageInOU_FiltersNarrowOwned() {
+	filters := map[string]interface{}{"username": "alice"}
+	s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", []string{"ou1"}, filters).
+		Return(1, nil).Once()
+	s.store.On("GetEntityListByOUIDs", mock.Anything, "user", []string{"ou1"}, 1, 0, filters).
+		Return([]providers.Entity{*testEntity("owned-1")}, nil).Once()
+
+	page, err := s.svc.GetEntityPageInOU(s.ctx, providers.EntityCategoryUser, "ou1", nil, 10, 0, filters)
+
+	s.Require().NoError(err)
+	s.Equal(1, page.TotalResults)
+	s.Len(page.Owned, 1)
+	s.Empty(page.Shared)
+}
+
+func (s *ServiceTestSuite) TestGetEntityPageInOU_Errors() {
+	for _, tc := range []struct {
+		name    string
+		arrange func()
+	}{
+		{"count", func() {
+			s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", mock.Anything, mock.Anything).
+				Return(0, s.testErr).Once()
+		}},
+		{"owned list", func() {
+			s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", mock.Anything, mock.Anything).
+				Return(1, nil).Once()
+			s.store.On("GetEntityListByOUIDs", mock.Anything, "user", mock.Anything, 1, 0, mock.Anything).
+				Return(nil, s.testErr).Once()
+		}},
+		{"shared load", func() {
+			s.store.On("GetEntityListCountByOUIDs", mock.Anything, "user", mock.Anything, mock.Anything).
+				Return(0, nil).Once()
+			s.store.On("GetEntitiesByIDs", mock.Anything, []string{"shared-1"}).Return(nil, s.testErr).Once()
+		}},
+	} {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			tc.arrange()
+
+			page, err := s.svc.GetEntityPageInOU(s.ctx, providers.EntityCategoryUser, "ou1",
+				[]string{"shared-1"}, 10, 0, nil)
+
+			s.ErrorIs(err, s.testErr)
+			s.Nil(page)
+		})
+	}
+}
+
 func (s *ServiceTestSuite) TestGetEntityListBySystemAttributes_Delegates() {
 	sysQuery := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "u1"}}
 	e := testEntity("sys-e1")

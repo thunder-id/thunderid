@@ -1602,6 +1602,104 @@ func (_c *EntityServiceInterfaceMock_GetEntityListCountBySystemAttributesAndOUID
 	return _c
 }
 
+// GetEntityPageInOU provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string, sharedIDs []string, limit int, offset int, filters map[string]interface{}) (*OUEntityPage, error) {
+	ret := _mock.Called(ctx, category, ouID, sharedIDs, limit, offset, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityPageInOU")
+	}
+
+	var r0 *OUEntityPage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, string, []string, int, int, map[string]interface{}) (*OUEntityPage, error)); ok {
+		return returnFunc(ctx, category, ouID, sharedIDs, limit, offset, filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.EntityCategory, string, []string, int, int, map[string]interface{}) *OUEntityPage); ok {
+		r0 = returnFunc(ctx, category, ouID, sharedIDs, limit, offset, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*OUEntityPage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, providers.EntityCategory, string, []string, int, int, map[string]interface{}) error); ok {
+		r1 = returnFunc(ctx, category, ouID, sharedIDs, limit, offset, filters)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// EntityServiceInterfaceMock_GetEntityPageInOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityPageInOU'
+type EntityServiceInterfaceMock_GetEntityPageInOU_Call struct {
+	*mock.Call
+}
+
+// GetEntityPageInOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category providers.EntityCategory
+//   - ouID string
+//   - sharedIDs []string
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+func (_e *EntityServiceInterfaceMock_Expecter) GetEntityPageInOU(ctx any, category any, ouID any, sharedIDs any, limit any, offset any, filters any) *EntityServiceInterfaceMock_GetEntityPageInOU_Call {
+	return &EntityServiceInterfaceMock_GetEntityPageInOU_Call{Call: _e.mock.On("GetEntityPageInOU", ctx, category, ouID, sharedIDs, limit, offset, filters)}
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityPageInOU_Call) Run(run func(ctx context.Context, category providers.EntityCategory, ouID string, sharedIDs []string, limit int, offset int, filters map[string]interface{})) *EntityServiceInterfaceMock_GetEntityPageInOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.EntityCategory
+		if args[1] != nil {
+			arg1 = args[1].(providers.EntityCategory)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		var arg5 int
+		if args[5] != nil {
+			arg5 = args[5].(int)
+		}
+		var arg6 map[string]interface{}
+		if args[6] != nil {
+			arg6 = args[6].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+			arg6,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityPageInOU_Call) Return(oUEntityPage *OUEntityPage, err error) *EntityServiceInterfaceMock_GetEntityPageInOU_Call {
+	_c.Call.Return(oUEntityPage, err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_GetEntityPageInOU_Call) RunAndReturn(run func(ctx context.Context, category providers.EntityCategory, ouID string, sharedIDs []string, limit int, offset int, filters map[string]interface{}) (*OUEntityPage, error)) *EntityServiceInterfaceMock_GetEntityPageInOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityProfile provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) GetEntityProfile(ctx context.Context, entityID string) (*providers.Entity, error) {
 	ret := _mock.Called(ctx, entityID)

@@ -80,8 +80,8 @@ type SharingServiceInterface interface {
 	// sharee. The owner is included, so this is not the same question as "has it been shared".
 	IsVisible(ctx context.Context, rt ResourceType, resourceID, ouID string) (bool, *tidcommon.ServiceError)
 	// ListVisibleResourceIDs returns the resources of a type an organization unit can see through
-	// a sharing policy. Resources it owns are not included: ownership is the resource type's own
-	// state, and this framework stores no resource rows to read it from.
+	// a sharing policy, sorted by ID. Resources it owns are not included: ownership is the resource
+	// type's own state, and this framework stores no resource rows to read it from.
 	ListVisibleResourceIDs(
 		ctx context.Context, rt ResourceType, ouID string,
 	) ([]string, *tidcommon.ServiceError)
@@ -2518,9 +2518,15 @@ func (s *sharingService) ListVisibleResourceIDs(
 
 	out := make([]string, 0, len(order))
 	for _, resourceID := range order {
+		// The chain walk counts the owner as covered, so a resource the unit owns would come back
+		// whenever one of its policies is relevant here.
+		if byResource[resourceID][0].OwningOUID == ouID {
+			continue
+		}
 		if visible, _ := evaluateChain(chain, byResource[resourceID]); visible {
 			out = append(out, resourceID)
 		}
 	}
+	slices.Sort(out)
 	return out, nil
 }

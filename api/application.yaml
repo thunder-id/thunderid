@@ -1032,7 +1032,7 @@ paths:
                   summary: An organization unit a policy reached
                   value:
                     ouId: "acme-customer-a"
-                    owned: false
+                    isOwned: false
                     visible: true
                     policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
                     rules: {}
@@ -1040,7 +1040,7 @@ paths:
                   summary: The organization unit that owns the application
                   value:
                     ouId: "acme-root"
-                    owned: true
+                    isOwned: true
                     visible: true
                     policyIds: []
                     rules: {}
@@ -2775,7 +2775,7 @@ components:
         ouId:
           type: string
           example: "acme-customer-a"
-        owned:
+        isOwned:
           type: boolean
           description: Whether the organization unit owns the application rather than being shared it.
         visible:

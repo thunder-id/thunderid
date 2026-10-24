@@ -5,9 +5,13 @@ package user
 
 import (
 	"context"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/entity"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -49,4 +53,21 @@ func (d *userSharingDeclaration) OwningOUID(
 		return "", svcErr
 	}
 	return user.OUID, nil
+}
+
+// userPageInOU returns one page of the users an organization unit owns, followed by the ones shared
+// into it. Filters narrow the owned users only. An organization unit that does not exist has none.
+func userPageInOU(
+	ctx context.Context, entityService entity.EntityServiceInterface, sharingService sharing.SharingServiceInterface,
+	ouID string, limit, offset int, filters map[string]interface{},
+) (*entity.OUEntityPage, error) {
+	sharedIDs, svcErr := sharingService.ListVisibleResourceIDs(ctx, UserSharingType, ouID)
+	if svcErr != nil {
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return &entity.OUEntityPage{Owned: []providers.Entity{}, Shared: []providers.Entity{}}, nil
+		}
+		return nil, fmt.Errorf("failed to list users shared into organization unit: %s", svcErr.Error.DefaultValue)
+	}
+	return entityService.GetEntityPageInOU(
+		ctx, providers.EntityCategoryUser, ouID, sharedIDs, limit, offset, filters)
 }

@@ -62,6 +62,11 @@ type EntityServiceInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	// GetEntityPageInOU lists the entities of a category an organization unit owns, then the shared
+	// ones named by sharedIDs. Filters narrow the owned entities; sharedIDs are taken as already
+	// matched, in the order they are listed.
+	GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string,
+		sharedIDs []string, limit, offset int, filters map[string]interface{}) (*OUEntityPage, error)
 	GetEntityListCountBySystemAttributes(ctx context.Context, category providers.EntityCategory,
 		sysQuery SystemAttributeQuery) (int, error)
 	GetEntityListBySystemAttributes(ctx context.Context, category providers.EntityCategory,
@@ -598,6 +603,49 @@ func (s *entityService) GetEntityListByOUIDs(ctx context.Context, category provi
 		return nil, err
 	}
 	return entities, nil
+}
+
+// GetEntityPageInOU retrieves one page of the entities of a category an organization unit owns,
+// followed by the shared ones named by sharedIDs. Only the page's entities are read.
+func (s *entityService) GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string,
+	sharedIDs []string, limit, offset int, filters map[string]interface{}) (*OUEntityPage, error) {
+	ouIDs := []string{ouID}
+	ownedCount, err := s.store.GetEntityListCountByOUIDs(ctx, string(category), ouIDs, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	owned, shared, err := sysutils.PaginateOwnedThenShared(
+		ownedCount,
+		func(limit, offset int) ([]providers.Entity, error) {
+			return s.store.GetEntityListByOUIDs(ctx, string(category), ouIDs, limit, offset, filters)
+		},
+		sharedIDs,
+		func(ids []string) ([]providers.Entity, error) {
+			entities, err := s.store.GetEntitiesByIDs(ctx, ids)
+			if err != nil {
+				return nil, err
+			}
+			return slices.DeleteFunc(entities, func(e providers.Entity) bool {
+				return e.Category != category
+			}), nil
+		},
+		func(e providers.Entity) string { return e.ID },
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	page := slices.Concat(owned, shared)
+	if err := s.populateRuntime(ctx, page); err != nil {
+		return nil, err
+	}
+	return &OUEntityPage{
+		Owned:        page[:len(owned)],
+		Shared:       page[len(owned):],
+		TotalResults: ownedCount + len(sharedIDs),
+	}, nil
 }
 
 // GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query selects.

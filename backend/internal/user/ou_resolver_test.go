@@ -15,95 +15,91 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
-func TestOUUserResolver_GetUserCountByOUID(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListCountByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, (map[string]interface{})(nil)).
-			Return(5, nil).Once()
-
-		resolver := newOUUserResolver(svc, nil)
-		count, err := resolver.GetUserCountByOUID(context.Background(), "ou-1")
-
-		require.NoError(t, err)
-		require.Equal(t, 5, count)
-	})
-
-	t.Run("store error", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListCountByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, (map[string]interface{})(nil)).
-			Return(0, errors.New("db error")).Once()
-
-		resolver := newOUUserResolver(svc, nil)
-		count, err := resolver.GetUserCountByOUID(context.Background(), "ou-1")
-
-		require.Error(t, err)
-		require.Equal(t, 0, count)
-	})
+// resolverOverPage returns a resolver whose sharing service reports sharedIDs for ou-1 and whose entity
+// service answers the page request for them with page.
+func resolverOverPage(
+	t *testing.T, sharedIDs []string, page *entity.OUEntityPage, schema *entitytypemock.EntityTypeServiceInterfaceMock,
+) oupkg.OUUserResolver {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").Return(sharedIDs, nil).Once()
+	svc := entitymock.NewEntityServiceInterfaceMock(t)
+	svc.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1", sharedIDs, 10, 0,
+		(map[string]interface{})(nil)).Return(page, nil).Once()
+	if schema == nil {
+		return newOUUserResolver(svc, nil, sharingMock)
+	}
+	return newOUUserResolver(svc, schema, sharingMock)
 }
 
-func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity{
-				{ID: "user-1"},
-				{ID: "user-2"},
-			}, nil).Once()
+func TestOUUserResolver_ListUsersInOU(t *testing.T) {
+	t.Run("owned users come first, then shared ones", func(t *testing.T) {
+		resolver := resolverOverPage(t, []string{"user-3"}, &entity.OUEntityPage{
+			Owned:        []providers.Entity{{ID: "user-1"}, {ID: "user-2"}},
+			Shared:       []providers.Entity{{ID: "user-3"}},
+			TotalResults: 7,
+		}, nil)
 
-		resolver := newOUUserResolver(svc, nil)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, false)
+		users, total, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, false)
 
 		require.NoError(t, err)
-		require.Len(t, users, 2)
-		require.Equal(t, oupkg.User{ID: "user-1"}, users[0])
-		require.Equal(t, oupkg.User{ID: "user-2"}, users[1])
+		require.Equal(t, 7, total)
+		require.Equal(t, []oupkg.User{
+			{ID: "user-1", IsOwned: true},
+			{ID: "user-2", IsOwned: true},
+			{ID: "user-3", IsOwned: false},
+		}, users)
 	})
 
-	t.Run("store error", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity(nil), errors.New("db error")).Once()
+	t.Run("an organization unit that does not exist has no users", func(t *testing.T) {
+		sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+		sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").
+			Return(nil, &oupkg.ErrorOrganizationUnitNotFound).Once()
+		resolver := newOUUserResolver(entitymock.NewEntityServiceInterfaceMock(t), nil, sharingMock)
 
-		resolver := newOUUserResolver(svc, nil)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, false)
+		users, total, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, false)
+
+		require.NoError(t, err)
+		require.Zero(t, total)
+		require.Empty(t, users)
+	})
+
+	t.Run("sharing error", func(t *testing.T) {
+		sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+		sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").
+			Return(nil, &tidcommon.InternalServerError).Once()
+		resolver := newOUUserResolver(entitymock.NewEntityServiceInterfaceMock(t), nil, sharingMock)
+
+		users, _, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, false)
 
 		require.Error(t, err)
 		require.Nil(t, users)
 	})
 
-	t.Run("empty results", func(t *testing.T) {
+	t.Run("store error", func(t *testing.T) {
+		sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+		sharingMock.On("ListVisibleResourceIDs", mock.Anything, UserSharingType, "ou-1").
+			Return([]string{}, nil).Once()
 		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity{}, nil).Once()
+		svc.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, "ou-1", []string{}, 10, 0,
+			(map[string]interface{})(nil)).Return(nil, errors.New("db error")).Once()
+		resolver := newOUUserResolver(svc, nil, sharingMock)
 
-		resolver := newOUUserResolver(svc, nil)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, false)
+		users, _, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, false)
 
-		require.NoError(t, err)
-		require.Empty(t, users)
+		require.Error(t, err)
+		require.Nil(t, users)
 	})
 
 	t.Run("with display resolution", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity{
-				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"email":"alice@example.com"}`)},
-				{ID: "user-2", Type: "contractor", Attributes: json.RawMessage(`{"profile":{"fullName":"Bob Smith"}}`)},
-			}, nil).Once()
-
 		schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything,
 			mock.MatchedBy(func(names []string) bool {
@@ -116,9 +112,17 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 			"employee":   "email",
 			"contractor": "profile.fullName",
 		}, (*tidcommon.ServiceError)(nil)).Once()
+		resolver := resolverOverPage(t, []string{"user-2"}, &entity.OUEntityPage{
+			Owned: []providers.Entity{
+				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"email":"alice@example.com"}`)},
+			},
+			Shared: []providers.Entity{
+				{ID: "user-2", Type: "contractor", Attributes: json.RawMessage(`{"profile":{"fullName":"Bob Smith"}}`)},
+			},
+			TotalResults: 2,
+		}, schemaMock)
 
-		resolver := newOUUserResolver(svc, schemaMock)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, true)
+		users, _, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, true)
 
 		require.NoError(t, err)
 		require.Len(t, users, 2)
@@ -129,13 +133,6 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 	})
 
 	t.Run("display fallback to ID on schema error", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity{
-				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"email":"alice@example.com"}`)},
-			}, nil).Once()
-
 		schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 		schemaErr := &tidcommon.ServiceError{
 			Code:  "500",
@@ -143,35 +140,38 @@ func TestOUUserResolver_GetUserListByOUID(t *testing.T) {
 		}
 		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, mock.Anything).
 			Return((map[string]string)(nil), schemaErr).Once()
+		resolver := resolverOverPage(t, []string{}, &entity.OUEntityPage{
+			Owned: []providers.Entity{
+				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"email":"alice@example.com"}`)},
+			},
+			Shared:       []providers.Entity{},
+			TotalResults: 1,
+		}, schemaMock)
 
-		resolver := newOUUserResolver(svc, schemaMock)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, true)
+		users, _, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, true)
 
 		require.NoError(t, err)
 		require.Len(t, users, 1)
-		require.Equal(t, "employee", users[0].Type)
 		// Falls back to user ID when schema service fails
 		require.Equal(t, "user-1", users[0].Display)
 	})
 
 	t.Run("display fallback to ID on attribute mismatch", func(t *testing.T) {
-		svc := entitymock.NewEntityServiceInterfaceMock(t)
-		svc.On("GetEntityListByOUIDs", context.Background(),
-			providers.EntityCategoryUser, []string{"ou-1"}, 10, 0, (map[string]interface{})(nil)).
-			Return([]providers.Entity{
-				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
-			}, nil).Once()
-
 		schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 		schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
 			Return(map[string]string{"employee": "email"}, (*tidcommon.ServiceError)(nil)).Once()
+		resolver := resolverOverPage(t, []string{}, &entity.OUEntityPage{
+			Owned: []providers.Entity{
+				{ID: "user-1", Type: "employee", Attributes: json.RawMessage(`{"name":"Alice"}`)},
+			},
+			Shared:       []providers.Entity{},
+			TotalResults: 1,
+		}, schemaMock)
 
-		resolver := newOUUserResolver(svc, schemaMock)
-		users, err := resolver.GetUserListByOUID(context.Background(), "ou-1", 10, 0, true)
+		users, _, err := resolver.ListUsersInOU(context.Background(), "ou-1", 10, 0, true)
 
 		require.NoError(t, err)
 		require.Len(t, users, 1)
-		require.Equal(t, "employee", users[0].Type)
 		// Falls back to user ID when attribute path doesn't match
 		require.Equal(t, "user-1", users[0].Display)
 	})
@@ -185,7 +185,7 @@ func TestOUUserResolver_GetResourceDependencies(t *testing.T) {
 			serverconst.MaxCompositeStoreRecords, 0, (map[string]interface{})(nil)).
 			Return([]providers.Entity{{ID: "user-1"}}, nil).Once()
 
-		resolver := newOUUserResolver(svc, nil)
+		resolver := newOUUserResolver(svc, nil, nil)
 		deps, err := resolver.GetResourceDependencies(
 			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
 
@@ -199,7 +199,7 @@ func TestOUUserResolver_GetResourceDependencies(t *testing.T) {
 	t.Run("ignores non-organization-unit targets", func(t *testing.T) {
 		svc := entitymock.NewEntityServiceInterfaceMock(t)
 
-		resolver := newOUUserResolver(svc, nil)
+		resolver := newOUUserResolver(svc, nil, nil)
 		deps, err := resolver.GetResourceDependencies(
 			context.Background(), resourcedependency.ResourceTypeGroup, "group-1")
 
@@ -214,7 +214,7 @@ func TestOUUserResolver_GetResourceDependencies(t *testing.T) {
 			serverconst.MaxCompositeStoreRecords, 0, (map[string]interface{})(nil)).
 			Return([]providers.Entity(nil), errors.New("db error")).Once()
 
-		resolver := newOUUserResolver(svc, nil)
+		resolver := newOUUserResolver(svc, nil, nil)
 		deps, err := resolver.GetResourceDependencies(
 			context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
 

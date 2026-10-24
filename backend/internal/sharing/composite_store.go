@@ -207,22 +207,26 @@ func (c *compositeStore) DeleteOverlayValuesForOU(
 	return c.dbStore.DeleteOverlayValuesForOU(ctx, rt, resourceID, ouID)
 }
 
-// appendUnsuperseded adds the declared policies whose organization unit holds no stored policy.
+// appendUnsuperseded adds the declared policies whose organization unit holds no stored policy for
+// the same resource.
 //
 // The two sets are disjoint in practice, because requireSoleGovernor refuses a second policy for an
 // organization unit whichever store the first is in. The filter is what keeps that a fact rather
 // than an assumption: were a row and a declaration ever to name the same unit, reporting both would
-// hand the caller two policies for one unit, which every reader here treats as impossible.
+// hand the caller two policies for one unit, which every reader here treats as impossible. The
+// resource is part of the match because a listing can span every resource of a type, where one unit
+// holds a policy for each resource it shares.
 func appendUnsuperseded(stored, declared []Policy) []Policy {
 	if len(declared) == 0 {
 		return stored
 	}
-	superseded := make(map[string]struct{}, len(stored))
+	type governor struct{ resourceID, ouID string }
+	superseded := make(map[governor]struct{}, len(stored))
 	for _, p := range stored {
-		superseded[p.InitiatingOUID] = struct{}{}
+		superseded[governor{p.ResourceID, p.InitiatingOUID}] = struct{}{}
 	}
 	for _, d := range declared {
-		if _, edited := superseded[d.InitiatingOUID]; !edited {
+		if _, edited := superseded[governor{d.ResourceID, d.InitiatingOUID}]; !edited {
 			stored = append(stored, d)
 		}
 	}

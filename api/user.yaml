@@ -36,6 +36,9 @@ paths:
       tags:
         - Users
       summary: List users
+      description: |
+        Lists users. Filtering on `ouId` lists the users that organization unit owns, followed by
+        the users shared into it. Each listed user's `isOwned` field says which of the two it is.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -1143,7 +1146,7 @@ paths:
                   summary: An organization unit a policy reached
                   value:
                     ouId: "acme-customer-a"
-                    owned: false
+                    isOwned: false
                     visible: true
                     policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
                     rules: {}
@@ -1151,7 +1154,7 @@ paths:
                   summary: The organization unit that owns the user
                   value:
                     ouId: "acme-root"
-                    owned: true
+                    isOwned: true
                     visible: true
                     policyIds: []
                     rules: {}
@@ -1169,6 +1172,9 @@ paths:
       tags:
         - users-by-path
       summary: List users in organization unit specified by handle path
+      description: |
+        Lists the users the organization unit owns, followed by the users shared into it. Each
+        listed user's `isOwned` field says which of the two it is.
       parameters:
         - in: path
           name: path
@@ -2477,9 +2483,14 @@ components:
         - `username eq "john.doe"` - Users with username = "john.doe"'
         - `age eq 25` - Users with age = 25
         - `address.city eq "Mountain View"` - Users with address.city = "Mountain View"
+        - `ouId eq "456e8400-e29b-41d4-a716-446655440001"` - Users the organization unit owns,
+          followed by the users shared into it.
       schema:
         type: string
       examples:
+        organization-unit:
+          summary: Users owned by or shared into an organization unit
+          value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
         simple-string:
           summary: Simple string filter
           value: 'username eq "john.doe"'
@@ -2905,6 +2916,12 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the user is declarative and cannot be modified or deleted by clients."
+        isOwned:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the listed organization unit owns the user rather than being shared it. Present
+            only in user lists. Without an `ouId` filter, every listed user is owned.
         status:
           $ref: '#/components/schemas/UserAccessStatus'
         lastLoginAt:
@@ -3828,7 +3845,7 @@ components:
         ouId:
           type: string
           example: "acme-customer-a"
-        owned:
+        isOwned:
           type: boolean
           description: Whether the organization unit owns the user rather than being shared it.
         visible:
