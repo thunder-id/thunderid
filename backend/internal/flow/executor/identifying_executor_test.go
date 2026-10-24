@@ -41,6 +41,11 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 
 	mockExec := createMockExecutor(suite.T(), ExecutorNameIdentifying, providers.ExecutorTypeUtility)
+	// After a federated sign-in the node's inputs are read as the real executor reads them. Other
+	// contexts fall through to the expectations each test sets.
+	mockExec.(*coremock.ExecutorInterfaceMock).On("GetRequiredInputs", mock.MatchedBy(
+		func(ctx *providers.NodeContext) bool { return federatedIdentityFrom(ctx) != nil })).
+		Return(func(ctx *providers.NodeContext) []providers.Input { return ctx.NodeInputs }).Maybe()
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, providers.ExecutorTypeUtility,
 		[]providers.Input{}, []providers.Input{}, mock.Anything).Return(mockExec)
 
@@ -1148,8 +1153,8 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_FirstPassOffer
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
 }
 
-// A pick narrows the holders to one, which is bound to the AuthUser. Inputs other than the offered
-// options do not filter the holders.
+// A pick narrows the holders to one, which is bound to the AuthUser. Inputs that are neither offered
+// options nor required inputs do not filter the holders.
 func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_PickBindsHolder() {
 	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(linkHolders(), nil).Once()
 	suite.expectBind("holder-support", nil)
@@ -1200,6 +1205,48 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_UnofferedPickI
 	options, _ := resp.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
 	suite.Require().Len(options, 1)
 	suite.ElementsMatch([]string{"sales", "support"}, options[0].Options)
+}
+
+// claimedLinkHolderCtx is a link holder context whose federated identity carries a username claim.
+func claimedLinkHolderCtx(username string, userInputs map[string]string) *providers.NodeContext {
+	ctx := linkHolderCtx(map[string]string{
+		common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-a", "sub-1",
+			map[string]interface{}{userAttributeUsername: username}),
+	}, userInputs)
+	ctx.NodeInputs = []providers.Input{{Identifier: userAttributeUsername, Required: true}}
+	return ctx
+}
+
+// usernameLinkHolders are two users holding the same link in different OUs under different usernames.
+func usernameLinkHolders() []*providers.Entity {
+	return []*providers.Entity{
+		{ID: "holder-sales", OUHandle: "sales", Type: "person", Attributes: json.RawMessage(`{"username":"alice"}`)},
+		{ID: "holder-support", OUHandle: "support", Type: "person", Attributes: json.RawMessage(`{"username":"bob"}`)},
+	}
+}
+
+// A federated claim for a required input narrows the holders as it narrows candidates in a local
+// resolve, so the one holder it matches is bound without a prompt.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_ClaimNarrowsHolders() {
+	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(usernameLinkHolders(), nil).Once()
+	suite.expectBind("holder-support", nil)
+
+	resp, err := suite.executor.Execute(claimedLinkHolderCtx("bob", nil))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("holder-support", resp.RuntimeData[userAttributeUserID])
+}
+
+// A claim no holder matches leaves no user to pick, so the flow fails rather than prompting.
+func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_ClaimMatchingNoHolderFails() {
+	suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(usernameLinkHolders(), nil).Once()
+
+	resp, err := suite.executor.Execute(claimedLinkHolderCtx("carol", nil))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEntityNotFound.Code, resp.Error.Code)
 }
 
 // Holders nothing tells apart cannot be picked between, so the flow fails.
@@ -1362,7 +1409,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolve_WithoutFederatedIdentityR
 }
 
 // After a federated sign-in, check_state counts the link's holders. It asks for no inputs and never
-// searches on attributes or claims, so a claim matching some other user cannot change the state.
+// searches the store, so a claim matching some other user cannot change the state.
 func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_CountsLinkHolders() {
 	for name, tc := range map[string]struct {
 		holders   []*providers.Entity
@@ -1391,7 +1438,7 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_CountsLinkHol
 }
 
 // After a federated sign-in, identify takes the user from the link. It asks for no inputs and never
-// searches on attributes or claims, so a claim matching some other user cannot name that user.
+// searches the store, so a claim cannot name a user who does not hold the link.
 func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder() {
 	for name, tc := range map[string]struct {
 		holders    []*providers.Entity
@@ -1411,9 +1458,6 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder(
 			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(tc.holders, nil).Once()
 			ctx := linkHolderCtx(nil, nil)
 			ctx.ExecutorMode = ExecutorModeIdentify
-			ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("idp-a", "sub-1",
-				map[string]interface{}{"email": "other@example.com"})
-			ctx.NodeInputs = []providers.Input{{Identifier: "email", Required: true}}
 
 			resp, err := suite.executor.Execute(ctx)
 
@@ -1426,6 +1470,47 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder(
 			}
 			suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
 			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+		})
+	}
+}
+
+// A federated claim for a required input narrows the holders before identify and check_state count
+// them, as it does in resolve.
+func (suite *IdentifyingExecutorTestSuite) TestFederatedModes_ClaimNarrowsHolders() {
+	for name, tc := range map[string]struct {
+		mode       string
+		username   string
+		wantStatus providers.ExecutorStatus
+		wantUserID string
+		wantState  string
+		wantError  string
+	}{
+		"identify matches one": {mode: ExecutorModeIdentify, username: "bob",
+			wantStatus: providers.ExecComplete, wantUserID: "holder-support"},
+		"identify matches none": {mode: ExecutorModeIdentify, username: "carol",
+			wantStatus: providers.ExecFailure, wantError: ErrEntityNotFound.Code},
+		"check_state matches one": {mode: ExecutorModeCheckState, username: "bob",
+			wantStatus: providers.ExecComplete, wantState: entityStateExists},
+		"check_state matches none": {mode: ExecutorModeCheckState, username: "carol",
+			wantStatus: providers.ExecComplete, wantState: entityStateNotExists},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockEntityProvider.On("GetLinkedEntities", "idp-a", "sub-1").Return(usernameLinkHolders(), nil).Once()
+			ctx := claimedLinkHolderCtx(tc.username, nil)
+			ctx.ExecutorMode = tc.mode
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.wantStatus, resp.Status)
+			suite.Equal(tc.wantUserID, resp.RuntimeData[userAttributeUserID])
+			if tc.wantState != "" {
+				suite.Equal(tc.wantState, resp.RuntimeData[common.RuntimeKeyEntityState])
+			}
+			if tc.wantError != "" {
+				suite.Equal(tc.wantError, resp.Error.Code)
+			}
 		})
 	}
 }

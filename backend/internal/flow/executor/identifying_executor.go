@@ -142,8 +142,8 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 		RuntimeData:    make(map[string]string),
 	}
 
-	// After a federated sign-in the link decides the user, so no mode takes typed inputs or matches on
-	// attributes: the candidates come from the link.
+	// After a federated sign-in the link decides the user, so no mode prompts for inputs or searches the
+	// store on attributes: the candidates come from the link, and attributes only narrow them.
 	if federated := federatedIdentityFrom(ctx); federated != nil {
 		switch ctx.ExecutorMode {
 		case ExecutorModeResolve:
@@ -299,8 +299,9 @@ func (i *identifyingExecutor) executeResolveFederated(ctx *providers.NodeContext
 }
 
 // executeResolveLinkHolders narrows the users holding a federated identity's link down to one and
-// binds it to the AuthUser. The candidates come from the link, and only the options offered for them
-// filter it, so the user picks between its holders and nothing else.
+// binds it to the AuthUser. The candidates come from the link. The search attributes narrow them first
+// as they narrow candidates in a local resolve, then the options offered for them filter it, so the
+// user picks between its holders and nothing else.
 func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -318,6 +319,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
+	holders = i.narrowLinkHolders(ctx, holders)
 
 	picked := make(map[string]interface{})
 	for _, option := range extractDisambiguationOptions(holders) {
@@ -333,7 +335,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 	switch len(candidates) {
 	case 0:
 		if len(holders) == 0 {
-			logger.Debug(ctx.Context, "No user is linked to the federated identity")
+			logger.Debug(ctx.Context, "No user linked to the federated identity matches")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 			return execResp, nil
@@ -414,7 +416,7 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 }
 
 // executeCheckStateFederated sets the entity state from the users holding the federated identity's
-// link, never from attributes or claims. A provider that cannot list the holders keeps the state the
+// link, narrowed by the search attributes. A provider that cannot list the holders keeps the state the
 // federated executor recorded.
 func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
@@ -433,6 +435,8 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 		return execResp, nil
 	}
 
+	holders = i.narrowLinkHolders(ctx, holders)
+
 	setEntityStateFromCount(execResp, len(holders))
 	logger.Debug(ctx.Context, "Entity state checked from the federated identity's link",
 		log.Int("holderCount", len(holders)))
@@ -440,9 +444,9 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 	return execResp, nil
 }
 
-// executeIdentifyFederated identifies the one user holding the federated identity's link. No holder
-// fails rather than prompting, since a typed identifier would name a user the sign-in never proved.
-// Several holders fail too: picking between them is resolve mode's job.
+// executeIdentifyFederated identifies the one user holding the federated identity's link, narrowed by
+// the search attributes. No holder fails rather than prompting, since a typed identifier would name a
+// user the sign-in never proved. Several holders fail too: picking between them is resolve mode's job.
 func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -455,6 +459,7 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
+	holders = i.narrowLinkHolders(ctx, holders)
 
 	switch len(holders) {
 	case 0:
@@ -469,6 +474,16 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 	}
 	logger.Debug(ctx.Context, "Identified from the federated identity's link", log.Int("holderCount", len(holders)))
 	return execResp, nil
+}
+
+// narrowLinkHolders keeps the link holders the search attributes match, as they match candidates in a
+// local search. It only drops holders, so it never reaches a user the federated sign-in did not prove.
+func (i *identifyingExecutor) narrowLinkHolders(ctx *providers.NodeContext,
+	holders []*providers.Entity) []*providers.Entity {
+	if searchAttrs := i.buildSearchAttributes(ctx); len(searchAttrs) > 0 {
+		return filterUsersByAttributes(holders, searchAttrs)
+	}
+	return holders
 }
 
 // setEntityStateFromCount records whether no entity, one, or several matched.
