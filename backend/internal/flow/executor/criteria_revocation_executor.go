@@ -26,7 +26,7 @@ func newCriteriaRevocationExecutor(factory core.FlowFactoryInterface,
 	revoker revocation.CriteriaRevoker) *criteriaRevocationExecutor {
 	base := factory.CreateExecutor(ExecutorNameCriteriaRevocation, providers.ExecutorTypeUtility,
 		nil, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			DefaultMode:        ExecutorModeRevoke,
 			SupportedModes:     []string{ExecutorModeAdvanceCutoff, ExecutorModeRevoke},
 		})

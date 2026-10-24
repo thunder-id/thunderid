@@ -30,6 +30,7 @@ import (
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/systemflow"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -58,6 +59,8 @@ type ApplicationServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	// SetSystemFlowRunner injects the runner of the system flows a change runs before it is written.
+	SetSystemFlowRunner(runner systemflow.Runner)
 
 	// Sharing policies. Each resolves the application first, so a policy is only ever reached
 	// through the application it governs.
@@ -94,7 +97,8 @@ type applicationService struct {
 	valueCapturer        declarativeresource.ValueCapturer
 	sharingService       sharing.SharingServiceInterface
 	// governance derives the access status.
-	governance identitygovernance.IdentityGovernanceServiceInterface
+	governance  identitygovernance.IdentityGovernanceServiceInterface
+	systemFlows systemflow.Runner
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -470,6 +474,21 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		return nil, svcErr
 	}
 
+	secret, svcErr := as.clientSecretDisposition(ctx, appID, inboundAuthConfig)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if secret == clientSecretRotated {
+		// Tokens issued with the secret being replaced are revoked before it is, whichever entry
+		// point asked. The revocation's line lies a little past now, so a token issued with the old
+		// secret while the write runs is covered too, and nothing runs after the write. A refusal
+		// leaves the application as it was.
+		if svcErr := as.runSystemFlow(ctx, systemflow.ApplicationSecretRotate,
+			map[string]string{systemflow.TargetApplication: appID}); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	processedDTO := as.buildProcessedDTOForUpdate(appID, app, inboundAuthConfig)
 
 	inboundClient := toInboundClient(processedDTO)
@@ -498,7 +517,8 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		return nil, &tidcommon.InternalServerError
 	}
 
-	if svcErr := as.updateEntityDataForApplicationUpdate(ctx, appID, app, inboundAuthConfig); svcErr != nil {
+	if svcErr := as.updateEntityDataForApplicationUpdate(ctx, appID, app, inboundAuthConfig,
+		secret != clientSecretUnchanged); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -540,6 +560,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	appID string,
 	app *model.ApplicationDTO,
 	inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+	writeClientSecret bool,
 ) *tidcommon.ServiceError {
 	var clientID string
 	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
@@ -586,12 +607,14 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	// - No OAuth config, or OAuth method that doesn't use a client secret → leave credentials as-is.
 	// - OAuth method requires a secret + new secret supplied → store the new secret.
 	// - OAuth method requires a secret + no new secret supplied → leave existing secret intact (no rotation).
+	// - The secret the application already has, supplied again → leave it as it is: writing it again
+	//   would mark the credential as changed, and the refresh grant refuses tokens issued before that.
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
 		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
 			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
 		return nil
 	}
-	if inboundAuthConfig.OAuthConfig.ClientSecret == "" {
+	if inboundAuthConfig.OAuthConfig.ClientSecret == "" || !writeClientSecret {
 		return nil
 	}
 
@@ -673,6 +696,12 @@ func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registr
 	as.dependencyRegistry = r
 }
 
+// SetSystemFlowRunner injects the runner of the system flows a change runs before it is written.
+// Called by servicemanager once the flow engine exists, which is after this service.
+func (as *applicationService) SetSystemFlowRunner(runner systemflow.Runner) {
+	as.systemFlows = runner
+}
+
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
@@ -690,6 +719,16 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		}
 		// Refused before anything is removed. Only an entity that exists can be declared.
 		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+			return svcErr
+		}
+		// What the application issued is revoked before anything is removed, whichever entry point
+		// asked: the tokens issued to it and the sessions it took part in. The revocation's line lies a
+		// little past now, so a token issued while the deletion runs is covered without a second run
+		// once the record is gone. A refusal leaves the application as it was. Only an application
+		// that exists can have issued anything; a retry after a partial delete cleans up what is left
+		// without running the flow again.
+		if svcErr := as.runSystemFlow(ctx, systemflow.ApplicationDelete,
+			map[string]string{systemflow.TargetApplication: appID}); svcErr != nil {
 			return svcErr
 		}
 	}
@@ -729,7 +768,6 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		as.logger.Error(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
 		return &tidcommon.InternalServerError
 	}
-
 	// Delete entity. A missing entity is non-fatal (e.g. on a retry after a partial delete) so the
 	// remaining delete steps still run.
 	if entErr := as.entityService.DeleteEntity(ctx, appID); entErr != nil &&
@@ -743,6 +781,19 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	return as.deleteLocalizedVariants(ctx, appID)
+}
+
+// runSystemFlow runs the system flow an operation requires before its change is written. Without a
+// runner the change is refused: a server that forgot the wiring fails closed rather than writing with
+// what the change invalidates left valid.
+func (as *applicationService) runSystemFlow(ctx context.Context, op systemflow.Operation,
+	target map[string]string) *tidcommon.ServiceError {
+	if as.systemFlows == nil {
+		as.logger.Error(ctx, "System flow runner not set; refusing the change",
+			log.String("operation", string(op)))
+		return &tidcommon.InternalServerError
+	}
+	return as.systemFlows.Run(ctx, op, target)
 }
 
 // ValidateDeleteApplication reports whether the application may be deleted and returns the profile of
@@ -853,6 +904,14 @@ func (as *applicationService) ApplyCredentialAction(
 		return "", svcErr
 	}
 
+	// The secret is always new, so what the old one issued is revoked before it is replaced. The
+	// revocation's line lies a little past now, so a token issued with the old secret while the write
+	// runs is covered too, and nothing runs after the write: a refusal leaves the secret as it was.
+	if svcErr := as.runSystemFlow(ctx, systemflow.ApplicationSecretRotate,
+		map[string]string{systemflow.TargetApplication: appID}); svcErr != nil {
+		return "", svcErr
+	}
+
 	secret, err := oauthutils.GenerateOAuth2ClientSecret()
 	if err != nil {
 		as.logger.Error(ctx, "Failed to generate OAuth client secret", log.Error(err),
@@ -871,6 +930,57 @@ func (as *applicationService) ApplyCredentialAction(
 		return "", &tidcommon.InternalServerError
 	}
 	return secret, nil
+}
+
+// clientSecretDisposition is what an update does with the application's client secret.
+type clientSecretDisposition int
+
+const (
+	// clientSecretUnchanged: no secret was supplied, the client has no use for one, or the one
+	// supplied is the one the application already has.
+	clientSecretUnchanged clientSecretDisposition = iota
+	// clientSecretSet: the application had no secret and gets one, so nothing was issued under one.
+	clientSecretSet
+	// clientSecretRotated: the supplied secret replaces the one the application has.
+	clientSecretRotated
+)
+
+// clientSecretDisposition tells a secret that replaces the application's from one it already has.
+// Every apply of a configuration version carries the secret again, so a supplied secret alone says
+// nothing; the stored secret is a hash, so the supplied value is verified against it the way the
+// token endpoint authenticates the client.
+func (as *applicationService) clientSecretDisposition(ctx context.Context, appID string,
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret) (clientSecretDisposition, *tidcommon.ServiceError) {
+	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
+		inboundAuthConfig.OAuthConfig.ClientSecret == "" ||
+		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
+		return clientSecretUnchanged, nil
+	}
+	stored, err := as.entityService.GetCredentialsByType(ctx, appID, fieldClientSecret)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return clientSecretUnchanged, &ErrorApplicationNotFound
+		}
+		as.logger.Error(ctx, "Failed to read the application's client secret before an update",
+			log.String("appID", appID), log.Error(err))
+		return clientSecretUnchanged, &tidcommon.InternalServerError
+	}
+	if len(stored) == 0 {
+		return clientSecretSet, nil
+	}
+	_, err = as.entityService.AuthenticateEntityByID(ctx, appID,
+		map[string]interface{}{fieldClientSecret: inboundAuthConfig.OAuthConfig.ClientSecret})
+	switch {
+	case err == nil:
+		return clientSecretUnchanged, nil
+	case errors.Is(err, entity.ErrAuthenticationFailed):
+		return clientSecretRotated, nil
+	default:
+		as.logger.Error(ctx, "Failed to compare the supplied client secret with the application's",
+			log.String("appID", appID), log.Error(err))
+		return clientSecretUnchanged, &tidcommon.InternalServerError
+	}
 }
 
 // loadApplicationEntity returns the application's entity, mapping a missing or non-application record to

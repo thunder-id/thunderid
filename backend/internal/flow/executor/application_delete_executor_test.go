@@ -87,9 +87,9 @@ func (s *ApplicationDeleteExecutorTestSuite) TestApplicationDeletionFlow() {
 			return len(batch) == 1 &&
 				batch[0].Criterion.Type == revocation.CriterionTypeApplicationKey &&
 				batch[0].Criterion.Value == "client-1" &&
-				batch[0].Mode == revocation.ModeAll &&
+				batch[0].Mode == revocation.ModeBeforeAction &&
 				batch[0].Reason == revocation.ReasonApplicationDeleted &&
-				batch[0].Cutoff.IsZero() &&
+				!batch[0].Cutoff.IsZero() &&
 				batch[0].TTL.Seconds() == 2592000
 		})).Return(nil)
 	criteria, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(

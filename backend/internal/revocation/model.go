@@ -98,7 +98,13 @@ type CriteriaRevocation struct {
 // established at or before the recorded action time. Every other reason is terminal: it revokes the
 // criterion's artifacts outright. The write path, the deny-list SQL, and the Resource Server cache
 // all derive from this slice so they cannot disagree about whether a revocation is terminal.
+//
+// An application's deletion is a boundary too: nothing is issued to a deleted application afterwards,
+// and an application registered later under the same client id, as a rollback to a configuration
+// version that still has it does, is a new one whose tokens must stand. A row written for a deletion
+// before this held the deletion time as its action time, so it keeps revoking what preceded it.
 var boundaryReasons = []Reason{
+	ReasonApplicationDeleted,
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
 	ReasonRolePermissionRemoved,

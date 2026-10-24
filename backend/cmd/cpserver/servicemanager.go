@@ -77,6 +77,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/systemflow"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -332,6 +333,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
 		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
+	// This plane issues no tokens and holds no sessions, so a deletion here invalidates nothing; the
+	// gateway a version is applied to revokes when its own import removes the application. Set
+	// explicitly: a service with no runner refuses to delete.
+	applicationService.SetSystemFlowRunner(systemflow.NoRevocation())
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,

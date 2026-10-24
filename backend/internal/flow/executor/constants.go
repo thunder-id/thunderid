@@ -7,6 +7,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/systemflow"
 )
 
 // tokenMetadataClaims are token fields that describe the token rather than the user, so they are never
@@ -119,7 +120,7 @@ const (
 	userInputConsentDecisions  = "consent_decisions"
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
-	revocationInputApplication = "targetApplicationId"
+	revocationInputApplication = systemflow.TargetApplication
 
 	revocationInputRole           = "targetRoleId"
 	revocationInputAssignee       = "targetAssigneeId"

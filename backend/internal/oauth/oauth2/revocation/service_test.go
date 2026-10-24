@@ -266,6 +266,26 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_UsesCutoffAsRevoked
 	s.Nil(svcErr)
 }
 
+// A cutoff in the future, as an application deletion's grace gives, is kept as it is: clamping it to
+// the time of the call would let a token issued while the deletion runs escape the revocation.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_KeepsAFutureCutoff() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	cutoff := time.Now().UTC().Add(30 * time.Second).Truncate(time.Second)
+	store.On("insertCriteria", mock.Anything, mock.MatchedBy(func(rows []revocationCriterion) bool {
+		return len(rows) == 1 && rows[0].RevokedAt.Equal(cutoff)
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
+	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
+		Criterion: Criterion{Type: CriterionTypeApplicationID, Value: "app-123"},
+		Mode:      RevocationModeBeforeAction,
+		Cutoff:    cutoff,
+		Reason:    RevocationReasonApplicationDeleted,
+	}})
+
+	s.Nil(svcErr)
+}
+
 func TestRevokeTokenFamily_PropagatesStoreError(t *testing.T) {
 	store := newRevocationStoreInterfaceMock(t)
 	store.On("insertCriterion", mock.Anything, mock.Anything).Return(errors.New("db down"))
@@ -303,7 +323,8 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_RequestedTTLExtends
 	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-long-lived"},
-		Mode:      RevocationModeAll,
+		Mode:      RevocationModeBeforeAction,
+		Cutoff:    before,
 		Reason:    RevocationReasonApplicationDeleted,
 		TTL:       requested,
 	}})
@@ -322,7 +343,8 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_ShorterRequestedTTL
 	revoker := newRevocationService(nil, store, configured, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{{
 		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-short-lived"},
-		Mode:      RevocationModeAll,
+		Mode:      RevocationModeBeforeAction,
+		Cutoff:    before,
 		Reason:    RevocationReasonApplicationDeleted,
 		TTL:       time.Minute,
 	}})
@@ -399,7 +421,7 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesEveryEntryInO
 			return false
 		}
 		// A terminal entry's RevokedAt is the time of the call.
-		return rows[0].Type == CriterionTypeApplicationKey && rows[0].Value == "client-1" &&
+		return rows[0].Type == CriterionTypeSubject && rows[0].Value == "user-1" &&
 			!rows[0].RevokedAt.Before(before) &&
 			rows[1].Type == CriterionTypeEntityScope && rows[1].Value == "digest-1" &&
 			rows[1].RevokedAt.Equal(boundaryCutoff)
@@ -407,8 +429,8 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesEveryEntryInO
 
 	revoker := newRevocationService(nil, store, time.Hour, false, nil, testMaxEntriesPerChange)
 	svcErr := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
-		{Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-1"},
-			Mode: RevocationModeAll, Reason: RevocationReasonApplicationDeleted},
+		{Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
+			Mode: RevocationModeAll, Reason: RevocationReasonUserDeleted},
 		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
 			Mode: RevocationModeBeforeAction, Cutoff: boundaryCutoff,
 			Reason: RevocationReasonRoleAssignmentRemoved},

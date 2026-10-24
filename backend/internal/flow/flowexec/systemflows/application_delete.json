@@ -1,0 +1,32 @@
+{
+  "operation": "application.delete",
+  "exposure": "internal",
+  "flow": {
+    "id": "system-flow:application.delete",
+    "handle": "system-application-delete",
+    "name": "Application deletion",
+    "flowType": "SYSTEM",
+    "nodes": [
+      {"id": "start", "type": "START", "onSuccess": "plan"},
+      {
+        "id": "plan",
+        "type": "TASK_EXECUTION",
+        "executor": {"name": "ApplicationActionValidator", "mode": "revoke_all"},
+        "onSuccess": "revoke_tokens"
+      },
+      {
+        "id": "revoke_tokens",
+        "type": "TASK_EXECUTION",
+        "executor": {"name": "CriteriaRevocationExecutor"},
+        "onSuccess": "revoke_sessions"
+      },
+      {
+        "id": "revoke_sessions",
+        "type": "TASK_EXECUTION",
+        "executor": {"name": "SessionRevocationExecutor"},
+        "onSuccess": "end"
+      },
+      {"id": "end", "type": "END"}
+    ]
+  }
+}

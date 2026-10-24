@@ -22,11 +22,29 @@ import (
 type applicationValidator func(ctx context.Context, appID string) (
 	*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 
+// The revocation runs before the action, and the action's grace is how far past now it reaches, so a
+// token issued to the application while the action runs, or stamped by a node whose clock is slightly
+// ahead, falls inside the revoked span too. Nothing runs again after the action: a revocation that
+// fails leaves the action unwritten.
+const (
+	// applicationDeletionGrace can be generous: nothing legitimate is issued to a deleted
+	// application afterwards, and an application registered later under the same client id issues
+	// valid tokens once the grace has passed.
+	applicationDeletionGrace = 30 * time.Second
+	// applicationSecretRotationGrace is short, since a token obtained with the new secret within it is
+	// revoked as well: the write takes milliseconds, so this covers it and a little clock skew, and a
+	// client that asks for a token in the same second as it rotated asks again.
+	applicationSecretRotationGrace = 5 * time.Second
+)
+
 // applicationAction is what the validator does for one revocation mode: which validation runs, which
-// reason is recorded, and which refusal is reported when the validator names none.
+// reason is recorded, how far past now the revocation reaches, and which refusal is reported when
+// the validator names none.
 type applicationAction struct {
 	validate func(applicationAdminProvider) applicationValidator
 	reason   revocation.Reason
+	// grace is added to the revocation's cutoff, so what is issued during the action is revoked too.
+	grace    time.Duration
 	notFound tidcommon.ServiceError
 }
 
@@ -38,6 +56,7 @@ var applicationActionsByMode = map[revocation.Mode]applicationAction{
 	revocation.ModeAll: {
 		validate: func(p applicationAdminProvider) applicationValidator { return p.ValidateDeleteApplication },
 		reason:   revocation.ReasonApplicationDeleted,
+		grace:    applicationDeletionGrace,
 		notFound: ErrApplicationDeletionNotAllowed,
 	},
 	revocation.ModeBeforeAction: {
@@ -48,6 +67,7 @@ var applicationActionsByMode = map[revocation.Mode]applicationAction{
 			}
 		},
 		reason:   revocation.ReasonApplicationSecretRegenerated,
+		grace:    applicationSecretRotationGrace,
 		notFound: ErrSecretRegenerationNotAllowed,
 	},
 }
@@ -77,7 +97,7 @@ func newApplicationActionValidator(
 		[]providers.Input{
 			{Identifier: revocationInputApplication, Type: providers.InputTypeText, Required: true},
 		}, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
 			SupportedModes:     modes,
 		})
 	return &applicationActionValidator{Executor: base}
@@ -132,7 +152,7 @@ func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 		return execResp, nil
 	}
 
-	plan, err := encodeRevocationPlan(e.buildPlan(mode, action.reason, appID, profile))
+	plan, err := encodeRevocationPlan(e.buildPlan(action.reason, action.grace, appID, profile))
 	if err != nil {
 		return nil, err
 	}
@@ -143,10 +163,15 @@ func (e *applicationActionValidator) Execute(ctx *providers.NodeContext) (
 // buildPlan records the trusted intent for this action. An application with no OAuth client
 // publishes no criteria and says so explicitly, which keeps it distinguishable from a plan that lost its
 // criteria.
-func (e *applicationActionValidator) buildPlan(mode revocation.Mode, reason revocation.Reason,
+//
+// The plan is bounded for every action, at now plus the action's grace, so what the action's own
+// write is followed by stands: what the new secret issues after a rotation, or what an application
+// registered later under the same client id issues, as a rollback to a version that still has it
+// does. The validator's mode names the action; what it revokes is what was issued until the action.
+func (e *applicationActionValidator) buildPlan(reason revocation.Reason, grace time.Duration,
 	appID string, profile *appmodel.ApplicationArtifactProfile) revocationPlan {
 	plan := revocationPlan{
-		Mode:     mode,
+		Mode:     revocation.ModeBeforeAction,
 		Reason:   reason,
 		TargetID: appID,
 	}
@@ -158,8 +183,6 @@ func (e *applicationActionValidator) buildPlan(mode revocation.Mode, reason revo
 		{Type: revocation.CriterionTypeApplicationKey, Value: profile.ClientKey},
 	}
 	plan.TTLSeconds = profile.MaxLifetimeSeconds
-	if mode == revocation.ModeBeforeAction {
-		plan.Cutoff = time.Now().UTC()
-	}
+	plan.Cutoff = time.Now().UTC().Add(grace)
 	return plan
 }

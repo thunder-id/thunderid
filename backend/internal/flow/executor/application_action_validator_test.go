@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -121,4 +122,35 @@ func (s *ApplicationActionValidatorTestSuite) TestValidator_UnsupportedModeFails
 
 	s.Require().Error(err)
 	s.apps.AssertNotCalled(s.T(), "ValidateDeleteApplication", mock.Anything, mock.Anything)
+}
+
+// Each action's plan reaches its grace past now, since the action runs after the revocation and a
+// token issued to the application meanwhile must fall inside the revoked span: generously for a
+// deletion, which nothing legitimate follows, and briefly for a rotation, so what the new secret
+// issues soon stands.
+func (s *ApplicationActionValidatorTestSuite) TestBuildPlan_EachActionReachesPastNowByItsGrace() {
+	profile := &appmodel.ApplicationArtifactProfile{ClientKey: "client-1"}
+	// Each cutoff is checked against the moments just before and just after its own plan is built, so
+	// a pause between the two builds cannot fail the test.
+	planned := func(reason revocation.Reason, grace time.Duration) (revocationPlan, time.Time, time.Time) {
+		before := time.Now().UTC()
+		plan := s.validator().buildPlan(reason, grace, "app-1", profile)
+		return plan, before, time.Now().UTC()
+	}
+	inReach := func(plan revocationPlan, before, after time.Time, grace time.Duration) {
+		s.False(plan.Cutoff.Before(before.Add(grace)), "the cutoff stops short of its grace")
+		s.False(plan.Cutoff.After(after.Add(grace)), "the cutoff reaches past its grace")
+	}
+
+	deletion, deletionStart, deletionEnd := planned(revocation.ReasonApplicationDeleted, applicationDeletionGrace)
+	rotation, rotationStart, rotationEnd := planned(revocation.ReasonApplicationSecretRegenerated,
+		applicationSecretRotationGrace)
+
+	s.Equal(revocation.ModeBeforeAction, deletion.Mode,
+		"a deletion stays bounded, so a later application under the client id stands")
+	inReach(deletion, deletionStart, deletionEnd, applicationDeletionGrace)
+	inReach(rotation, rotationStart, rotationEnd, applicationSecretRotationGrace)
+	s.Less(applicationSecretRotationGrace, applicationDeletionGrace)
+	s.Equal(applicationDeletionGrace, applicationActionsByMode[revocation.ModeAll].grace)
+	s.Equal(applicationSecretRotationGrace, applicationActionsByMode[revocation.ModeBeforeAction].grace)
 }

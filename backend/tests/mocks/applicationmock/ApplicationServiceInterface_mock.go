@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/systemflow"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -935,6 +936,46 @@ func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) Return() *
 }
 
 func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetSystemFlowRunner provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) SetSystemFlowRunner(runner systemflow.Runner) {
+	_mock.Called(runner)
+	return
+}
+
+// ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSystemFlowRunner'
+type ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call struct {
+	*mock.Call
+}
+
+// SetSystemFlowRunner is a helper method to define mock.On call
+//   - runner systemflow.Runner
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetSystemFlowRunner(runner any) *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call {
+	return &ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call{Call: _e.mock.On("SetSystemFlowRunner", runner)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call) Run(run func(runner systemflow.Runner)) *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 systemflow.Runner
+		if args[0] != nil {
+			arg0 = args[0].(systemflow.Runner)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call) Return() *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call) RunAndReturn(run func(runner systemflow.Runner)) *ApplicationServiceInterfaceMock_SetSystemFlowRunner_Call {
 	_c.Run(run)
 	return _c
 }
