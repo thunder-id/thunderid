@@ -27,12 +27,8 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameApplicationDelete: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
-	ExecutorNameAttributeCollect: {},
-	ExecutorNameAttributeUniquenessValidator: {
-		SupportedProperties: []providers.ExecutorSupportedProperties{
-			{Property: "mode"},
-		},
-	},
+	ExecutorNameAttributeCollect:             {},
+	ExecutorNameAttributeUniquenessValidator: {},
 	ExecutorNameAuthAssert: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "callbackType"},
@@ -178,7 +174,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			"AUTHENTICATION", "REGISTRATION", "USER_ONBOARDING", "ADMINISTRATION",
 		},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
-			{Property: "mode"},
 			{Property: "delegated"},
 			{Property: "includeOptional"},
 			{Property: "includeOptionalCredentials"},

@@ -21,9 +21,13 @@ type categoryTraits struct {
 	// attribute already belongs to another entity.
 	attributeConflictCode string
 	// autoProvisionedAtAuthentication marks a category that federated authentication may create
-	// on the fly, gated on the eligibility flag that authentication writes.
+	// on the fly, gated on the eligibility flag that authentication writes. No type resolver runs
+	// during authentication, so such a category also needs applicationAllowedTypes, and the run
+	// has to carry the category in the runtime data, since provisioning otherwise works on users.
 	autoProvisionedAtAuthentication bool
 	// applicationAllowedTypes returns the entity types the application admits for the category.
+	// Provisioning picks its target from them when no type resolver ran. A category that leaves it
+	// unset is provisioned only after its type resolver.
 	applicationAllowedTypes func(ctx *providers.NodeContext) []string
 	// recordFields are carried on the entity's own record rather than in its schema.
 	recordFields []string
@@ -47,9 +51,6 @@ var categoryTraitsByCategory = map[entitytype.TypeCategory]categoryTraits{
 		groupMemberType:       group.MemberTypeAgent,
 		roleAssigneeType:      role.AssigneeTypeAgent,
 		attributeConflictCode: agentAttributeConflictCode,
-		applicationAllowedTypes: func(ctx *providers.NodeContext) []string {
-			return ctx.Application.AllowedAgentTypes
-		},
 		recordFields: []string{
 			ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey,
 		},

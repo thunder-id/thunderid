@@ -1379,42 +1379,41 @@ func (suite *ProvisioningExecutorTestSuite) TestGetEntityType() {
 	}
 }
 
-// The mode property names the entity category to provision into, and a node that sets no mode
-// keeps provisioning the default category.
+// The category a type resolver put in the runtime data names the category, and a run that has none
+// keeps the default category.
 func (suite *ProvisioningExecutorTestSuite) TestResolveCategory() {
 	tests := []struct {
-		name           string
-		nodeProperties map[string]interface{}
-		expected       entitytype.TypeCategory
-		expectErr      bool
+		name        string
+		runtimeData map[string]string
+		expected    entitytype.TypeCategory
+		expectErr   bool
 	}{
-		{name: "NoModePropertyUsesDefault", nodeProperties: nil, expected: defaultProvisioningCategory},
+		{name: "NoRuntimeCategoryUsesDefault", expected: defaultProvisioningCategory},
 		{
-			name:           "NullModeUsesDefault",
-			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: nil},
-			expected:       defaultProvisioningCategory,
+			name:        "EmptyRuntimeCategoryUsesDefault",
+			runtimeData: map[string]string{categoryNameKey: ""},
+			expected:    defaultProvisioningCategory,
 		},
 		{
-			name:           "UserMode",
-			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "user"},
-			expected:       entitytype.TypeCategoryUser,
+			name:        "UserCategory",
+			runtimeData: map[string]string{categoryNameKey: "user"},
+			expected:    entitytype.TypeCategoryUser,
 		},
 		{
-			name:           "AgentMode",
-			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "agent"},
-			expected:       entitytype.TypeCategoryAgent,
+			name:        "AgentCategory",
+			runtimeData: map[string]string{categoryNameKey: "agent"},
+			expected:    entitytype.TypeCategoryAgent,
 		},
 		{
-			name:           "UnknownMode",
-			nodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "machine"},
-			expectErr:      true,
+			name:        "UnknownCategory",
+			runtimeData: map[string]string{categoryNameKey: "machine"},
+			expectErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			category, err := categoryFromMode(
-				&providers.NodeContext{NodeProperties: tt.nodeProperties})
+			category, err := categoryFromContext(&providers.NodeContext{RuntimeData: tt.runtimeData})
 
 			if tt.expectErr {
 				assert.Error(suite.T(), err)
@@ -1427,12 +1426,11 @@ func (suite *ProvisioningExecutorTestSuite) TestResolveCategory() {
 }
 
 // The interface entry point carries no category, so it resolves one itself and fails the node when
-// the mode property does not name a category.
-func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_UnknownProvisioningMode_ReturnsFailure() {
+// the runtime data names an unknown category.
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_UnknownCategory_ReturnsFailure() {
 	ctx := &providers.NodeContext{
-		ExecutionID:    "flow-123",
-		NodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "machine"},
-		RuntimeData:    map[string]string{ouIDKey: testOUID, categoryTypeKey: testUserType},
+		ExecutionID: "flow-123",
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryNameKey: "machine", categoryTypeKey: testUserType},
 	}
 	execResp := &providers.ExecutorResponse{}
 
@@ -1440,13 +1438,12 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_UnknownProvisi
 	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
 }
 
-func (suite *ProvisioningExecutorTestSuite) TestExecute_UnknownProvisioningMode_ReturnsError() {
+func (suite *ProvisioningExecutorTestSuite) TestExecute_UnknownCategory_ReturnsError() {
 	ctx := &providers.NodeContext{
-		ExecutionID:    "flow-123",
-		FlowType:       providers.FlowTypeRegistration,
-		NodeProperties: map[string]interface{}{propertyKeyProvisioningMode: "machine"},
-		UserInputs:     map[string]string{"username": "newuser"},
-		RuntimeData:    map[string]string{ouIDKey: testOUID, categoryTypeKey: testUserType},
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{"username": "newuser"},
+		RuntimeData: map[string]string{ouIDKey: testOUID, categoryNameKey: "machine", categoryTypeKey: testUserType},
 	}
 
 	_, err := suite.executor.Execute(ctx)
@@ -1487,9 +1484,6 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model":        "claude",
 			"name":         "support-bot",
@@ -1498,6 +1492,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 		},
 		RuntimeData: map[string]string{
 			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
 			categoryTypeKey: testAgentType,
 			ownerIDKey:      "user-owner-1",
 		},
@@ -1543,12 +1538,10 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameOn
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
-		UserInputs: map[string]string{"name": "support-bot"},
+		UserInputs:  map[string]string{"name": "support-bot"},
 		RuntimeData: map[string]string{
 			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
 			categoryTypeKey: testAgentType,
 		},
 		NodeInputs: []providers.Input{},
@@ -1579,12 +1572,15 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_EnumAttributeI
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
 		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode:             string(entitytype.TypeCategoryAgent),
 			propertyKeyDynamicInputsIncludeOptional: true,
 		},
-		UserInputs:  map[string]string{},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-		NodeInputs:  []providers.Input{},
+		UserInputs: map[string]string{},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+		NodeInputs: []providers.Input{},
 	}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
@@ -1674,12 +1670,13 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredEnumAt
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-		NodeInputs:  []providers.Input{},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+		NodeInputs: []providers.Input{},
 	}
 	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
 
@@ -1704,11 +1701,12 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_DeclaredEnumAt
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 		NodeInputs: []providers.Input{
 			{Identifier: "function", Ref: "input_function", Type: providers.InputTypeText},
 		},
@@ -1766,13 +1764,16 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Assign
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
 		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-			propertyKeyAssignGroup:      "agent-group-id",
-			propertyKeyAssignRole:       "agent-role-id",
+			propertyKeyAssignGroup: "agent-group-id",
+			propertyKeyAssignRole:  "agent-role-id",
 		},
-		UserInputs:  map[string]string{"name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-		NodeInputs:  []providers.Input{},
+		UserInputs: map[string]string{"name": "support-bot"},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+		NodeInputs: []providers.Input{},
 	}
 
 	resp, err := suite.executor.Execute(ctx)
@@ -1819,15 +1820,16 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-123",
 				FlowType:    providers.FlowTypeAdministration,
-				NodeProperties: map[string]interface{}{
-					propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-				},
 				UserInputs: map[string]string{
 					"model": "claude", "name": "support-bot", delegatedKey: dataValueTrue,
 					redirectURIsKey: tt.input, authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
 				},
-				RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-				NodeInputs:  []providers.Input{},
+				RuntimeData: map[string]string{
+					ouIDKey:         testOUID,
+					categoryNameKey: string(entitytype.TypeCategoryAgent),
+					categoryTypeKey: testAgentType,
+				},
+				NodeInputs: []providers.Input{},
 			}
 
 			_, err := suite.executor.Execute(ctx)
@@ -1851,14 +1853,15 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Separa
 	execResp, err := suite.executor.Execute(&providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot", delegatedKey: dataValueTrue,
 			redirectURIsKey: " , ", authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
 		},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	})
 
 	assert.NoError(suite.T(), err)
@@ -1883,13 +1886,14 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot", delegatedKey: "yes",
 		},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	execResp, err := suite.executor.Execute(ctx)
@@ -1915,11 +1919,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"model": "claude", "name": "support-bot", delegatedKey: dataValueTrue},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	execResp, err := suite.executor.Execute(ctx)
@@ -1963,14 +1968,15 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot", delegatedKey: dataValueTrue,
 			redirectURIsKey: "https://example.com/cb", authFlowIDKey: "login-flow-1",
 		},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	execResp, err := suite.executor.Execute(ctx)
@@ -1996,11 +2002,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Redire
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"model": "claude", "name": "support-bot", delegatedKey: dataValueFalse},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	_, err := suite.executor.Execute(ctx)
@@ -2024,14 +2031,15 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NotDel
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot", delegatedKey: dataValueFalse,
 			redirectURIsKey: "https://a.example.com/cb", authFlowIDKey: "login-flow-1", allowedUserTypesKey: "employee",
 		},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	_, err := suite.executor.Execute(ctx)
@@ -2081,9 +2089,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 				Run(func(args mock.Arguments) { receivedDelegated = args.Get(1).(*providers.Agent).Delegated }).
 				Return(&providers.Agent{ID: testNewAgentID}, nil).Once()
 
-			properties := map[string]interface{}{
-				propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-			}
+			properties := map[string]interface{}{}
 			if tt.property != nil {
 				properties[propertyKeyDelegated] = tt.property
 			}
@@ -2095,7 +2101,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 			if tt.input != "" {
 				userInputs[delegatedKey] = tt.input
 			}
-			runtime := map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType}
+			runtime := map[string]string{
+				ouIDKey:         testOUID,
+				categoryNameKey: string(entitytype.TypeCategoryAgent),
+				categoryTypeKey: testAgentType,
+			}
 			if tt.runtime != "" {
 				runtime[delegatedKey] = tt.runtime
 			}
@@ -2124,11 +2134,14 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Proper
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
 		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-			propertyKeyDelegated:        true,
+			propertyKeyDelegated: true,
 		},
-		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		UserInputs: map[string]string{"model": "claude", "name": "support-bot"},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	})
 
 	assert.NoError(suite.T(), err)
@@ -2151,11 +2164,14 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Reject
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
 		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-			propertyKeyDelegated:        "yes",
+			propertyKeyDelegated: "yes",
 		},
-		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		UserInputs: map[string]string{"model": "claude", "name": "support-bot"},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	})
 
 	assert.NoError(suite.T(), err)
@@ -2233,12 +2249,13 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 			ctx := &providers.NodeContext{
 				ExecutionID: "flow-123",
 				FlowType:    providers.FlowTypeAdministration,
-				NodeProperties: map[string]interface{}{
-					propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-				},
 				UserInputs:  userInputs,
-				RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-				NodeInputs:  []providers.Input{{Identifier: "model", Type: "string", Required: true}},
+				RuntimeData: map[string]string{
+					ouIDKey:         testOUID,
+					categoryNameKey: string(entitytype.TypeCategoryAgent),
+					categoryTypeKey: testAgentType,
+				},
+				NodeInputs: []providers.Input{{Identifier: "model", Type: "string", Required: true}},
 			}
 
 			_, err := suite.executor.Execute(ctx)
@@ -2278,12 +2295,13 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Surfac
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-		NodeInputs:  []providers.Input{{Identifier: "model", Type: "string", Required: true}},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+		NodeInputs: []providers.Input{{Identifier: "model", Type: "string", Required: true}},
 	}
 
 	resp, err := suite.executor.Execute(ctx)
@@ -2321,12 +2339,13 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentAlreadyExists_Error
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"username": "newagent", "name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
-		NodeInputs:  []providers.Input{{Identifier: "username", Type: "string", Required: true}},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
+		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
 	resp, err := suite.executor.Execute(ctx)
@@ -2424,84 +2443,6 @@ func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_EntityTypeLo
 	assert.Contains(suite.T(), err.Error(), "failed to retrieve entity type")
 }
 
-// The agent types an application accepts name the target, which is what lets a flow provision an
-// agent with no type or organization unit resolver node ahead of the provisioning one.
-func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategory_ResolvesTheAllowedAgentType() {
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		Application: providers.Application{
-			InboundAuthProfile: providers.InboundAuthProfile{AllowedAgentTypes: []string{testAgentType}},
-		},
-	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent,
-		testAgentType).
-		Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID, AllowSelfRegistration: true},
-			(*tidcommon.ServiceError)(nil)).Once()
-
-	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
-
-	assert.NoError(suite.T(), err)
-	require.NotNil(suite.T(), ref)
-	assert.Equal(suite.T(), testAgentType, ref.entityType)
-	assert.Equal(suite.T(), testOUID, ref.ouID, "the organization unit comes from the agent type itself")
-}
-
-// An application that names no agent type still provisions, so a deployment that never configured
-// one keeps working.
-func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategory_NoneAllowedResolvesNothing() {
-	ctx := &providers.NodeContext{ExecutionID: "flow-123"}
-
-	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
-
-	assert.NoError(suite.T(), err)
-	assert.Nil(suite.T(), ref, "an application admitting no agent type provisions none")
-	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByHandle",
-		mock.Anything, mock.Anything, mock.Anything)
-}
-
-// Several allowed types leave the choice to a resolver node rather than picking one arbitrarily.
-func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategory_SeveralAllowedIsUnresolved() {
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		Application: providers.Application{
-			InboundAuthProfile: providers.InboundAuthProfile{
-				AllowedAgentTypes: []string{testAgentType, "another"},
-			},
-		},
-	}
-
-	for _, name := range []string{testAgentType, "another"} {
-		suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, name).
-			Return(&entitytype.EntityType{Handle: name, OUID: testOUID, AllowSelfRegistration: true},
-				(*tidcommon.ServiceError)(nil)).Once()
-	}
-
-	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
-
-	assert.NoError(suite.T(), err, "an unresolved target is not an error")
-	assert.Nil(suite.T(), ref, "two self-registrable types leave the target ambiguous")
-}
-
-// An agent is provisioned on an administrator's behalf, so the type need not permit the entity to
-// register itself the way the user candidates must.
-func (suite *ProvisioningExecutorTestSuite) TestGetDefaultEntityRef_AgentCategory_RequiresSelfRegistration() {
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		Application: providers.Application{
-			InboundAuthProfile: providers.InboundAuthProfile{AllowedAgentTypes: []string{testAgentType}},
-		},
-	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent,
-		testAgentType).
-		Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID, AllowSelfRegistration: false},
-			(*tidcommon.ServiceError)(nil)).Once()
-
-	ref, err := suite.executor.getDefaultEntityRef(ctx, entitytype.TypeCategoryAgent)
-
-	assert.NoError(suite.T(), err)
-	assert.Nil(suite.T(), ref, "an agent type that does not permit self-registration is not a target")
-}
-
 // A resolver populates the type, and no category has a fixed fallback here.
 func (suite *ProvisioningExecutorTestSuite) TestGetEntityType_ComesFromRuntimeData() {
 	ctx := &providers.NodeContext{ExecutionID: "flow-123", RuntimeData: map[string]string{}}
@@ -2535,6 +2476,17 @@ func (suite *ProvisioningExecutorTestSuite) TestCategoryPrincipalTypes() {
 	assert.Equal(suite.T(), userTraits.roleAssigneeType, unknown.roleAssigneeType)
 	assert.Equal(suite.T(), userTraits.attributeConflictCode, unknown.attributeConflictCode)
 	assert.Equal(suite.T(), userTraits.autoProvisionedAtAuthentication, unknown.autoProvisionedAtAuthentication)
+}
+
+// Authentication runs no type resolver, so a category it provisions on the fly has to be able to
+// pick a type from the application.
+func (suite *ProvisioningExecutorTestSuite) TestCategoryTraits_AutoProvisionedCategoriesHaveAllowedTypes() {
+	for category, traits := range categoryTraitsByCategory {
+		if traits.autoProvisionedAtAuthentication {
+			assert.NotNil(suite.T(), traits.applicationAllowedTypes,
+				"category %q is provisioned at authentication but has no application allowed types", category)
+		}
+	}
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_AllAttributesInRuntimeData() {
@@ -4989,11 +4941,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_NameIs
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"model": "claude"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	execResp, err := suite.executor.Execute(ctx)
@@ -5022,11 +4975,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Descri
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"model": "claude", "name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	_, err := suite.executor.Execute(ctx)
@@ -5050,16 +5004,17 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Ignore
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		// Both the input identifier and the runtime slot are submitted, which the engine merges
 		// verbatim. Neither may stand in for a resolved owner.
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot",
 			ownerKey: "injected-owner", ownerIDKey: "injected-owner-id",
 		},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	_, err := suite.executor.Execute(ctx)
@@ -5083,14 +5038,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesRe
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAdministration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs: map[string]string{
 			"model": "claude", "name": "support-bot", ownerKey: "injected-owner",
 		},
 		RuntimeData: map[string]string{
-			ouIDKey: testOUID, categoryTypeKey: testAgentType, ownerIDKey: "resolved-owner",
+			ouIDKey: testOUID, categoryNameKey: string(entitytype.TypeCategoryAgent), categoryTypeKey: testAgentType,
+			ownerIDKey: "resolved-owner",
 		},
 	}
 
@@ -5107,11 +5060,12 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Refuse
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeRegistration,
-		NodeProperties: map[string]interface{}{
-			propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent),
-		},
 		UserInputs:  map[string]string{"name": "support-bot"},
-		RuntimeData: map[string]string{ouIDKey: testOUID, categoryTypeKey: testAgentType},
+		RuntimeData: map[string]string{
+			ouIDKey:         testOUID,
+			categoryNameKey: string(entitytype.TypeCategoryAgent),
+			categoryTypeKey: testAgentType,
+		},
 	}
 
 	execResp, err := suite.executor.Execute(ctx)
@@ -5125,9 +5079,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Refuse
 		mock.Anything, mock.Anything, mock.Anything)
 }
 
-// The self-registration rule is one rule: an application that admits the type, and a type that
-// permits it. Both categories read their own allowed list through the same path.
-func (suite *ProvisioningExecutorTestSuite) TestSelfRegistrableEntityTypes_ReadsThePerCategoryAllowedList() {
+// Only the user category falls back to the application's allowed types. An agent is provisioned
+// after its type resolver, so the application's agent types are never read here.
+func (suite *ProvisioningExecutorTestSuite) TestSelfRegistrableEntityTypes_OnlyUsersHaveAnAllowedList() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		Application: providers.Application{
@@ -5137,14 +5091,10 @@ func (suite *ProvisioningExecutorTestSuite) TestSelfRegistrableEntityTypes_Reads
 			},
 		},
 	}
-	for category, name := range map[entitytype.TypeCategory]string{
-		entitytype.TypeCategoryUser:  testUserType,
-		entitytype.TypeCategoryAgent: testAgentType,
-	} {
-		suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, category, name).
-			Return(&entitytype.EntityType{Handle: name, OUID: testOUID, AllowSelfRegistration: true},
-				(*tidcommon.ServiceError)(nil)).Once()
-	}
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser,
+		testUserType).
+		Return(&entitytype.EntityType{Handle: testUserType, OUID: testOUID, AllowSelfRegistration: true},
+			(*tidcommon.ServiceError)(nil)).Once()
 
 	userTypes, err := suite.executor.selfRegistrableEntityTypes(ctx, entitytype.TypeCategoryUser)
 	assert.NoError(suite.T(), err)
@@ -5153,8 +5103,7 @@ func (suite *ProvisioningExecutorTestSuite) TestSelfRegistrableEntityTypes_Reads
 
 	agentTypes, err := suite.executor.selfRegistrableEntityTypes(ctx, entitytype.TypeCategoryAgent)
 	assert.NoError(suite.T(), err)
-	require.Len(suite.T(), agentTypes, 1)
-	assert.Equal(suite.T(), testAgentType, agentTypes[0].Handle)
+	assert.Empty(suite.T(), agentTypes)
 }
 
 // --- federated linking ---

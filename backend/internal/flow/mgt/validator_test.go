@@ -1666,6 +1666,17 @@ func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_UnsupportedP
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
 
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_NoSupportedPropertiesAcceptsAny() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{"mode": "agent"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
 func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_OptionalPropertyOmitted() {
 	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{

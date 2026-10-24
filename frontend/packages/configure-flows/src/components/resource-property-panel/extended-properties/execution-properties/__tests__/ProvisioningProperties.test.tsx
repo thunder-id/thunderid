@@ -79,33 +79,21 @@ describe('ProvisioningProperties', () => {
     expect(mockOnChange).toHaveBeenCalledWith('data.properties.allowCrossOUProvisioning', true, expect.anything());
   });
 
-  it('should offer the delegation setting only in agent mode', () => {
-    const {rerender} = render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
-
-    expect(screen.queryByLabelText('Delegated mode')).not.toBeInTheDocument();
-
-    rerender(<ProvisioningProperties resource={createResource({mode: 'user'})} onChange={mockOnChange} />);
-
-    expect(screen.queryByLabelText('Delegated mode')).not.toBeInTheDocument();
-
-    rerender(<ProvisioningProperties resource={createResource({mode: 'agent'})} onChange={mockOnChange} />);
+  it('should offer the delegation setting, unchecked by default', () => {
+    render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
 
     expect(screen.getByLabelText('Delegated mode')).not.toBeChecked();
   });
 
   it('should keep delegation as a real boolean when it is switched on and back off', async () => {
     const user = userEvent.setup();
-    const {rerender} = render(
-      <ProvisioningProperties resource={createResource({mode: 'agent'})} onChange={mockOnChange} />,
-    );
+    const {rerender} = render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
 
     await user.click(screen.getByLabelText('Delegated mode'));
 
     expect(mockOnChange).toHaveBeenLastCalledWith('data.properties.delegated', true, expect.anything());
 
-    rerender(
-      <ProvisioningProperties resource={createResource({mode: 'agent', delegated: true})} onChange={mockOnChange} />,
-    );
+    rerender(<ProvisioningProperties resource={createResource({delegated: true})} onChange={mockOnChange} />);
     expect(screen.getByLabelText('Delegated mode')).toBeChecked();
 
     await user.click(screen.getByLabelText('Delegated mode'));

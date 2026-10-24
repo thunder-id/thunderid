@@ -76,7 +76,6 @@ func newProvisioningExecutor(
 				providers.FlowTypeAdministration,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyProvisioningMode},
 				{Property: propertyKeyDelegated},
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
@@ -120,7 +119,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		AuthUser:       ctx.AuthUser,
 	}
 
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		return execResp, err
 	}
@@ -283,16 +282,16 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 	return nil
 }
 
-// categoryFromMode maps the node's mode property onto the entity category it works on. A mode is
-// the category name, and a node that sets none works on the default category.
-func categoryFromMode(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
-	mode, ok := ctx.NodeProperties[propertyKeyProvisioningMode].(string)
-	if !ok || mode == "" {
+// categoryFromContext resolves the category a provisioning node works on: the one a type resolver
+// put in the runtime data, or the default category when no resolver ran.
+func categoryFromContext(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
+	name := ctx.RuntimeData[categoryNameKey]
+	if name == "" {
 		return defaultProvisioningCategory, nil
 	}
-	category := entitytype.TypeCategory(mode)
+	category := entitytype.TypeCategory(name)
 	if !category.IsValid() {
-		return "", fmt.Errorf("invalid provisioning mode: %s", mode)
+		return "", fmt.Errorf("invalid category: %s", name)
 	}
 	return category, nil
 }
@@ -611,7 +610,7 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 // the category once and calls hasRequiredInputs with it directly.
 func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) bool {
-	category, err := categoryFromMode(ctx)
+	category, err := categoryFromContext(ctx)
 	if err != nil {
 		p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)).
 			Warn(ctx.Context, "Failed to resolve the provisioning category", log.Any("error", err))
@@ -1312,16 +1311,18 @@ func (p *provisioningExecutor) getDefaultEntityRef(ctx *providers.NodeContext,
 
 // selfRegistrableEntityTypes returns the types the node may provision into when none was named in
 // runtime data: those the application admits for the category that also permit self-registration.
-// An application admitting none provisions nothing, whichever category it is.
+// A category without application allowed types, or an application admitting none, provisions
+// nothing.
 func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeContext,
 	category entitytype.TypeCategory) ([]entitytype.EntityType, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	if p.entityTypeService == nil {
+	applicationAllowedTypes := traitsFor(category).applicationAllowedTypes
+	if p.entityTypeService == nil || applicationAllowedTypes == nil {
 		return nil, nil
 	}
 
-	allowed := traitsFor(category).applicationAllowedTypes(ctx)
+	allowed := applicationAllowedTypes(ctx)
 	if len(allowed) == 0 {
 		logger.Debug(ctx.Context, "No allowed entity types configured for the application",
 			log.String("category", string(category)))

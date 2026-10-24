@@ -512,9 +512,6 @@
           },
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "provisioning",
-          "properties": {
-            "mode": "agent"
-          },
           "type": "TASK_EXECUTION"
         },
         {
@@ -534,8 +531,7 @@
           "onSuccess": "agent_credentials",
           "properties": {
             "delegated": false,
-            "includeOptional": true,
-            "mode": "agent"
+            "includeOptional": true
           },
           "type": "TASK_EXECUTION"
         },
@@ -1128,9 +1124,6 @@
           },
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "prompt_obo_details",
-          "properties": {
-            "mode": "agent"
-          },
           "type": "TASK_EXECUTION"
         },
         {
@@ -1150,8 +1143,7 @@
           "onSuccess": "agent_credentials",
           "properties": {
             "delegated": true,
-            "includeOptional": true,
-            "mode": "agent"
+            "includeOptional": true
           },
           "type": "TASK_EXECUTION"
         },
@@ -1812,9 +1804,6 @@
           },
           "onIncomplete": "prompt_agent_details",
           "onSuccess": "prompt_agent_delegation",
-          "properties": {
-            "mode": "agent"
-          },
           "type": "TASK_EXECUTION"
         },
         {
@@ -1834,8 +1823,7 @@
           "onSuccess": "agent_credentials",
           "properties": {
             "delegated": false,
-            "includeOptional": true,
-            "mode": "agent"
+            "includeOptional": true
           },
           "type": "TASK_EXECUTION"
         },
