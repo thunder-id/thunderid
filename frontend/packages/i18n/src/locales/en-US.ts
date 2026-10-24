@@ -3087,7 +3087,7 @@ const translations = {
       "Make sure to copy your client secret now. You won't be able to see it again for security reasons.",
     'clientSecret.clientIdLabel': 'Client ID',
     'clientSecret.clientSecretLabel': 'Client secret',
-    'clientSecret.purpose': 'Used to authenticate your application at the OAuth 2 token endpoint.',
+    'clientSecret.purpose': 'Used to authenticate your application at the OAuth 2.0 token endpoint.',
     'clientSecret.copied': 'Copied to clipboard',
     'clientSecret.copySecret': 'Copy client secret',
     'clientSecret.securityReminder.title': 'Security reminder',
