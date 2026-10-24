@@ -1273,6 +1273,28 @@ direct_api: {
 },
 ```
 
+## MCP Server Configuration
+
+Controls which tools the [MCP server](../../working-with-ai/mcp-server) serves. Use it to give MCP clients one server for <ProductName /> and for tools a deployment adds of its own.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mcp.upstreams` | `[]` | MCP servers whose tools <ProductName /> serves beside its own. Each entry's `url` is the upstream's MCP endpoint over streamable HTTP, and must be an absolute `http` or `https` URL or startup fails. A client's listing includes each upstream's tools, read with the client's own token, and a call to one is forwarded with that token. Each upstream's instructions, which tell a client how to use its tools, are given to clients after <ProductName />'s own. An upstream tool named like one of <ProductName />'s is not served. An upstream that is unreachable, or refuses the client, is left out of the listing while <ProductName />'s own tools are still served |
+| `mcp.excluded_tools` | `[]` | Names of <ProductName />'s own MCP tools that are not served, for example ones an upstream replaces in this deployment |
+
+:::warning
+A call to an upstream tool carries the client's access token to that upstream. List only upstreams you trust with your clients' tokens.
+:::
+
+**Example:**
+```yaml
+mcp:
+  upstreams:
+    - url: "https://environments.internal:9099/mcp"
+  excluded_tools:
+    - thunderid_deploy_version
+```
+
 ## Security Configuration
 
 Controls server-wide security behavior that is not specific to any single authenticator. Maps to `SecurityConfig` in the backend, nested under `server.security`.

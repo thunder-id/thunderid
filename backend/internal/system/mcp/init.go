@@ -5,7 +5,9 @@
 package mcp
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	mcpauth "github.com/thunder-id/thunderid/internal/system/mcp/auth"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -35,6 +38,8 @@ func Initialize(
 	guard func(http.Handler) http.Handler,
 	resourceMeta *oauthex.ProtectedResourceMetadata,
 ) {
+	serveConfiguredTools(mcpServer, serverConfig())
+
 	httpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
 		return mcpServer
 	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
@@ -118,4 +123,59 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	}
 
 	return guard, metadata
+}
+
+// serverConfig is what the deployment configures the MCP server to serve, nothing when no runtime is
+// initialized.
+func serverConfig() config.MCPServerConfig {
+	if !config.IsServerRuntimeInitialized() {
+		return config.MCPServerConfig{}
+	}
+	return config.GetServerRuntime().Config.MCP
+}
+
+// serveConfiguredTools drops the tools the deployment excludes, then adds the upstreams' tools beside
+// the ones left. It runs once every package has registered its tools, so the server's own tools are
+// known when an upstream's are listed.
+func serveConfiguredTools(mcpServer *mcpsdk.Server, cfg config.MCPServerConfig) {
+	if len(cfg.ExcludedTools) > 0 {
+		mcpServer.RemoveTools(cfg.ExcludedTools...)
+	}
+	if len(cfg.Upstreams) == 0 {
+		return
+	}
+	endpoints := make([]string, 0, len(cfg.Upstreams))
+	for _, upstream := range cfg.Upstreams {
+		endpoints = append(endpoints, strings.TrimSpace(upstream.URL))
+	}
+	mcpServer.AddReceivingMiddleware(newUpstreams(endpoints, localToolNames(mcpServer)).middleware)
+}
+
+// localToolNames lists the server's own tools by asking it, over an in-memory session.
+func localToolNames(mcpServer *mcpsdk.Server) map[string]bool {
+	ctx := context.Background()
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "MCPServer"))
+	names := map[string]bool{}
+	serverTransport, clientTransport := mcpsdk.NewInMemoryTransports()
+	serverSession, err := mcpServer.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		logger.Error(ctx, "Failed to read the MCP server's own tools", log.Error(err))
+		return names
+	}
+	defer func() { _ = serverSession.Close() }()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "thunderid-mcp-probe", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		logger.Error(ctx, "Failed to read the MCP server's own tools", log.Error(err))
+		return names
+	}
+	defer func() { _ = session.Close() }()
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			logger.Error(ctx, "Failed to read the MCP server's own tools", log.Error(err))
+			return names
+		}
+		names[tool.Name] = true
+	}
+	return names
 }

@@ -723,6 +723,35 @@ func (c AuthZENPDPConfig) Validate() error {
 	return nil
 }
 
+// MCPServerConfig configures what the MCP server serves.
+type MCPServerConfig struct {
+	// Upstreams are MCP servers whose tools this one serves beside its own, so a client connects to one
+	// server for both. A call to an upstream tool is forwarded with the caller's own Authorization
+	// header, so an upstream must be one this deployment trusts with its callers' tokens, and accepts
+	// them.
+	Upstreams []MCPUpstreamConfig `yaml:"upstreams" json:"upstreams"`
+	// ExcludedTools names tools of this server's own that it does not serve, such as ones an upstream
+	// replaces for this deployment.
+	ExcludedTools []string `yaml:"excluded_tools" json:"excluded_tools"`
+}
+
+// MCPUpstreamConfig is one upstream MCP server.
+type MCPUpstreamConfig struct {
+	// URL is the upstream's MCP endpoint, served over streamable HTTP.
+	URL string `yaml:"url" json:"url"`
+}
+
+// Validate checks that every upstream is an absolute http(s) URL.
+func (c MCPServerConfig) Validate() error {
+	for i, upstream := range c.Upstreams {
+		parsed, err := url.Parse(strings.TrimSpace(upstream.URL))
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+			return fmt.Errorf("mcp.upstreams[%d].url must be an absolute http(s) URL", i)
+		}
+	}
+	return nil
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
 	Server                     engineconfig.ServerConfig         `yaml:"server"                json:"server"`
@@ -767,6 +796,7 @@ type Config struct {
 	ResourceSharing            ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
 	AccountAccess              AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
 	IdentityGovernanceProvider IdentityGovernanceProviderConfig  `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
+	MCP                        MCPServerConfig                   `yaml:"mcp"                   json:"mcp"`
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.
@@ -927,6 +957,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.AuthZENPDP.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.MCP.Validate(); err != nil {
 		return nil, err
 	}
 

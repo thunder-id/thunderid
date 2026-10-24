@@ -17,6 +17,17 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
+// An upstream MCP server must be named by an absolute http(s) URL, since calls are forwarded there.
+func TestMCPServerConfigValidation(t *testing.T) {
+	assert.NoError(t, MCPServerConfig{}.Validate())
+	upstream := MCPUpstreamConfig{URL: "https://org-mgt.internal:9099/mcp"}
+	assert.NoError(t, MCPServerConfig{Upstreams: []MCPUpstreamConfig{upstream}}.Validate())
+	for _, url := range []string{"", "org-mgt/mcp", "ftp://org-mgt/mcp", "https://"} {
+		assert.ErrorContains(t, MCPServerConfig{Upstreams: []MCPUpstreamConfig{{URL: url}}}.Validate(),
+			"mcp.upstreams[0].url", url)
+	}
+}
+
 func TestAuthZENPDPDefaultsMergeAndValidation(t *testing.T) {
 	defaultRetries, zeroRetries := 1, 0
 	base := Config{AuthZENPDP: AuthZENPDPConfig{TimeoutMS: 500, RetryCount: &defaultRetries}}
