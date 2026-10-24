@@ -180,6 +180,77 @@ func (_c *AgentServiceInterfaceMock_DeleteAgent_Call) RunAndReturn(run func(ctx 
 	return _c
 }
 
+// DeleteOwnedAgent provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) DeleteOwnedAgent(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind) *common.ServiceError {
+	ret := _mock.Called(ctx, ownerID, agentID, kind)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteOwnedAgent")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, ownerID, agentID, kind)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_DeleteOwnedAgent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteOwnedAgent'
+type AgentServiceInterfaceMock_DeleteOwnedAgent_Call struct {
+	*mock.Call
+}
+
+// DeleteOwnedAgent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - agentID string
+//   - kind providers.AgentKind
+func (_e *AgentServiceInterfaceMock_Expecter) DeleteOwnedAgent(ctx any, ownerID any, agentID any, kind any) *AgentServiceInterfaceMock_DeleteOwnedAgent_Call {
+	return &AgentServiceInterfaceMock_DeleteOwnedAgent_Call{Call: _e.mock.On("DeleteOwnedAgent", ctx, ownerID, agentID, kind)}
+}
+
+func (_c *AgentServiceInterfaceMock_DeleteOwnedAgent_Call) Run(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind)) *AgentServiceInterfaceMock_DeleteOwnedAgent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.AgentKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.AgentKind)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_DeleteOwnedAgent_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_DeleteOwnedAgent_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_DeleteOwnedAgent_Call) RunAndReturn(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind) *common.ServiceError) *AgentServiceInterfaceMock_DeleteOwnedAgent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetAgent provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) GetAgent(ctx context.Context, agentID string, includeDisplay bool) (*model.AgentGetResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID, includeDisplay)
@@ -508,6 +579,246 @@ func (_c *AgentServiceInterfaceMock_GetAgentRoles_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetClientRules provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetClientRules(ctx context.Context, agentID string) (*providers.ClientRules, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClientRules")
+	}
+
+	var r0 *providers.ClientRules
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.ClientRules, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.ClientRules); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ClientRules)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetClientRules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClientRules'
+type AgentServiceInterfaceMock_GetClientRules_Call struct {
+	*mock.Call
+}
+
+// GetClientRules is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) GetClientRules(ctx any, agentID any) *AgentServiceInterfaceMock_GetClientRules_Call {
+	return &AgentServiceInterfaceMock_GetClientRules_Call{Call: _e.mock.On("GetClientRules", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) Return(clientRules *providers.ClientRules, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Return(clientRules, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetClientRules_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*providers.ClientRules, *common.ServiceError)) *AgentServiceInterfaceMock_GetClientRules_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOwnedAgent provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetOwnedAgent(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind) (*model.OwnedAgentResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, ownerID, agentID, kind)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOwnedAgent")
+	}
+
+	var r0 *model.OwnedAgentResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind) (*model.OwnedAgentResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, ownerID, agentID, kind)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind) *model.OwnedAgentResponse); ok {
+		r0 = returnFunc(ctx, ownerID, agentID, kind)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.OwnedAgentResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, providers.AgentKind) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ownerID, agentID, kind)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetOwnedAgent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOwnedAgent'
+type AgentServiceInterfaceMock_GetOwnedAgent_Call struct {
+	*mock.Call
+}
+
+// GetOwnedAgent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - agentID string
+//   - kind providers.AgentKind
+func (_e *AgentServiceInterfaceMock_Expecter) GetOwnedAgent(ctx any, ownerID any, agentID any, kind any) *AgentServiceInterfaceMock_GetOwnedAgent_Call {
+	return &AgentServiceInterfaceMock_GetOwnedAgent_Call{Call: _e.mock.On("GetOwnedAgent", ctx, ownerID, agentID, kind)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgent_Call) Run(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind)) *AgentServiceInterfaceMock_GetOwnedAgent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.AgentKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.AgentKind)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgent_Call) Return(ownedAgentResponse *model.OwnedAgentResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetOwnedAgent_Call {
+	_c.Call.Return(ownedAgentResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgent_Call) RunAndReturn(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind) (*model.OwnedAgentResponse, *common.ServiceError)) *AgentServiceInterfaceMock_GetOwnedAgent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOwnedAgents provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetOwnedAgents(ctx context.Context, ownerID string, kind providers.AgentKind, limit int, offset int) (*model.OwnedAgentListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, ownerID, kind, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOwnedAgents")
+	}
+
+	var r0 *model.OwnedAgentListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AgentKind, int, int) (*model.OwnedAgentListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, ownerID, kind, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.AgentKind, int, int) *model.OwnedAgentListResponse); ok {
+		r0 = returnFunc(ctx, ownerID, kind, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.OwnedAgentListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.AgentKind, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ownerID, kind, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetOwnedAgents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOwnedAgents'
+type AgentServiceInterfaceMock_GetOwnedAgents_Call struct {
+	*mock.Call
+}
+
+// GetOwnedAgents is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - kind providers.AgentKind
+//   - limit int
+//   - offset int
+func (_e *AgentServiceInterfaceMock_Expecter) GetOwnedAgents(ctx any, ownerID any, kind any, limit any, offset any) *AgentServiceInterfaceMock_GetOwnedAgents_Call {
+	return &AgentServiceInterfaceMock_GetOwnedAgents_Call{Call: _e.mock.On("GetOwnedAgents", ctx, ownerID, kind, limit, offset)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgents_Call) Run(run func(ctx context.Context, ownerID string, kind providers.AgentKind, limit int, offset int)) *AgentServiceInterfaceMock_GetOwnedAgents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.AgentKind
+		if args[2] != nil {
+			arg2 = args[2].(providers.AgentKind)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgents_Call) Return(ownedAgentListResponse *model.OwnedAgentListResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetOwnedAgents_Call {
+	_c.Call.Return(ownedAgentListResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetOwnedAgents_Call) RunAndReturn(run func(ctx context.Context, ownerID string, kind providers.AgentKind, limit int, offset int) (*model.OwnedAgentListResponse, *common.ServiceError)) *AgentServiceInterfaceMock_GetOwnedAgents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)
@@ -694,6 +1005,94 @@ func (_c *AgentServiceInterfaceMock_UpdateAgent_Call) Return(agentCompleteRespon
 }
 
 func (_c *AgentServiceInterfaceMock_UpdateAgent_Call) RunAndReturn(run func(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (*model.AgentCompleteResponse, *common.ServiceError)) *AgentServiceInterfaceMock_UpdateAgent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateOwnedAgent provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) UpdateOwnedAgent(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, req *model.UpdateOwnedAgentRequest) (*model.OwnedAgentResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, ownerID, agentID, kind, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateOwnedAgent")
+	}
+
+	var r0 *model.OwnedAgentResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind, *model.UpdateOwnedAgentRequest) (*model.OwnedAgentResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, ownerID, agentID, kind, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, providers.AgentKind, *model.UpdateOwnedAgentRequest) *model.OwnedAgentResponse); ok {
+		r0 = returnFunc(ctx, ownerID, agentID, kind, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.OwnedAgentResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, providers.AgentKind, *model.UpdateOwnedAgentRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ownerID, agentID, kind, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_UpdateOwnedAgent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateOwnedAgent'
+type AgentServiceInterfaceMock_UpdateOwnedAgent_Call struct {
+	*mock.Call
+}
+
+// UpdateOwnedAgent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - agentID string
+//   - kind providers.AgentKind
+//   - req *model.UpdateOwnedAgentRequest
+func (_e *AgentServiceInterfaceMock_Expecter) UpdateOwnedAgent(ctx any, ownerID any, agentID any, kind any, req any) *AgentServiceInterfaceMock_UpdateOwnedAgent_Call {
+	return &AgentServiceInterfaceMock_UpdateOwnedAgent_Call{Call: _e.mock.On("UpdateOwnedAgent", ctx, ownerID, agentID, kind, req)}
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgent_Call) Run(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, req *model.UpdateOwnedAgentRequest)) *AgentServiceInterfaceMock_UpdateOwnedAgent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 providers.AgentKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.AgentKind)
+		}
+		var arg4 *model.UpdateOwnedAgentRequest
+		if args[4] != nil {
+			arg4 = args[4].(*model.UpdateOwnedAgentRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgent_Call) Return(ownedAgentResponse *model.OwnedAgentResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_UpdateOwnedAgent_Call {
+	_c.Call.Return(ownedAgentResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UpdateOwnedAgent_Call) RunAndReturn(run func(ctx context.Context, ownerID string, agentID string, kind providers.AgentKind, req *model.UpdateOwnedAgentRequest) (*model.OwnedAgentResponse, *common.ServiceError)) *AgentServiceInterfaceMock_UpdateOwnedAgent_Call {
 	_c.Call.Return(run)
 	return _c
 }

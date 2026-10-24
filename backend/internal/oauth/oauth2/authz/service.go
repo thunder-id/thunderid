@@ -559,6 +559,18 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 		}
 	}
 
+	// A disabled client is refused before the user is asked to sign in, as the token endpoint would refuse
+	// the code anyway.
+	if app.Rules.Disabled {
+		return nil, &AuthorizationError{
+			Code:              oauth2const.ErrorUnauthorizedClient,
+			Message:           "The client is disabled",
+			SendErrorToClient: oauthParams.RedirectURI != "",
+			ClientRedirectURI: oauthParams.RedirectURI,
+			State:             oauthParams.State,
+		}
+	}
+
 	// Bind the request to a single target resource server before the flow starts. OIDC-only or
 	// scopeless requests stay unbound and their audience is the client_id. A permission-bearing
 	// request resolves an explicit resource or the configured default, rejecting with invalid_target

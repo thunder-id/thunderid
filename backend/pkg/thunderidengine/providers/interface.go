@@ -100,7 +100,7 @@ type ActorProvider interface {
 type AgentMgtProvider interface {
 	// CreateAgent provisions the supplied agent through the agent management service, which applies
 	// its OAuth defaults and validates the agent. Agent.Delegated selects the grant types the agent
-	// is given and allowed.
+	// is given and allowed, except for a personal agent (Kind), which always gets the personal setup.
 	//
 	// The returned agent carries the generated identifier and, on InboundAuthConfig, the generated
 	// client credentials. Fields the agent service does not echo come back zero, so the result is

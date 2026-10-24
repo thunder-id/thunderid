@@ -26,3 +26,9 @@ func TestNotificationConfigNameSupported(t *testing.T) {
 	assert.True(t, ConfigNameNotification.IsValid())
 	assert.Contains(t, supportedConfigNames, ConfigNameNotification)
 }
+
+func TestPersonalAgentConfigNameSupported(t *testing.T) {
+	assert.Equal(t, ConfigName("personalAgent"), ConfigNamePersonalAgent)
+	assert.True(t, ConfigNamePersonalAgent.IsValid())
+	assert.Contains(t, supportedConfigNames, ConfigNamePersonalAgent)
+}

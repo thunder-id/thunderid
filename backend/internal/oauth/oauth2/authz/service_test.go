@@ -165,7 +165,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 // newService builds an authorizeService with all mocked dependencies.
 func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	inboundClient := actorprovider.Initialize(
-		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	return &authorizeService{
 		cfg:             authorizeServiceCfgFromRuntime(),
 		inboundClient:   inboundClient,
@@ -2816,4 +2816,51 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Un
 	assert.NotNil(suite.T(), authErr)
 	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
 	assert.False(suite.T(), authErr.SendErrorToClient)
+}
+
+// --- client rules ---
+
+// stubRulesResolver gives every client of its category the same rules.
+type stubRulesResolver struct {
+	rules *providers.ClientRules
+}
+
+func (r stubRulesResolver) GetClientRules(context.Context, string) (*providers.ClientRules, *tidcommon.ServiceError) {
+	return r.rules, nil
+}
+
+// newServiceWithAgentRules builds the service with an actor provider that gives agent clients the rules.
+func (suite *AuthorizeServiceTestSuite) newServiceWithAgentRules(rules *providers.ClientRules) *authorizeService {
+	svc := suite.newService()
+	svc.inboundClient = actorprovider.Initialize(
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil,
+		map[providers.EntityCategory]actorprovider.ClientRulesResolver{
+			providers.EntityCategoryAgent: stubRulesResolver{rules: rules},
+		})
+	return svc
+}
+
+// expectAgentClient returns the agent client of the test request.
+func (suite *AuthorizeServiceTestSuite) expectAgentClient() {
+	app := suite.testApp()
+	app.EntityCategory = providers.EntityCategoryAgent
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, mock.Anything).
+		Return(false, "", "")
+}
+
+// A disabled client is refused before the user is asked to sign in, and the refusal is redirected to it.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_DisabledClientRefused() {
+	suite.expectAgentClient()
+
+	result, authErr := suite.newServiceWithAgentRules(&providers.ClientRules{Disabled: true}).
+		HandleInitialAuthorizationRequest(context.Background(), suite.testMsg())
+
+	suite.Nil(result)
+	suite.Require().NotNil(authErr)
+	suite.Equal(oauth2const.ErrorUnauthorizedClient, authErr.Code)
+	suite.Equal("The client is disabled", authErr.Message)
+	suite.True(authErr.SendErrorToClient, "the refusal goes back to the client")
+	suite.NotEmpty(authErr.ClientRedirectURI)
+	suite.mockFlowExecService.AssertNotCalled(suite.T(), "InitiateFlow", mock.Anything, mock.Anything)
 }

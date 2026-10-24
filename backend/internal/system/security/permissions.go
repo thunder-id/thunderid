@@ -279,6 +279,7 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
 		{"POST /users/me/update-credentials", ""},
+		{"DELETE /users/me/agents/*", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
 

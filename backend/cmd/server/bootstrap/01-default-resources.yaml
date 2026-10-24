@@ -276,6 +276,216 @@ nodes:
       y: 509
 ---
 resource_type: flow
+id: 01900000-0000-7000-8000-000000000092
+name: Default Personal Agent Authentication Flow
+handle: default-personal-agent-auth-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_credentials
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 248
+      y: 711
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_001
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - category: DISPLAY
+        id: rich_text_forgot_password
+        action:
+          ref: action_forgot_password
+        label: <p data-component-ref="recovery-link" class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="#" data-action-ref="action_forgot_password" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+  - action:
+      ref: action_forgot_password
+      nextNode: call_recovery
+  layout:
+    size:
+      width: 350
+      height: 834
+    position:
+      x: 562
+      y: 312
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+  layout:
+    size:
+      width: 217
+      height: 113
+    position:
+      x: 1283
+      y: 470
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: consent_check
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1774
+      y: 470
+- id: consent_check
+  type: TASK_EXECUTION
+  executor:
+    name: ConsentExecutor
+  onSuccess: auth_assert
+  onIncomplete: prompt_consent
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2168
+      y: 469
+- id: prompt_consent
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: consent_heading
+      label: '{{ t(consent:title) }}'
+      variant: HEADING_3
+    - align: center
+      type: TEXT
+      id: consent_message
+      label: '{{ t(consent:message) }}'
+      variant: BODY_1
+    - type: BLOCK
+      id: consent_block
+      components:
+      - id: consent_input
+        ref: consent_decisions
+        type: CONSENT_INPUT
+        required: true
+      - type: ACTION
+        id: consent_action_allow
+        label: '{{ t(consent:allow) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: ACTION
+        id: consent_action_deny
+        label: '{{ t(consent:deny) }}'
+        variant: SECONDARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_allow
+      nextNode: consent_check
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_deny
+      nextNode: consent_check
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 2168
+      y: -100
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2562
+      y: 469
+- id: call_recovery
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000067
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 1255
+      y: 773
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2921
+      y: 509
+---
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
 name: Console App Authentication Flow
 handle: console-app-flow
@@ -6378,6 +6588,11 @@ translations:
     forms.credentials.agent_id_label: Agent ID
     forms.credentials.client_id_label: Client ID
     forms.credentials.client_secret_label: Client Secret
+  consent:
+    title: Review access
+    message: Review what is being requested and choose what to allow.
+    allow: Allow
+    deny: Deny
   invite:
     validating: Validating your invite link...
     complete.title: Welcome Aboard!

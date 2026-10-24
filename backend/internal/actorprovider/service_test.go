@@ -43,7 +43,7 @@ func (s *ActorProviderTestSuite) SetupTest() {
 	s.mockEntity = entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 	s.mockAuthn = managermock.NewAuthnProviderManagerMock(s.T())
 	s.mockRole = rolemock.NewRoleServiceInterfaceMock(s.T())
-	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil)
+	s.provider = Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil, nil)
 }
 
 func (s *ActorProviderTestSuite) TestGetOAuthClientByClientID_Delegates() {
@@ -188,7 +188,7 @@ func (s *ActorProviderTestSuite) TestGetActor_AgentDisplayComesFromTheDisplayAtt
 			mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
 				[]string{"default"}).Return(map[string]string{"default": tc.displayPath},
 				(*tidcommon.ServiceError)(nil)).Once()
-			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType)
+			provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, mockType, nil)
 			s.mockEntity.On("GetEntityProfile", "agent-1").Return(&providers.Entity{
 				ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
 				Attributes: []byte(`{"name":"Ledger Agent"}`),
@@ -238,10 +238,86 @@ func (s *ActorProviderTestSuite) TestGetActorRoles_PropagatesError() {
 }
 
 func (s *ActorProviderTestSuite) TestGetActorRoles_NilRoleService_ReturnsNil() {
-	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil, nil)
+	provider := Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, nil, nil, nil)
 
 	roles, err := provider.GetActorRoles("app-1", []string{"group-1"})
 
 	s.Nil(err)
 	s.Nil(roles)
+}
+
+// --- client rules ---
+
+// stubRulesResolver returns fixed rules or a fixed error, and records the entity it was asked about.
+type stubRulesResolver struct {
+	rules  *providers.ClientRules
+	err    *tidcommon.ServiceError
+	called string
+}
+
+func (r *stubRulesResolver) GetClientRules(_ context.Context, entityID string) (
+	*providers.ClientRules, *tidcommon.ServiceError) {
+	r.called = entityID
+	return r.rules, r.err
+}
+
+// providerWithAgentRules returns an actor provider whose agent clients get their rules from the resolver.
+func (s *ActorProviderTestSuite) providerWithAgentRules(resolver ClientRulesResolver) providers.ActorProvider {
+	return Initialize(s.mockInbound, s.mockEntity, s.mockAuthn, s.mockRole, nil,
+		map[providers.EntityCategory]ClientRulesResolver{providers.EntityCategoryAgent: resolver})
+}
+
+// Both client reads add the rules of the client's entity category.
+func (s *ActorProviderTestSuite) TestGetOAuthClient_AddsClientRules() {
+	rules := providers.ClientRules{RequiredSubjectID: "owner-1", Disabled: true, MaxAccessTokenValidity: 600}
+	agentClient := &providers.OAuthClient{ID: "agent-1", ClientID: "agent-client",
+		EntityCategory: providers.EntityCategoryAgent}
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "agent-client").Return(agentClient, nil)
+	s.mockInbound.On("GetOAuthClientByEntityID", mock.Anything, "agent-1").Return(agentClient, nil)
+	resolver := &stubRulesResolver{rules: &rules}
+	provider := s.providerWithAgentRules(resolver)
+
+	byClientID, svcErr := provider.GetOAuthClientByClientID(context.Background(), "agent-client")
+	s.Require().Nil(svcErr)
+	s.Equal(rules, byClientID.Rules)
+	s.Equal("agent-1", resolver.called)
+
+	byID, svcErr := provider.GetOAuthClientByID(context.Background(), "agent-1")
+	s.Require().Nil(svcErr)
+	s.Equal(rules, byID.Rules)
+}
+
+// A client of a category without a resolver, or one the resolver gives no rules, has none.
+func (s *ActorProviderTestSuite) TestGetOAuthClient_NoClientRules() {
+	appClient := &providers.OAuthClient{ID: "app-1", ClientID: "app-client",
+		EntityCategory: providers.EntityCategoryApp}
+	agentClient := &providers.OAuthClient{ID: "agent-1", ClientID: "agent-client",
+		EntityCategory: providers.EntityCategoryAgent}
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "app-client").Return(appClient, nil)
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "agent-client").Return(agentClient, nil)
+	resolver := &stubRulesResolver{}
+	provider := s.providerWithAgentRules(resolver)
+
+	client, svcErr := provider.GetOAuthClientByClientID(context.Background(), "app-client")
+	s.Require().Nil(svcErr)
+	s.Equal(providers.ClientRules{}, client.Rules)
+	s.Empty(resolver.called, "an application is not looked up")
+
+	client, svcErr = provider.GetOAuthClientByClientID(context.Background(), "agent-client")
+	s.Require().Nil(svcErr)
+	s.Equal(providers.ClientRules{}, client.Rules)
+}
+
+// A failed rules lookup is a server error, so no client is served without rules that may apply to it.
+func (s *ActorProviderTestSuite) TestGetOAuthClient_ClientRulesLookupFails() {
+	agentClient := &providers.OAuthClient{ID: "agent-1", ClientID: "agent-client",
+		EntityCategory: providers.EntityCategoryAgent}
+	s.mockInbound.On("GetOAuthClientByClientID", mock.Anything, "agent-client").Return(agentClient, nil)
+	provider := s.providerWithAgentRules(&stubRulesResolver{err: &tidcommon.InternalServerError})
+
+	client, svcErr := provider.GetOAuthClientByClientID(context.Background(), "agent-client")
+
+	s.Nil(client)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

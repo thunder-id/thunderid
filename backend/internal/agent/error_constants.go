@@ -516,4 +516,106 @@ var (
 			DefaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}",
 		},
 	}
+
+	// ErrorCannotUpdatePersonalAgent is returned when an administrator tries to update a personal agent.
+	ErrorCannotUpdatePersonalAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.cannot_update_personal_agent",
+			DefaultValue: "Cannot update a personal agent",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.cannot_update_personal_agent_description",
+			DefaultValue: "A personal agent can only be managed by its owner",
+		},
+	}
+
+	// ErrorGrantTypeNotAllowedForPersonalAgent is returned when a personal agent is given a grant type
+	// outside the personal set.
+	ErrorGrantTypeNotAllowedForPersonalAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent",
+			DefaultValue: "Grant type not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent_description",
+			DefaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants",
+		},
+	}
+
+	// ErrorPersonalAgentsDisabled is returned when a personal agent is created while the organization does
+	// not allow personal agents.
+	ErrorPersonalAgentsDisabled = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agents_disabled",
+			DefaultValue: "Personal agents disabled",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agents_disabled_description",
+			DefaultValue: "Personal agents are not enabled",
+		},
+	}
+
+	// ErrorInvalidKind is returned when an agent names a kind that is not known.
+	ErrorInvalidKind = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind",
+			DefaultValue: "Invalid kind",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind_description",
+			DefaultValue: "The agent kind is not a known kind",
+		},
+	}
+
+	// ErrorInvalidPublicKey is returned when a personal agent's public key is not a JWKS document with at
+	// least one key.
+	ErrorInvalidPublicKey = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1051",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key",
+			DefaultValue: "Invalid public key",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key_description",
+			DefaultValue: "The public key must be a JWKS document with at least one key",
+		},
+	}
+
+	// ErrorAuthenticationRequired is returned when a self-service request carries no authenticated caller.
+	ErrorAuthenticationRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1052",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required",
+			DefaultValue: "Authentication required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required_description",
+			DefaultValue: "The request needs a user access token",
+		},
+	}
+
+	// ErrorDelegatedTokenNotAllowed is returned when an owner's agents are managed with a delegated token, such as
+	// an agent's own token for its owner.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1053",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed_description",
+			DefaultValue: "A token issued to a client acting for the user cannot manage the user's agents",
+		},
+	}
 )

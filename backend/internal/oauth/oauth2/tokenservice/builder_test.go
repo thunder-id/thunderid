@@ -3233,3 +3233,38 @@ func (s *OUAttributesTestSuite) TestOnlyTheClaimsSuppliedAreReplaced() {
 	s.Equal("customer-a", claims[constants.ClaimOUID])
 	s.Equal("owner", claims[constants.ClaimOUHandle])
 }
+
+// --- client access token cap ---
+
+// The client's cap lowers the lifetime of its access tokens when it is below the configured validity.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientCap() {
+	testCases := []struct {
+		name     string
+		cap      int64
+		expected int64
+	}{
+		{"cap below the client's validity", 900, 900},
+		{"cap above the client's validity", 7200, 3600},
+		{"no cap", 0, 3600},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			app := *suite.oauthApp
+			app.Rules.MaxAccessTokenValidity = tc.cap
+			var validity int64
+			suite.mockJWTService.On("GenerateJWT", mock.Anything, "user123", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything).
+				Run(func(args mock.Arguments) { validity = args.Get(3).(int64) }).
+				Return(testAccessToken, time.Now().Unix(), nil).Once()
+
+			result, err := suite.builder.BuildAccessToken(context.Background(), &AccessTokenBuildContext{
+				Subject: "user123", ClientID: "test-client", OAuthApp: &app,
+				GrantType: string(providers.GrantTypeAuthorizationCode),
+			})
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, validity)
+			suite.Equal(validity, result.ExpiresIn, "exp and expires_in use the same lifetime")
+		})
+	}
+}

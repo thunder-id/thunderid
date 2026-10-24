@@ -239,6 +239,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// initialized. The handle-existence validator is injected in a second phase after flowMgtService
 	// is available.
 	flowConfigHandler := flowmgt.NewFlowConfigHandler()
+	// Like the flow handler, the personal agent handler gets its flow handle validator once
+	// flowMgtService is available.
+	personalAgentConfigHandler := agent.NewPersonalAgentConfigHandler()
 
 	// Initialize server-wide configuration after its handler dependencies and before the services that
 	// read it.
@@ -250,6 +253,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
+		serverconfig.ConfigNamePersonalAgent:         personalAgentConfigHandler,
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc)
@@ -465,6 +469,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverConfigService, ouService, notifTemplateSvc, flowConfigHandler)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
+	// The personal agent login flow handle must name an existing AUTHENTICATION flow.
+	personalAgentConfigHandler.SetAuthFlowHandleValidator(func(ctx context.Context, handle string) bool {
+		_, svcErr := flowMgtService.GetFlowByHandle(ctx, handle, providers.FlowTypeAuthentication)
+		return svcErr == nil
+	})
+
 	// Two-phase initialization: inject the flow resolver into the OU service.
 	ouService.SetOUFlowResolver(flowMgtService)
 
@@ -505,7 +515,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, nil, entityTypeService)
+		roleService, ouAuthzService, governanceService, nil, entityTypeService, serverConfigService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
@@ -540,8 +550,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Inject the design resolve service now that it exists (the translation resolver was passed at init).
 	notifTemplateRenderer.SetDesignResolver(designResolveService)
 
+	// Each entity category with client rules resolves them; the agent service does it for agents.
+	clientRulesResolvers := map[providers.EntityCategory]actorprovider.ClientRulesResolver{
+		providers.EntityCategoryAgent: agentService,
+	}
 	actorProvider := actorprovider.Initialize(
-		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService)
+		inboundClientService, entityProvider, authnProvider, roleService, entityTypeService, clientRulesResolvers)
 	// Two-phase initialization: inject the actor provider into the executors that resolve an actor's
 	// OAuth client.
 	fatalOnError(ctx, logger, executor.SetActorProvider(execRegistry, actorProvider),

@@ -194,6 +194,23 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 	return rules
 }
 
+// validateDeclarativeKind applies the kind rules a declarative file can be checked against when it is loaded:
+// the kind is a known one, and a personal agent names its owner. Its OAuth setup is applied and checked by
+// ValidateAgent, as on every path. That the owner is an existing user is not checked here, since declarative
+// users may load after agents; a personal agent whose owner cannot be found is refused at sign-in.
+func validateDeclarativeKind(req *model.AgentRequestWithID) error {
+	if !req.Kind.IsValid() {
+		return fmt.Errorf("agent '%s': unknown kind '%s'", req.ID, req.Kind)
+	}
+	if req.Kind != providers.AgentKindPersonalAssistant {
+		return nil
+	}
+	if req.Owner == "" {
+		return fmt.Errorf("agent '%s': a personal agent must name its owner", req.ID)
+	}
+	return nil
+}
+
 // makeAgentDeclarativeConfig returns the entity loader configuration for agents.
 func makeAgentDeclarativeConfig(agentSvc AgentServiceInterface) entity.DeclarativeLoaderConfig {
 	return entity.DeclarativeLoaderConfig{
@@ -216,6 +233,9 @@ func makeAgentEntityParser(
 		if err := yaml.Unmarshal(data, &req); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to parse agent YAML: %w", err)
 		}
+		if err := validateDeclarativeKind(&req); err != nil {
+			return nil, nil, nil, err
+		}
 
 		var attributesJSON json.RawMessage
 		if len(req.Attributes) > 0 {
@@ -235,6 +255,7 @@ func makeAgentEntityParser(
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
 			Attributes:  attributesJSON,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
@@ -266,7 +287,13 @@ func makeAgentEntityParser(
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret,
+			agentSystemAttributes{
+				description: req.Description,
+				owner:       req.Owner,
+				clientID:    clientID,
+				kind:        req.Kind,
+			},
+			clientSecret,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
@@ -298,6 +325,9 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 		if err := yaml.Unmarshal(data, &req); err != nil {
 			return nil, fmt.Errorf("failed to parse agent YAML: %w", err)
 		}
+		if err := validateDeclarativeKind(&req); err != nil {
+			return nil, err
+		}
 
 		agent := &providers.Agent{
 			ID:          req.ID,
@@ -307,6 +337,7 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			Description: req.Description,
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
@@ -339,7 +370,8 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 		resolvedClient.IsReadOnly = true
 		setLogoProperty(&resolvedClient, req.LogoURL)
 
-		oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
+		// ValidateAgent may have completed the OAuth config (a personal agent's setup), so it is read back.
+		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
 		if oauthProfile != nil {
 			if resolvedClient.Properties == nil {
 				resolvedClient.Properties = make(map[string]interface{})

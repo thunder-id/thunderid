@@ -27,6 +27,7 @@ type AgentRequestWithID struct {
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
+	Kind        providers.AgentKind    `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -42,6 +43,8 @@ type CreateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -78,6 +81,8 @@ type AgentCompleteResponse struct {
 	// LastLoginAt is when this agent was last granted access, set on update responses.
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 
+	Kind providers.AgentKind `json:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
@@ -104,6 +109,8 @@ type AgentGetResponse struct {
 	// profile write, and absent until a sign-in has been recorded.
 	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
 
+	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
@@ -126,6 +133,41 @@ type BasicAgentResponse struct {
 	// LastLoginAt is when this agent was last granted access. Absent until a sign-in has been
 	// recorded.
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
+}
+
+// OwnedAgentResponse is an agent as its owner sees it. It carries no owner (the caller), no flow settings, and
+// no credential material.
+type OwnedAgentResponse struct {
+	ID                      string                            `json:"id"`
+	Kind                    providers.AgentKind               `json:"kind,omitempty"`
+	Description             string                            `json:"description,omitempty"`
+	LogoURL                 string                            `json:"logoUrl,omitempty"`
+	ClientID                string                            `json:"clientId,omitempty"`
+	Attributes              json.RawMessage                   `json:"attributes,omitempty"`
+	GrantTypes              []providers.GrantType             `json:"grantTypes,omitempty"`
+	RedirectURIs            []string                          `json:"redirectUris,omitempty"`
+	TokenEndpointAuthMethod providers.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"`
+	CertificateType         providers.CertificateType         `json:"certificateType,omitempty"`
+}
+
+// UpdateOwnedAgentRequest is the body of an owner's update of their agent: the whole part the owner may change.
+// Attributes, grant types and redirect URIs are required; a description left out is cleared.
+type UpdateOwnedAgentRequest struct {
+	Description  string                `json:"description,omitempty"`
+	Attributes   json.RawMessage       `json:"attributes,omitempty"`
+	GrantTypes   []providers.GrantType `json:"grantTypes,omitempty"`
+	RedirectURIs []string              `json:"redirectUris,omitempty"`
+}
+
+// OwnedAgentListResponse is the paginated list of the caller's agents.
+type OwnedAgentListResponse struct {
+	TotalResults int                  `json:"totalResults"`
+	StartIndex   int                  `json:"startIndex"`
+	Count        int                  `json:"count"`
+	Agents       []OwnedAgentResponse `json:"agents"`
+	Links        []utils.Link         `json:"links"`
 }
 
 // AgentListResponse is the paginated list response.

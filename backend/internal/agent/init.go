@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -23,6 +24,8 @@ import (
 //
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
 // values the agent's export refers to are kept where a reference finds them.
+//
+// serverConfigService is optional. Without one, the personal agent settings read as the defaults.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -33,9 +36,10 @@ func Initialize(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	serverConfigService serverconfig.ServerConfigService,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		governance, valueCapturer, entityTypeService)
+		governance, valueCapturer, entityTypeService, serverConfigService)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err
@@ -97,4 +101,31 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		h.HandleAgentGroupsRequest, groupsOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
 		h.HandleAgentRolesRequest, groupsOpts))
+
+	ownedListOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/agents", h.HandleOwnedAgentListRequest, ownedListOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/agents",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, ownedListOpts))
+
+	ownedItemOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /users/me/agents/{id}", h.HandleOwnedAgentGetRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT /users/me/agents/{id}", h.HandleOwnedAgentPutRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /users/me/agents/{id}",
+		h.HandleOwnedAgentDeleteRequest, ownedItemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/agents/",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, ownedItemOpts))
 }
