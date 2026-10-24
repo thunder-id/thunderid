@@ -35,6 +35,17 @@ type SystemAttributeQuery struct {
 	Attributes map[string]interface{}
 }
 
+// OUEntityPage is one page of the entities an organization unit owns, followed by the ones shared
+// into it.
+type OUEntityPage struct {
+	// Owned holds the page's entities the organization unit owns.
+	Owned []providers.Entity
+	// Shared holds the page's entities shared into the organization unit.
+	Shared []providers.Entity
+	// TotalResults counts the owned and shared entities across every page.
+	TotalResults int
+}
+
 // AuthenticateResult represents the result of an entity authentication.
 type AuthenticateResult struct {
 	EntityID       string                   `json:"entityId"`

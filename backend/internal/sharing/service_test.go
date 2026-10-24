@@ -5132,3 +5132,36 @@ func (s *ServiceTestSuite) TestListResourceSharedOUIDsSkipsADeletedUnit() {
 	s.Require().Nil(svcErr)
 	s.Equal([]string{nestedOwnerOU}, got)
 }
+
+// The chain walk counts the owner as covered, so a policy relevant to the owner's own chain must not
+// bring back a resource it owns: the reverse lookup answers what is shared into a unit.
+func (s *ServiceTestSuite) TestTheReverseLookupLeavesOutWhatTheUnitOwns() {
+	ctx := context.Background()
+	s.decl.owner = rootOU
+	_, svcErr := s.svc.CreatePolicy(ctx, testType, testResource, rootOU, PolicyRequest{ChildUnits: allChildren()})
+	s.Require().Nil(svcErr)
+
+	owned, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, rootOU)
+	s.Require().Nil(svcErr)
+	s.Empty(owned)
+
+	shared, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, childOU)
+	s.Require().Nil(svcErr)
+	s.Equal([]string{testResource}, shared)
+}
+
+// Callers page over the reverse lookup, so it comes back in one order however the policies were
+// fetched.
+func (s *ServiceTestSuite) TestTheReverseLookupIsSortedByResource() {
+	ctx := context.Background()
+	for _, resourceID := range []string{"resource-c", "resource-a", "resource-b"} {
+		_, svcErr := s.svc.CreatePolicy(ctx, testType, resourceID, ownerOU,
+			PolicyRequest{AllUnits: &AllUnitsRequest{}})
+		s.Require().Nil(svcErr)
+	}
+
+	ids, svcErr := s.svc.ListVisibleResourceIDs(ctx, testType, childOU)
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"resource-a", "resource-b", "resource-c"}, ids)
+}

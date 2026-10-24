@@ -748,6 +748,7 @@ type User struct {
 	IsReadOnly  bool                `json:"isReadOnly"`
 	Status      *AccessStatusReport `json:"status,omitempty"`
 	LastLoginAt string              `json:"lastLoginAt,omitempty"`
+	IsOwned     *bool               `json:"isOwned,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
 }

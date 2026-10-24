@@ -5563,5 +5563,5 @@ func (ts *ApplicationAPITestSuite) TestOverlayRulesAreNotFoundForAnUnreachedUnit
 	status, body := ts.sharingRequest("GET",
 		"/applications/"+testAppID+"/overlay-rules?ouId="+testOUID, nil)
 	ts.Require().Equal(http.StatusOK, status, "body: %v", body)
-	ts.True(body["owned"].(bool))
+	ts.True(body["isOwned"].(bool))
 }

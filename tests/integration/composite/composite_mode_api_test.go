@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -209,6 +210,27 @@ func (suite *CompositeModeSuite) TestUserDeclarativeVisibility() {
 	resp.Body.Close()
 
 	suite.assertMergedCollectionContainsIDs("/users", "users", "decl-user-1", "user")
+}
+
+// decl-user-1's own file shares it into decl-m2m-root, so that unit lists it as shared while decl-ou-1,
+// which owns it, lists it as its own.
+func (suite *CompositeModeSuite) TestDeclaredUserListedInTheUnitsItIsSharedInto() {
+	for _, tc := range []struct {
+		path  string
+		owned bool
+	}{
+		{"/users?limit=100&filter=" + url.QueryEscape(`ouId eq "decl-m2m-root"`), false},
+		{"/organization-units/decl-m2m-root/users?limit=100", false},
+		{"/users?limit=100&filter=" + url.QueryEscape(`ouId eq "decl-ou-1"`), true},
+	} {
+		suite.Run(tc.path, func() {
+			items := suite.getCollectionItems(tc.path, "users")
+
+			item := suite.findCollectionItemByID(items, "decl-user-1")
+			suite.Require().NotNil(item, "decl-user-1 should be listed; got IDs: %v", suite.extractCollectionIDs(items))
+			suite.Equal(tc.owned, item["isOwned"])
+		})
+	}
 }
 
 func (suite *CompositeModeSuite) TestAgentCreate() {

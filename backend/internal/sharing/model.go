@@ -706,7 +706,7 @@ type PolicyListResponse struct {
 // declares no overlay fields answers with empty rules.
 type ResolvedOverlayResponse struct {
 	OUID      string                 `json:"ouId"`
-	Owned     bool                   `json:"owned"`
+	IsOwned   bool                   `json:"isOwned"`
 	Visible   bool                   `json:"visible"`
 	PolicyIDs []string               `json:"policyIds"`
 	Rules     map[string]OverlayRule `json:"rules"`
@@ -757,7 +757,7 @@ func ToResolvedOverlayResponse(overlay ResolvedOverlay) ResolvedOverlayResponse 
 	}
 	return ResolvedOverlayResponse{
 		OUID:      overlay.OUID,
-		Owned:     overlay.Owned,
+		IsOwned:   overlay.Owned,
 		Visible:   overlay.Visible,
 		PolicyIDs: policyIDs,
 		Rules:     rules,
