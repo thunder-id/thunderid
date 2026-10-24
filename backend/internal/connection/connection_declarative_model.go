@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -39,10 +40,10 @@ type connectionExportModel struct {
 	//nolint:lll
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
 
-	// AuthZEN PDP connection fields.
+	// AuthZEN PDP connection fields. The timeout is shared with HTTP endpoint connections.
 	AuthZENPDPEndpoint      string `yaml:"endpoint,omitempty"                 json:"endpoint,omitempty"`
 	AuthZENPDPBatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
-	AuthZENPDPTimeoutMS     int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
+	TimeoutMS               int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
 	AuthZENPDPRetryCount    *int   `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
 	//nolint:lll
 	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
@@ -64,6 +65,10 @@ type connectionExportModel struct {
 	FromAddress string `yaml:"fromAddress,omitempty" json:"fromAddress,omitempty"`
 	FromName    string `yaml:"fromName,omitempty"    json:"fromName,omitempty"`
 	TLS         string `yaml:"tls,omitempty"         json:"tls,omitempty"`
+
+	// HTTP endpoint connection fields. The URL, timeout and authentication are the shared fields
+	// of those names.
+	Headers []httpconnection.Header `yaml:"headers,omitempty" json:"headers,omitempty"`
 
 	// Outbound authentication, shared by every vendor that dials out with credentials.
 	Authentication *outboundauth.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`

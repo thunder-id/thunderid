@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -35,6 +36,7 @@ type service struct {
 	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
 	httpService         httpconnection.HTTPConnectionServiceInterface
 	valueCapturer       declarativeresource.ValueCapturer
+	logger              *log.Logger
 }
 
 // newService creates a connection service over the given identity-provider and
@@ -50,6 +52,7 @@ func newService(idpService idp.IDPServiceInterface,
 		resourceService:     resourceService,
 		authZENPDPService:   authZENPDPService,
 		httpService:         httpService,
+		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionService")),
 	}
 }
 
@@ -465,7 +468,11 @@ func (s *service) createHTTP(ctx context.Context, connection httpconnection.HTTP
 	if s.httpService == nil {
 		return nil, &tidcommon.InternalServerError
 	}
-	return s.httpService.CreateHTTPConnection(ctx, connection)
+	created, svcErr := s.httpService.CreateHTTPConnection(ctx, connection)
+	if svcErr == nil {
+		s.captureHTTPValues(ctx, created)
+	}
+	return created, svcErr
 }
 
 // listHTTP returns all HTTP connections.
@@ -486,39 +493,144 @@ func (s *service) getHTTP(ctx context.Context, id string) (*httpconnection.HTTPC
 }
 
 // updateHTTP resolves the request's authentication against the stored connection under the shared
-// retention rule, then delegates the update. The credential target of an HTTP connection is its URL
-// origin, so pointing a connection at another server needs each secret again.
+// retention rule, then delegates the update.
 func (s *service) updateHTTP(ctx context.Context, id string, connection httpconnection.HTTPConnection) (
 	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
 	existing, svcErr := s.getHTTP(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	request, err := outboundauth.FromProperties(connection.AuthProperties)
+	return s.updateStoredHTTP(ctx, existing, connection)
+}
+
+// updateStoredHTTP updates existing as updateHTTP does, for a caller that has already read it.
+func (s *service) updateStoredHTTP(ctx context.Context, existing *httpconnection.HTTPConnection,
+	connection httpconnection.HTTPConnection) (*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	var svcErr *tidcommon.ServiceError
+	if connection.AuthProperties, svcErr = keepStoredHTTPSecrets(connection, *existing); svcErr != nil {
+		return nil, svcErr
+	}
+	updated, svcErr := s.httpService.UpdateHTTPConnection(ctx, existing.ID, connection)
+	if svcErr == nil {
+		s.captureHTTPValues(ctx, updated)
+		s.releaseHTTPValues(ctx, existing, updated)
+	}
+	return updated, svcErr
+}
+
+// keepStoredHTTPSecrets returns the authentication properties of an update to an HTTP connection,
+// resolved against the stored connection under the shared retention rule. The credential target of an
+// HTTP connection is its URL origin, so pointing a connection at another server needs each secret
+// again.
+func keepStoredHTTPSecrets(update, existing httpconnection.HTTPConnection) ([]cmodels.Property,
+	*tidcommon.ServiceError) {
+	request, err := outboundauth.FromProperties(update.AuthProperties)
 	if err != nil {
 		return nil, &tidcommon.InternalServerError
 	}
 	previousTarget := []string{existing.URL}
-	nextTarget := []string{connection.URL}
-	if httpconnection.SameOrigin(connection.URL, existing.URL) {
+	nextTarget := []string{update.URL}
+	if httpconnection.SameOrigin(update.URL, existing.URL) {
 		nextTarget = previousTarget
 	}
-	connection.AuthProperties, err = outboundauth.UpdateProperties(
+	properties, err := outboundauth.UpdateProperties(
 		&outboundauth.Authentication{Type: string(request.Type), Properties: request.Properties},
 		existing.AuthProperties, previousTarget, nextTarget, httpauth.SupportedTypes(),
 		httpauth.CanonicalizeForUpdate, httpauth.Canonicalize)
 	if err != nil {
 		return nil, &httpconnection.ErrorInvalidAuthentication
 	}
-	return s.httpService.UpdateHTTPConnection(ctx, id, connection)
+	return properties, nil
 }
 
-// deleteHTTP deletes an HTTP connection by ID.
+// deleteHTTP deletes an HTTP connection by ID. The connection is read first only when its values may
+// need releasing.
 func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceError {
 	if s.httpService == nil {
 		return &tidcommon.InternalServerError
 	}
-	return s.httpService.DeleteHTTPConnection(ctx, id)
+	if _, releases := s.valueCapturer.(declarativeresource.ValueReleaser); !releases {
+		return s.httpService.DeleteHTTPConnection(ctx, id)
+	}
+	existing, svcErr := s.getHTTP(ctx, id)
+	if svcErr != nil {
+		return svcErr
+	}
+	return s.deleteStoredHTTP(ctx, existing)
+}
+
+// deleteStoredHTTP deletes existing, then releases the values its export referred to.
+func (s *service) deleteStoredHTTP(ctx context.Context,
+	existing *httpconnection.HTTPConnection) *tidcommon.ServiceError {
+	if svcErr := s.httpService.DeleteHTTPConnection(ctx, existing.ID); svcErr != nil {
+		return svcErr
+	}
+	s.releaseHTTPValues(ctx, existing, nil)
+	return nil
+}
+
+// HTTPConnectionWriterInterface writes HTTP connections under the rules the connection API applies:
+// the retention rule on update, and keeping the values export references resolve to in step.
+type HTTPConnectionWriterInterface interface {
+	CreateHTTPConnection(ctx context.Context, connection httpconnection.HTTPConnection) (
+		*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	GetHTTPConnection(ctx context.Context, id string) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	UpdateHTTPConnection(ctx context.Context, existing *httpconnection.HTTPConnection,
+		connection httpconnection.HTTPConnection) (*httpconnection.HTTPConnection, *tidcommon.ServiceError)
+	DeleteHTTPConnection(ctx context.Context, existing *httpconnection.HTTPConnection) *tidcommon.ServiceError
+	ValidateHTTPConnection(ctx context.Context, connection *httpconnection.HTTPConnection) *tidcommon.ServiceError
+	ValidateHTTPConnectionUpdate(ctx context.Context, existing *httpconnection.HTTPConnection,
+		connection httpconnection.HTTPConnection) *tidcommon.ServiceError
+}
+
+// httpConnectionWriter implements HTTPConnectionWriterInterface over the connection service.
+type httpConnectionWriter struct {
+	svc *service
+}
+
+var _ HTTPConnectionWriterInterface = (*httpConnectionWriter)(nil)
+
+// CreateHTTPConnection creates a connection as the create route does.
+func (w *httpConnectionWriter) CreateHTTPConnection(ctx context.Context,
+	connection httpconnection.HTTPConnection) (*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	return w.svc.createHTTP(ctx, connection)
+}
+
+// GetHTTPConnection returns a connection by ID.
+func (w *httpConnectionWriter) GetHTTPConnection(ctx context.Context, id string) (
+	*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	return w.svc.getHTTP(ctx, id)
+}
+
+// UpdateHTTPConnection updates existing as the update route does, under the retention rule.
+func (w *httpConnectionWriter) UpdateHTTPConnection(ctx context.Context, existing *httpconnection.HTTPConnection,
+	connection httpconnection.HTTPConnection) (*httpconnection.HTTPConnection, *tidcommon.ServiceError) {
+	return w.svc.updateStoredHTTP(ctx, existing, connection)
+}
+
+// DeleteHTTPConnection deletes existing as the delete route does.
+func (w *httpConnectionWriter) DeleteHTTPConnection(ctx context.Context,
+	existing *httpconnection.HTTPConnection) *tidcommon.ServiceError {
+	return w.svc.deleteStoredHTTP(ctx, existing)
+}
+
+// ValidateHTTPConnection reports what CreateHTTPConnection would refuse, without writing.
+func (w *httpConnectionWriter) ValidateHTTPConnection(ctx context.Context,
+	connection *httpconnection.HTTPConnection) *tidcommon.ServiceError {
+	if w.svc.httpService == nil {
+		return &tidcommon.InternalServerError
+	}
+	return w.svc.httpService.ValidateHTTPConnection(ctx, connection)
+}
+
+// ValidateHTTPConnectionUpdate reports what UpdateHTTPConnection would refuse, without writing.
+func (w *httpConnectionWriter) ValidateHTTPConnectionUpdate(ctx context.Context,
+	existing *httpconnection.HTTPConnection, connection httpconnection.HTTPConnection) *tidcommon.ServiceError {
+	var svcErr *tidcommon.ServiceError
+	if connection.AuthProperties, svcErr = keepStoredHTTPSecrets(connection, *existing); svcErr != nil {
+		return svcErr
+	}
+	return w.ValidateHTTPConnection(ctx, &connection)
 }
 
 // usagesByType verifies the instance is of the expected type, then returns the resources that

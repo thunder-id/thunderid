@@ -13,8 +13,16 @@ var (
 	// errNameConflict reports that the unique index refused a write because another connection in
 	// the deployment has the same name.
 	errNameConflict = errors.New("an HTTP connection with the same name already exists")
+	// errIDConflict reports a create whose ID another connection, stored or declared, already has.
+	errIDConflict = errors.New("an HTTP connection with the same ID already exists")
 	// errConnectionNotFound reports that a write matched no connection.
 	errConnectionNotFound = errors.New("HTTP connection not found")
+	// errHTTPConnectionIsImmutable reports a write to a connection defined in a declarative file.
+	errHTTPConnectionIsImmutable = errors.New("HTTP connection is immutable")
+	// errInvalidDeclarativeData reports a file store entry that does not hold an HTTP connection.
+	errInvalidDeclarativeData = errors.New("invalid HTTP connection data")
+	// errResultLimitExceededInCompositeMode reports that a composite list exceeds its record cap.
+	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )
 
 var (
@@ -129,6 +137,21 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_http_connection_description_description",
 			DefaultValue: "The HTTP connection description must be at most 500 characters",
+		},
+	}
+
+	// ErrorResultLimitExceededInCompositeMode is returned when the database and declarative HTTP
+	// connections together exceed the composite-mode record limit.
+	ErrorResultLimitExceededInCompositeMode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_result_limit_exceeded",
+			DefaultValue: "Result limit exceeded in composite mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.http_connection_result_limit_exceeded_description",
+			DefaultValue: "The total number of HTTP connections exceeds the maximum limit in composite mode",
 		},
 	}
 )

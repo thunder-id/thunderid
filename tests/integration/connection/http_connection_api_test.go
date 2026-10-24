@@ -52,7 +52,7 @@ const (
 )
 
 var httpConnSecrets = []string{httpConnBasicPassword, httpConnBasicPassword2, httpConnBearerToken,
-	httpConnAPIKeyValue, httpConnAPIKeyValue2}
+	httpConnAPIKeyValue, httpConnAPIKeyValue2, httpConnDeclarativePassword}
 
 type httpConnHeader struct {
 	Name  string `json:"name"`

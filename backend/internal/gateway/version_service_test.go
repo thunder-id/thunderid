@@ -356,6 +356,13 @@ type fakeExporter struct {
 	variables map[string]string
 	secrets   map[string]string
 	valuesErr error
+	// valuesFor, when set, gives the values of each resource in place of variables and secrets, and
+	// what a reference-style export of it refers to is the names of those values.
+	valuesFor func(resource interface{}) (map[string]string, map[string]string, error)
+	// referencedFor, when set, adds names a resource refers to by a reference it holds.
+	referencedFor func(resource interface{}) []string
+	// ownedFor, when set, adds secrets a resource holds a reference to its own name for.
+	ownedFor func(resource interface{}) []string
 	// valuesOf records the resource type and resource each value capture asked about.
 	valuesOf []valuesRequest
 	// valuesCtxDone records whether a value capture asked with a context that was already done.
@@ -377,7 +384,52 @@ func (f *fakeExporter) PlaceholderValues(ctx context.Context, resourceType strin
 	resource interface{}) (map[string]string, map[string]string, error) {
 	f.valuesOf = append(f.valuesOf, valuesRequest{resourceType: resourceType, resource: resource})
 	f.valuesCtxDone = f.valuesCtxDone || ctx.Err() != nil
+	if f.valuesFor != nil {
+		return f.valuesFor(resource)
+	}
 	return f.variables, f.secrets, f.valuesErr
+}
+
+func (f *fakeExporter) ReferencedNames(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]bool, map[string]bool, error) {
+	variables, secrets, err := f.PlaceholderValues(ctx, resourceType, resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	referencedVariables, referencedSecrets := map[string]bool{}, map[string]bool{}
+	for name := range variables {
+		referencedVariables[name] = true
+	}
+	for name := range secrets {
+		referencedSecrets[name] = true
+	}
+	if f.referencedFor != nil {
+		for _, name := range f.referencedFor(resource) {
+			referencedSecrets[name] = true
+		}
+	}
+	return referencedVariables, referencedSecrets, nil
+}
+
+func (f *fakeExporter) OwnedNames(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]bool, map[string]bool, error) {
+	variables, secrets, err := f.PlaceholderValues(ctx, resourceType, resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	ownedVariables, ownedSecrets := map[string]bool{}, map[string]bool{}
+	for name := range variables {
+		ownedVariables[name] = true
+	}
+	for name := range secrets {
+		ownedSecrets[name] = true
+	}
+	if f.ownedFor != nil {
+		for _, name := range f.ownedFor(resource) {
+			ownedSecrets[name] = true
+		}
+	}
+	return ownedVariables, ownedSecrets, nil
 }
 
 // fakeGatewayClient records what an apply sends a gateway.

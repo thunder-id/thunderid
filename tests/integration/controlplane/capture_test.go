@@ -19,7 +19,8 @@ import (
 const captureGatewayKey = "capture-gateway-key"
 
 // capturingGateway stands in for a data plane's variable store: it keeps every value the control
-// plane sets in it, by collection and name, and refuses a call without the key it was registered with.
+// plane sets in it, by collection and name, removes one the control plane deletes, and refuses a call
+// without the key it was registered with.
 type capturingGateway struct {
 	server *httptest.Server
 	mu     sync.Mutex
@@ -27,18 +28,29 @@ type capturingGateway struct {
 	// refuseFirst makes the first write of each value fail, as a store that is briefly down would.
 	refuseFirst bool
 	attempts    map[string]int
+	// writes is the method of every accepted write of each value, in the order they arrived.
+	writes map[string][]string
 }
 
 func newCapturingGateway() *capturingGateway {
-	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}}
+	g := &capturingGateway{values: map[string]string{}, attempts: map[string]int{}, writes: map[string][]string{}}
 	g.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("API-Key") != captureGatewayKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		if r.Method != http.MethodPut || len(parts) != 2 {
+		if len(parts) != 2 || (r.Method != http.MethodPut && r.Method != http.MethodDelete) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			g.mu.Lock()
+			key := parts[0] + "/" + parts[1]
+			delete(g.values, key)
+			g.writes[key] = append(g.writes[key], http.MethodDelete)
+			g.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		var body struct {
@@ -57,6 +69,7 @@ func newCapturingGateway() *capturingGateway {
 			return
 		}
 		g.values[key] = body.Value
+		g.writes[key] = append(g.writes[key], http.MethodPut)
 		g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -83,6 +96,39 @@ func (g *capturingGateway) holdsValueSoon(collection, value string) bool {
 	for {
 		if g.holdsValue(collection, value) || time.Now().After(deadline) {
 			return g.holdsValue(collection, value)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// goneSoon waits for a name in a collection to hold no value, since the control plane removes released
+// values in the background, and reports whether it was removed.
+func (g *capturingGateway) goneSoon(collection, name string) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, ok := g.held(collection, name); !ok {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// writesAt returns the method of every accepted write of a value, in order.
+func (g *capturingGateway) writesAt(collection, name string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.writes[collection+"/"+name]...)
+}
+
+// writesSoon waits for a value to have received the given number of accepted writes.
+func (g *capturingGateway) writesSoon(collection, name string, count int) []string {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if writes := g.writesAt(collection, name); len(writes) >= count || time.Now().After(deadline) {
+			return writes
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -386,4 +432,131 @@ func (ts *ControlPlaneTestSuite) TestAWrittenResourceServersIdentifierReachesThe
 	ts.True(g.holdsValueSoon("variables", changed), "the changed identifier did not replace the captured one")
 	held, _ = g.held("variables", variable)
 	ts.Equal(changed, held, "the changed identifier was captured under another name")
+}
+
+// createHTTPConnection creates an HTTP endpoint connection on the control plane and returns its id,
+// removing it at the end of the test unless the test already did.
+func (ts *ControlPlaneTestSuite) createHTTPConnection(body map[string]any) string {
+	ts.T().Helper()
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/connections/http", body, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.Require().NotEmpty(created.ID, string(raw))
+	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/connections/http/"+created.ID, nil, nil) })
+	return created.ID
+}
+
+// importHTTPConnections posts an import to the control plane and returns its single outcome.
+func (ts *ControlPlaneTestSuite) importHTTPConnections(request testutils.ImportRequest) testutils.ImportItem {
+	ts.T().Helper()
+	var imported testutils.ImportResponse
+	status, raw := ts.call(http.MethodPost, "/import", request, &imported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Len(imported.Results, 1, string(raw))
+	return imported.Results[0]
+}
+
+// AC2.12: an API update that keeps the password captures it again, and one that drops it under the
+// retention rule removes the copy, so no reference resolves to a password the connection no longer has.
+func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionsPasswordCopyIsRemovedWhenAnUpdateDropsIt() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-basic")
+	password := unique("cp-http-basic-secret")
+	const url = "https://cp-http-basic.example.com/hook"
+	basic := func(properties map[string]any) map[string]any {
+		return map[string]any{"type": "basic", "properties": properties}
+	}
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": url,
+		"authentication": basic(map[string]any{"username": "cp-http-user", "password": password})})
+	secret := variableName("CONNECTION", name, "PASSWORD")
+
+	held, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the password was not captured")
+	ts.Require().Equal(password, held, "the captured password is not the connection's")
+
+	// Same origin and username, so the omitted password is kept; the copy must stay.
+	status, raw := ts.call(http.MethodPut, "/connections/http/"+id, map[string]any{"name": name, "url": url + "/v2",
+		"authentication": basic(map[string]any{"username": "cp-http-user"})}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Equal([]string{http.MethodPut, http.MethodPut}, g.writesSoon("secrets", secret, 2),
+		"a kept password should be captured again, not released")
+	held, ok = g.held("secrets", secret)
+	ts.True(ok, "the kept password's copy was removed")
+	ts.Equal(password, held, "the kept password's copy changed")
+
+	status, raw = ts.call(http.MethodPut, "/connections/http/"+id, map[string]any{"name": name, "url": url,
+		"authentication": map[string]any{"type": "none"}}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.True(g.goneSoon("secrets", secret), "the dropped password's copy is still in the gateway's store")
+	ts.Equal([]string{http.MethodPut, http.MethodPut, http.MethodDelete}, g.writesAt("secrets", secret),
+		"the dropped password should be removed exactly once, after its captures")
+}
+
+// AC2.12: deleting a connection removes the copy of its token.
+func (ts *ControlPlaneTestSuite) TestDeletingAnHTTPConnectionRemovesItsTokenCopy() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-bearer")
+	token := unique("cp-http-bearer-token")
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-bearer.example.com/hook",
+		"authentication": map[string]any{"type": "bearer", "properties": map[string]any{"token": token}}})
+	secret := variableName("CONNECTION", name, "TOKEN")
+
+	held, ok := g.heldSoon("secrets", secret)
+	ts.Require().True(ok, "the token was not captured")
+	ts.Require().Equal(token, held, "the captured token is not the connection's")
+
+	status, raw := ts.call(http.MethodDelete, "/connections/http/"+id, nil, nil)
+	ts.Require().Equal(http.StatusNoContent, status, string(raw))
+	ts.True(g.goneSoon("secrets", secret), "the deleted connection's token is still in the gateway's store")
+	ts.Equal([]string{http.MethodPut, http.MethodDelete}, g.writesAt("secrets", secret),
+		"the token should be removed once, after its capture")
+}
+
+// AC2.12: an import writes HTTP connections outside the connection API, and keeps the copies in step
+// as the API does: an upsert that drops one API-key header removes that header's copy and keeps the
+// one it retains, and a deletion removes what is left.
+func (ts *ControlPlaneTestSuite) TestAnImportRemovesTheCopiesOfSecretsAnHTTPConnectionNoLongerHolds() {
+	g := ts.withDefaultGateway()
+	name := unique("cp-http-apikey")
+	tenantKey := unique("cp-http-tenant-key")
+	regionKey := unique("cp-http-region-key")
+	const url = "https://cp-http-apikey.example.com/hook"
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": url, "authentication": map[string]any{
+		"type": "api_key", "properties": map[string]any{"X-Tenant-Key": tenantKey, "X-Region-Key": regionKey}}})
+	tenantSecret := variableName("CONNECTION", name, "X_TENANT_KEY")
+	regionSecret := variableName("CONNECTION", name, "X_REGION_KEY")
+	for secret, value := range map[string]string{tenantSecret: tenantKey, regionSecret: regionKey} {
+		held, ok := g.heldSoon("secrets", secret)
+		ts.Require().True(ok, "%s was not captured", secret)
+		ts.Require().Equal(value, held, "%s was captured with another value", secret)
+	}
+
+	// The mask keeps the tenant key's stored value on the same origin; the region key is left out.
+	document := "resource_type: connection\nid: " + id + "\ntype: http\nname: " + name + "\nurl: " + url +
+		"\nauthentication:\n  type: api_key\n  properties:\n    X-Tenant-Key: \"******\"\n"
+	outcome := ts.importHTTPConnections(testutils.ImportRequest{Content: document,
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"}})
+	ts.Require().Equal("success", outcome.Status, "the upsert failed: %s %s", outcome.Code, outcome.Message)
+	ts.Require().Equal("update", outcome.Operation, "the upsert should update the connection")
+	ts.True(g.goneSoon("secrets", regionSecret), "the dropped header's copy is still in the gateway's store")
+	ts.Equal([]string{http.MethodPut, http.MethodPut}, g.writesSoon("secrets", tenantSecret, 2),
+		"the kept header should be captured again, not released")
+	held, ok := g.held("secrets", tenantSecret)
+	ts.True(ok, "the kept header's copy was removed")
+	ts.Equal(tenantKey, held, "the kept header's copy changed")
+
+	outcome = ts.importHTTPConnections(testutils.ImportRequest{
+		Options:   testutils.ImportOptions{ContinueOnError: true, Target: "runtime"},
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "connection", ID: id}},
+	})
+	ts.Require().Equal("success", outcome.Status, "the deletion failed: %s %s", outcome.Code, outcome.Message)
+	ts.True(g.goneSoon("secrets", tenantSecret), "the pruned connection's header is still in the gateway's store")
+	ts.Equal([]string{http.MethodPut, http.MethodDelete}, g.writesAt("secrets", regionSecret),
+		"the dropped header should be removed once")
+	ts.Equal([]string{http.MethodPut, http.MethodPut, http.MethodDelete}, g.writesAt("secrets", tenantSecret),
+		"the pruned header should be removed once, after its captures")
+	status, raw := ts.call(http.MethodGet, "/connections/http/"+id, nil, nil)
+	ts.Equal(http.StatusNotFound, status, "the pruned connection is still there: %s", raw)
 }

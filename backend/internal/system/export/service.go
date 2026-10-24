@@ -58,6 +58,12 @@ type parameterizerInterface interface {
 	PlaceholderValues(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
 		rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error)
+	ReferencedNames(ctx context.Context, obj interface{},
+		resourceType string, resourceName string,
+		rules *declarativeresource.ResourceRules) (map[string]bool, map[string]bool, error)
+	OwnedNames(ctx context.Context, obj interface{},
+		resourceType string, resourceName string,
+		rules *declarativeresource.ResourceRules) (map[string]bool, map[string]bool, error)
 	VarPrefix(resourceName string) string
 }
 
@@ -99,6 +105,15 @@ type ExportServiceInterface interface {
 	// must be of the type the exporter registered for resourceType reads back.
 	PlaceholderValues(ctx context.Context, resourceType string, resource interface{}) (
 		map[string]string, map[string]string, error)
+	// ReferencedNames returns every name a reference-style export of one resource refers to, as
+	// variables and secrets: the names it writes for the resource's own values and the references the
+	// resource already holds, which the export keeps as written.
+	ReferencedNames(ctx context.Context, resourceType string, resource interface{}) (
+		map[string]bool, map[string]bool, error)
+	// OwnedNames returns the names an export of one resource derives for its own values, as variables
+	// and secrets, including a field that holds a reference to its own derived name.
+	OwnedNames(ctx context.Context, resourceType string, resource interface{}) (
+		map[string]bool, map[string]bool, error)
 }
 
 // exportService implements the ExportServiceInterface.
@@ -418,17 +433,52 @@ func (es *exportService) exportResourcesWithExporter(
 // which of them is suffixed depends on what else that export holds, so it cannot be known here.
 func (es *exportService) PlaceholderValues(ctx context.Context, resourceType string,
 	resource interface{}) (map[string]string, map[string]string, error) {
+	exporter, name, err := es.exportableResource(ctx, resourceType, resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
+		rulesFor(exporter, resource))
+}
+
+// ReferencedNames names each reference the way an export of the resource alone would, as
+// PlaceholderValues names each value.
+func (es *exportService) ReferencedNames(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]bool, map[string]bool, error) {
+	exporter, name, err := es.exportableResource(ctx, resourceType, resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	return es.parameterizer.ReferencedNames(ctx, resource, exporter.GetParameterizerType(), name,
+		rulesFor(exporter, resource))
+}
+
+// OwnedNames names each value the way an export of the resource alone would, as PlaceholderValues
+// names each value.
+func (es *exportService) OwnedNames(ctx context.Context, resourceType string,
+	resource interface{}) (map[string]bool, map[string]bool, error) {
+	exporter, name, err := es.exportableResource(ctx, resourceType, resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	return es.parameterizer.OwnedNames(ctx, resource, exporter.GetParameterizerType(), name,
+		rulesFor(exporter, resource))
+}
+
+// exportableResource returns the exporter registered for resourceType and the name it exports the
+// resource under.
+func (es *exportService) exportableResource(ctx context.Context, resourceType string,
+	resource interface{}) (declarativeresource.ResourceExporter, string, error) {
 	exporter, exists := es.registry.Get(resourceType)
 	if !exists {
-		return nil, nil, fmt.Errorf("no exporter is registered for resource type %q", resourceType)
+		return nil, "", fmt.Errorf("no exporter is registered for resource type %q", resourceType)
 	}
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
 	name, exportErr := exporter.ValidateResource(ctx, resource, "", logger)
 	if exportErr != nil {
-		return nil, nil, fmt.Errorf("the %s cannot be exported: %s", resourceType, exportErr.Error)
+		return nil, "", fmt.Errorf("the %s cannot be exported: %s", resourceType, exportErr.Error)
 	}
-	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
-		rulesFor(exporter, resource))
+	return exporter, name, nil
 }
 
 // rulesFor returns the parameterization rules an exporter applies to one resource.

@@ -23,6 +23,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: httpconnection
           filename: "{{.InterfaceName}}_mock_test.go"
+      fileStoreInterface:
+        config:
+          dir: internal/connection/httpconnection
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpconnection
+          filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/system/cache:
     config:

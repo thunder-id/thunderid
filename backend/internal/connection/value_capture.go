@@ -6,12 +6,12 @@ package connection
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
-
-const valueCaptureLoggerComponentName = "ConnectionValueCapture"
 
 // captureIDPValues hands a written identity-provider-backed connection to the value capturer, in the
 // shape its exporter reads back. The export names each value by where it sits in that shape, so a
@@ -25,13 +25,7 @@ func (s *service) captureIDPValues(ctx context.Context, dto *providers.IDPDTO) {
 		return
 	}
 	model, err := connectionModelFromIDPDTO(*dto)
-	if err != nil {
-		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
-			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
-		return
-	}
-	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)
+	s.captureModel(ctx, dto.ID, model, err)
 }
 
 // captureSenderValues hands a written message-sender-backed connection to the value capturer, in the
@@ -41,10 +35,55 @@ func (s *service) captureSenderValues(ctx context.Context, dto *ncommon.Notifica
 		return
 	}
 	model, err := connectionModelFromSenderDTO(*dto)
+	s.captureModel(ctx, dto.ID, model, err)
+}
+
+// captureHTTPValues hands a written HTTP connection to the value capturer, in the shape its exporter
+// reads back, for the same reasons captureIDPValues does.
+func (s *service) captureHTTPValues(ctx context.Context, connection *httpconnection.HTTPConnection) {
+	if s.valueCapturer == nil || connection == nil {
+		return
+	}
+	model, err := connectionModelFromHTTP(*connection)
+	s.captureModel(ctx, connection.ID, model, err)
+}
+
+// releaseHTTPValues hands an HTTP connection as it was before a write, and as it is now or nil once
+// deleted, to the value capturer when it can release values.
+func (s *service) releaseHTTPValues(ctx context.Context, previous, current *httpconnection.HTTPConnection) {
+	releaser, ok := s.valueCapturer.(declarativeresource.ValueReleaser)
+	if !ok || previous == nil {
+		return
+	}
+	previousModel, err := connectionModelFromHTTP(*previous)
 	if err != nil {
-		log.GetLogger().With(log.String(log.LoggerKeyComponentName, valueCaptureLoggerComponentName)).Warn(ctx,
-			"Failed to read a connection's values, so none were captured",
-			log.String("connectionId", dto.ID), log.Error(err))
+		s.logReleaseFailure(ctx, previous.ID, err)
+		return
+	}
+	var currentModel interface{}
+	if current != nil {
+		model, err := connectionModelFromHTTP(*current)
+		if err != nil {
+			s.logReleaseFailure(ctx, current.ID, err)
+			return
+		}
+		currentModel = &model
+	}
+	releaser.ReleaseValues(ctx, resourceTypeConnection, &previousModel, currentModel)
+}
+
+// logReleaseFailure logs why a connection's values could not be released.
+func (s *service) logReleaseFailure(ctx context.Context, id string, err error) {
+	s.logger.Warn(ctx, "Failed to read a connection's values, so none were released",
+		log.String("connectionID", id), log.Error(err))
+}
+
+// captureModel hands a connection's export model to the value capturer, or logs why it could not be
+// built.
+func (s *service) captureModel(ctx context.Context, id string, model connectionExportModel, err error) {
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read a connection's values, so none were captured",
+			log.String("connectionID", id), log.Error(err))
 		return
 	}
 	s.valueCapturer.CaptureValues(ctx, resourceTypeConnection, &model)

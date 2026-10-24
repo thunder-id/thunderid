@@ -25,14 +25,15 @@ import (
 // HTTP endpoint connection tools.
 //
 // valueCapturer is optional. Given one, the service hands it every connection it creates or changes,
-// so the values the connection's export refers to are kept where a reference finds them.
+// so the values the connection's export refers to are kept where a reference finds them. It also
+// returns the HTTP connection writer.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	httpService httpconnection.HTTPConnectionServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer) (
-	declarativeresource.ResourceExporter, error) {
+	declarativeresource.ResourceExporter, HTTPConnectionWriterInterface, error) {
 	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
 	svc.valueCapturer = valueCapturer
 	h := newHandler(svc)
@@ -42,11 +43,12 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 		registerMCPTools(mcpServer, svc)
 	}
 
-	if err := loadDeclarativeResources(idpService); err != nil {
-		return nil, err
+	if err := loadDeclarativeResources(idpService, httpService); err != nil {
+		return nil, nil, err
 	}
 
-	return newConnectionExporter(idpService, notificationService, authZENPDPService), nil
+	return newConnectionExporter(idpService, notificationService, authZENPDPService, httpService),
+		&httpConnectionWriter{svc: svc}, nil
 }
 
 func noContent(w http.ResponseWriter, _ *http.Request) {

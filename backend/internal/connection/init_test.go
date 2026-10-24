@@ -108,7 +108,7 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockResource = &testResourceServerLister{}
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
-	_, err := Initialize(s.mux, nil, s.mockIDP, s.mockNotif, s.mockResource,
+	_, _, err := Initialize(s.mux, nil, s.mockIDP, s.mockNotif, s.mockResource,
 		s.authZENPDP, s.mockHTTP, nil)
 	s.Require().NoError(err)
 }

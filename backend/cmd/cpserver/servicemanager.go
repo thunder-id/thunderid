@@ -243,7 +243,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
 
-	httpConnectionService := httpconnection.Initialize()
+	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection)
+	fatalOnError(ctx, logger, err, "Failed to initialize HTTPConnectionService")
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
@@ -273,7 +274,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Register the /connections API as a thin layer over the identity-provider and
 	// notification-sender management services.
-	connectionExporter, err := connection.Initialize(
+	connectionExporter, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
 		valueCapture)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
@@ -395,6 +396,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		notifTemplateSvc,
 		authZENPDPService,
 		sharingService,
+		httpConnectionWriter,
 		// A control plane keeps configuration as references and holds no values, so none are resolved.
 		nil,
 	)

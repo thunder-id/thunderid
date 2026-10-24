@@ -243,48 +243,149 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 	resourceType string, resourceName string,
 	rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
-	variables, secrets := map[string]string{}, map[string]string{}
+	named, err := p.namedValues(ctx, obj, resourceType, resourceName, rules)
+	if err != nil {
+		return nil, nil, err
+	}
+	return named.variables, named.secrets, nil
+}
+
+// OwnedNames returns the names an export of the object derives for its own values, variables and
+// secrets apart: each value PlaceholderValues returns, and each field holding a reference to the very
+// name the export derives for it, as a reference export imported back leaves it.
+func (p *parameterizer) OwnedNames(ctx context.Context, obj interface{},
+	resourceType string, resourceName string,
+	rules *declarativeresource.ResourceRules) (map[string]bool, map[string]bool, error) {
+	named, err := p.namedValues(ctx, obj, resourceType, resourceName, rules)
+	if err != nil {
+		return nil, nil, err
+	}
+	for name := range named.variables {
+		named.ownVariables[name] = true
+	}
+	for name := range named.secrets {
+		named.ownSecrets[name] = true
+	}
+	return named.ownVariables, named.ownSecrets, nil
+}
+
+// namedResourceValues is what an export of one resource names: the values it refers to by name, and
+// the names whose field already holds a reference to that same name.
+type namedResourceValues struct {
+	variables, secrets       map[string]string
+	ownVariables, ownSecrets map[string]bool
+}
+
+// namedValues reads the values a template-style export of the object writes, and the fields holding a
+// reference to their own derived name.
+func (p *parameterizer) namedValues(ctx context.Context, obj interface{},
+	resourceType string, resourceName string,
+	rules *declarativeresource.ResourceRules) (*namedResourceValues, error) {
+	named := &namedResourceValues{variables: map[string]string{}, secrets: map[string]string{},
+		ownVariables: map[string]bool{}, ownSecrets: map[string]bool{}}
 	if rules == nil {
-		return variables, secrets, nil
+		return named, nil
 	}
 
 	reader := *p
 	reader.style = TemplatePlaceholders
 	_, values, credentials, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceName, rules)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// A list is named from its YAML path, as every value is when it is read.
-	named := p.forResourceType(resourceType)
-	yamlPaths := named.convertStructPathsToYAMLPaths(ctx, obj, &resourceRules{ArrayVariables: rules.ArrayVariables})
+	typed := p.forResourceType(resourceType)
+	yamlPaths := typed.convertStructPathsToYAMLPaths(ctx, obj, &resourceRules{ArrayVariables: rules.ArrayVariables})
 	lists := make(map[string]bool, len(yamlPaths.ArrayVariables))
 	for _, path := range yamlPaths.ArrayVariables {
-		lists[named.pathToVariableName(resourceName, path)] = true
+		lists[typed.pathToVariableName(resourceName, path)] = true
 	}
 	for name, value := range values {
 		if lists[name] {
 			if items, ok := listItems(value); ok && len(items) > 0 && !holdsReference(items) {
-				variables[name] = value
+				named.variables[name] = value
 			}
 			continue
 		}
-		if value == "" || valueref.IsWellFormedReference(value) {
+		if value == "" {
+			continue
+		}
+		if valueref.IsWellFormedReference(value) {
+			named.addOwnReference(name, value, credentials[name])
 			continue
 		}
 		if credentials[name] {
-			secrets[name] = value
+			named.secrets[name] = value
 		} else {
-			variables[name] = value
+			named.variables[name] = value
 		}
 	}
 
-	for name, value := range named.mappedCredentials(obj, rules, resourceName) {
-		if value != "" && !valueref.IsWellFormedReference(value) {
-			secrets[name] = value
+	for name, value := range typed.mappedCredentials(obj, rules, resourceName) {
+		switch {
+		case value == "":
+		case valueref.IsWellFormedReference(value):
+			named.addOwnReference(name, value, true)
+		default:
+			named.secrets[name] = value
 		}
 	}
+	return named, nil
+}
+
+// addOwnReference records a field's reference when it names the field's own derived name in the
+// collection the field's value belongs to.
+func (n *namedResourceValues) addOwnReference(name, reference string, credential bool) {
+	collection, referenced, _ := valueref.ParseReference(reference)
+	if referenced != name || (collection == valueref.CollectionSecret) != credential {
+		return
+	}
+	if credential {
+		n.ownSecrets[name] = true
+	} else {
+		n.ownVariables[name] = true
+	}
+}
+
+// ReferencedNames returns the name of every reference a reference-style export of the object writes,
+// variables and secrets apart: one for each value it names, and each reference the object already
+// holds, which that export keeps as written.
+func (p *parameterizer) ReferencedNames(ctx context.Context, obj interface{},
+	resourceType string, resourceName string,
+	rules *declarativeresource.ResourceRules) (map[string]bool, map[string]bool, error) {
+	variables, secrets := map[string]bool{}, map[string]bool{}
+	if rules == nil {
+		return variables, secrets, nil
+	}
+
+	reader := *p
+	reader.style = ValueReferences
+	content, _, _, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceName, rules)
+	if err != nil {
+		return nil, nil, err
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(content), &document); err != nil {
+		return nil, nil, err
+	}
+	collectReferencedNames(&document, variables, secrets)
 	return variables, secrets, nil
+}
+
+// collectReferencedNames adds the name of each well-formed reference under node to its collection.
+func collectReferencedNames(node *yaml.Node, variables, secrets map[string]bool) {
+	if node.Kind == yaml.ScalarNode && valueref.IsWellFormedReference(node.Value) {
+		collection, name, _ := valueref.ParseReference(node.Value)
+		if collection == valueref.CollectionSecret {
+			secrets[name] = true
+		} else {
+			variables[name] = true
+		}
+	}
+	for _, child := range node.Content {
+		collectReferencedNames(child, variables, secrets)
+	}
 }
 
 // listItems reads a list's value, the JSON list of its items, and reports false for anything else.

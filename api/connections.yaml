@@ -174,6 +174,7 @@ paths:
       summary: List configured HTTP endpoint connections
       responses:
         "200": { $ref: '#/components/responses/HTTPConnectionInstanceList' }
+        "400": { $ref: '#/components/responses/HTTPConnectionListBadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -247,6 +248,7 @@ paths:
       summary: Delete an HTTP endpoint connection
       responses:
         "204": { description: Connection deleted }
+        "400": { $ref: '#/components/responses/HTTPConnectionDeleteBadRequest' }
         "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
@@ -1359,6 +1361,52 @@ components:
                 description:
                   key: "error.connectionservice.invalid_authentication_type_description"
                   defaultValue: "The authentication type must name a method this deployment supports"
+            declarative-create:
+              summary: Create refused while HTTP connections are declarative (POST)
+              value:
+                code: "DCR-1001"
+                message:
+                  key: "error.declarative_resource.create_operation_not_allowed"
+                  defaultValue: "Declarative resource create operation is not allowed"
+                description:
+                  key: "error.declarative_resource.create_operation_not_allowed_description"
+                  defaultValue: "Creating declarative resources is not permitted"
+            declarative-update:
+              summary: Update of a declarative connection (PUT)
+              value:
+                code: "DCR-1002"
+                message:
+                  key: "error.declarative_resource.update_operation_not_allowed"
+                  defaultValue: "Declarative resource update operation is not allowed"
+                description:
+                  key: "error.declarative_resource.update_operation_not_allowed_description"
+                  defaultValue: "Updating declarative resources is not permitted"
+    HTTPConnectionDeleteBadRequest:
+      description: The HTTP endpoint connection is declarative and cannot be deleted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "DCR-1003"
+            message:
+              key: "error.declarative_resource.delete_operation_not_allowed"
+              defaultValue: "Declarative resource delete operation is not allowed"
+            description:
+              key: "error.declarative_resource.delete_operation_not_allowed_description"
+              defaultValue: "Deleting declarative resources is not permitted"
+    HTTPConnectionListBadRequest:
+      description: The HTTP endpoint connections exceed the composite-mode record limit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1024"
+            message:
+              key: "error.connectionservice.http_connection_result_limit_exceeded"
+              defaultValue: "Result limit exceeded in composite mode"
+            description:
+              key: "error.connectionservice.http_connection_result_limit_exceeded_description"
+              defaultValue: "The total number of HTTP connections exceeds the maximum limit in composite mode"
     HTTPConnectionConflict:
       description: An HTTP endpoint connection with the same name already exists
       content:

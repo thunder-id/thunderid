@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 type captureFixture struct {
@@ -277,4 +278,143 @@ func TestACaptureGivesUpAfterItsAttempts(t *testing.T) {
 	f.settle(t)
 
 	assert.Equal(t, []string{"/variables/A", "/variables/A"}, f.paths())
+}
+
+var _ declarativeresource.ValueReleaser = (*ValueCapture)(nil)
+
+// releaseValuesOf makes each resource, named by a string, refer to the given secrets; a resource
+// named "unreadable" cannot be worked out.
+func releaseValuesOf(secrets map[string]map[string]string) func(interface{}) (map[string]string,
+	map[string]string, error) {
+	return func(resource interface{}) (map[string]string, map[string]string, error) {
+		if resource == "unreadable" {
+			return nil, nil, errors.New("unreadable")
+		}
+		return map[string]string{}, secrets[resource.(string)], nil
+	}
+}
+
+// A deleted resource's values are each removed from the default gateway's store, and nowhere else.
+func TestAReleaseOfADeletedResourceRemovesEveryValue(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = func(interface{}) (map[string]string, map[string]string, error) {
+		return map[string]string{"CONNECTION_A_URL": "u"}, map[string]string{"CONNECTION_A_PASSWORD": "p"}, nil
+	}
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", nil)
+	f.settle(t)
+
+	calls, others := f.received()
+	assert.ElementsMatch(t, []storeCall{
+		{method: http.MethodDelete, path: "/variables/CONNECTION_A_URL", key: "the-key"},
+		{method: http.MethodDelete, path: "/secrets/CONNECTION_A_PASSWORD", key: "the-key"},
+	}, calls)
+	assert.Empty(t, others, "a value was removed from a gateway that is not the default")
+}
+
+// A value the resource still refers to is left for its capture to replace; only the others go.
+func TestAReleaseKeepsWhatTheResourceStillRefersTo(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(map[string]map[string]string{
+		"before": {"CONNECTION_A_PASSWORD": "old", "CONNECTION_A_X_KEY": "k"},
+		"after":  {"CONNECTION_A_PASSWORD": "new"},
+	})
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", "after")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_X_KEY"}, f.paths())
+}
+
+// When what the resource now refers to cannot be worked out, none of it was captured either, so
+// everything it referred to is removed rather than left holding what it no longer does.
+func TestAReleaseWhoseCurrentValuesFailRemovesEveryValue(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(map[string]map[string]string{
+		"before": {"CONNECTION_A_PASSWORD": "old"},
+	})
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", "unreadable")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_PASSWORD"}, f.paths())
+}
+
+// Values that cannot be worked out name nothing to remove.
+func TestAReleaseWhosePreviousValuesFailRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(nil)
+
+	f.capture.ReleaseValues(context.Background(), "connection", "unreadable", nil)
+	f.settle(t)
+
+	assert.Empty(t, f.paths())
+}
+
+// A value given for a name after its removal is what the gateway is left with.
+func TestAValueCapturedAfterItsReleaseIsWhatRemains(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(map[string]map[string]string{
+		"before": {"CONNECTION_A_PASSWORD": "old"},
+		"again":  {"CONNECTION_A_PASSWORD": "new"},
+	})
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", nil)
+	f.capture.CaptureValues(context.Background(), "connection", "again")
+	f.settle(t)
+
+	calls, _ := f.received()
+	require.NotEmpty(t, calls)
+	last := calls[len(calls)-1]
+	assert.Equal(t, http.MethodPut, last.method, "the removal arrived after the newer value")
+	assert.Equal(t, `{"value":"new"}`, last.body)
+}
+
+// Without a default gateway, or before it is bound, a release removes nothing.
+func TestAReleaseWithoutADefaultGatewayRemovesNothing(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.secrets = map[string]string{"CONNECTION_A_PASSWORD": "p"}
+	for i := range f.gateways.gateways {
+		f.gateways.gateways[i].IsDefault = false
+	}
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", nil)
+	f.settle(t)
+	NewValueCapture().ReleaseValues(context.Background(), "connection", "before", nil)
+
+	calls, others := f.received()
+	assert.Empty(t, calls)
+	assert.Empty(t, others)
+}
+
+// A name the resource now refers to by a reference it holds is the value an apply resolves that
+// reference from, so it is kept.
+func TestAReleaseKeepsWhatTheResourceRefersToByReference(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(map[string]map[string]string{
+		"before": {"CONNECTION_A_PASSWORD": "old", "CONNECTION_A_X_KEY": "k"},
+	})
+	f.exporter.referencedFor = func(resource interface{}) []string {
+		if resource == "after" {
+			return []string{"CONNECTION_A_PASSWORD"}
+		}
+		return nil
+	}
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", "after")
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_X_KEY"}, f.paths())
+}
+
+// A deleted resource that held a reference to its own name releases that name too.
+func TestAReleaseOfADeletedResourceRemovesWhatItOwnedByReference(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.exporter.valuesFor = releaseValuesOf(map[string]map[string]string{"before": {}})
+	f.exporter.ownedFor = func(interface{}) []string { return []string{"CONNECTION_A_PASSWORD"} }
+
+	f.capture.ReleaseValues(context.Background(), "connection", "before", nil)
+	f.settle(t)
+
+	assert.Equal(t, []string{"/secrets/CONNECTION_A_PASSWORD"}, f.paths())
 }

@@ -6,6 +6,7 @@ package httpconnection
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,6 +32,7 @@ type HTTPConnectionServiceInterface interface {
 	UpdateHTTPConnection(ctx context.Context, id string, connection HTTPConnection) (
 		*HTTPConnection, *tidcommon.ServiceError)
 	DeleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError
+	ValidateHTTPConnection(ctx context.Context, connection *HTTPConnection) *tidcommon.ServiceError
 }
 
 // httpConnectionService validates and manages HTTP connections.
@@ -58,16 +60,21 @@ func (s *httpConnectionService) CreateHTTPConnection(ctx context.Context, connec
 	if svcErr := s.validate(ctx, &connection); svcErr != nil {
 		return nil, svcErr
 	}
-	id, err := sysutils.GenerateUUIDv7()
-	if err != nil {
-		s.logger.Error(ctx, "Failed to generate HTTP connection ID", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	if connection.ID == "" {
+		id, err := sysutils.GenerateUUIDv7()
+		if err != nil {
+			s.logger.Error(ctx, "Failed to generate HTTP connection ID", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		connection.ID = id
 	}
-	connection.ID = id
 
 	if err := s.store.CreateHTTPConnection(ctx, connection); err != nil {
-		if errors.Is(err, errNameConflict) {
+		switch {
+		case errors.Is(err, errNameConflict), errors.Is(err, errIDConflict):
 			return nil, &ErrorAlreadyExists
+		case errors.Is(err, errHTTPConnectionIsImmutable):
+			return nil, &declarativeresource.ErrorDeclarativeResourceCreateOperation
 		}
 		s.logger.Error(ctx, "Failed to create HTTP connection",
 			log.Error(err), log.String("connectionName", connection.Name))
@@ -81,6 +88,9 @@ func (s *httpConnectionService) ListHTTPConnections(ctx context.Context) ([]HTTP
 	*tidcommon.ServiceError) {
 	connections, err := s.store.ListHTTPConnections(ctx)
 	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceededInCompositeMode
+		}
 		s.logger.Error(ctx, "Failed to list HTTP connections", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -121,6 +131,8 @@ func (s *httpConnectionService) UpdateHTTPConnection(ctx context.Context, id str
 			return nil, &ErrorAlreadyExists
 		case errors.Is(err, errConnectionNotFound):
 			return nil, &ErrorNotFound
+		case errors.Is(err, errHTTPConnectionIsImmutable):
+			return nil, &declarativeresource.ErrorDeclarativeResourceUpdateOperation
 		}
 		s.logger.Error(ctx, "Failed to update HTTP connection", log.Error(err), log.String("connectionID", id))
 		return nil, &tidcommon.InternalServerError
@@ -137,13 +149,22 @@ func (s *httpConnectionService) DeleteHTTPConnection(ctx context.Context, id str
 		return &ErrorNotFound
 	}
 	if err := s.store.DeleteHTTPConnection(ctx, id); err != nil {
-		if errors.Is(err, errConnectionNotFound) {
+		switch {
+		case errors.Is(err, errConnectionNotFound):
 			return &ErrorNotFound
+		case errors.Is(err, errHTTPConnectionIsImmutable):
+			return &declarativeresource.ErrorDeclarativeResourceDeleteOperation
 		}
 		s.logger.Error(ctx, "Failed to delete HTTP connection", log.Error(err), log.String("connectionID", id))
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// ValidateHTTPConnection runs the checks create and update run, normalizing the connection in place.
+func (s *httpConnectionService) ValidateHTTPConnection(ctx context.Context,
+	connection *HTTPConnection) *tidcommon.ServiceError {
+	return s.validate(ctx, connection)
 }
 
 // validate checks a connection and normalizes it in place for storage.
@@ -219,6 +240,14 @@ func (s *httpConnectionService) validateAuthentication(ctx context.Context, conn
 		for _, header := range connection.Headers {
 			if _, found := canonical.Properties[http.CanonicalHeaderKey(header.Name)]; found {
 				return &ErrorInvalidHeaders
+			}
+		}
+		// A connection read from a file or an import document carries the header names as written; an
+		// update matches a kept header by its stored name, so it is stored canonical.
+		if !maps.Equal(canonical.Properties, authConfig.Properties) {
+			if connection.AuthProperties, err = outboundauth.ToProperties(canonical); err != nil {
+				s.logger.Error(ctx, "Failed to store HTTP connection authentication", log.Error(err))
+				return &tidcommon.InternalServerError
 			}
 		}
 	}

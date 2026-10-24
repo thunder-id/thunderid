@@ -18,6 +18,7 @@ import (
 type httpConnectionStoreInterface interface {
 	CreateHTTPConnection(ctx context.Context, connection HTTPConnection) error
 	ListHTTPConnections(ctx context.Context) ([]HTTPConnection, error)
+	CountHTTPConnections(ctx context.Context) (int, error)
 	GetHTTPConnection(ctx context.Context, id string) (*HTTPConnection, error)
 	UpdateHTTPConnection(ctx context.Context, connection HTTPConnection) error
 	DeleteHTTPConnection(ctx context.Context, id string) error
@@ -35,7 +36,8 @@ func newHTTPConnectionStore() httpConnectionStoreInterface {
 	}
 }
 
-// CreateHTTPConnection persists an HTTP connection, returning errNameConflict when the name is taken.
+// CreateHTTPConnection persists an HTTP connection, returning errNameConflict when the name is taken
+// and errIDConflict when the ID is.
 func (s *httpConnectionStore) CreateHTTPConnection(ctx context.Context, connection HTTPConnection) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
@@ -47,6 +49,9 @@ func (s *httpConnectionStore) CreateHTTPConnection(ctx context.Context, connecti
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateHTTPConnection,
 		connection.ID, connection.Name, connection.Description, properties, deployment.Resolve(ctx))
+	if provider.IsUniqueIndexViolation(err, primaryKeyName, primaryKeyColumns) {
+		return fmt.Errorf("%w: %w", errIDConflict, err)
+	}
 	return nameConflictOr(err)
 }
 
@@ -69,6 +74,26 @@ func (s *httpConnectionStore) ListHTTPConnections(ctx context.Context) ([]HTTPCo
 		connections = append(connections, connection)
 	}
 	return connections, nil
+}
+
+// CountHTTPConnections returns the number of HTTP connections for the deployment.
+func (s *httpConnectionStore) CountHTTPConnections(ctx context.Context) (int, error) {
+	dbClient, err := s.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+	rows, err := dbClient.QueryContext(ctx, queryCountHTTPConnections, deployment.Resolve(ctx))
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, fmt.Errorf("HTTP connection count query returned no rows")
+	}
+	count, ok := sysutils.ToInt64(rows[0]["count"])
+	if !ok {
+		return 0, fmt.Errorf("unexpected HTTP connection count type: %T", rows[0]["count"])
+	}
+	return int(count), nil
 }
 
 // GetHTTPConnection retrieves an HTTP connection by ID, or nil when it does not exist.

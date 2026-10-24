@@ -8,6 +8,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
@@ -56,6 +57,7 @@ func Initialize(
 	notifTemplateService notificationtemplate.NotificationTemplateServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	httpConnectionService connection.HTTPConnectionWriterInterface,
 	references *secretresolver.Resolver,
 ) ImportServiceInterface {
 	service := newImportService(
@@ -79,6 +81,7 @@ func Initialize(
 		serverConfigService,
 		gatewayService,
 		notifTemplateService,
+		httpConnectionService,
 		authZENPDPService,
 	)
 	// Set here rather than passed to newImportService, which every test constructs without one.

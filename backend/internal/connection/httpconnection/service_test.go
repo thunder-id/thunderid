@@ -370,3 +370,109 @@ func (s *HTTPConnectionServiceTestSuite) TestWritesAreRejectedInDeclarativeMode(
 	s.Equal(declarativeresource.ErrorDeclarativeResourceDeleteOperation.Code,
 		s.service.DeleteHTTPConnection(s.ctx, "id").Code)
 }
+
+func (s *HTTPConnectionServiceTestSuite) TestCreateIsRefusedWhenOnlyTheConnectionStoreIsDeclarative() {
+	s.service = newHTTPConnectionService(newFileBasedStore())
+
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL},
+		declarativeresource.ErrorDeclarativeResourceCreateOperation)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestCreateConflictsAndRefusalsAreClientErrors() {
+	for name, tc := range map[string]struct {
+		storeErr error
+		want     tidcommon.ServiceError
+	}{
+		"id taken": {errors.Join(errIDConflict, errors.New("primary key")), ErrorAlreadyExists},
+		"declarative target": {errHTTPConnectionIsImmutable,
+			declarativeresource.ErrorDeclarativeResourceCreateOperation},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.mockStore.On("CreateHTTPConnection", mock.Anything, mock.Anything).Return(tc.storeErr).Once()
+
+			s.assertCreateRejected(HTTPConnection{ID: "imported-id", Name: "Risk", URL: testURL}, tc.want)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestListOverTheCompositeLimitIsAClientError() {
+	s.mockStore.On("ListHTTPConnections", mock.Anything).Return(nil, errResultLimitExceededInCompositeMode)
+
+	_, svcErr := s.service.ListHTTPConnections(s.ctx)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorResultLimitExceededInCompositeMode, *svcErr)
+}
+
+// Flows reference a connection by ID, so an imported one must keep the document's.
+func (s *HTTPConnectionServiceTestSuite) TestCreateKeepsASuppliedID() {
+	stored := s.expectCreate()
+
+	created, svcErr := s.service.CreateHTTPConnection(s.ctx, HTTPConnection{ID: "imported-id", Name: "Risk",
+		URL: testURL})
+
+	s.Require().Nil(svcErr)
+	s.Equal("imported-id", created.ID)
+	s.Equal("imported-id", stored.ID)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestDeclarativeConnectionsAreReadOnly() {
+	s.mockStore.On("UpdateHTTPConnection", mock.Anything, mock.Anything).Return(errHTTPConnectionIsImmutable)
+	s.mockStore.On("DeleteHTTPConnection", mock.Anything, "file-1").Return(errHTTPConnectionIsImmutable)
+
+	_, svcErr := s.service.UpdateHTTPConnection(s.ctx, "file-1", HTTPConnection{Name: "Risk", URL: testURL})
+	s.Equal(declarativeresource.ErrorDeclarativeResourceUpdateOperation.Code, svcErr.Code)
+	s.Equal(declarativeresource.ErrorDeclarativeResourceDeleteOperation.Code,
+		s.service.DeleteHTTPConnection(s.ctx, "file-1").Code)
+}
+
+// Header names are case-insensitive (RFC 9110), so a refused name and a repeated name are each
+// matched in any casing.
+func (s *HTTPConnectionServiceTestSuite) TestHeaderNamesAreComparedInAnyCase() {
+	for _, name := range []string{"Authorization", "authorization", "AUTHORIZATION", "aUtHoRiZaTiOn"} {
+		s.Run(name, func() {
+			s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL,
+				Headers: []Header{{Name: name, Value: "Basic c3ZjOnB3"}}}, ErrorInvalidHeaders)
+		})
+	}
+	s.assertCreateRejected(HTTPConnection{Name: "Risk", URL: testURL,
+		Headers: []Header{{Name: "x-tenant", Value: "a"}, {Name: "X-TENANT", Value: "b"}}}, ErrorInvalidHeaders)
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestValidateHTTPConnectionAppliesTheServiceRules() {
+	connection := HTTPConnection{Name: " Risk ", URL: "HTTPS://Risk.Example.COM:443/x"}
+	s.Require().Nil(s.service.ValidateHTTPConnection(s.ctx, &connection))
+	s.Equal("Risk", connection.Name)
+	s.Equal("https://risk.example.com/x", connection.URL)
+	s.Equal(defaultTimeoutMS, connection.TimeoutMS)
+
+	for name, tc := range map[string]struct {
+		invalid HTTPConnection
+		want    tidcommon.ServiceError
+	}{
+		"credential over http": {HTTPConnection{Name: "Risk", URL: "http://risk.example.com/x",
+			AuthProperties: basicAuthProperties(s.T())}, ErrorInvalidURL},
+		"reserved header": {HTTPConnection{Name: "Risk", URL: testURL,
+			Headers: []Header{{Name: "Authorization", Value: "Basic c3ZjOnB3"}}}, ErrorInvalidHeaders},
+		"missing name": {HTTPConnection{URL: testURL}, ErrorInvalidName},
+	} {
+		s.Run(name, func() {
+			svcErr := s.service.ValidateHTTPConnection(s.ctx, &tc.invalid)
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.want.Code, svcErr.Code)
+		})
+	}
+}
+
+func (s *HTTPConnectionServiceTestSuite) TestAPIKeyHeaderNamesAreStoredCanonical() {
+	stored := s.expectCreate()
+
+	_, svcErr := s.service.CreateHTTPConnection(s.ctx, s.connection(testURL,
+		authProperties(s.T(), outboundauth.TypeAPIKey, map[string]string{"x-tenant-key": testPassword})))
+
+	s.Require().Nil(svcErr)
+	authConfig, err := outboundauth.FromProperties(stored.AuthProperties)
+	s.Require().NoError(err)
+	s.Equal(map[string]string{"X-Tenant-Key": testPassword}, authConfig.Properties)
+}
