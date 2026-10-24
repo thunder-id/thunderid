@@ -127,6 +127,16 @@ func (ts *tokenService) ProcessTokenRequest(
 		}
 	}
 
+	// A disabled client is refused every token, before any grant is redeemed.
+	if oauthApp.Rules.Disabled {
+		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
+			401, "The client is disabled", startTime)
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorUnauthorizedClient,
+			ErrorDescription: "The client is disabled",
+		}
+	}
+
 	// Validate the token request via the grant handler.
 	tokenError := grantHandler.ValidateGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil && tokenError.Error != "" {

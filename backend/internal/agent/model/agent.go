@@ -27,6 +27,7 @@ type AgentRequestWithID struct {
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
+	Kind        providers.AgentKind    `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -42,6 +43,8 @@ type CreateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Delegated   bool            `json:"delegated,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -78,6 +81,8 @@ type AgentCompleteResponse struct {
 	// LastLoginAt is when this agent was last granted access, set on update responses.
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 
+	Kind providers.AgentKind `json:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
@@ -104,6 +109,8 @@ type AgentGetResponse struct {
 	// profile write, and absent until a sign-in has been recorded.
 	LastLoginAt string `json:"lastLoginAt,omitempty" yaml:"-"`
 
+	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
@@ -126,6 +133,8 @@ type BasicAgentResponse struct {
 	// LastLoginAt is when this agent was last granted access. Absent until a sign-in has been
 	// recorded.
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 }
 
 // AgentListResponse is the paginated list response.

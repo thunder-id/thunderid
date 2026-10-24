@@ -93,6 +93,13 @@ func (s *cibaService) InitiateBackchannelAuth(
 			Message: "The client is not authorized to use the CIBA grant type",
 		}
 	}
+	// A disabled client is refused before the user is reached, as the token endpoint would refuse the grant.
+	if oauthApp.Rules.Disabled {
+		return nil, &CIBAError{
+			Code:    oauth2const.ErrorUnauthorizedClient,
+			Message: "The client is disabled",
+		}
+	}
 
 	scopes := utils.ParseStringArray(request.Scope, " ")
 	if validationErr := validateBackchannelAuthRequest(request, scopes); validationErr != nil {

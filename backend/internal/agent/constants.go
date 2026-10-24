@@ -18,6 +18,20 @@ const (
 	fieldOwner        = "owner"
 	fieldClientID     = "clientId"
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
+	// fieldKind holds the agent kind. It is separate from the entity category, which is
+	// "agent" for every agent. It is set only when the agent is created and carried forward on every
+	// update, so writes to an agent's system attributes must go through the agent service.
+	fieldKind = "kind"
+)
+
+// Defaults for the server-config "personalAgent" section.
+const (
+	// defaultPersonalAgentMaxAccessTokenValidity caps, in seconds, a personal agent's access tokens when
+	// the organization sets no cap.
+	defaultPersonalAgentMaxAccessTokenValidity int64 = 3600
+	// defaultPersonalAgentAuthFlowHandle is the shipped login flow for a personal agent whose
+	// registration flow fixes none.
+	defaultPersonalAgentAuthFlowHandle = "default-personal-agent-auth-flow"
 )
 
 // propLogoURL is the inbound-client PROPERTIES key holding the agent logo.

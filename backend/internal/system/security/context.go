@@ -98,6 +98,17 @@ func GetPermissions(ctx context.Context) []string {
 	return []string{}
 }
 
+// IsDelegated reports whether the verified token on the context is a delegated token: one issued to a
+// client acting for a user, which carries the client in an "act" claim (RFC 8693 §4.1). It reads only the
+// verified token claims, so a request cannot supply or hide the answer.
+func IsDelegated(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	if authCtx == nil {
+		return false
+	}
+	return authCtx.attributes[claimActor] != nil
+}
+
 // GetAttribute retrieves a specific attribute from the security token.
 // Returns defensive copies for mutable types (slices, maps) to prevent modification.
 // Returns nil if no security context is present or attribute doesn't exist.

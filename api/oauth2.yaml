@@ -266,7 +266,10 @@ paths:
                 scope: "openid profile email"
                 id_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         "400":
-          description: Bad Request — invalid grant, missing parameters, or unsupported grant type.
+          description: >-
+            Bad Request — invalid grant, missing parameters, unsupported grant type, or
+            unauthorized_client when the client may not use the grant or is a personal agent while
+            personal agents are disabled.
           content:
             application/json:
               schema:

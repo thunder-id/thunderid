@@ -1239,3 +1239,36 @@ func TestExpectedHTUFallsBackWhenTheEndpointHasNoTokenPath(t *testing.T) {
 	assert.Equal(t, "https://localhost:8090/something-else",
 		ts.expectedHTU(dpop.WithRequestPath(context.Background(), "/ou/customer-a/oauth2/token")))
 }
+
+// --- client rules ---
+
+// A disabled client is refused every grant before it is redeemed.
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DisabledClientRefusesEveryGrant() {
+	for _, grantType := range []providers.GrantType{providers.GrantTypeAuthorizationCode,
+		providers.GrantTypeCIBA, providers.GrantTypeRefreshToken} {
+		suite.Run(string(grantType), func() {
+			suite.SetupTest()
+			suite.mockGrantProvider.ExpectedCalls = nil
+			suite.mockGrantProvider.On("GetGrantHandler", grantType).Return(suite.mockGrantHandler, nil)
+			app := &providers.OAuthClient{
+				ID:             "agent-1",
+				ClientID:       "test-client-id",
+				EntityCategory: providers.EntityCategoryAgent,
+				GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeCIBA,
+					providers.GrantTypeRefreshToken},
+				Rules: providers.ClientRules{Disabled: true},
+			}
+
+			_, errResp := suite.newService().ProcessTokenRequest(context.Background(),
+				&model.TokenRequest{ClientID: "test-client-id", GrantType: string(grantType)}, app)
+
+			suite.Require().NotNil(errResp)
+			suite.Equal(constants.ErrorUnauthorizedClient, errResp.Error)
+			suite.Equal("The client is disabled", errResp.ErrorDescription)
+			suite.mockGrantHandler.AssertNotCalled(suite.T(), "ValidateGrant", mock.Anything, mock.Anything,
+				mock.Anything)
+			suite.mockGrantHandler.AssertNotCalled(suite.T(), "HandleGrant", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
