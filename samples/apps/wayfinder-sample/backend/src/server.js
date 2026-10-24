@@ -6,16 +6,6 @@ import { randomUUID } from "node:crypto";
 import { URL } from "node:url";
 import "dotenv/config";
 
-// Local-dev TLS bypass: Thunder ships with a self-signed cert on localhost,
-// so the JWKS fetch in auth.js would otherwise fail with UNABLE_TO_VERIFY_LEAF_SIGNATURE.
-// We disable Node's TLS verification ONLY when the configured issuer base URL
-// points at localhost / 127.0.0.1.
-const __thunderBaseUrl = process.env.THUNDER_BASE_URL || "";
-if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(__thunderBaseUrl)) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  console.warn("[api] Local Thunder detected — NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.");
-}
-
 import { resolveUser, requireScope } from "./auth.js";
 import {
   createBookingRecord,
