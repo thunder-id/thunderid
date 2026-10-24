@@ -24,7 +24,7 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 2. If the organization hierarchy requires it, choose an **Organization Unit**.
 3. Enter an **Agent name** (type one or pick a suggestion).
 4. If the agent schema defines attributes, fill them in.
-5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle.
+5. Choose an **Owner** (defaults to the creator), the person accountable for the agent throughout its lifecycle. On a control plane there is no default. An agent created there without an owner is not applied to a gateway until you set its `AGENT_<NAME>_OWNER` variable on that gateway to a user it holds. See [Agent Owners](../resource-export#agent-owners).
 6. Click **Create**.
 
 </TabItem>

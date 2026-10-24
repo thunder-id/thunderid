@@ -183,11 +183,17 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Contains(yamlContent, `name: "`+agentName+`"`)
 	s.Assert().Contains(yamlContent, "description: Round-trip entity-only agent")
 
+	// The owner is a user, which each deployment holds its own of, so it is a template variable.
+	s.Require().NotEmpty(pre.Owner)
+	vars := s.extractTemplateVariables(yamlContent, map[string]interface{}{"owner": pre.Owner})
+	s.Require().Contains(vars, ownerVariable(yamlContent))
+
 	s.Require().NoError(s.deleteAgent(createdID))
 
 	importResp, err := s.importAgents(agentImportRequest{
-		Content: yamlContent,
-		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Content:   yamlContent,
+		Options:   agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Variables: vars,
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(1, importResp.Summary.TotalDocuments)
@@ -205,6 +211,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Equal(pre.AttrName(), restored.AttrName())
 	s.Assert().Equal(pre.Description, restored.Description)
 	s.Assert().Equal(pre.OUID, restored.OUID)
+	s.Assert().Equal(pre.Owner, restored.Owner)
 }
 
 // TestExportImportRoundTrip_AgentWithConfidentialOAuth creates an agent with
@@ -253,9 +260,12 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithConfidential
 			"exported YAML must not contain a bare `:` key")
 	}
 
+	created, err := s.agentGet(createdID)
+	s.Require().NoError(err)
 	vars := s.extractTemplateVariables(yamlContent, map[string]interface{}{
 		"clientId":     clientID,
 		"clientSecret": clientSecret,
+		"owner":        created.Owner,
 	})
 
 	s.Require().NoError(s.deleteAgent(createdID))
@@ -306,13 +316,16 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertUpdates() {
 	s.Require().NoError(err)
 	defer func() { _ = s.deleteAgent(createdID) }()
 
+	created, err := s.agentGet(createdID)
+	s.Require().NoError(err)
 	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
 	s.Require().NoError(err)
 	yamlContent := exportResp.Resources
 
 	importResp, err := s.importAgents(agentImportRequest{
-		Content: yamlContent,
-		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Content:   yamlContent,
+		Options:   agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Variables: s.extractTemplateVariables(yamlContent, map[string]interface{}{"owner": created.Owner}),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
@@ -420,6 +433,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	vars := s.extractTemplateVariables(yamlContent, map[string]interface{}{
 		"clientId":     clientID,
 		"clientSecret": clientSecret,
+		"owner":        pre.Owner,
 	})
 
 	importResp, err := s.importAgents(agentImportRequest{
@@ -441,6 +455,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithAllFields() 
 	s.Assert().Equal(pre.AttrName(), restored.AttrName())
 	s.Assert().Equal(pre.Description, restored.Description)
 	s.Assert().Equal(pre.OUID, restored.OUID)
+	s.Assert().Equal(pre.Owner, restored.Owner)
 	s.Assert().Equal(pre.Type, restored.Type)
 	s.Assert().Equal(pre.AuthFlowID, restored.AuthFlowID)
 	s.Assert().Equal(pre.RegistrationFlowID, restored.RegistrationFlowID)
@@ -591,6 +606,16 @@ func (s *AgentImportExportSuite) importAgents(reqBody agentImportRequest) (*agen
 		return nil, fmt.Errorf("failed to parse import response: %w (body=%s)", err, string(body))
 	}
 	return &parsed, nil
+}
+
+// ownerVariable returns the name of the template variable an exported agent's owner is written as.
+func ownerVariable(yamlContent string) string {
+	for _, line := range strings.Split(yamlContent, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "owner: {{."); ok {
+			return strings.TrimSuffix(value, "}}")
+		}
+	}
+	return ""
 }
 
 // extractTemplateVariables walks the exported YAML and maps template variable

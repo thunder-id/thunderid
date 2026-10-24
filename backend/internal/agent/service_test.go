@@ -1448,6 +1448,55 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_OwnerNotFound() {
 	assert.Equal(suite.T(), ErrorOwnerNotFound.Code, svcErr.Code)
 }
 
+// createdOwner creates an agent without an owner as the given caller and returns the owner the
+// created entity was given.
+func (suite *AgentServiceTestSuite) createdOwner(svc *agentService, caller string) string {
+	mockEntity := svc.entityService.(*entitymock.EntityServiceInterfaceMock)
+	var owner string
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			_, owner, _ = readSystemAttributes(args.Get(1).(*providers.Entity).SystemAttributes)
+		}).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(caller, testOUID, "", nil, nil))
+	_, svcErr := svc.CreateAgent(ctx, &providers.Agent{Type: testAgentType, OUID: testOUID})
+	suite.Require().Nil(svcErr)
+	return owner
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_NoOwner_OwnedByCaller() {
+	svc, _, _, _, _ := suite.setupService()
+
+	assert.Equal(suite.T(), "creator", suite.createdOwner(svc, "creator"))
+}
+
+// A control plane's caller is no user a data plane holds, so an agent created there without an
+// owner keeps none.
+func (suite *AgentServiceTestSuite) TestCreateAgent_LeavingOwnerUnset_KeepsNoOwner() {
+	svc, _, _, _, _ := suite.setupService()
+	LeavingOwnerUnset()(svc)
+
+	assert.Empty(suite.T(), suite.createdOwner(svc, "creator"))
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_LeavingOwnerUnset_OwnerNotFound() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	LeavingOwnerUnset()(svc)
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "ghost").
+		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Owner: "ghost",
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorOwnerNotFound.Code, svcErr.Code)
+}
+
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OwnerChanged_OwnerNotFound() {
 	svc, mockEntity, _, _, _ := suite.setupService()
 

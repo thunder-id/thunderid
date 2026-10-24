@@ -19,6 +19,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
+// Option configures the agent service for the plane it runs on.
+type Option func(*agentService)
+
+// LeavingOwnerUnset is for a control plane, whose caller is not a user any data plane holds. An agent
+// created there without an owner keeps none, and each data plane is given the owner its export refers
+// to, rather than the agent belonging to whoever created it.
+func LeavingOwnerUnset() Option {
+	return func(s *agentService) { s.leavesOwnerUnset = true }
+}
+
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
 //
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
@@ -33,9 +43,13 @@ func Initialize(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	options ...Option,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
 		governance, valueCapturer, entityTypeService)
+	for _, option := range options {
+		option(service)
+	}
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

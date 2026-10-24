@@ -159,6 +159,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	ts.Equal(live["attributes"], viewed["attributes"])
 	ts.NotEmpty(viewed["attributes"])
 	ts.Regexp(`^\{\{\.AGENT_[A-Z0-9_]+_CLIENT_ID\}\}$`, viewed["clientId"])
+	// Its owner is a user, which each deployment holds its own of, so it stands as a placeholder too.
+	ts.NotEmpty(live["owner"])
+	ts.Regexp(`^\{\{\.AGENT_[A-Z0-9_]+_OWNER\}\}$`, viewed["owner"])
+	delete(live, "owner")
+	delete(viewed, "owner")
 	// The export writes an empty list as no value, so a scope claim with no claims reads as null.
 	ts.Contains(live, "status", "an agent read carries its access status")
 	ts.Equal(emptyAsNil(withoutClient(withoutAccessState(live))), emptyAsNil(withoutClient(viewed)))

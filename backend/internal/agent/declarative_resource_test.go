@@ -196,6 +196,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientNoR
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables, "no redirect URIs means no array variables")
@@ -222,6 +223,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PublicClientWit
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
@@ -247,6 +249,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables, "M2M agents have no redirect URIs")
@@ -273,6 +276,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
@@ -287,6 +291,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NoInboundAuthCo
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables)
@@ -307,6 +312,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NilOAuthConfig(
 	rules := pr.GetResourceRulesForResource(a)
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Empty(s.T(), rules.ArrayVariables)
@@ -319,6 +325,7 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NonAgentType() 
 	rules := pr.GetResourceRulesForResource("not-an-agent")
 
 	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "Owner")
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")

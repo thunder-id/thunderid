@@ -66,6 +66,9 @@ type agentService struct {
 	roleService          role.RoleServiceInterface
 	valueCapturer        declarativeresource.ValueCapturer
 	entityTypeService    entitytype.EntityTypeServiceInterface
+	// leavesOwnerUnset keeps an agent created without an owner ownerless, rather than owned by its
+	// creator. See LeavingOwnerUnset.
+	leavesOwnerUnset bool
 }
 
 func newAgentService(
@@ -77,7 +80,7 @@ func newAgentService(
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-) AgentServiceInterface {
+) *agentService {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         authzService,
@@ -126,10 +129,12 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	}
 
 	owner := agent.Owner
-	if owner == "" {
+	if owner != "" {
+		if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
+			return nil, svcErr
+		}
+	} else if !s.leavesOwnerUnset {
 		owner = security.GetSubject(ctx)
-	} else if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
-		return nil, svcErr
 	}
 
 	e, sysCredsJSON, buildErr := buildAgentEntity(agentID, agent.Type, agent.OUID, agent.Attributes,

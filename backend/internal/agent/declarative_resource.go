@@ -144,9 +144,13 @@ func (e *agentExporter) SecretFields() []string {
 }
 
 // GetResourceRules returns parameterization rules for agents with OAuth.
+//
+// The owner is referred to rather than written: it names a user, and the user an agent belongs to
+// on one deployment is not one every other deployment holds, so each deployment is given its own.
 func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{
 		Variables: []string{
+			"Owner",
 			"InboundAuthConfig[].OAuthConfig.ClientID",
 		},
 		SecretVariables: []string{
@@ -181,7 +185,7 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 		}
 	}
 
-	variables := []string{"InboundAuthConfig[].OAuthConfig.ClientID"}
+	variables := []string{"Owner", "InboundAuthConfig[].OAuthConfig.ClientID"}
 	var secrets []string
 	if !isPublicClient {
 		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")

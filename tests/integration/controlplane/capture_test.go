@@ -292,21 +292,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenConnectionsSecretReachesTheDefaultG
 // names its export refers to.
 func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGateway() {
 	g := ts.withDefaultGateway()
-	// The default agent type is shared, so it is pointed at this suite's unit for the test and put back.
-	snapshot, err := testutils.SnapshotAgentType()
-	ts.Require().NoError(err)
-	defer func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }()
-	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:           "default",
-		DisplayName:      "Default",
-		OUID:             ts.ouID,
-		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
-		Schema: map[string]interface{}{
-			"name":        map[string]interface{}{"type": "string"},
-			"description": map[string]interface{}{"type": "string"},
-		},
-	})
-	ts.Require().NoError(err)
+	defer ts.pointDefaultAgentTypeHere()()
 	name := unique("CP Capture Agent")
 	clientID := unique("cp-capture-agent-client")
 	clientSecret := unique("cp-capture-agent-secret")
@@ -334,6 +320,74 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	held, ok = g.heldSoon("secrets", variableName("AGENT", name, "CLIENT_SECRET"))
 	ts.True(ok, "the agent's client secret was not captured")
 	ts.Equal(clientSecret, held)
+
+	// The control plane's caller is no user a gateway holds, so the agent is not made theirs, and
+	// there is no owner to capture: each gateway is given the agent's owner itself.
+	created, err := testutils.GetAgent(agentID)
+	ts.Require().NoError(err)
+	ts.Empty(created.Owner, "the agent was given its creator as its owner")
+	_, ok = g.held("variables", variableName("AGENT", name, "OWNER"))
+	ts.False(ok, "an owner was captured for an agent that has none")
+}
+
+// An agent owned by a user written on the control plane leaves that user's ID in the default
+// gateway's variables, under the name its export refers to its owner by.
+func (ts *ControlPlaneTestSuite) TestAWrittenAgentsOwnerReachesTheDefaultGateway() {
+	g := ts.withDefaultGateway()
+	defer ts.pointDefaultAgentTypeHere()()
+	userType := unique("cp-capture-owner")
+	userTypeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle:      userType,
+		DisplayName: "Capture owner",
+		OUID:        ts.ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(userTypeID) }()
+	attributes, err := json.Marshal(map[string]any{"username": unique("cp-capture-owner")})
+	ts.Require().NoError(err)
+	ownerID, err := testutils.CreateUser(testutils.User{OUID: ts.ouID, Type: userType, Attributes: attributes})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+	name := unique("CP Owned Agent")
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Owner:      ownerID,
+		Attributes: map[string]interface{}{"name": name, "description": "captures its owner"},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteAgent(agentID) }()
+
+	held, ok := g.heldSoon("variables", variableName("AGENT", name, "OWNER"))
+	ts.True(ok, "the agent's owner was not captured")
+	ts.Equal(ownerID, held)
+}
+
+// pointDefaultAgentTypeHere points the default agent type, which is shared, at this suite's unit and
+// returns what puts it back.
+func (ts *ControlPlaneTestSuite) pointDefaultAgentTypeHere() func() {
+	ts.T().Helper()
+	snapshot, err := testutils.SnapshotAgentType()
+	ts.Require().NoError(err)
+	_, err = testutils.CreateAgentType(testutils.UserType{
+		Handle:           "default",
+		DisplayName:      "Default",
+		OUID:             ts.ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema: map[string]interface{}{
+			"name":        map[string]interface{}{"type": "string"},
+			"description": map[string]interface{}{"type": "string"},
+		},
+	})
+	if err != nil {
+		ts.NoError(testutils.RestoreAgentType(snapshot))
+		ts.Require().NoError(err)
+	}
+	return func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }
 }
 
 // createResourceServer creates a resource server on the control plane and returns its id.
