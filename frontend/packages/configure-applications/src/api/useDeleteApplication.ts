@@ -20,9 +20,9 @@ import {
  * removes the application from cache and invalidates the applications list query to
  * trigger a refetch.
  *
- * The deletion runs through the configured administration flow, which revokes the application's
- * tokens and detaches its sessions before the record is removed. It falls back to
- * `DELETE /applications/{id}` when no such flow is configured.
+ * The deletion runs through the configured administration flow when one is configured, and
+ * through `DELETE /applications/{id}` otherwise. The server revokes the application's tokens and
+ * detaches its sessions before the record is removed on either path.
  *
  * @returns TanStack Query mutation object for deleting applications with mutate function, loading state, and error information
  *

@@ -2678,12 +2678,13 @@ const translations = {
     'listing.error': 'Failed to load applications',
     'delete.title': 'Delete application',
     'delete.message': 'Are you sure you want to delete this application? This action cannot be undone.',
-    'delete.disclaimer': 'Warning: All associated data, configurations, and access tokens will be permanently removed.',
+    'delete.disclaimer':
+      'Warning: All associated data and configurations will be permanently removed, every token issued to this application will be revoked, and its sessions will be detached.',
     'regenerateSecret.dialog.title': 'Regenerate client secret',
     'regenerateSecret.dialog.message':
       'Are you sure you want to regenerate the client secret for this application? This will immediately invalidate the current client secret and generate a new one.',
     'regenerateSecret.dialog.disclaimer':
-      'Warning: Regenerating the client secret will invalidate the current secret and the application may stop working until the new client secret is updated in its configuration.',
+      'Warning: Regenerating the client secret revokes every token issued with the current secret, and the application may stop working until the new client secret is updated in its configuration.',
     'regenerateSecret.dialog.confirmButton': 'Regenerate',
     'regenerateSecret.dialog.regenerating': 'Regenerating...',
     'regenerateSecret.dialog.error': 'Failed to regenerate client secret. Please try again.',
@@ -3619,6 +3620,8 @@ const translations = {
     'errors.APP-1030': 'This application is managed declaratively and cannot be edited or deleted.',
     'errors.APP-1035': 'One or more user attributes are not valid for the selected user types.',
     'errors.APP-1047': 'A client secret is not applicable to this application: it authenticates without one.',
+    'errors.FES-1023':
+      'This server cannot revoke the tokens this change invalidates, so the change was refused. Check that the revocation executors are enabled on the server.',
     'errors.APP-1048':
       'This application cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.APP-1039':
