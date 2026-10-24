@@ -455,6 +455,9 @@ CREATE TABLE "GATEWAY" (
     -- The default gateway, whose URL the console shows for an application's runtime endpoints. At
     -- most one per deployment, which the index below enforces.
     IS_DEFAULT BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Whether the gateway serves. One registered while it is still being provisioned is not ready, and
+    -- nothing is applied to it until it is marked ready.
+    READY BOOLEAN NOT NULL DEFAULT TRUE,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (NAME, DEPLOYMENT_ID),

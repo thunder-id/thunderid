@@ -42,6 +42,7 @@ export default function GatewayStage({
       onConfigure={onConfigure}
       onRevert={onRevert}
       revertDisabled={!applied?.previousVersion}
+      provisioning={gateway.ready === false}
       testId={`deploy-stage-${gateway.id}`}
     />
   );

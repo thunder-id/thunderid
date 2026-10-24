@@ -303,6 +303,39 @@ curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION_ORD
   -d '{"value": "<client_secret>"}'
 ```
 
+## Register a Gateway Before It Serves
+
+A gateway can take minutes to come up, for instance while its deployment is being provisioned. Register it
+with `ready` set to `false` so the control plane leaves it alone until then:
+
+```bash
+curl -X POST https://localhost:8090/gateways \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "staging", "baseUrl": "https://staging.example.com", "ready": false}'
+```
+
+While a gateway is not ready, the control plane refuses to apply or revert a version on it, including dry
+runs, and refuses calls to its variables and secrets. Each refusal is a `409` with the code `GTW-1031`.
+The values that creating or changing a resource produces, such as a generated client secret, wait for the
+default gateway while it is not ready, and the control plane writes them once it is. The wait has two
+limits. A value is given up on after an hour, so mark a gateway ready within an hour of creating resources
+for it. The waiting values are held in the control plane's memory, so a restart of the control plane
+drops them. A value that never arrives is reported as missing by the next apply that needs it, and you
+set it on the gateway then.
+
+Mark the gateway ready once it serves:
+
+```bash
+curl -X PUT https://localhost:8090/gateways/<gateway_id> \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"ready": true}'
+```
+
+A gateway registered without `ready`, or declared in a file, is ready from the start. The console marks a
+gateway that is not ready as **Provisioning** and keeps its Deploy and Rollback disabled until it is.
+
 ## Deploy From the Console
 
 The console does all of the above from one full-screen page. The **Deploy** button in the console's

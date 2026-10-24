@@ -138,7 +138,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
 		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
 		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||
-		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code {
+		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code ||
+		svcErr.Code == ErrorGatewayNotReady.Code {
 		statusCode = http.StatusConflict
 	}
 

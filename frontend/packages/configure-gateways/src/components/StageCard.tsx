@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, ButtonBase, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, ButtonBase, Chip, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {ArrowRight, SlidersHorizontal, Undo2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -32,6 +32,11 @@ export interface StageCardProps {
   revertDisabled?: boolean;
   /** The stage's own action, at the right of its footer, such as promoting it to the next stage. */
   action?: ReactNode;
+  /**
+   * The stage's gateway is still being provisioned: it is marked so, and what would call it, its
+   * values and a rollback, waits until it is ready.
+   */
+  provisioning?: boolean;
   testId?: string;
 }
 
@@ -48,9 +53,25 @@ export default function StageCard({
   onRevert = undefined,
   revertDisabled = false,
   action = undefined,
+  provisioning = false,
   testId = undefined,
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const provisioningHint = t(
+    'stage.provisioningHint',
+    '{{name}} is still being provisioned. It can be deployed to once it is ready.',
+    {name},
+  );
+  let revertHint = t('stage.revertHint', 'Go back one step, to the version {{name}} ran before.', {name});
+  if (provisioning) {
+    revertHint = provisioningHint;
+  } else if (revertDisabled) {
+    revertHint = t(
+      'stage.revertNone',
+      'Nothing to roll back to. A rollback goes back one step, once; deploy a version to {{name}} to roll back again.',
+      {name},
+    );
+  }
   const header = (
     <ButtonBase
       onClick={onExplore}
@@ -72,6 +93,15 @@ export default function StageCard({
       <Typography variant="subtitle1" fontWeight={600} noWrap sx={{flex: 1, minWidth: 0}}>
         {name}
       </Typography>
+      {provisioning && (
+        <Chip
+          size="small"
+          color="warning"
+          variant="outlined"
+          label={t('stage.provisioning', 'Provisioning')}
+          data-testid="stage-provisioning"
+        />
+      )}
       <Box
         sx={{display: 'flex', alignItems: 'center', gap: 0.25, color: 'primary.light', whiteSpace: 'nowrap'}}
         aria-hidden
@@ -85,21 +115,22 @@ export default function StageCard({
   );
   const footer = (
     <>
-      <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
-        {t('stage.configure', 'Configure')}
-      </Button>
+      <Tooltip title={provisioning ? provisioningHint : ''}>
+        {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
+        <Box component="span">
+          <Button
+            variant="text"
+            size="small"
+            startIcon={<SlidersHorizontal size={14} />}
+            onClick={onConfigure}
+            disabled={provisioning}
+          >
+            {t('stage.configure', 'Configure')}
+          </Button>
+        </Box>
+      </Tooltip>
       {onRevert && (
-        <Tooltip
-          title={
-            revertDisabled
-              ? t(
-                  'stage.revertNone',
-                  'Nothing to roll back to. A rollback goes back one step, once; deploy a version to {{name}} to roll back again.',
-                  {name},
-                )
-              : t('stage.revertHint', 'Go back one step, to the version {{name}} ran before.', {name})
-          }
-        >
+        <Tooltip title={revertHint}>
           {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
           <Box component="span">
             <Button
@@ -108,7 +139,7 @@ export default function StageCard({
               size="small"
               startIcon={<Undo2 size={14} />}
               onClick={onRevert}
-              disabled={revertDisabled}
+              disabled={revertDisabled || provisioning}
             >
               {t('stage.revert', 'Rollback')}
             </Button>
@@ -125,7 +156,11 @@ export default function StageCard({
           <Typography variant="caption" color="text.secondary" component="div">
             {t('stage.deployedVersion', 'Deployed version')}
           </Typography>
-          {version ? (
+          {provisioning && !version ? (
+            <Typography variant="body2" color="text.secondary" sx={{mt: 0.25}}>
+              {provisioningHint}
+            </Typography>
+          ) : version ? (
             <Stack spacing={0.5} sx={{mt: 0.25}}>
               <VersionName number={version.number} hash={version.hash} variant="h6" />
               <Timestamp value={version.capturedAt} />

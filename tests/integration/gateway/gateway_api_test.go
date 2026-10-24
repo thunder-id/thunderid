@@ -32,6 +32,7 @@ type gateway struct {
 	UpdatedAt     string `json:"updatedAt"`
 
 	IsDefault bool `json:"isDefault,omitempty"`
+	Ready     bool `json:"ready"`
 }
 
 type errorResponse struct {
@@ -85,6 +86,7 @@ func (ts *GatewayAPITestSuite) TestRegisterAndReadBack() {
 	// The database assigns these, so an empty value means the response was built rather than read.
 	ts.NotEmpty(created.CreatedAt)
 	ts.NotEmpty(created.UpdatedAt)
+	ts.True(created.Ready, "a gateway registered without saying otherwise is not ready")
 
 	fetched := ts.getGateway(created.ID, http.StatusOK)
 	ts.Equal(created.ID, fetched.ID)
@@ -725,4 +727,54 @@ func (ts *GatewayAPITestSuite) declaredGateway() *gateway {
 	}
 	ts.Require().Fail("the declared gateway was not in the listing")
 	return nil
+}
+
+// A gateway registered while it is still being provisioned is not deployed to, and its store is not
+// called, until an edit marks it ready. That an apply then succeeds is checked against a gateway that
+// answers, in GatewayVersionsTestSuite.
+func (ts *GatewayAPITestSuite) TestAGatewayIsNotDeployedToUntilItIsReady() {
+	resp := ts.post("/gateways", map[string]any{
+		"name":    ts.name("provisioning"),
+		"baseUrl": "https://" + ts.name("provisioning") + ".integration.test:8090",
+		"ready":   false,
+	})
+	defer func() { _ = resp.Body.Close() }()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode)
+	var created gateway
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	ts.registered = append(ts.registered, created.ID)
+	ts.False(created.Ready)
+	ts.False(ts.getGateway(created.ID, http.StatusOK).Ready)
+
+	for _, call := range []struct{ method, path string }{
+		{http.MethodPost, "/gateways/" + created.ID + "/apply"},
+		{http.MethodPost, "/gateways/" + created.ID + "/revert"},
+		{http.MethodPut, "/gateways/" + created.ID + "/secrets/PROVISIONING_SECRET"},
+	} {
+		status, code := ts.sendJSON(call.method, call.path, map[string]any{"value": "v"})
+		ts.Equal(http.StatusConflict, status, "%s %s", call.method, call.path)
+		ts.Equal("GTW-1031", code, "%s %s", call.method, call.path)
+	}
+
+	status, _ := ts.sendJSON(http.MethodPut, "/gateways/"+created.ID, map[string]any{"ready": true})
+	ts.Require().Equal(http.StatusOK, status)
+	ts.True(ts.getGateway(created.ID, http.StatusOK).Ready)
+}
+
+// sendJSON issues a request with a JSON body and returns the status and the error code, if any.
+func (ts *GatewayAPITestSuite) sendJSON(method, path string, body any) (int, string) {
+	ts.T().Helper()
+
+	encoded, err := json.Marshal(body)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(method, testServerURL+path, bytes.NewReader(encoded))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	var failure errorResponse
+	_ = json.NewDecoder(resp.Body).Decode(&failure)
+	return resp.StatusCode, failure.Code
 }

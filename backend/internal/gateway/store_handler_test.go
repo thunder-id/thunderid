@@ -90,3 +90,19 @@ func TestStoreRoutesRefuseABadBody(t *testing.T) {
 		assert.Empty(t, *calls)
 	}
 }
+
+// A call to the store of a gateway still being provisioned is refused as such, without reaching it.
+func TestStoreRoutesRefuseAGatewayThatIsNotReady(t *testing.T) {
+	gw, calls := storeGateway(t, http.StatusOK, `{"name":"A"}`)
+	gw.Ready = false
+	mux := http.NewServeMux()
+	registerStoreRoutes(mux, newStoreHandler(newStoreService(&fakeStore{gateways: []Gateway{*gw}}, newGatewayClient())))
+	recorder := httptest.NewRecorder()
+
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/gateways/gw-1/secrets/S",
+		strings.NewReader(`{"value":"v"}`)))
+
+	assert.Equal(t, http.StatusConflict, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), ErrorGatewayNotReady.Code)
+	assert.Empty(t, *calls)
+}

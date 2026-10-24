@@ -424,6 +424,50 @@ describe('DeployPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('marks a gateway still being provisioned, and keeps its rollback and values closed until it is ready', async () => {
+    routes['GET /gateways'] = [gateways[0], {...gateways[1], ready: false}];
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod'};
+    render(<DeployPage />);
+
+    const prod = await screen.findByTestId('deploy-stage-gw-prod');
+    expect(within(prod).getByTestId('stage-provisioning')).toHaveTextContent('Provisioning');
+    expect(within(prod).getByRole('button', {name: 'Rollback'})).toBeDisabled();
+    expect(within(prod).getByRole('button', {name: 'Configure'})).toBeDisabled();
+    const dev = screen.getByTestId('deploy-stage-gw-dev');
+    expect(within(dev).queryByTestId('stage-provisioning')).not.toBeInTheDocument();
+    expect(within(dev).getByRole('button', {name: 'Configure'})).toBeEnabled();
+  });
+
+  it('counts only the ready gateways when telling whether a version is deployed everywhere', async () => {
+    routes['GET /gateways'] = [gateways[0], {...gateways[1], ready: false}];
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod'};
+    render(<DeployPage />);
+
+    // Dev, the one ready gateway, runs v6, so v6 has nowhere left to go.
+    const newest = await screen.findByTestId(`deploy-version-${versions[0].version}`);
+    expect(await within(newest).findByTestId('version-deployed-to')).toHaveTextContent('Dev');
+    const deploy = within(newest).getByRole('button', {name: 'Deploy'});
+    expect(deploy).toBeDisabled();
+    await userEvent.hover(deploy.parentElement!);
+    expect(await screen.findByText('Already deployed to Dev')).toBeInTheDocument();
+  });
+
+  it('keeps every Deploy off while no gateway is ready', async () => {
+    routes['GET /gateways'] = gateways.map((gateway) => ({...gateway, ready: false}));
+    routes['GET /gateways/gw-dev/applied-version'] = {gatewayId: 'gw-dev'};
+    routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod'};
+    render(<DeployPage />);
+
+    const list = await screen.findByTestId('deploy-versions');
+    const deploys = await within(list).findAllByRole('button', {name: 'Deploy'});
+    expect(deploys.length).toBeGreaterThan(0);
+    deploys.forEach((button: HTMLElement) => expect(button).toBeDisabled());
+    await userEvent.hover(deploys[0].parentElement!);
+    expect(
+      await screen.findByText('No gateway is ready yet. A version can be deployed once one is.'),
+    ).toBeInTheDocument();
+  });
+
   it('says when there is no gateway to deploy to', async () => {
     routes['GET /gateways'] = [];
     render(<DeployPage />);

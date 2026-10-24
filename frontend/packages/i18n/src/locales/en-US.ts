@@ -5966,6 +5966,7 @@ const translations = {
   // ============================================================================
   gateways: {
     default: 'Default',
+    provisioning: 'Provisioning',
     'delete.confirm': 'Remove the registration of {{name}}?',
     'delete.disclaimer': 'The gateway itself is not changed. It keeps running with the configuration it already holds.',
     'delete.error': 'The gateway could not be removed. Please try again.',
@@ -6060,6 +6061,7 @@ const translations = {
     'errors.GTW-1018': 'The version was removed or replaced while it was deployed. Deploy a newer version.',
     'errors.GTW-1019': 'Another deploy to this gateway finished first. Check what it runs now, then try again.',
     'errors.GTW-1029': 'Another deploy to this gateway is running. Try again once it finishes.',
+    'errors.GTW-1031': 'This gateway is still being provisioned. Try again once it is ready.',
     'errors.GTW-5001': 'The gateway could not apply the configuration.',
     'errors.GTW-5003': 'The deploy took too long to prepare and sent nothing to the gateway. Try again.',
     'errors.VAR-1002':
@@ -6084,6 +6086,7 @@ const translations = {
     'applyPanel.failed': 'The version could not be deployed.',
     'applyPanel.forbidden': 'Your account may not deploy to this gateway.',
     'applyPanel.gateway': 'Gateway',
+    'applyPanel.gatewayProvisioning': '{{name}} (provisioning)',
     'applyPanel.submit': 'Deploy',
     'applyPanel.submitConfirm': 'Deploy and remove {{count}}',
     'applyPanel.title': 'Deploy {{label}}',
@@ -6245,6 +6248,8 @@ const translations = {
     'stage.exploreLabel': 'Explore {{name}}',
     'stage.heldBack': '{{count}} held back, not running',
     'stage.nothingDeployed': 'Nothing deployed yet',
+    'stage.provisioning': 'Provisioning',
+    'stage.provisioningHint': '{{name}} is still being provisioned. It can be deployed to once it is ready.',
     'stage.revert': 'Rollback',
     'stage.revertHint': 'Go back one step, to the version {{name}} ran before.',
     'stage.revertNone':
@@ -6302,6 +6307,7 @@ const translations = {
     'version.hash': 'Hash {{hash}}',
     'versions.deployRow': 'Deploy',
     'versions.alreadyDeployed': 'Already deployed to {{targets}}',
+    'versions.notReady': 'No gateway is ready yet. A version can be deployed once one is.',
     'versions.description': 'Captured from the configuration, newest first.',
     'versions.details': 'Details of v{{number}}',
     'versions.empty': 'No version has been captured yet.',

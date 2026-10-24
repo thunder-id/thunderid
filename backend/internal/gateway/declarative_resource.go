@@ -115,6 +115,8 @@ func (d *declaredGatewayStore) Create(_ string, data interface{}) error {
 		BaseURL:       declared.BaseURL,
 		CACertificate: declared.CACertificate,
 		Key:           declared.Key,
+		// A gateway declared in a file is one the operator already runs.
+		Ready: true,
 	}); err != nil {
 		return fmt.Errorf("failed to load gateway %q: %w", declared.Name, err)
 	}

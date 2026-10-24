@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,13 +50,32 @@ type fakeStore struct {
 	defaultTakenOnce bool
 	// defaultWriteFails fails every default write with this error, as a broken database would.
 	defaultWriteFails error
+	// mu guards the reads a background capture makes against a test marking a gateway ready.
+	mu sync.Mutex
 }
 
-func (f *fakeStore) List(context.Context) ([]Gateway, error) { return f.gateways, f.err }
+func (f *fakeStore) List(context.Context) ([]Gateway, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Gateway(nil), f.gateways...), f.err
+}
+
+// setReady marks a gateway ready or not, as an edit would, while a capture may be reading it.
+func (f *fakeStore) setReady(id string, ready bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.gateways {
+		if f.gateways[i].ID == id {
+			f.gateways[i].Ready = ready
+		}
+	}
+}
 
 // GetByID returns a copy, as the real store does: it builds a fresh struct from the row. Handing
 // back a pointer into the slice would let a caller that blanks the key blank the stored one too.
 func (f *fakeStore) GetByID(_ context.Context, id string) (*Gateway, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for i := range f.gateways {
 		if f.gateways[i].ID == id {
 			found := f.gateways[i]
@@ -899,5 +919,37 @@ func TestAGatewayNameIsKeptSimple(t *testing.T) {
 	_, svcErr = newTestService(t, store).Update(context.Background(), gw.ID, UpdateRequest{Name: &bad})
 	if svcErr == nil || svcErr.Code != ErrorInvalidGatewayName.Code {
 		t.Fatalf("a rename to %q was not refused: %v", bad, svcErr)
+	}
+}
+
+// A gateway registers ready unless it says it is still being provisioned, and an edit marks it ready.
+func TestAGatewayRegisteredWhileProvisionedIsMarkedReadyByAnEdit(t *testing.T) {
+	ready, notReady := true, false
+
+	registered, svcErr := newTestService(t, &fakeStore{}).Register(context.Background(), validRequest(testGatewayName))
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if !registered.Ready {
+		t.Fatal("a gateway registered without saying otherwise is not ready")
+	}
+
+	svc := newTestService(t, &fakeStore{})
+	req := validRequest(testGatewayName)
+	req.Ready = &notReady
+	provisioning, svcErr := svc.Register(context.Background(), req)
+	if svcErr != nil {
+		t.Fatalf("register: %v", svcErr)
+	}
+	if provisioning.Ready {
+		t.Fatal("a gateway registered as being provisioned is ready")
+	}
+
+	updated, svcErr := svc.Update(context.Background(), provisioning.ID, UpdateRequest{Ready: &ready})
+	if svcErr != nil {
+		t.Fatalf("update: %v", svcErr)
+	}
+	if !updated.Ready || updated.Name != testGatewayName || updated.BaseURL != "https://dp.example.test" {
+		t.Fatalf("marking the gateway ready changed it to %+v", updated)
 	}
 }

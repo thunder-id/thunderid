@@ -9,14 +9,14 @@ var (
 	// queryListGateways returns every gateway of the deployment, oldest first.
 	queryListGateways = dbmodel.DBQuery{
 		ID: "GTW_MGT-01",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, ` +
 			`CREATED_AT, UPDATED_AT ` +
 			`FROM "GATEWAY" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT`,
 	}
 	// queryGetGatewayByID returns one gateway.
 	queryGetGatewayByID = dbmodel.DBQuery{
 		ID: "GTW_MGT-02",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, ` +
 			`CREATED_AT, UPDATED_AT ` +
 			`FROM "GATEWAY" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -40,16 +40,16 @@ var (
 	// uniqueness of NAME and BASE_URL, which the table's constraints enforce.
 	queryInsertGateway = dbmodel.DBQuery{
 		ID: "GTW_MGT-04",
-		// The deployment id is passed twice, as $7 and $8, rather than reused. PostgreSQL deduces a
+		// The deployment id is passed twice, as $8 and $9, rather than reused. PostgreSQL deduces a
 		// parameter's type from how it is used, and one used both as an inserted value and in a
 		// comparison gets two answers: "inconsistent types deduced for parameter $7, text versus
 		// character varying". Two parameters give each use its own type, without the casts that would
 		// make this statement PostgreSQL-only.
 		Query: `INSERT INTO "GATEWAY" ` +
-			`(ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, DEPLOYMENT_ID) ` +
-			`SELECT $1, $2, $3, $4, $5, $6, $7 ` +
-			`WHERE (SELECT COUNT(*) FROM "GATEWAY" WHERE DEPLOYMENT_ID = $8) < $9 ` +
-			`RETURNING ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+			`(ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, DEPLOYMENT_ID) ` +
+			`SELECT $1, $2, $3, $4, $5, $6, $7, $8 ` +
+			`WHERE (SELECT COUNT(*) FROM "GATEWAY" WHERE DEPLOYMENT_ID = $9) < $10 ` +
+			`RETURNING ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, ` +
 			`CREATED_AT, UPDATED_AT`,
 	}
 	// queryClearDefaultGateway takes the default off whichever gateway of the deployment holds it,
@@ -62,14 +62,14 @@ var (
 			`WHERE IS_DEFAULT = 1 AND DEPLOYMENT_ID = $1`,
 	}
 
-	// queryUpdateGateway replaces a gateway's connection details.
+	// queryUpdateGateway replaces a gateway's connection details and whether it is ready.
 	queryUpdateGateway = dbmodel.DBQuery{
 		ID: "GTW_MGT-05",
 		Query: `UPDATE "GATEWAY" SET NAME = $2, BASE_URL = $3, MANAGEMENT_KEY = $4, ` +
-			`CA_CERTIFICATE = $5, UPDATED_AT = NOW() WHERE ID = $1 AND DEPLOYMENT_ID = $6`,
+			`CA_CERTIFICATE = $5, READY = $6, UPDATED_AT = NOW() WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
 		SQLiteQuery: `UPDATE "GATEWAY" SET NAME = $2, BASE_URL = $3, ` +
-			`MANAGEMENT_KEY = $4, CA_CERTIFICATE = $5, UPDATED_AT = datetime('now') ` +
-			`WHERE ID = $1 AND DEPLOYMENT_ID = $6`,
+			`MANAGEMENT_KEY = $4, CA_CERTIFICATE = $5, READY = $6, UPDATED_AT = datetime('now') ` +
+			`WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
 	}
 	// queryDeleteGateway removes a gateway.
 	queryDeleteGateway = dbmodel.DBQuery{
@@ -83,14 +83,14 @@ var (
 	// that write and blank the stored name.
 	queryGetGatewayByName = dbmodel.DBQuery{
 		ID: "GTW_MGT-07",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, ` +
 			`CREATED_AT, UPDATED_AT FROM "GATEWAY" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 	// queryGetGatewayByBaseURL supports the rule that one gateway registers once, which its
 	// address is what decides.
 	queryGetGatewayByBaseURL = dbmodel.DBQuery{
 		ID: "GTW_MGT-08",
-		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, ` +
+		Query: `SELECT ID, NAME, BASE_URL, MANAGEMENT_KEY, CA_CERTIFICATE, IS_DEFAULT, READY, ` +
 			`CREATED_AT, UPDATED_AT FROM "GATEWAY" WHERE BASE_URL = $1 AND DEPLOYMENT_ID = $2`,
 	}
 )

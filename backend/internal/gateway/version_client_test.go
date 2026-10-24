@@ -27,7 +27,7 @@ func gatewayFor(t *testing.T, handler http.HandlerFunc) *Gateway {
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
-	return &Gateway{ID: "gw-1", BaseURL: server.URL, CACertificate: string(certificate)}
+	return &Gateway{ID: "gw-1", BaseURL: server.URL, CACertificate: string(certificate), Ready: true}
 }
 
 // The import is posted to the gateway with its key in the management API key header, verified

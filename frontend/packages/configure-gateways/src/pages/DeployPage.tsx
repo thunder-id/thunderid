@@ -160,6 +160,16 @@ export default function DeployPage(): JSX.Element {
                       deploying={open?.kind === 'apply' ? open.version.version : undefined}
                       runners={runners}
                       targets={list.map((gateway: Gateway) => gateway.name)}
+                      // Only a ready gateway takes a deploy, so a version every ready gateway runs has
+                      // nowhere to go.
+                      deployTargets={list
+                        .filter((gateway: Gateway) => gateway.ready !== false)
+                        .map((gateway: Gateway) => gateway.name)}
+                      deployDisabledReason={
+                        list.some((gateway: Gateway) => gateway.ready !== false)
+                          ? undefined
+                          : t('versions.notReady', 'No gateway is ready yet. A version can be deployed once one is.')
+                      }
                     />
                   ) : (
                     <Box />

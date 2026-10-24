@@ -46,7 +46,13 @@ type Gateway struct {
 	//
 	// At most one gateway is the default. The first gateway registered becomes it, and registering
 	// another as the default moves it there, so the most recent choice is the one that stands.
-	IsDefault bool      `json:"isDefault,omitempty"`
+	IsDefault bool `json:"isDefault,omitempty"`
+	// Ready reports whether the gateway is up and can be applied to. A gateway registered before its
+	// deployment is serving, as one being provisioned is, starts not ready and is marked ready once it
+	// serves. Until then nothing is applied to it and its store is not called: the call would fail,
+	// and a deploy to it is refused as one to a gateway still being provisioned instead. Values meant
+	// for its store wait and are written once it is ready.
+	Ready     bool      `json:"ready"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -70,6 +76,10 @@ type RegisterRequest struct {
 	// IsDefault makes this the default gateway. A gateway that already is the default gives that up
 	// to this one. The first gateway registered is the default whether or not it asks.
 	IsDefault bool `json:"isDefault,omitempty"`
+	// Ready says whether the gateway is already serving. Optional, and true when omitted: a gateway
+	// is usually registered once it is up. One registered while its deployment is still being
+	// provisioned says false, and is marked ready with an edit once it serves.
+	Ready *bool `json:"ready,omitempty"`
 }
 
 // UpdateRequest changes a registration. Every field is optional: what is omitted is left as it is,
@@ -86,6 +96,9 @@ type UpdateRequest struct {
 	BaseURL       *string `json:"baseUrl,omitempty"`
 	CACertificate *string `json:"caCertificate,omitempty"`
 	Key           *string `json:"key,omitempty"`
+	// Ready marks the gateway ready, or not, which is how a gateway being provisioned is let in once
+	// it serves.
+	Ready *bool `json:"ready,omitempty"`
 }
 
 // Registration is what a registration returns: the gateway, and the key once.

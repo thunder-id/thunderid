@@ -59,7 +59,10 @@ export default function ApplyPanel({
 }: ApplyPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
-  const [target, setTarget] = useState<string>(gatewayId ?? gateways[0]?.id ?? '');
+  // A gateway still being provisioned cannot take a deploy, so the first one that is ready is chosen.
+  const [target, setTarget] = useState<string>(
+    gatewayId ?? gateways.find((entry: Gateway) => entry.ready !== false)?.id ?? '',
+  );
   const gateway = gateways.find((entry: Gateway) => entry.id === target);
   const check = useApplyCheck(target, version.version);
   const apply = useApplyVersion();
@@ -170,8 +173,10 @@ export default function ApplyPanel({
         sx={{minWidth: 160}}
       >
         {gateways.map((entry: Gateway) => (
-          <MenuItem key={entry.id} value={entry.id}>
-            {entry.name}
+          <MenuItem key={entry.id} value={entry.id} disabled={entry.ready === false}>
+            {entry.ready === false
+              ? t('applyPanel.gatewayProvisioning', '{{name}} (provisioning)', {name: entry.name})
+              : entry.name}
           </MenuItem>
         ))}
       </Select>

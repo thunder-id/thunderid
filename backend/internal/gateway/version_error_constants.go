@@ -236,4 +236,18 @@ var (
 				"control plane captures it, is not YAML until its values are filled in.",
 		},
 	}
+	// ErrorGatewayNotReady is returned when a deploy, or a call to its store, names a gateway that is
+	// not ready yet, as one still being provisioned is not.
+	ErrorGatewayNotReady = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.gateway_not_ready",
+			DefaultValue: "The gateway is not ready yet",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.gateway_not_ready.description",
+			DefaultValue: "The gateway is still being provisioned. Try again once it is marked ready.",
+		},
+	}
 )

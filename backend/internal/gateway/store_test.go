@@ -137,21 +137,22 @@ func (s *StoreTestSuite) TestCountReadsTheTotal() {
 func (s *StoreTestSuite) TestCreateReturnsTheStoredRow() {
 	s.expectDBClient()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		"gw-1", "production", "https://dp.test", "sealed", "", false,
+		"gw-1", "production", "https://dp.test", "sealed", "", false, true,
 		storeDeploymentID, storeDeploymentID, 5).
 		Return([]map[string]interface{}{
 			{"id": "gw-1", "name": "production",
-				"base_url": "https://dp.test", "management_key": "sealed"},
+				"base_url": "https://dp.test", "management_key": "sealed", "ready": true},
 		}, nil).Once()
 
 	created, err := s.store.Create(scoped(), &Gateway{
 		ID: "gw-1", Name: "production",
-		BaseURL: "https://dp.test", Key: "sealed",
+		BaseURL: "https://dp.test", Key: "sealed", Ready: true,
 	}, 5)
 
 	s.Require().NoError(err)
 	s.Require().NotNil(created)
 	s.Equal("production", created.Name)
+	s.True(created.Ready)
 }
 
 // No row back means the capacity check refused the write, which is not an error: the service turns
@@ -159,7 +160,7 @@ func (s *StoreTestSuite) TestCreateReturnsTheStoredRow() {
 func (s *StoreTestSuite) TestCreateReturnsNilWhenTheLimitRefusesIt() {
 	s.expectDBClient()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false, mock.Anything,
 		storeDeploymentID, storeDeploymentID, 1).
 		Return([]map[string]interface{}{}, nil).Once()
 
@@ -192,7 +193,7 @@ func (s *StoreTestSuite) TestCreatingTheDefaultGatewayMovesTheDefault() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
 		Return(int64(1), nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		"gw-2", "production", "https://dp.test", "sealed", "", true,
+		"gw-2", "production", "https://dp.test", "sealed", "", true, mock.Anything,
 		storeDeploymentID, storeDeploymentID, 5).
 		Return([]map[string]interface{}{
 			{"id": "gw-2", "name": "production", "base_url": "https://dp.test",
@@ -220,7 +221,7 @@ func (s *StoreTestSuite) TestARefusedDefaultRegistrationKeepsTheDefault() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
 		Return(int64(1), nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true, mock.Anything,
 		storeDeploymentID, storeDeploymentID, 1).
 		Return([]map[string]interface{}{}, nil).Once()
 
@@ -243,7 +244,7 @@ func (s *StoreTestSuite) TestAFailureReleasingTheDefaultIsReported() {
 	s.Require().Error(err)
 	s.dbClientMock.AssertNotCalled(s.T(), "QueryContext", mock.Anything, queryInsertGateway,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A default write the index refuses is reported as the default being taken, which is what the service
@@ -254,7 +255,7 @@ func (s *StoreTestSuite) TestADefaultWriteTheIndexRefusesReportsTheDefaultTaken(
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryClearDefaultGateway, storeDeploymentID).
 		Return(int64(0), nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, true, mock.Anything,
 		storeDeploymentID, storeDeploymentID, 5).
 		Return(nil, &pq.Error{Code: "23505", Constraint: defaultIndexName}).Once()
 
@@ -288,12 +289,12 @@ func (s *StoreTestSuite) TestReadsCarryTheDefaultFromEitherDatabase() {
 func (s *StoreTestSuite) TestUpdateIsDeploymentScoped() {
 	s.expectDBClient()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryUpdateGateway,
-		"gw-1", "production", "https://dp.test", "sealed", "", storeDeploymentID).
+		"gw-1", "production", "https://dp.test", "sealed", "", true, storeDeploymentID).
 		Return(int64(1), nil).Once()
 
 	err := s.store.Update(scoped(), &Gateway{
 		ID: "gw-1", Name: "production",
-		BaseURL: "https://dp.test", Key: "sealed",
+		BaseURL: "https://dp.test", Key: "sealed", Ready: true,
 	})
 
 	s.Require().NoError(err)
@@ -396,7 +397,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 		s.SetupTest()
 		s.expectDBClient()
 		s.dbClientMock.On("QueryContext", mock.Anything, queryInsertGateway,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, false, mock.Anything,
 			storeDeploymentID, storeDeploymentID, 5).Return(nil, failure).Once()
 
 		_, err := s.store.Create(scoped(), &Gateway{ID: "gw-1"}, 5)
@@ -408,7 +409,7 @@ func (s *StoreTestSuite) TestWritesReportFailures() {
 		s.SetupTest()
 		s.expectDBClient()
 		s.dbClientMock.On("ExecuteContext", mock.Anything, queryUpdateGateway,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			storeDeploymentID).Return(int64(0), failure).Once()
 
 		s.Require().Error(s.store.Update(scoped(), &Gateway{ID: "gw-1"}))

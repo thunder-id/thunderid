@@ -27,6 +27,11 @@ export interface VersionsCardProps {
    * configuration is promoted along a path, only the first target takes a deploy.
    */
   deployTargets?: string[];
+  /**
+   * Why no version can be deployed right now, such as every target still being provisioned. When set,
+   * each Deploy is disabled and says so.
+   */
+  deployDisabledReason?: string;
 }
 
 /** The colours targets are tagged in, by their place along the path. */
@@ -80,6 +85,7 @@ export default function VersionsCard({
   runners = {},
   targets = [],
   deployTargets = undefined,
+  deployDisabledReason = undefined,
 }: VersionsCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
   // One version is open at a time, the newest until another is opened; closing it leaves none open.
@@ -99,6 +105,10 @@ export default function VersionsCard({
   const deployButton = (version: Version, deployedTo: string[]): JSX.Element | null => {
     if (!onDeploy) return null;
     const everywhere = reachable.length > 0 && reachable.every((name: string) => deployedTo.includes(name));
+    let reason = deployDisabledReason;
+    if (reason === undefined && everywhere) {
+      reason = t('versions.alreadyDeployed', 'Already deployed to {{targets}}', {targets: reachable.join(', ')});
+    }
     const button = (
       <Button
         variant="contained"
@@ -109,18 +119,16 @@ export default function VersionsCard({
           event.stopPropagation();
           onDeploy(version);
         }}
-        disabled={everywhere}
+        disabled={reason !== undefined}
         aria-pressed={deploying === version.version}
         sx={{borderRadius: 100, flexShrink: 0, fontSize: 12}}
       >
         {t('versions.deployRow', 'Deploy')}
       </Button>
     );
-    if (!everywhere) return button;
+    if (reason === undefined) return button;
     return (
-      <Tooltip
-        title={t('versions.alreadyDeployed', 'Already deployed to {{targets}}', {targets: reachable.join(', ')})}
-      >
+      <Tooltip title={reason}>
         {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
         <Box component="span" onClick={(event) => event.stopPropagation()} sx={{flexShrink: 0}}>
           {button}

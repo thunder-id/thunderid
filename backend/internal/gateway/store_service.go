@@ -143,7 +143,7 @@ func (s *storeService) DeleteSecret(ctx context.Context, gatewayID,
 // reached, or answered with something other than an error, is reported unreachable.
 func callGatewayStore[T any](ctx context.Context, s *storeService, gatewayID string,
 	call func(gw *Gateway, key string) (*T, bool, error)) (*StoreAnswer[T], *tidcommon.ServiceError) {
-	gw, svcErr := findGateway(ctx, s.gateways, s.logger, gatewayID)
+	gw, svcErr := readyGateway(ctx, s.gateways, s.logger, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
 	}

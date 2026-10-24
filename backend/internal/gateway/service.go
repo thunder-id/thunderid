@@ -163,6 +163,8 @@ func (s *service) Register(ctx context.Context,
 		// The first gateway registered is the default: with a single gateway there is no other
 		// candidate, and it should not need the flag to say so.
 		IsDefault: req.IsDefault || count == 0,
+		// A gateway is registered ready unless the request says it is still being provisioned.
+		Ready: req.Ready == nil || *req.Ready,
 	}
 	// The insert carries the capacity check and returns the row it wrote, so what comes back is what
 	// is stored, timestamps included. No row means the limit refused it.
@@ -206,7 +208,7 @@ func (s *service) Update(ctx context.Context, id string,
 	if strings.TrimSpace(id) == "" {
 		return nil, &ErrorInvalidGatewayID
 	}
-	if req.Name == nil && req.BaseURL == nil && req.CACertificate == nil && req.Key == nil {
+	if req.Name == nil && req.BaseURL == nil && req.CACertificate == nil && req.Key == nil && req.Ready == nil {
 		return nil, &ErrorNothingToUpdate
 	}
 
@@ -276,6 +278,10 @@ func (s *service) Update(ctx context.Context, id string,
 			return nil, svcErr
 		}
 		existing.Key = stored
+	}
+
+	if req.Ready != nil {
+		existing.Ready = *req.Ready
 	}
 
 	if err := s.store.Update(ctx, existing); err != nil {
