@@ -115,7 +115,7 @@ func (suite *JWTServiceTestSuite) AfterTest(_, _ string) {
 
 func (suite *JWTServiceTestSuite) SetupTest() {
 	// The JWT service reads no global config; the runtime is initialized only so
-	// httpservice.NewHTTPClientWithTimeout can read the TLS min-version config.
+	// httpservice.NewHTTPClient can read the TLS min-version config.
 	config.ResetServerRuntime()
 	if err := config.InitializeServerRuntime("", &config.Config{}); err != nil {
 		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
@@ -184,7 +184,7 @@ func (suite *JWTServiceTestSuite) SetupTest() {
 		jwsAlg:     string(jws.RS256),
 		kid:        "test-kid",
 		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWTService")),
-		httpClient: httpservice.NewHTTPClientWithTimeout(10 * time.Second),
+		httpClient: httpservice.NewHTTPClient(httpservice.HTTPClientConfig{Timeout: 10 * time.Second}),
 	}
 }
 
