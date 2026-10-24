@@ -6245,6 +6245,13 @@ const translations = {
     'stage.exploreLabel': 'Explore {{name}}',
     'stage.heldBack': '{{count}} held back, not running',
     'stage.nothingDeployed': 'Nothing deployed yet',
+    'stage.changed_one': '{{count}} value changed since deploy',
+    'stage.changed_other': '{{count}} values changed since deploy',
+    'stage.redeploy': 'Redeploy',
+    'stage.redeployHint': 'Deploy the version {{name}} runs again, so {{values}} take effect.',
+    'stage.redeployNone': 'Nothing to redeploy: no value has changed since {{name}} was deployed.',
+    'stage.changedCheckFailed': 'Could not check whether any value changed since {{name}} was deployed.',
+    'stage.checkAgain': 'Check again',
     'stage.revert': 'Rollback',
     'stage.revertHint': 'Go back one step, to the version {{name}} ran before.',
     'stage.revertNone':

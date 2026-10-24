@@ -3,6 +3,7 @@
 
 import type {JSX} from 'react';
 import StageCard from './StageCard';
+import useChangedValues from '../api/useChangedValues';
 import useHeldBack from '../api/useHeldBack';
 import type {AppliedVersion, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
@@ -15,6 +16,8 @@ export interface GatewayStageProps {
   onExplore: () => void;
   onConfigure: () => void;
   onRevert: () => void;
+  /** Deploys the version the gateway runs again, to take up values set since it was deployed. */
+  onRedeploy?: () => void;
 }
 
 /** One gateway on the deploy path, with the version it runs and when it came to run it. */
@@ -25,9 +28,11 @@ export default function GatewayStage({
   onExplore,
   onConfigure,
   onRevert,
+  onRedeploy = undefined,
 }: GatewayStageProps): JSX.Element {
   const hash = applied?.appliedVersion ?? undefined;
   const heldBack = useHeldBack(gateway.id, hash);
+  const changedCheck = useChangedValues(gateway.id, hash);
   const index = hash ? versions.findIndex((version: Version) => version.version === hash) : -1;
   const number = index < 0 ? undefined : (versions[index].number ?? versions.length - index);
   return (
@@ -42,6 +47,10 @@ export default function GatewayStage({
       onConfigure={onConfigure}
       onRevert={onRevert}
       revertDisabled={!applied?.previousVersion}
+      onRedeploy={onRedeploy}
+      changed={changedCheck.changed}
+      changedCheckFailed={changedCheck.failed}
+      onRetryChangedCheck={changedCheck.retry}
       testId={`deploy-stage-${gateway.id}`}
     />
   );

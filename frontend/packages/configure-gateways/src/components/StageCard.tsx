@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Button, ButtonBase, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {ArrowRight, SlidersHorizontal, Undo2} from '@wso2/oxygen-ui-icons-react';
+import {ArrowRight, RefreshCw, SlidersHorizontal, Undo2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ActorName from './ActorName';
@@ -10,7 +10,8 @@ import CopyableUrl from './CopyableUrl';
 import DeployCard from './DeployCard';
 import Timestamp from './Timestamp';
 import VersionName from './VersionName';
-import type {Actor, Change} from '../models/deploy';
+import {changedCount} from '../api/useChangedValues';
+import type {Actor, Change, ChangedValues} from '../models/deploy';
 
 export interface StageCardProps {
   name: string;
@@ -30,6 +31,20 @@ export interface StageCardProps {
   /** Starts a rollback; absent or disabled when there is nothing to go back to. */
   onRevert?: () => void;
   revertDisabled?: boolean;
+  /**
+   * Deploys the version the stage runs again, which is how values set since it was deployed take
+   * effect. Absent, or while the stage runs nothing, there is no Redeploy.
+   */
+  onRedeploy?: () => void;
+  /** The values set on the stage since its version was deployed. Redeploy is enabled only while any are. */
+  changed?: ChangedValues;
+  /**
+   * The check for changed values failed, so whether any changed is not known. Redeploy then gives way
+   * to checking again, rather than saying nothing changed.
+   */
+  changedCheckFailed?: boolean;
+  /** Runs the check for changed values again. */
+  onRetryChangedCheck?: () => void;
   /** The stage's own action, at the right of its footer, such as promoting it to the next stage. */
   action?: ReactNode;
   testId?: string;
@@ -47,10 +62,16 @@ export default function StageCard({
   onConfigure,
   onRevert = undefined,
   revertDisabled = false,
+  onRedeploy = undefined,
+  changed = undefined,
+  changedCheckFailed = false,
+  onRetryChangedCheck = undefined,
   action = undefined,
   testId = undefined,
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const owed = changedCount(changed);
+  const owedNames = [...(changed?.variables ?? []), ...(changed?.secrets ?? [])].join(', ');
   const header = (
     <ButtonBase
       onClick={onExplore}
@@ -88,6 +109,56 @@ export default function StageCard({
       <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
         {t('stage.configure', 'Configure')}
       </Button>
+      {onRedeploy && version && changedCheckFailed && (
+        <Tooltip
+          title={t(
+            'stage.changedCheckFailed',
+            'Could not check whether any value changed since {{name}} was deployed.',
+            {name},
+          )}
+        >
+          <Box component="span">
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<RefreshCw size={14} />}
+              onClick={onRetryChangedCheck}
+              disabled={!onRetryChangedCheck}
+              data-testid="stage-changed-check-retry"
+            >
+              {t('stage.checkAgain', 'Check again')}
+            </Button>
+          </Box>
+        </Tooltip>
+      )}
+      {onRedeploy && version && !changedCheckFailed && (
+        <Tooltip
+          title={
+            owed > 0
+              ? t('stage.redeployHint', 'Deploy the version {{name}} runs again, so {{values}} take effect.', {
+                  name,
+                  values: owedNames,
+                })
+              : t('stage.redeployNone', 'Nothing to redeploy: no value has changed since {{name}} was deployed.', {
+                  name,
+                })
+          }
+        >
+          {/* A disabled button takes no hover, so the hint is held by what wraps it. */}
+          <Box component="span">
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<RefreshCw size={14} />}
+              onClick={onRedeploy}
+              disabled={owed === 0}
+              data-testid="stage-redeploy"
+            >
+              {t('stage.redeploy', 'Redeploy')}
+            </Button>
+          </Box>
+        </Tooltip>
+      )}
       {onRevert && (
         <Tooltip
           title={
@@ -150,6 +221,24 @@ export default function StageCard({
                 </Typography>
               )}
               {deployedBy && <ActorName actor={deployedBy} />}
+              {owed > 0 && (
+                <Tooltip title={owedNames}>
+                  <Typography
+                    variant="caption"
+                    color="warning.main"
+                    data-testid="stage-changed"
+                    sx={{
+                      width: 'fit-content',
+                      cursor: 'help',
+                      borderBottom: 1,
+                      borderStyle: 'dotted',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    {t('stage.changed', '{{count}} values changed since deploy', {count: owed})}
+                  </Typography>
+                </Tooltip>
+              )}
               {heldBack.length > 0 && (
                 <Tooltip title={heldBack.map((change: Change) => change.name ?? change.id ?? change.key).join(', ')}>
                   <Typography

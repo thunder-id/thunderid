@@ -326,6 +326,12 @@ always covers the removals that were pointed out. A deploy or rollback to a gate
 applying an earlier one is refused once it has waited, and the dialog says another deploy is running,
 so you can try again once it finishes.
 
+A value set on a gateway after its version was deployed, such as a client secret you regenerate or a
+secret you update under **Configure**, does not take effect until a version is deployed again, and the
+version itself has not changed. The gateway's card says how many values changed since its deploy, and
+**Redeploy** on the card deploys the version the gateway runs again so they take effect. **Redeploy**
+is disabled while no value has changed.
+
 **Explore** on a gateway's card, or a click on the card itself, opens the gateway's explorer: a map of
 every resource the gateway runs, in lanes by type, with a line for each relationship between them,
 such as an application and the flow it signs users in with. Hovering a line names the relationship.

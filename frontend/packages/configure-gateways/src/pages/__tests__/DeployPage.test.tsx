@@ -269,6 +269,49 @@ describe('DeployPage', () => {
     ]);
   });
 
+  it('offers a redeploy only when a value changed since the gateway was deployed, and deploys its version again', async () => {
+    const unchanged = {
+      toVersion: versions[0].version,
+      summary: {added: 0, updated: 0, deleted: 0, unchanged: 3},
+      changes: [{key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'unchanged'}],
+    };
+    routes['POST /gateways/gw-dev/apply'] = (call: Call) =>
+      (call.data as {dryRun?: boolean}).dryRun
+        ? {gatewayId: 'gw-dev', dryRun: true, diff: unchanged, changed: {secrets: ['APP_SECRET']}}
+        : {gatewayId: 'gw-dev', dryRun: false, diff: unchanged, recorded: true};
+    routes['POST /gateways/gw-prod/apply'] = () => ({gatewayId: 'gw-prod', dryRun: true, diff: unchanged});
+    render(<DeployPage />);
+
+    // Prod's values are as they were deployed, so it has nothing to redeploy.
+    const prod = await screen.findByTestId('deploy-stage-gw-prod');
+    const prodRedeploy = await within(prod).findByTestId('stage-redeploy');
+    expect(prodRedeploy).toBeDisabled();
+    await userEvent.hover(prodRedeploy.parentElement!);
+    expect(
+      await screen.findByText('Nothing to redeploy: no value has changed since Prod was deployed.'),
+    ).toBeInTheDocument();
+
+    // A secret was set on Dev since it was deployed: its version is owed again though it did not change.
+    const dev = screen.getByTestId('deploy-stage-gw-dev');
+    expect(await within(dev).findByTestId('stage-changed')).toHaveTextContent(/1 values? changed since deploy/);
+    const redeploy = within(dev).getByTestId('stage-redeploy');
+    expect(redeploy).toBeEnabled();
+    await userEvent.click(redeploy);
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    const submit = within(panel).getByRole('button', {name: 'Deploy'});
+    await waitFor(() => expect(submit).toBeEnabled());
+    await userEvent.click(submit);
+
+    await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+    const writes = http.calls.filter(
+      (call: Call) => call.method !== 'GET' && !(call.data as {dryRun?: boolean})?.dryRun,
+    );
+    expect(writes.map((call: Call) => [call.method, call.url.replace(SERVER, ''), call.data])).toEqual([
+      ['POST', '/gateways/gw-dev/apply', {version: versions[0].version, selection: []}],
+    ]);
+  });
+
   it('keeps what is typed and unticked when the window regains focus', async () => {
     routes['POST /gateways/gw-dev/apply'] = () => ({
       gatewayId: 'gw-dev',
