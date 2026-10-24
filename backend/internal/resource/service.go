@@ -1567,9 +1567,14 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
 	links := make([]Link, 0)
 
+	separator := "?"
+	if strings.Contains(base, "?") {
+		separator = "&"
+	}
+
 	if offset > 0 {
 		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=0&limit=%d", base, limit),
+			Href: fmt.Sprintf("%s%soffset=0&limit=%d", base, separator, limit),
 			Rel:  "first",
 		})
 
@@ -1578,7 +1583,7 @@ func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
 			prevOffset = 0
 		}
 		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, prevOffset, limit),
+			Href: fmt.Sprintf("%s%soffset=%d&limit=%d", base, separator, prevOffset, limit),
 			Rel:  "prev",
 		})
 	}
@@ -1586,7 +1591,7 @@ func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
 	if offset+limit < totalCount {
 		nextOffset := offset + limit
 		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, nextOffset, limit),
+			Href: fmt.Sprintf("%s%soffset=%d&limit=%d", base, separator, nextOffset, limit),
 			Rel:  "next",
 		})
 	}
@@ -1594,7 +1599,7 @@ func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
 	lastPageOffset := ((totalCount - 1) / limit) * limit
 	if offset < lastPageOffset {
 		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, lastPageOffset, limit),
+			Href: fmt.Sprintf("%s%soffset=%d&limit=%d", base, separator, lastPageOffset, limit),
 			Rel:  "last",
 		})
 	}

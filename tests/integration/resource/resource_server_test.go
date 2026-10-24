@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -228,6 +229,39 @@ func (suite *ResourceServerAPITestSuite) TestListResourceServersWithPagination()
 	if list.TotalResults > 1 {
 		suite.NotEmpty(list.Links)
 	}
+}
+
+// TestListResourceServersByIdentifier tests listing resource servers filtered by exact identifier match.
+func (suite *ResourceServerAPITestSuite) TestListResourceServersByIdentifier() {
+	now := time.Now().UnixNano()
+	identifier := fmt.Sprintf("https://api.example.com/filter-test-%d/", now)
+	rs := CreateResourceServerRequest{
+		Name:        fmt.Sprintf("Filter Test Resource Server %d", now),
+		Description: "Resource server for identifier filtering",
+		Identifier:  identifier,
+		OUID:        testOUID,
+	}
+
+	rsID, err := createResourceServer(rs)
+	suite.Require().NoError(err)
+	defer deleteResourceServer(rsID)
+
+	// Existing identifier returns the matching resource server
+	list, err := listResourceServersByIdentifier(identifier)
+	suite.Require().NoError(err)
+	suite.Equal(1, list.TotalResults)
+	suite.Equal(1, list.Count)
+	suite.Require().Len(list.ResourceServers, 1)
+	suite.Equal(rsID, list.ResourceServers[0].ID)
+	suite.Equal(identifier, list.ResourceServers[0].Identifier)
+
+	// Non-existent identifier returns empty list
+	missingIdentifier := fmt.Sprintf("https://api.example.com/filter-test-missing-%d/", now)
+	emptyList, err := listResourceServersByIdentifier(missingIdentifier)
+	suite.Require().NoError(err)
+	suite.Equal(0, emptyList.TotalResults)
+	suite.Equal(0, emptyList.Count)
+	suite.Empty(emptyList.ResourceServers)
 }
 
 func (suite *ResourceServerAPITestSuite) TestUpdateResourceServer() {
@@ -751,6 +785,35 @@ func listResourceServers(offset, limit int) (*ResourceServerListResponse, error)
 
 	url := fmt.Sprintf("%s/resource-servers?offset=%d&limit=%d", testServerURL, offset, limit)
 	httpReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var list ResourceServerListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+
+	return &list, nil
+}
+
+// listResourceServersByIdentifier retrieves resource servers filtered by identifier.
+func listResourceServersByIdentifier(identifier string) (*ResourceServerListResponse, error) {
+	client := testutils.GetHTTPClient()
+
+	reqURL := fmt.Sprintf("%s/resource-servers?identifier=%s", testServerURL, url.QueryEscape(identifier))
+	httpReq, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
