@@ -16,8 +16,9 @@ can revert it to the one it held before.
 
 - <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
 - A gateway registered on the control plane through `POST /gateways`.
-- An access token with the root system permission (the `system` scope by default). Every route on this
-  page requires it.
+- An access token that may deploy: `system:deploy` for capturing and applying, `system:deploy:view`
+  for reading versions and what a gateway holds, or the root `system` permission, which covers both.
+  Registering a gateway needs `system:gateway`. See [Manage Roles](../users/manage-roles.mdx).
 
 ## Capture a Version
 

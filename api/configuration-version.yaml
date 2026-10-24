@@ -11,10 +11,11 @@ info:
 
     ## Authorization
 
-    Every route here requires the **root system permission**, the one named by
-    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
-    `tenant_instance:system` where a prefix is configured). A version describes the whole
-    configuration of the deployment, so reading one is as privileged as capturing one.
+    Capturing, naming and removing a version needs `system:deploy`; listing and reading versions
+    needs `system:deploy:view`, both under the system permission (`system` by default, or for example
+    `tenant_instance:system` where `server.security.system_permission_prefix` is configured), which
+    the root permission covers. A version describes the whole configuration of the deployment, so
+    reading one is a permission of its own.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
