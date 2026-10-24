@@ -132,8 +132,14 @@ type RESTConfig struct {
 // MCPConfig configures the MCP server. Audience is the MCP resource identifier: both the required
 // token audience and the RFC 9728 published "resource". The MCP spec makes the check mandatory, so
 // nil falls back to the derived identifier rather than disabling it.
+//
+// AuthorizationServer is the authorization server the RFC 9728 metadata advertises, which an MCP
+// client discovers its sign-in from. Nil advertises the token issuer: this server's own, or the
+// trusted issuer's. Set it when that issuer is not the URL of an authorization server a client can
+// reach, such as a trusted issuer named by a bare identifier.
 type MCPConfig struct {
-	Audience *string `yaml:"audience" json:"audience"`
+	Audience            *string `yaml:"audience"             json:"audience"`
+	AuthorizationServer *string `yaml:"authorization_server" json:"authorization_server"`
 }
 
 // TokenRevocationConfig configures the Resource Server's token-revocation enforcement: an in-memory

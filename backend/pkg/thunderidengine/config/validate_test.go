@@ -185,6 +185,26 @@ func (suite *ValidateTestSuite) TestMCPConfig_Validate() {
 	suite.T().Run("http audience passes", func(t *testing.T) {
 		assert.NoError(t, (&MCPConfig{Audience: strPtr("http://localhost:8090/mcp")}).Validate())
 	})
+
+	// A local issuer is http, which is as valid here as the audience's.
+	suite.T().Run("http authorization server passes", func(t *testing.T) {
+		assert.NoError(t, (&MCPConfig{AuthorizationServer: strPtr("http://localhost:8090")}).Validate())
+	})
+
+	suite.T().Run("authorization server URL passes, trimmed", func(t *testing.T) {
+		cfg := &MCPConfig{AuthorizationServer: strPtr(" https://idp.example.com/oauth2/token ")}
+		assert.NoError(t, cfg.Validate())
+		assert.Equal(t, "https://idp.example.com/oauth2/token", *cfg.AuthorizationServer)
+	})
+
+	// The value is what a client follows to sign in, so a bare identifier is refused at startup.
+	suite.T().Run("authorization server that is not a URL fails", func(t *testing.T) {
+		for _, value := range []string{"", "platform-idp", "/oauth2", "https://idp.example.com?tenant=a",
+			"https://idp.example.com?", "https://idp.example.com#issuer", "https://idp.example.com#"} {
+			assert.ErrorContains(t, (&MCPConfig{AuthorizationServer: strPtr(value)}).Validate(),
+				"mcp.authorization_server", value)
+		}
+	})
 }
 
 // ----- audience normalisation -----

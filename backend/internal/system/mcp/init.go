@@ -83,6 +83,11 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	if trustedIssuer := cfg.Server.SecurityConfig.TrustedIssuer; trustedIssuer.IsConfigured() {
 		authServer = trustedIssuer.Issuer
 	}
+	// An issuer is an identifier, which need not be the URL a client discovers sign-in from; a
+	// configured authorization server is advertised instead when the two differ.
+	if configured := cfg.Server.SecurityConfig.MCP.AuthorizationServer; configured != nil {
+		authServer = *configured
+	}
 
 	// Self-issued tokens must be scoped to this MCP resource specifically (RFC 8707 resource
 	// indicator) — a token minted for some other purpose does not authenticate here just because

@@ -61,12 +61,38 @@ func (suite *DefaultGuardTestSuite) TearDownTest() {
 
 // initRuntime installs a server runtime whose MCP audience is audience, or unset when nil.
 func (suite *DefaultGuardTestSuite) initRuntime(audience *string) {
+	suite.initRuntimeWith(engineconfig.MCPConfig{Audience: audience}, "")
+}
+
+// initRuntimeWith installs a server runtime with the given MCP configuration and token issuer.
+func (suite *DefaultGuardTestSuite) initRuntimeWith(mcpConfig engineconfig.MCPConfig, issuer string) {
 	config.ResetServerRuntime()
 	cfg := &config.Config{}
 	cfg.Server.Hostname = testHostname
 	cfg.Server.Port = testPort
-	cfg.Server.SecurityConfig.MCP = engineconfig.MCPConfig{Audience: audience}
+	cfg.JWT.Issuer = issuer
+	cfg.Server.SecurityConfig.MCP = mcpConfig
 	suite.Require().NoError(config.InitializeServerRuntime("", cfg))
+}
+
+// Without a configured authorization server, the metadata advertises the token issuer.
+func (suite *DefaultGuardTestSuite) TestDefaultGuard_AdvertisesTheIssuerByDefault() {
+	suite.initRuntimeWith(engineconfig.MCPConfig{}, "https://issuer.example.com")
+
+	_, metadata := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+
+	suite.Equal([]string{"https://issuer.example.com"}, metadata.AuthorizationServers)
+}
+
+// A configured authorization server is advertised in place of the issuer, which need not be a URL a
+// client can discover sign-in from.
+func (suite *DefaultGuardTestSuite) TestDefaultGuard_AdvertisesAConfiguredAuthorizationServer() {
+	server := "https://idp.example.com"
+	suite.initRuntimeWith(engineconfig.MCPConfig{AuthorizationServer: &server}, "platform-idp")
+
+	_, metadata := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+
+	suite.Equal([]string{server}, metadata.AuthorizationServers)
 }
 
 // accessToken builds a self-issued access token carrying the system scope, so the go-sdk guard's
