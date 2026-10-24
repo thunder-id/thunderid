@@ -23,6 +23,18 @@ export type ApiUser = {
   attributes: Record<string, unknown> & { username?: string; email?: string };
 };
 
+/** A user sharing policy, as `/users/{id}/sharing-policies` returns it. */
+export type ApiSharingPolicy = {
+  id: string;
+  initiatingOuId: string;
+  stage: "share" | "reshare";
+  version: number;
+  childUnits?:
+    | { mode: "all"; excludedOuIds?: string[] }
+    | { mode: "selected"; units: { ouId: string; reach: string }[] };
+  otherTreeRoots?: { mode: "all"; excludedOuIds?: string[] } | { mode: "selected"; units: { ouId: string }[] };
+};
+
 export class UsersApi {
   private readonly userTypes: UserTypesApi;
 
@@ -63,6 +75,19 @@ export class UsersApi {
 
   async findByUsername(username: string): Promise<ApiUser | undefined> {
     return (await this.findBy("username", username))[0];
+  }
+
+  /** Record a sharing policy for the user, issued by its own unit unless the body names `initiatingOuId`. */
+  async share(userId: string, policy: Record<string, unknown>): Promise<ApiSharingPolicy> {
+    const response = await sendOk(this.request, "POST", `/users/${userId}/sharing-policies`, policy);
+    return (await response.json()) as ApiSharingPolicy;
+  }
+
+  /** Every sharing policy of the user, re-shares included. */
+  async listSharingPolicies(userId: string): Promise<ApiSharingPolicy[]> {
+    const response = await sendOk(this.request, "GET", `/users/${userId}/sharing-policies?limit=100`);
+    const body = (await response.json()) as { policies?: ApiSharingPolicy[] };
+    return body.policies ?? [];
   }
 
   /**

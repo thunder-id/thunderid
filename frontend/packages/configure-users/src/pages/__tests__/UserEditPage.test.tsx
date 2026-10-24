@@ -164,6 +164,23 @@ vi.mock('@/components/edit-user/EditUserAttributes', () => ({
   },
 }));
 
+// The Organization Access tab has its own tests. The page holds its access state and saves it through its own bar.
+vi.mock('@/components/sharing/UserOrganizationAccess', () => ({
+  default: () => <div data-testid="user-organization-access" />,
+}));
+
+const mockAccess: {
+  hasChanges: boolean;
+  isSaving: boolean;
+  saveError: Error | null;
+  save: ReturnType<typeof vi.fn>;
+  reset: ReturnType<typeof vi.fn>;
+} = {hasChanges: false, isSaving: false, saveError: null, save: vi.fn(), reset: vi.fn()};
+
+vi.mock('@thunderid/configure-resource-sharing', () => ({
+  useOrganizationAccess: () => mockAccess,
+}));
+
 vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
   default: ({userId, credentialFields}: {userId: string; credentialFields: {fieldName: string}[]}) => (
     <div data-testid="credentials-tab-panel" data-user-id={userId}>
@@ -228,6 +245,8 @@ describe('UserEditPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAccess.hasChanges = false;
+    mockAccess.saveError = null;
     stagingCallbackIdentities.clear();
     mockNavigate.mockResolvedValue(undefined);
     mockUpdateMutateAsync.mockResolvedValue(mockUserData);
@@ -469,7 +488,12 @@ describe('UserEditPage', () => {
       const user = userEvent.setup();
       render(<UserEditPage />);
 
-      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['General', 'Attributes', 'Advanced']);
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'General',
+        'Attributes',
+        'Organization Access',
+        'Advanced',
+      ]);
 
       await user.click(screen.getByRole('tab', {name: 'Advanced'}));
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
@@ -836,6 +860,7 @@ describe('UserEditPage', () => {
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'General',
         'Attributes',
+        'Organization Access',
         'Credentials',
         'Advanced',
       ]);
@@ -874,6 +899,53 @@ describe('UserEditPage', () => {
       const panel = screen.getByTestId('credentials-tab-panel');
       expect(panel).toHaveAttribute('data-user-id', 'user123');
       expect(panel).toHaveTextContent('password,pin');
+    });
+  });
+
+  describe('Organization Access tab', () => {
+    it('shows the Organization Access tab for a read-only user, since a declared user can still be shared on', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, isReadOnly: true},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(<UserEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Organization Access'})).toBeInTheDocument();
+    });
+
+    it('shows the Organization Access settings when the tab is opened', async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Organization Access'}));
+
+      expect(screen.getByRole('tab', {name: 'Organization Access'})).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByTestId('user-organization-access')).toBeInTheDocument();
+    });
+
+    it('saves a sharing change through the page bar, without touching the user', async () => {
+      const user = userEvent.setup();
+      mockAccess.hasChanges = true;
+      mockAccess.save.mockResolvedValue(undefined);
+
+      render(<UserEditPage />);
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockAccess.save).toHaveBeenCalled();
+      expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('discards the sharing draft on Reset', async () => {
+      const user = userEvent.setup();
+      mockAccess.hasChanges = true;
+
+      render(<UserEditPage />);
+      await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+      expect(mockAccess.reset).toHaveBeenCalled();
     });
   });
 

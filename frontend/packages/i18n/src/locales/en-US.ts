@@ -811,11 +811,35 @@ const translations = {
     'errors.USR-1027':
       'This user cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.USR-1028': 'Credentials for this user cannot be updated here.',
+    'errors.USR-1029':
+      'This change is not allowed. A unit may have moved, or a unit that passed the user on would lose its own reach. Reopen the access and try again.',
+    'errors.USR-1030': 'This share no longer exists. It may have been removed already.',
+    'errors.USR-1031':
+      'This unit already shares the user, from a change made elsewhere. Reset to load it, then redo your change.',
+    'errors.USR-1032':
+      "Someone else changed this user's sharing while you were editing. Reset to load the latest, then redo your change.",
+    'errors.USR-1033': 'This share is declared in a resource file. Change it there.',
+    'errors.USR-1034': 'The user is not shared into this unit, so the unit cannot share it on.',
+    'errors.USR-1037':
+      'Sharing with every unit or every other organization comes only from a resource file or an import.',
 
     // Read failures
     'listing.error': 'Failed to load users',
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
+
+    // Sharing
+    'manageUser.tabs.organizationAccess': 'Organization Access',
+    'sharing.description': '{{name}} can sign in to the applications of a granted organization unit.',
+    'sharing.reshares.allChildUnits': 'All child units of {{unit}}',
+    'sharing.reshares.description':
+      'Units {{name}} is shared with can pass the user on to units beneath them. Each unit manages its own; they are shown here read-only.',
+    'sharing.reshares.except': 'except {{units}}',
+    'sharing.reshares.issuer': '{{unit}} passes it on to',
+    'sharing.reshares.subtree': 'And below',
+    'sharing.reshares.title': 'Passed on by other units',
+    'sharing.reshares.unit': 'This unit only',
+    'sharing.save.error': 'Failed to update the sharing. Please try again.',
   },
 
   // ============================================================================

@@ -33,7 +33,8 @@ export { ConnectionsPage, type BrandedConnectionFormData } from "../../pages/con
 export { AgentOnboardingPage } from "../../pages/agents";
 
 // Re-export API helpers so hooks can construct them without reaching into utils/
-export { UsersApi, type ApiUser } from "../../utils/users-api";
+export { UsersApi, type ApiUser, type ApiSharingPolicy } from "../../utils/users-api";
+export { OrganizationUnitsApi, type ApiOrganizationUnit } from "../../utils/organization-units-api";
 export { UserTypesApi, type ApiUserType } from "../../utils/user-types-api";
 export { ApplicationsApi, type ApiApplication } from "../../utils/applications-api";
 export { FlowsApi, type ApiFlow } from "../../utils/flows-api";

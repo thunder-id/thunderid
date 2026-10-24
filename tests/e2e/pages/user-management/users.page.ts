@@ -17,6 +17,7 @@ import { Page, Locator, expect } from "@playwright/test";
 import { ConsoleRoutes } from "../../configs/routes/console-routes";
 import { BasePage } from "../base.page";
 import { Timeouts } from "../../constants/timeouts";
+import { OrganizationAccessSettings } from "../components/organization-access";
 
 export type UserFormData = {
   username: string;
@@ -85,6 +86,10 @@ export class UsersPage extends BasePage {
   readonly confirmCredentialValueInput: Locator;
   readonly confirmResetPasswordButton: Locator;
   readonly cancelResetPasswordButton: Locator;
+
+  // Organization Access tab: the shared screen, and the read-only re-shares card beneath it
+  readonly organizationAccess: OrganizationAccessSettings;
+  readonly passedOnCard: Locator;
 
   constructor(page: Page, baseUrl: string) {
     super(page);
@@ -193,6 +198,14 @@ export class UsersPage extends BasePage {
     this.confirmCredentialValueInput = this.credentialResetDialog.locator("#credential-confirm-password");
     this.confirmResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^reset password$/i });
     this.cancelResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^cancel$/i });
+
+    this.organizationAccess = new OrganizationAccessSettings(page);
+    this.passedOnCard = this.activeTabPanel.getByText("Passed on by other units", { exact: true });
+  }
+
+  /** The heading of one unit's re-share in the "Passed on by other units" card. */
+  passedOnBy(unitName: string): Locator {
+    return this.activeTabPanel.getByText(`${unitName} passes it on to`, { exact: true });
   }
 
   /**
