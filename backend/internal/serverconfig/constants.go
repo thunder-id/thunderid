@@ -22,6 +22,8 @@ const (
 	ConfigNameAccountAccess ConfigName = "accountAccess"
 	// ConfigNameNotification is the configuration key for the notification defaults.
 	ConfigNameNotification ConfigName = "notification"
+	// ConfigNamePersonalAgent is the configuration key for the personal assistant agent settings.
+	ConfigNamePersonalAgent ConfigName = "personalAgent"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -33,6 +35,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameCSP,
 	ConfigNameAccountAccess,
 	ConfigNameNotification,
+	ConfigNamePersonalAgent,
 }
 
 // IsValid reports whether the config name is one of the supported values.

@@ -80,6 +80,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -202,6 +203,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// initialized. The handle-existence validator is injected in a second phase after flowMgtService
 	// is available.
 	flowConfigHandler := flowmgt.NewFlowConfigHandler()
+	// Like the flow handler, the personal agent handler gets its flow handle validator once
+	// flowMgtService is available.
+	personalAgentConfigHandler := agent.NewPersonalAgentConfigHandler()
 
 	// Server-wide configuration handlers. The "session" handler is omitted because SSO session
 	// lifetime is a data plane concern. The account access policy is authored here and exported.
@@ -212,6 +216,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
+		serverconfig.ConfigNamePersonalAgent:         personalAgentConfigHandler,
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc)
@@ -303,6 +308,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverConfigService, ouService, notifTemplateSvc, flowConfigHandler)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
+	// The personal agent login flow handle must name an existing AUTHENTICATION flow.
+	personalAgentConfigHandler.SetAuthFlowHandleValidator(func(ctx context.Context, handle string) bool {
+		_, svcErr := flowMgtService.GetFlowByHandle(ctx, handle, providers.FlowTypeAuthentication)
+		return svcErr == nil
+	})
+
 	// Two-phase initialization: inject the flow resolver into the OU service.
 	ouService.SetOUFlowResolver(flowMgtService)
 	exporters = append(exporters, flowMgtExporter)
@@ -335,7 +346,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService)
+		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService, serverConfigService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 

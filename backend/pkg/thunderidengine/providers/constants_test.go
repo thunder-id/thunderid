@@ -23,6 +23,12 @@ func (suite *ConstantsTestSuite) TestNodeVariant_String() {
 	assert.Equal(suite.T(), "CUSTOM", NodeVariant("CUSTOM").String())
 }
 
+func (suite *ConstantsTestSuite) TestAgentKind_IsValid() {
+	assert.True(suite.T(), AgentKindPersonalAssistant.IsValid())
+	assert.True(suite.T(), AgentKind("").IsValid(), "the empty kind is an ordinary agent")
+	assert.False(suite.T(), AgentKind("personal_assistant").IsValid())
+}
+
 func (suite *ConstantsTestSuite) TestGrantType_IsValid() {
 	valid := []GrantType{
 		GrantTypeAuthorizationCode,

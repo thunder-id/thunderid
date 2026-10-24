@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -116,6 +118,12 @@ func (s *InlineStubAgentService) GetResourceDependencies(
 }
 
 func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Registry) {}
+
+func (s *InlineStubAgentService) GetClientRules(
+	ctx context.Context, agentID string,
+) (*providers.ClientRules, *tidcommon.ServiceError) {
+	return nil, nil
+}
 
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
@@ -275,6 +283,51 @@ func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// The handler forwards the kind as given; the agent service refuses an unknown kind and applies the rules
+// for a personal agent (an owner that is a user, and the personal grant types).
+func TestHandleAgentPostRequest_KindForwarded(t *testing.T) {
+	for _, kind := range []providers.AgentKind{providers.AgentKindPersonalAssistant, "personal_assistant"} {
+		t.Run(string(kind), func(t *testing.T) {
+			var forwarded providers.AgentKind
+			stubService := &InlineStubAgentService{
+				OnCreateAgent: func(
+					ctx context.Context, agent *providers.Agent,
+				) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+					forwarded = agent.Kind
+					return &model.AgentCompleteResponse{}, nil
+				},
+			}
+			handler := newAgentHandler(stubService)
+			body := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},
+				"kind": "` + string(kind) + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+			assert.Equal(t, http.StatusCreated, w.Code)
+			assert.Equal(t, kind, forwarded)
+		})
+	}
+}
+
+func TestHandleAgentPutRequest_PersonalAgentForbidden(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnUpdateAgent: func(
+			ctx context.Context, id string, req *model.UpdateAgentRequest,
+		) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+			return nil, &ErrorCannotUpdatePersonalAgent
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123",
+		bytes.NewBufferString(`{"attributes": {"name": "Updated Valid Name"}}`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestHandleAgentGetRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
@@ -338,6 +391,53 @@ func TestHandleAgentListRequest_InvalidFilter(t *testing.T) {
 	handler.HandleAgentListRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidFilter.Code)
+}
+
+func TestParseFilterParams(t *testing.T) {
+	accepted := []struct {
+		name   string
+		filter string
+		want   map[string]interface{}
+	}{
+		{"a schema attribute", `name eq "x"`, map[string]interface{}{"name": "x"}},
+		{"any schema attribute alone", `software eq "assistant-x"`, map[string]interface{}{"software": "assistant-x"}},
+		{"the kind", `kind eq "personal-assistant"`, map[string]interface{}{"kind": "personal-assistant"}},
+		{"the owner", `owner eq "user-1"`, map[string]interface{}{"owner": "user-1"}},
+		{"the kind and the name", `kind eq "personal-assistant" and name eq "x"`,
+			map[string]interface{}{"kind": "personal-assistant", "name": "x"}},
+		{"all three, an and inside quotes", `kind eq "personal-assistant" AND owner eq "user-1" and name eq "a and b"`,
+			map[string]interface{}{"kind": "personal-assistant", "owner": "user-1", "name": "a and b"}},
+	}
+	for _, tc := range accepted {
+		t.Run(tc.name, func(t *testing.T) {
+			filters, svcErr := parseFilterParams(url.Values{"filter": {tc.filter}})
+			require.Nil(t, svcErr)
+			assert.Equal(t, tc.want, filters)
+		})
+	}
+
+	filters, svcErr := parseFilterParams(url.Values{})
+	require.Nil(t, svcErr)
+	assert.Empty(t, filters, "no filter parameter means no filter")
+
+	refused := map[string]string{
+		"empty":                       ``,
+		"no operator":                 `invalidfilter`,
+		"unquoted value":              `name eq x`,
+		"a number":                    `name eq 5`,
+		"an empty value":              `name eq ""`,
+		"another operator":            `name sw "x"`,
+		"or":                          `kind eq "personal-assistant" or name eq "x"`,
+		"a duplicate":                 `name eq "a" and name eq "b"`,
+		"another attribute in an and": `kind eq "personal-assistant" and software eq "x"`,
+	}
+	for name, filter := range refused {
+		t.Run("refuses "+name, func(t *testing.T) {
+			_, svcErr := parseFilterParams(url.Values{"filter": {filter}})
+			require.NotNil(t, svcErr)
+			assert.Equal(t, ErrorInvalidFilter.Code, svcErr.Code)
+		})
+	}
 }
 
 func TestHandleAgentListRequest_ServiceError(t *testing.T) {

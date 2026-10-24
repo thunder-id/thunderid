@@ -50,6 +50,7 @@ func newAgentTypeResolver(
 			SupportedFlowTypes: []providers.FlowType{
 				providers.FlowTypeAdministration,
 				providers.FlowTypeAuthentication,
+				providers.FlowTypeRegistration,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyAllowedAgentTypes},
@@ -80,10 +81,8 @@ func (a *agentTypeResolver) Execute(ctx *providers.NodeContext) (*providers.Exec
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:
 		return a.handleAuthenticationFlows(ctx, execResp)
-	case providers.FlowTypeAdministration:
+	case providers.FlowTypeAdministration, providers.FlowTypeRegistration:
 		return a.handleAdministrationFlows(ctx, execResp)
-	case providers.FlowTypeRegistration:
-		return a.handleRegistrationFlows(ctx, execResp)
 	default:
 		logger.Debug(ctx.Context, "Agent type resolver is not applicable for the flow type",
 			log.String("flowType", string(ctx.FlowType)))
@@ -112,7 +111,8 @@ func (a *agentTypeResolver) handleAuthenticationFlows(ctx *providers.NodeContext
 	return execResp, nil
 }
 
-// handleAdministrationFlows resolves the agent type for an administrator-driven flow. The
+// handleAdministrationFlows resolves the agent type for an administrator-driven flow, and for a
+// registration flow, where the flow author narrows the types the same way. The
 // candidates come from the agent type catalog, narrowed by the node's allowedAgentTypes property
 // and by the selected organization unit. The application's allowedAgentTypes is deliberately not
 // consulted: it governs which agent types may authenticate to an application, not which an
@@ -124,18 +124,4 @@ func (a *agentTypeResolver) handleAdministrationFlows(ctx *providers.NodeContext
 	return a.resolve(ctx, entitytype.TypeCategoryAgent,
 		allowedTypesFromProperties(ctx, propertyKeyAllowedAgentTypes), a.GetDefaultInputs(),
 		execResp, logger)
-}
-
-// handleRegistrationFlows refuses self-registration. An agent is provisioned on an
-// administrator's behalf, so no agent type carries a self-registration path the way a user type
-// can. Should agents ever self-register, the resolution belongs here.
-func (a *agentTypeResolver) handleRegistrationFlows(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
-	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	logger.Debug(ctx.Context, "Agent self-registration attempted, which agents do not support")
-	execResp.Status = providers.ExecFailure
-	execResp.Error = &ErrSelfRegNotSupportedForAgents
-
-	return execResp, nil
 }

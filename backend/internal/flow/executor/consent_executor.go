@@ -139,7 +139,10 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	authorizedPermissions := strings.Fields(ctx.RuntimeData["authorized_permissions"])
 	availableAttributes := e.buildAugmentedAvailableAttributes(availableAttrResp, entityRef)
 	appName := ctx.Application.Name
-	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true"
+	// The request can ask for a fresh consent (prompt=consent, CIBA), and so can the client's own setting.
+	loginConsent := ctx.Application.LoginConsent
+	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true" ||
+		(loginConsent != nil && loginConsent.AlwaysPrompt != nil && *loginConsent.AlwaysPrompt)
 
 	// Resolve consent to determine if any required consents are missing and need to be prompted
 	promptData, svcErr := e.consentEnforcer.ResolveConsent(

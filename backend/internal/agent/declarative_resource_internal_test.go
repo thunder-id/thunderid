@@ -254,6 +254,78 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_ValidateAgent
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'err-agent'")
 }
 
+// A declarative personal agent names its owner and uses only the personal grant types.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalAgentRules() {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{name: "NoOwner", yaml: "id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\n",
+			wantErr: "a personal agent must name its owner"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			parser := makeAgentEntityParser(agentmock.NewAgentServiceInterfaceMock(s.T()))
+			_, _, _, err := parser([]byte(tt.yaml))
+
+			s.Require().Error(err)
+			assert.Contains(s.T(), err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// The parser hands the personal kind to ValidateAgent, which applies the personal agent setup and its refusals.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalSetupRefusalSurfaces() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - client_credentials\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.MatchedBy(func(a *providers.Agent) bool {
+		return a.Kind == providers.AgentKindPersonalAssistant
+	}), "pa-agent").Return("", "", inboundmodel.InboundClient{}, &ErrorGrantTypeNotAllowedForPersonalAgent).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	_, _, _, err := parser(yamlData)
+
+	s.Require().Error(err)
+	assert.Contains(s.T(), err.Error(), ErrorGrantTypeNotAllowedForPersonalAgent.Code)
+}
+
+// A personal agent with an owner and the personal grants loads, keeping its kind and owner.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalAgentStored() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - authorization_code\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "pa-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	e, _, _, err := parser(yamlData)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	stored := readSystemAttributes(e.SystemAttributes)
+	assert.Equal(s.T(), providers.AgentKindPersonalAssistant, stored.kind)
+	assert.Equal(s.T(), "user-1", stored.owner)
+}
+
+// A file naming an unknown kind fails to load; a file without a kind loads as an ordinary agent.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_Kind() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	parser := makeAgentEntityParser(mockSvc)
+
+	_, _, _, err := parser([]byte("id: kind-agent\nouId: ou-1\ntype: t\nkind: personal_assistant\n"))
+	s.Require().Error(err)
+	s.Contains(err.Error(), "unknown kind")
+
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "plain-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	e, _, _, err := parser([]byte("id: plain-agent\nouId: ou-1\ntype: t\n"))
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	assert.Empty(s.T(), readSystemAttributes(e.SystemAttributes).kind)
+}
+
 // --- makeAgentInboundParser error paths ---
 
 type MakeAgentInboundParserTestSuite struct {
@@ -286,6 +358,15 @@ func (s *MakeAgentInboundParserTestSuite) TestMakeAgentInboundParser_ValidateAge
 
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'inbound-err-agent'")
+}
+
+func (s *MakeAgentInboundParserTestSuite) TestMakeAgentInboundParser_PersonalAgentWithoutOwnerRefused() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\n")
+	parser := makeAgentInboundParser(agentmock.NewAgentServiceInterfaceMock(s.T()))
+	_, err := parser(yamlData)
+
+	assert.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "a personal agent must name its owner")
 }
 
 // --- makeAgentInboundConfig validator ---

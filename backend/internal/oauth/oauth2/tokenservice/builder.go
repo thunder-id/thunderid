@@ -67,6 +67,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeAccess, tokenCtx.ValidityPeriod)
+	tokenConfig.ValidityPeriod = capAccessTokenValidity(tokenCtx.OAuthApp, tokenConfig.ValidityPeriod)
 
 	jwtClaims, claimsErr := tb.buildAccessTokenClaims(tokenCtx)
 	if claimsErr != nil {
@@ -115,6 +116,14 @@ func (tb *tokenBuilder) BuildAccessToken(
 	tokenDTO.IssuedAt = iat
 
 	return tokenDTO, nil
+}
+
+// capAccessTokenValidity lowers an access token lifetime to the client's cap, when the cap is smaller.
+func capAccessTokenValidity(client *providers.OAuthClient, validity int64) int64 {
+	if client != nil && client.Rules.MaxAccessTokenValidity > 0 && client.Rules.MaxAccessTokenValidity < validity {
+		return client.Rules.MaxAccessTokenValidity
+	}
+	return validity
 }
 
 // resolveSubjectIdentity returns the resource ID and entity category of the token's subject, for

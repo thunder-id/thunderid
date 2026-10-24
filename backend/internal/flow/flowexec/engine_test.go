@@ -2682,7 +2682,7 @@ func (s *EngineTestSuite) TestExecuteNodePackage_SkipsNodeWhenShouldExecuteFalse
 
 // executeNodePackageCapturingContext runs one node and returns the context the engine handed it.
 func (s *EngineTestSuite) executeNodePackageCapturingContext(flowType providers.FlowType,
-	app providers.Application) context.Context {
+	app providers.Application, requiredSubjectID string) context.Context {
 	t := s.T()
 	var captured context.Context
 	mockNode := coremock.NewNodeInterfaceMock(t)
@@ -2707,6 +2707,7 @@ func (s *EngineTestSuite) executeNodePackageCapturingContext(flowType providers.
 		UserInputs:       map[string]string{},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
 	}
+	ctx.RequiredSubjectID = requiredSubjectID
 
 	_, _, err := fe.executeNodePackage(ctx, mockNode, &FlowStep{}, 0)
 	s.Nil(err)
@@ -2719,32 +2720,44 @@ func (s *EngineTestSuite) TestExecuteNodePackage_CarriesSubjectTypeConstraintsOn
 	app.AllowedUserTypes = []string{"customer"}
 	app.AllowedAgentTypes = []string{"default"}
 
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, app)
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, app, "")
 
 	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
 	s.True(ok)
 	s.Equal([]string{"customer"}, constraints.AllowedUserTypes)
 	s.Equal([]string{"default"}, constraints.AllowedAgentTypes)
+	s.Empty(constraints.RequiredSubjectID)
+}
+
+// A personal agent's owner, resolved when the context loads, reaches the authn providers as the only
+// subject they accept.
+func (s *EngineTestSuite) TestExecuteNodePackage_CarriesRequiredSubjectOnAuthenticationFlow() {
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication,
+		providers.Application{}, "owner-1")
+
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
+	s.True(ok)
+	s.Equal("owner-1", constraints.RequiredSubjectID)
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOtherFlowTypes() {
 	app := providers.Application{}
 	app.AllowedAgentTypes = []string{"default"}
 
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRegistration, app)
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRegistration, app, "")
 
 	_, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
 	s.False(ok)
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_MarksRecoveryFlow() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{})
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{}, "")
 
 	s.True(authnprovidercm.IsRecoveryFlow(nodeCtx))
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_DoesNotMarkOtherFlowsAsRecovery() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{})
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{}, "")
 
 	s.False(authnprovidercm.IsRecoveryFlow(nodeCtx))
 }
