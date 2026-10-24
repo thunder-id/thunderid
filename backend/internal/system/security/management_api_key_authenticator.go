@@ -73,8 +73,10 @@ func (a *managementAPIKeyAuthenticator) Authenticate(r *http.Request) (*Security
 	if presented == "" || !cryptolib.ValidateTokenHash(presented, a.keyHash) {
 		return nil, errInvalidToken
 	}
-	return newSecurityContext(
-		managementAPIKeySubject, "", "", []string{GetSystemRootPermission()}, nil), nil
+	securityCtx := newSecurityContext(
+		managementAPIKeySubject, "", "", []string{GetSystemRootPermission()}, nil)
+	securityCtx.isManagementAPIKeyCaller = true
+	return securityCtx, nil
 }
 
 // trustsPath reports whether the path is one this mechanism is trusted for.

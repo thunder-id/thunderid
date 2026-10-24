@@ -4,6 +4,7 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -186,6 +187,21 @@ func TestAuthenticateGrantsTheRootSystemPermission(t *testing.T) {
 	// There is nothing to revoke, so the revocation step must see an empty identity and pass.
 	assert.Empty(t, securityCtx.revocationID)
 	assert.Empty(t, securityCtx.tokenFamilyID)
+}
+
+// The key marks its caller, so authorization can tell it from a token that names the same subject.
+func TestAuthenticateMarksTheManagementAPIKeyCaller(t *testing.T) {
+	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
+
+	securityCtx, err := authenticator.Authenticate(
+		requestWithAPIKey(http.MethodPost, "/import", testManagementAPIKey))
+	require.NoError(t, err)
+
+	assert.True(t, IsManagementAPIKeyCaller(withSecurityContext(context.Background(), securityCtx)))
+
+	tokenCtx := newSecurityContext(managementAPIKeySubject, "", "token", []string{"system"}, nil)
+	assert.False(t, IsManagementAPIKeyCaller(withSecurityContext(context.Background(), tokenCtx)))
+	assert.False(t, IsManagementAPIKeyCaller(context.Background()))
 }
 
 // Authenticate re-checks rather than trusting that CanHandle ran, so a direct call cannot bypass it.

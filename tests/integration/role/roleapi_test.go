@@ -2233,16 +2233,16 @@ func (suite *RoleAPITestSuite) TestAccessEvaluation_DeclarativeRolePermissions()
 		"a permission the declarative role does not carry must be denied")
 
 	// A user assigned at runtime: the role definition lives in the file store while the assignment
-	// lives in the database, so neither store can resolve this on its own.
-	user := testUser1
-	user.OUID = testOUID
-	user.Attributes = json.RawMessage(`{
-		"email": "declrolepermuser@example.com",
-		"given_name": "Decl",
-		"family_name": "PermUser",
-		"password": "TestPassword123!"
-	}`)
-	runtimeUserID, err := testutils.CreateUser(user)
+	// lives in the database, so neither store can resolve this on its own. The user sits in the role's
+	// OU, since a role grants permissions only within its own OU.
+	runtimeUserID, err := testutils.CreateUser(testutils.User{
+		Type: "declarative-test-schema",
+		OUID: "decl-ou-1",
+		Attributes: json.RawMessage(`{
+			"email": "declrolepermuser@example.com",
+			"username": "decl-role-perm-user"
+		}`),
+	})
 	suite.Require().NoError(err)
 	defer func() { suite.NoError(testutils.DeleteUser(runtimeUserID)) }()
 

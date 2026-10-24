@@ -486,6 +486,38 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchRejects
 	require.EqualError(t, err, "AuthZEN PDP returned 0 evaluations for 1 requests")
 }
 
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchSendsTheEvaluationOU() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/access/v1/evaluations", r.URL.Path)
+
+		var request authzen.AccessEvaluationsRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Len(t, request.Evaluations, 2)
+		require.Equal(t, "ou-1", request.Evaluations[0].Context[contextOUIDProperty])
+		require.Equal(t, "client_credentials", request.Evaluations[0].Context["grant_type"])
+		require.NotContains(t, request.Evaluations[1].Context, contextOUIDProperty)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"evaluations":[{"decision":true},{"decision":false}]}`))
+	}))
+	defer server.Close()
+
+	settings := authZENPDPConfig(server)
+	pdp := newLegacyAuthZENPDP(server.Client())
+
+	_, err := pdp.EvaluateAccessBatch(context.Background(), settings, AccessEvaluationsRequest{
+		Evaluations: []AccessEvaluationRequest{
+			{Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+				Permission: Permission{Name: "read"}, OUID: "ou-1",
+				Context: map[string]interface{}{"grant_type": "client_credentials"}},
+			{Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+				Permission: Permission{Name: "cancel"}},
+		},
+	})
+	require.NoError(t, err)
+}
+
 func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchUsesConfiguredBatchEndpoint() {
 	t := suite.T()
 	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -667,6 +699,29 @@ func (suite *AuthZENPDPEngineTestSuite) TestEvaluationRequestDefaultsResourceFie
 
 	require.Equal(t, "resource-server-1", request.Resource.Type)
 	require.Equal(t, "resource-server-1", request.Resource.ID)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestEvaluationRequestCarriesTheEvaluationOU() {
+	t := suite.T()
+	evaluationContext := map[string]interface{}{"grant_type": "client_credentials"}
+	request := toAuthZENEvaluationRequest(AccessEvaluationRequest{
+		Subject:        Subject{Category: "user", ID: "user-1"},
+		ResourceServer: ResourceServer{ID: "resource-server-1"},
+		Permission:     Permission{Name: "read"},
+		OUID:           "ou-1",
+		Context:        evaluationContext,
+	}, "", nil)
+
+	require.Equal(t, "ou-1", request.Context[contextOUIDProperty])
+	require.Equal(t, "client_credentials", request.Context["grant_type"])
+	require.NotContains(t, evaluationContext, contextOUIDProperty, "the caller's context must not change")
+
+	request = toAuthZENEvaluationRequest(AccessEvaluationRequest{
+		Subject:        Subject{Category: "user", ID: "user-1"},
+		ResourceServer: ResourceServer{ID: "resource-server-1"},
+		Permission:     Permission{Name: "read"},
+	}, "", nil)
+	require.NotContains(t, request.Context, contextOUIDProperty)
 }
 
 func evaluationEndpoint(server *httptest.Server) string {

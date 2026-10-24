@@ -1461,13 +1461,13 @@ func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions() {
 				}
 				suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
 					tc.userID, normalizedGroups, []string{}, "",
-					tc.requestedPermissions).
+					tc.requestedPermissions, mock.Anything).
 					Return(tc.mockReturn, tc.mockError).Once()
 			}
 
 			result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
 				context.Background(), tc.userID, tc.groups, nil, "",
-				tc.requestedPermissions)
+				tc.requestedPermissions, "")
 
 			if tc.expectedError != nil {
 				suite.NotNil(err)
@@ -1806,7 +1806,7 @@ func (s *RoleChangeValidationTestSuite) mayChangePermissions(permissions securit
 // groupConveying stubs a group whose own and ancestor roles grant one Californian scope.
 func (s *RoleChangeValidationTestSuite) groupConveying(ancestors ...string) {
 	s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return(ancestors, nil)
-	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", append([]string{targetGroupID}, ancestors...)).
+	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", append([]string{targetGroupID}, ancestors...), "").
 		Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
 	stubResourceServer(s.resources, californiaRSID, californiaAud)
 }
@@ -2130,12 +2130,12 @@ func (s *RoleChangeValidationTestSuite) TestValidateGroupDeletion_ScopeResolutio
 		},
 		"permission read failure": func() {
 			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil)
-			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
+			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}, "").
 				Return(nil, errors.New("db down"))
 		},
 		"resource server lookup failure": func() {
 			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil)
-			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
+			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}, "").
 				Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
 			s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
 				Return(nil, &tidcommon.InternalServerError)

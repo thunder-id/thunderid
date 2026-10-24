@@ -189,7 +189,7 @@ func (p *authZENPDPEngine) evaluateBatch(
 			Subject:  converted.Subject,
 			Resource: converted.Resource,
 			Action:   converted.Action,
-			Context:  evaluation.Context,
+			Context:  converted.Context,
 		})
 	}
 	body, err := json.Marshal(payload)
@@ -347,8 +347,22 @@ func toAuthZENEvaluationRequest(
 			Name:       evaluation.Permission.Name,
 			Properties: evaluation.Permission.Properties,
 		},
-		Context: evaluation.Context,
+		Context: evaluationContext(evaluation),
 	}
+}
+
+// evaluationContext returns the evaluation's context, with the organization unit the evaluation is
+// bounded to when there is one.
+func evaluationContext(evaluation AccessEvaluationRequest) map[string]interface{} {
+	if evaluation.OUID == "" {
+		return evaluation.Context
+	}
+	context := make(map[string]interface{}, len(evaluation.Context)+1)
+	for key, value := range evaluation.Context {
+		context[key] = value
+	}
+	context[contextOUIDProperty] = evaluation.OUID
+	return context
 }
 
 // mapAuthZENSubjectProperties filters and optionally renames subject attributes for the PDP.

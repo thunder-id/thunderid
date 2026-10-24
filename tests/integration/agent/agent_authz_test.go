@@ -9,13 +9,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// AgentAuthzTestSuite validates that agent CRUD operations respect OU-scoped authz.
+// AgentAuthzTestSuite validates agent CRUD authz on a deployment-bounded server, where a token's
+// scopes apply to every OU in the deployment, not only to the OU the token names.
 //
 // Permission model:
 //
@@ -24,12 +26,12 @@ import (
 //
 // An agent-manager living in OU1 holds the system:agent permission. The suite verifies that:
 //
-//   - Read operations on agents in OU1 are allowed (200)
-//   - Read operations on agents in OU2 (sibling) are denied (403)
-//   - Write operations on agents in OU1 are allowed (201/200/204)
-//   - Write operations on agents in OU2 are denied (403)
-//   - Moving an agent from OU1 into OU2 is denied, even though the caller may write to OU1
-//   - Listing agents only returns agents from the accessible OU
+//   - Read operations on agents in OU1 and OU2 (sibling) are allowed (200)
+//   - Write operations on agents in OU1 and OU2 are allowed (201/200/204)
+//   - Moving an agent from OU1 into OU2 is allowed
+//   - Listing agents returns agents from both OUs
+//
+// AgentAuthzDPTestSuite covers the OU-bounded behavior.
 //
 // Fixture topology:
 //
@@ -297,25 +299,29 @@ func (ts *AgentAuthzTestSuite) doAgent(method, path string, body []byte) *http.R
 // Tests — READ operations (system:agent:view implied by system:agent)
 // ---------------------------------------------------------------------------
 
-// TestListAgents verifies the list contains agents from the accessible OU only.
+// TestListAgents verifies the list contains agents from both OUs. Each target agent is looked up by
+// name, so the result does not depend on how many agents fit on the first page.
 func (ts *AgentAuthzTestSuite) TestListAgents() {
-	resp := ts.doAgent(http.MethodGet, "/agents", nil)
-	defer resp.Body.Close()
+	for name, id := range map[string]string{
+		"authz-target-agent-ou1": ts.targetAgentOU1ID,
+		"authz-target-agent-ou2": ts.targetAgentOU2ID,
+	} {
+		q := url.Values{}
+		q.Set("filter", fmt.Sprintf("name eq %q", name))
+		resp := ts.doAgent(http.MethodGet, "/agents?"+q.Encode(), nil)
 
-	ts.Equal(http.StatusOK, resp.StatusCode, "list agents should succeed")
+		ts.Equal(http.StatusOK, resp.StatusCode, "list agents should succeed")
 
-	var listResp testutils.AgentListResponse
-	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+		var listResp testutils.AgentListResponse
+		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+		resp.Body.Close()
 
-	ids := make([]string, 0, len(listResp.Agents))
-	for _, a := range listResp.Agents {
-		ids = append(ids, a.ID)
+		ids := make([]string, 0, len(listResp.Agents))
+		for _, a := range listResp.Agents {
+			ids = append(ids, a.ID)
+		}
+		ts.Containsf(ids, id, "list must include %s, got IDs: %v", name, ids)
 	}
-
-	ts.Containsf(ids, ts.targetAgentOU1ID,
-		"list must include target agent in OU1, got IDs: %v", ids)
-	ts.NotContainsf(ids, ts.targetAgentOU2ID,
-		"list must NOT include target agent in OU2 (sibling), got IDs: %v", ids)
 }
 
 // TestGetAgentInOwnOU verifies the agent-manager can read an agent in their own OU.
@@ -327,32 +333,31 @@ func (ts *AgentAuthzTestSuite) TestGetAgentInOwnOU() {
 		"agent-manager should be able to read an agent in their own OU")
 }
 
-// TestGetAgentInOtherOU verifies the agent-manager is denied reading an agent in OU2.
+// TestGetAgentInOtherOU verifies the agent-manager can read an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestGetAgentInOtherOU() {
 	resp := ts.doAgent(http.MethodGet, "/agents/"+ts.targetAgentOU2ID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must be denied access to an agent in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"agent-manager should be able to read an agent in a different OU")
 }
 
-// TestGetAgentGroupsInOtherOU verifies the sub-resource read is scoped too.
+// TestGetAgentGroupsInOtherOU verifies the agent-manager can read the groups of an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestGetAgentGroupsInOtherOU() {
 	resp := ts.doAgent(http.MethodGet, "/agents/"+ts.targetAgentOU2ID+"/groups", nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not read groups of an agent in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"agent-manager should be able to read groups of an agent in a different OU")
 }
 
-// TestGetAgentRolesInOtherOU verifies the role listing is scoped as well. Roles are what an agent
-// is authorized by, so a cross-OU read here would disclose the other OU's privilege assignments.
+// TestGetAgentRolesInOtherOU verifies the agent-manager can read the roles of an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestGetAgentRolesInOtherOU() {
 	resp := ts.doAgent(http.MethodGet, "/agents/"+ts.targetAgentOU2ID+"/roles", nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not read roles of an agent in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"agent-manager should be able to read roles of an agent in a different OU")
 }
 
 // ---------------------------------------------------------------------------
@@ -383,20 +388,31 @@ func (ts *AgentAuthzTestSuite) TestCreateAgentInOwnOU() {
 	}
 }
 
-// TestCreateAgentInOtherOU verifies the agent-manager is denied creating an agent in OU2.
+// TestCreateAgentInOtherOU verifies the agent-manager can create an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestCreateAgentInOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"name": "authz-denied-agent", "purpose": "denied"},
+		"attributes": map[string]interface{}{"name": "authz-created-agent-ou2", "purpose": "created in OU2"},
 	})
 	ts.Require().NoError(err)
 
 	resp := ts.doAgent(http.MethodPost, "/agents", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not create an agent in a different OU")
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
+		"agent-manager should be able to create an agent in a different OU")
+
+	var created testutils.Agent
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	ts.Require().NotEmpty(created.ID)
+	defer func() {
+		if delErr := testutils.DeleteAgent(created.ID); delErr != nil {
+			ts.T().Logf("cleanup: failed to delete created agent %s: %v", created.ID, delErr)
+		}
+	}()
+
+	ts.Equal(ts.agentOU2ID, created.OUID, "created agent must belong to OU2")
 }
 
 // TestUpdateAgentInOwnOU verifies the agent-manager can update an agent in their own OU.
@@ -415,60 +431,60 @@ func (ts *AgentAuthzTestSuite) TestUpdateAgentInOwnOU() {
 		"agent-manager should be able to update an agent in their own OU")
 }
 
-// TestUpdateAgentInOtherOU verifies the agent-manager is denied updating an agent in OU2.
+// TestUpdateAgentInOtherOU verifies the agent-manager can update an agent in OU2. It targets a
+// dedicated agent so the shared OU2 fixture stays unchanged.
 func (ts *AgentAuthzTestSuite) TestUpdateAgentInOtherOU() {
+	agentID := ts.createDisposableAgent(ts.agentOU2ID, "authz-update-agent-ou2")
+
 	payload, err := json.Marshal(map[string]interface{}{
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"name": "authz-target-agent-ou2", "purpose": "denied update"},
+		"attributes": map[string]interface{}{"name": "authz-update-agent-ou2", "purpose": "updated purpose"},
 	})
 	ts.Require().NoError(err)
 
-	resp := ts.doAgent(http.MethodPut, "/agents/"+ts.targetAgentOU2ID, payload)
+	resp := ts.doAgent(http.MethodPut, "/agents/"+agentID, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not update an agent in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"agent-manager should be able to update an agent in a different OU")
 }
 
-// TestMoveAgentToOtherOU verifies the destination OU is authorized independently. The caller may
-// write to the agent's current OU, so without a check on the destination it could move the agent
-// into an OU it does not administer.
+// TestMoveAgentToOtherOU verifies the agent-manager can move an agent from OU1 into OU2. It moves a
+// dedicated agent so the shared OU1 fixture stays in OU1.
 func (ts *AgentAuthzTestSuite) TestMoveAgentToOtherOU() {
+	agentID := ts.createDisposableAgent(ts.agentOU1ID, "authz-move-agent")
+
 	payload, err := json.Marshal(map[string]interface{}{
 		"type":       agentTypeName,
 		"ouId":       ts.agentOU2ID,
-		"attributes": map[string]interface{}{"name": "authz-target-agent-ou1", "purpose": "attempted move"},
+		"attributes": map[string]interface{}{"name": "authz-move-agent", "purpose": "moved to OU2"},
 	})
 	ts.Require().NoError(err)
 
-	resp := ts.doAgent(http.MethodPut, "/agents/"+ts.targetAgentOU1ID, payload)
+	resp := ts.doAgent(http.MethodPut, "/agents/"+agentID, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not move an agent into an OU they do not administer")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"agent-manager should be able to move an agent into a different OU")
 
-	// The agent must remain in OU1.
-	getResp := ts.doAgent(http.MethodGet, "/agents/"+ts.targetAgentOU1ID, nil)
-	defer getResp.Body.Close()
-
-	ts.Require().Equal(http.StatusOK, getResp.StatusCode, "agent must still be readable in OU1")
-
-	var fetched testutils.Agent
-	ts.Require().NoError(json.NewDecoder(getResp.Body).Decode(&fetched))
-	ts.Equal(ts.agentOU1ID, fetched.OUID, "denied move must not change the agent's OU")
+	fetched, err := testutils.GetAgent(agentID)
+	ts.Require().NoError(err, "moved agent must still be readable")
+	ts.Equal(ts.agentOU2ID, fetched.OUID, "move must change the agent's OU to OU2")
 }
 
-// TestDeleteAgentInOtherOU verifies the agent-manager is denied deleting an agent in OU2.
+// TestDeleteAgentInOtherOU verifies the agent-manager can delete an agent in OU2. It targets a
+// dedicated agent so the shared OU2 fixture survives.
 func (ts *AgentAuthzTestSuite) TestDeleteAgentInOtherOU() {
-	resp := ts.doAgent(http.MethodDelete, "/agents/"+ts.targetAgentOU2ID, nil)
+	agentID := ts.createDisposableAgent(ts.agentOU2ID, "authz-delete-agent-ou2")
+
+	resp := ts.doAgent(http.MethodDelete, "/agents/"+agentID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"agent-manager must not delete an agent in a different OU")
+	ts.Equal(http.StatusNoContent, resp.StatusCode,
+		"agent-manager should be able to delete an agent in a different OU")
 
-	// The agent must still exist.
-	ts.True(ts.agentExists(ts.targetAgentOU2ID), "denied delete must leave the agent in place")
+	ts.False(ts.agentExists(agentID), "deleted agent must be gone")
 }
 
 // TestDeleteAgentInOwnOU verifies the agent-manager can delete an agent in their own OU. It targets
@@ -485,8 +501,32 @@ func (ts *AgentAuthzTestSuite) TestDeleteAgentInOwnOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Helper — existence check via the root admin client
+// Helpers using the root admin client
 // ---------------------------------------------------------------------------
+
+// createDisposableAgent creates an agent with the root admin client for a test that changes or
+// deletes it. The agent is deleted when the test ends, unless the test already deleted it.
+func (ts *AgentAuthzTestSuite) createDisposableAgent(ouID, name string) string {
+	ts.T().Helper()
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type:       agentTypeName,
+		OUID:       ouID,
+		Attributes: map[string]interface{}{"name": name, "purpose": "disposable"},
+	})
+	ts.Require().NoError(err, "create disposable agent %s", name)
+
+	t := ts.T()
+	t.Cleanup(func() {
+		if _, getErr := testutils.GetAgent(agentID); getErr != nil {
+			return
+		}
+		if delErr := testutils.DeleteAgent(agentID); delErr != nil {
+			t.Logf("cleanup: delete agent %s: %v", agentID, delErr)
+		}
+	})
+	return agentID
+}
 
 // agentExists reports whether the agent is still present, queried with the root admin client so the
 // answer is independent of the scoped token's own authorization.

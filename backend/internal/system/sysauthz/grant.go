@@ -29,7 +29,8 @@ const (
 // Implementations must return a complete set. An incomplete result changes the outcome of the
 // checks below, so partial data is not an acceptable degradation.
 type PermissionResolver interface {
-	// ResolveForEntity returns the permissions an entity holds, directly and through its groups.
+	// ResolveForEntity returns the permissions an entity holds, directly and through its groups,
+	// counting only roles owned by the entity's own organization unit, as its tokens do.
 	ResolveForEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
 
 	// ResolveForGroup returns the permissions membership in a group confers, including those

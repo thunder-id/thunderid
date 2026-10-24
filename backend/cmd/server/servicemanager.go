@@ -176,7 +176,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// what seals a secret before it reaches the database.
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// TODO: Once the control plane and data plane run as separate servers, the data plane initializes
+	// sysauthz.InitializeOUBoundedAuthorization() here, confining each management token to the
+	// organization unit it names. Until then this server authorizes as the control plane does.
+	ouAuthzService, err := sysauthz.InitializeDeploymentBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
@@ -328,7 +331,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		role.NewEffectivePermissionResolver(roleService, groupService, entityService))
 
 	authZService := authz.Initialize(
-		roleService, resourceService, entityService, authZENPDPService)
+		roleService, resourceService, entityService, groupService, authZENPDPService)
 
 	idpService, err := idp.Initialize(cacheManager, entityTypeService, roleService, groupService, resourceService)
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")

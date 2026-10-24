@@ -16,26 +16,28 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// UserAuthzTestSuite validates that user CRUD operations respect OU-scoped authz.
+// UserAuthzTestSuite validates that user CRUD operations follow deployment-bounded authz.
 //
 // Permission model:
 //
 //	system:user      → create, update, delete users
 //	system:user:view → list, get users (implied by system:user)
 //
-// A user-manager living in OU1 holds the system:user permission. The suite
-// verifies that:
+// A token's scopes apply to every OU in the deployment. The caller's home OU does not
+// limit which OU they can act on; the scopes only limit what they can do. A user-manager
+// living in OU1 holds the system:user permission. The suite verifies that:
 //
-//   - Read operations on users in OU1 are allowed (200)
-//   - Read operations on users in OU2 (sibling) are denied (403)
-//   - Write operations on users in OU1 are allowed (201/200/204)
-//   - Write operations on users in OU2 are denied (403)
-//   - Listing users only returns users from the accessible OU
+//   - Read operations on users in OU1 and OU2 (sibling) are allowed (200)
+//   - Write operations on users in OU1 and OU2 are allowed (201/200/204)
+//   - Listing users returns users from both OUs
+//   - Routes without a permission entry still require the root system permission
 //
 // Fixture topology:
 //
 //	OU1 (handle: authz-user-ou1) ← user-manager and target users belong here
 //	OU2 (handle: authz-user-ou2) ← sibling OU with its own target user
+//
+// The OU-bounded assertions live in UserAuthzDPTestSuite.
 type UserAuthzTestSuite struct {
 	suite.Suite
 
@@ -285,25 +287,53 @@ func (ts *UserAuthzTestSuite) doUser(method, path string, body []byte) *http.Res
 // Tests — READ operations (system:user:view implied by system:user)
 // ---------------------------------------------------------------------------
 
-// TestListUsers verifies the list contains users from the accessible OU only.
+// TestListUsers verifies the user-manager can list users and sees users from both OUs.
+// The per-OU checks list by OU path so the result does not depend on the deployment-wide
+// list fitting in one page.
 func (ts *UserAuthzTestSuite) TestListUsers() {
-	resp := ts.doUser(http.MethodGet, "/users", nil)
+	ids := ts.listAllUserIDs()
+
+	ts.Contains(ids, ts.targetUserOU1ID, "list must include the target user in the caller's own OU")
+	ts.Contains(ids, ts.targetUserOU2ID, "list must include the target user in another OU")
+}
+
+// TestListUsersByPathWithoutOUViewIsForbidden verifies that listing users by an OU path, which
+// first reads the OU, is refused with 403 when the caller lacks system:ou:view.
+func (ts *UserAuthzTestSuite) TestListUsersByPathWithoutOUViewIsForbidden() {
+	resp := ts.doUser(http.MethodGet, "/users/tree/"+userAuthzOU1Handle, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusOK, resp.StatusCode, "list users should succeed")
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
 
-	var listResp testutils.UserListResponse
-	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SSE-4030", errResp.Code)
+}
 
-	ids := make([]string, 0, len(listResp.Users))
-	for _, u := range listResp.Users {
-		ids = append(ids, u.ID)
+// listAllUserIDs pages through GET /users with the user-manager's client and returns every user ID.
+func (ts *UserAuthzTestSuite) listAllUserIDs() []string {
+	ts.T().Helper()
+
+	const pageSize = 100
+	var ids []string
+	for offset := 0; ; offset += pageSize {
+		resp := ts.doUser(http.MethodGet, fmt.Sprintf("/users?limit=%d&offset=%d", pageSize, offset), nil)
+		ts.Require().Equal(http.StatusOK, resp.StatusCode, "list users should succeed")
+
+		var listResp testutils.UserListResponse
+		decodeErr := json.NewDecoder(resp.Body).Decode(&listResp)
+		resp.Body.Close()
+		ts.Require().NoError(decodeErr)
+
+		for _, u := range listResp.Users {
+			ids = append(ids, u.ID)
+		}
+		if len(listResp.Users) < pageSize {
+			return ids
+		}
 	}
-
-	ts.Containsf(ids, ts.targetUserOU1ID,
-		"list must include target user in OU1, got IDs: %v", ids)
-	ts.NotContainsf(ids, ts.targetUserOU2ID,
-		"list must NOT include target user in OU2 (sibling), got IDs: %v", ids)
 }
 
 // TestGetUserInOwnOU verifies the user-manager can read a user in their own OU.
@@ -315,13 +345,18 @@ func (ts *UserAuthzTestSuite) TestGetUserInOwnOU() {
 		"user-manager should be able to read a user in their own OU")
 }
 
-// TestGetUserInOtherOU verifies the user-manager is denied reading a user in OU2.
-func (ts *UserAuthzTestSuite) TestGetUserInOtherOU() {
+// TestGetUserInOtherOUAllowed verifies the user-manager can read a user in OU2.
+func (ts *UserAuthzTestSuite) TestGetUserInOtherOUAllowed() {
 	resp := ts.doUser(http.MethodGet, "/users/"+ts.targetUserOU2ID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"user-manager must be denied access to a user in a different OU")
+	ts.Require().Equal(http.StatusOK, resp.StatusCode,
+		"user-manager should be able to read a user in a different OU")
+
+	var user testutils.User
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&user))
+	ts.Equal(ts.targetUserOU2ID, user.ID)
+	ts.Equal(ts.userOU2ID, user.OUID)
 }
 
 // ---------------------------------------------------------------------------
@@ -355,13 +390,13 @@ func (ts *UserAuthzTestSuite) TestCreateUserInOwnOU() {
 	}
 }
 
-// TestCreateUserInOtherOU verifies the user-manager is denied creating a user in OU2.
-func (ts *UserAuthzTestSuite) TestCreateUserInOtherOU() {
+// TestCreateUserInOtherOUAllowed verifies the user-manager can create a user in OU2.
+func (ts *UserAuthzTestSuite) TestCreateUserInOtherOUAllowed() {
 	payload, err := json.Marshal(map[string]interface{}{
 		"ouId": ts.userOU2ID,
 		"type": entityTypeOU2Name,
 		"attributes": map[string]interface{}{
-			"display_name": "Denied User",
+			"display_name": "Created User OU2",
 		},
 	})
 	ts.Require().NoError(err)
@@ -369,8 +404,19 @@ func (ts *UserAuthzTestSuite) TestCreateUserInOtherOU() {
 	resp := ts.doUser(http.MethodPost, "/users", payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"user-manager must not create a user in a different OU")
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
+		"user-manager should be able to create a user in a different OU")
+
+	var created testutils.User
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	ts.Require().NotEmpty(created.ID)
+	defer func() {
+		if delErr := testutils.DeleteUser(created.ID); delErr != nil {
+			ts.T().Logf("cleanup: failed to delete created user %s: %v", created.ID, delErr)
+		}
+	}()
+
+	ts.Equal(ts.userOU2ID, created.OUID, "created user must belong to OU2")
 }
 
 // TestUpdateUserInOwnOU verifies the user-manager can update a user in their own OU.
@@ -392,22 +438,30 @@ func (ts *UserAuthzTestSuite) TestUpdateUserInOwnOU() {
 		"user-manager should be able to update a user in their own OU")
 }
 
-// TestUpdateUserInOtherOU verifies the user-manager is denied updating a user in OU2.
-func (ts *UserAuthzTestSuite) TestUpdateUserInOtherOU() {
+// TestUpdateUserInOtherOUAllowed verifies the user-manager can update a user in OU2. It acts on
+// a dedicated user so the shared OU2 fixture is left unchanged.
+func (ts *UserAuthzTestSuite) TestUpdateUserInOtherOUAllowed() {
+	userID := ts.createUserInOU2("Updatable User OU2")
+	defer func() {
+		if delErr := testutils.DeleteUser(userID); delErr != nil {
+			ts.T().Logf("cleanup: failed to delete user %s: %v", userID, delErr)
+		}
+	}()
+
 	payload, err := json.Marshal(map[string]interface{}{
 		"type": entityTypeOU2Name,
 		"ouId": ts.userOU2ID,
 		"attributes": map[string]interface{}{
-			"display_name": "Should Not Update",
+			"display_name": "Updated Display Name OU2",
 		},
 	})
 	ts.Require().NoError(err)
 
-	resp := ts.doUser(http.MethodPut, "/users/"+ts.targetUserOU2ID, payload)
+	resp := ts.doUser(http.MethodPut, "/users/"+userID, payload)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"user-manager must not update a user in a different OU")
+	ts.Equal(http.StatusOK, resp.StatusCode,
+		"user-manager should be able to update a user in a different OU")
 }
 
 // TestDeleteUserInOwnOU verifies the user-manager can delete a user in their own OU.
@@ -422,13 +476,33 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOwnOU() {
 	ts.deletableUserOU1ID = ""
 }
 
-// TestDeleteUserInOtherOU verifies the user-manager is denied deleting a user in OU2.
-func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
-	resp := ts.doUser(http.MethodDelete, "/users/"+ts.targetUserOU2ID, nil)
+// TestDeleteUserInOtherOUAllowed verifies the user-manager can delete a user in OU2. It acts on
+// a dedicated user so the shared OU2 fixture is left in place.
+func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOUAllowed() {
+	userID := ts.createUserInOU2("Deletable User OU2")
+
+	resp := ts.doUser(http.MethodDelete, "/users/"+userID, nil)
 	defer resp.Body.Close()
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"user-manager must not delete a user in a different OU")
+	if !ts.Equal(http.StatusNoContent, resp.StatusCode,
+		"user-manager should be able to delete a user in a different OU") {
+		if delErr := testutils.DeleteUser(userID); delErr != nil {
+			ts.T().Logf("cleanup: failed to delete user %s: %v", userID, delErr)
+		}
+	}
+}
+
+// createUserInOU2 creates a user in OU2 via the admin client and returns its ID.
+func (ts *UserAuthzTestSuite) createUserInOU2(displayName string) string {
+	ts.T().Helper()
+
+	userID, err := testutils.CreateUser(testutils.User{
+		Type:       entityTypeOU2Name,
+		OUID:       ts.userOU2ID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"display_name": %q}`, displayName)),
+	})
+	ts.Require().NoError(err, "create user in OU2")
+	return userID
 }
 
 // TestCreateUserByPathRequiresRootPermission pins the authorization boundary of the by-path create
@@ -438,11 +512,11 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
 // (TestCreateUserInOwnOU). `POST /users/tree/{path...}` has **no entry** in the API permission table
 // (`system/security/permissions.go:244-249` lists GET, PUT and DELETE under `/users/**` but no
 // POST), and unmatched routes fall back to the **root** system permission
-// (`security/service.go:159-166`). The user-manager is therefore refused on this route for their own
-// OU as well as for OU2 — the refusal is the root-permission gate, not OU scoping.
+// (`security/service.go:159-166`). The user-manager is therefore refused on this route in every OU,
+// even though system:user lets them create users in OU2 through `POST /users`.
 //
-// Both OUs are asserted deliberately. Testing only OU2 would look like a subtree-scoping test and
-// pass for the wrong reason, since the same caller is refused inside their own subtree.
+// Both OUs are asserted deliberately. Authz is deployment-bounded, so the refusal must not depend on
+// the target OU; it comes from the root-permission gate alone.
 func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresRootPermission() {
 	for _, tc := range []struct {
 		name     string
@@ -472,7 +546,7 @@ func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresRootPermission() {
 			var errResp testutils.ErrorResponse
 			ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
 			ts.Equal("AUTH-4030", errResp.Code,
-				"refusal must come from the route permission gate, not from OU scoping")
+				"refusal must come from the route permission gate")
 
 			ts.Equal(0, ts.countUsersByUsername(tc.username),
 				"a refused by-path create must not persist a user")

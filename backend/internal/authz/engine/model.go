@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -17,13 +18,15 @@ import (
 
 // rbacEngine evaluates authorization requests using the role service.
 type rbacEngine struct {
-	roleService role.RoleServiceInterface
+	roleService  role.RoleServiceInterface
+	groupService group.GroupServiceInterface
 }
 
 // evaluationGroup collects equivalent evaluations for one role-service lookup.
 type evaluationGroup struct {
 	subject          Subject
 	resourceServerID string
+	ouID             string
 	permissions      []string
 	indexes          []int
 }
@@ -75,6 +78,8 @@ type authZENPDPBatchKey struct {
 
 const (
 	subjectGroupsProperty = "groups"
+	// contextOUIDProperty names the organization unit an evaluation is bounded to in a PDP request.
+	contextOUIDProperty = "ouId"
 	// DelegatedResourceIDProperty carries an opaque resource instance ID to the PDP engine.
 	DelegatedResourceIDProperty = "__delegatedResourceId"
 )

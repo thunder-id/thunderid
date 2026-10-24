@@ -16,7 +16,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authz/engine"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/resource"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -26,6 +28,7 @@ const loggerComponentName = "AuthorizationService"
 type authorizationService struct {
 	engine          engine.AuthorizationEngine
 	entityService   entity.EntityServiceInterface
+	groupService    group.GroupServiceInterface
 	resourceService resource.ResourceServiceInterface
 	pdpEngine       engine.AuthorizationEngine
 }
@@ -35,11 +38,13 @@ func newAuthorizationService(
 	defaultEngine engine.AuthorizationEngine,
 	resourceService resource.ResourceServiceInterface,
 	entityService entity.EntityServiceInterface,
+	groupService group.GroupServiceInterface,
 	pdpEngine engine.AuthorizationEngine,
 ) providers.AuthorizationProvider {
 	return &authorizationService{
 		engine:          defaultEngine,
 		entityService:   entityService,
+		groupService:    groupService,
 		resourceService: resourceService,
 		pdpEngine:       pdpEngine,
 	}
@@ -77,6 +82,10 @@ func (s *authorizationService) EvaluateAccessBatch(
 		}, nil
 	}
 	enrichedRequest, svcErr := s.enrichRequest(ctx, request)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	enrichedRequest, svcErr = s.boundToOU(ctx, enrichedRequest)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -293,6 +302,84 @@ func (s *authorizationService) enrichRequest(
 	return enriched, nil
 }
 
+// boundToOU sets the organization unit each evaluation is bounded to, and keeps only the subject's
+// groups that belong to it. The unit is the evaluation's own, else the request's accessing
+// organization unit, else the subject's own. An evaluation left without one keeps no group, unless
+// its subject is known only by its roles and groups: the engine then bounds each of them to the
+// organization unit that owns it.
+func (s *authorizationService) boundToOU(
+	ctx context.Context,
+	request providers.AccessEvaluationsRequest,
+) (providers.AccessEvaluationsRequest, *tidcommon.ServiceError) {
+	groupOUIDs, svcErr := s.groupOUIDs(ctx, request)
+	if svcErr != nil {
+		return providers.AccessEvaluationsRequest{}, svcErr
+	}
+
+	accessingOUID := syscontext.GetAccessingOUID(ctx)
+	subjectOUIDs := make(map[string]string)
+	bounded := providers.AccessEvaluationsRequest{
+		Evaluations: make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations)),
+	}
+	for _, evaluation := range request.Evaluations {
+		if evaluation.OUID == "" {
+			evaluation.OUID = accessingOUID
+		}
+		if evaluation.OUID == "" && evaluation.Subject.ID != "" && s.entityService != nil {
+			ouID, ok := subjectOUIDs[evaluation.Subject.ID]
+			if !ok {
+				subjectEntity, err := s.entityService.GetEntityProfile(ctx, evaluation.Subject.ID)
+				if err != nil && !errors.Is(err, entity.ErrEntityNotFound) {
+					return providers.AccessEvaluationsRequest{}, &tidcommon.InternalServerError
+				}
+				if subjectEntity != nil {
+					ouID = subjectEntity.OUID
+				}
+				subjectOUIDs[evaluation.Subject.ID] = ouID
+			}
+			evaluation.OUID = ouID
+		}
+		if evaluation.OUID == "" && evaluation.Subject.ID == "" {
+			bounded.Evaluations = append(bounded.Evaluations, evaluation)
+			continue
+		}
+
+		groupIDs := make([]string, 0, len(evaluation.Subject.GroupIDs))
+		for _, groupID := range evaluation.Subject.GroupIDs {
+			if evaluation.OUID != "" && groupOUIDs[groupID] == evaluation.OUID {
+				groupIDs = append(groupIDs, groupID)
+			}
+		}
+		evaluation.Subject.GroupIDs = groupIDs
+		bounded.Evaluations = append(bounded.Evaluations, evaluation)
+	}
+	return bounded, nil
+}
+
+// groupOUIDs returns the organization unit of every group the evaluations name, keyed by group id.
+// A group that does not exist is left out.
+func (s *authorizationService) groupOUIDs(
+	ctx context.Context,
+	request providers.AccessEvaluationsRequest,
+) (map[string]string, *tidcommon.ServiceError) {
+	var groupIDs []string
+	for _, evaluation := range request.Evaluations {
+		groupIDs = append(groupIDs, evaluation.Subject.GroupIDs...)
+	}
+	if len(groupIDs) == 0 || s.groupService == nil {
+		return map[string]string{}, nil
+	}
+	groups, svcErr := s.groupService.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	ouIDs := make(map[string]string, len(groups))
+	for groupID, grp := range groups {
+		ouIDs[groupID] = grp.OUID
+	}
+	return ouIDs, nil
+}
+
 // supportsSubjectEnrichment reports whether a subject category has persisted entity attributes.
 func supportsSubjectEnrichment(subjectCategory string) bool {
 	return subjectCategory == providers.EntityCategoryUser.String() ||
@@ -332,6 +419,7 @@ func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest
 				Name:       evaluation.Permission.Name,
 				Properties: evaluation.Permission.Properties,
 			},
+			OUID:    evaluation.OUID,
 			Context: evaluation.Context,
 		})
 	}

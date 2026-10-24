@@ -21,10 +21,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/authz/engine"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/resource"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	enginemock "github.com/thunder-id/thunderid/tests/mocks/authz/engine"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -48,7 +51,7 @@ func newAuthZENPDPEngineForTest(
 	connectionService authZENPDPConnectionServiceFunc,
 	client httpservice.HTTPClientInterface,
 ) engine.AuthorizationEngine {
-	_, pdpEngine := engine.Initialize(nil, connectionService, client)
+	_, pdpEngine := engine.Initialize(nil, nil, connectionService, client)
 	return pdpEngine
 }
 
@@ -63,7 +66,14 @@ func TestResourceServerRouteKey(t *testing.T) {
 
 func (suite *AuthorizationServiceTestSuite) SetupTest() {
 	suite.mockEngine = enginemock.NewAuthorizationEngineMock(suite.T())
-	suite.service = newAuthorizationService(suite.mockEngine, nil, nil, nil)
+	// user1 and group1 both belong to ou-1, so evaluations without their own OU are bounded to it.
+	entityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").
+		Return(&providers.Entity{ID: "user1", OUID: "ou-1"}, nil).Maybe()
+	groupService := groupmock.NewGroupServiceInterfaceMock(suite.T())
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, mock.Anything).
+		Return(map[string]*group.Group{"group1": {ID: "group1", OUID: "ou-1"}}, nil).Maybe()
+	suite.service = newAuthorizationService(suite.mockEngine, nil, entityService, groupService, nil)
 }
 
 func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessSuccess() {
@@ -79,7 +89,8 @@ func (suite *AuthorizationServiceTestSuite) TestEvaluateAccessSuccess() {
 				req.Evaluations[0].Subject.ID == "user1" &&
 				req.Evaluations[0].Subject.GroupIDs[0] == "group1" &&
 				req.Evaluations[0].ResourceServer.ID == "document" &&
-				req.Evaluations[0].Permission.Name == "read"
+				req.Evaluations[0].Permission.Name == "read" &&
+				req.Evaluations[0].OUID == "ou-1"
 		})).
 		Return(&engine.AccessEvaluationsResponse{
 			Evaluations: []engine.AccessEvaluationResponse{{Decision: true}},
@@ -346,6 +357,120 @@ func TestAuthorizationServiceEnrichRequestContinuesForUnknownEntity(t *testing.T
 		"email": "alice@example.com",
 		"ouId":  "ou-1",
 	}, enriched.Evaluations[1].Subject.Properties)
+}
+
+// newBoundToOUTestService returns a service whose subjects and groups sit in the given OUs.
+func newBoundToOUTestService(
+	t *testing.T, subjectOUIDs map[string]string, groups map[string]*group.Group,
+) *authorizationService {
+	entityService := entitymock.NewEntityServiceInterfaceMock(t)
+	for subjectID, ouID := range subjectOUIDs {
+		entityService.EXPECT().GetEntityProfile(mock.Anything, subjectID).
+			Return(&providers.Entity{ID: subjectID, OUID: ouID}, nil).Maybe()
+	}
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, mock.Anything).Return(groups, nil).Maybe()
+	return &authorizationService{entityService: entityService, groupService: groupService}
+}
+
+func (suite *AuthorizationServiceTestSuite) TestBoundToOUResolvesTheOU() {
+	t := suite.T()
+	groups := map[string]*group.Group{
+		"group-ou1": {ID: "group-ou1", OUID: "ou-1"},
+		"group-ou2": {ID: "group-ou2", OUID: "ou-2"},
+	}
+	service := newBoundToOUTestService(t, map[string]string{"user1": "ou-1"}, groups)
+	subject := providers.Subject{ID: "user1", GroupIDs: []string{"group-ou1", "group-ou2", "missing"}}
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		ouID        string
+		wantOUID    string
+		wantGroupID []string
+	}{
+		{name: "EvaluationOU", ctx: context.Background(), ouID: "ou-2",
+			wantOUID: "ou-2", wantGroupID: []string{"group-ou2"}},
+		{name: "AccessingOU", ctx: syscontext.WithAccessingOUID(context.Background(), "ou-2"),
+			wantOUID: "ou-2", wantGroupID: []string{"group-ou2"}},
+		{name: "EvaluationOUOverAccessingOU", ctx: syscontext.WithAccessingOUID(context.Background(), "ou-2"),
+			ouID: "ou-1", wantOUID: "ou-1", wantGroupID: []string{"group-ou1"}},
+		{name: "SubjectOwnOU", ctx: context.Background(),
+			wantOUID: "ou-1", wantGroupID: []string{"group-ou1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bounded, svcErr := service.boundToOU(tt.ctx, providers.AccessEvaluationsRequest{
+				Evaluations: []providers.AccessEvaluationRequest{{Subject: subject, OUID: tt.ouID}},
+			})
+			require.Nil(t, svcErr)
+			require.Equal(t, tt.wantOUID, bounded.Evaluations[0].OUID)
+			require.Equal(t, tt.wantGroupID, bounded.Evaluations[0].Subject.GroupIDs)
+		})
+	}
+}
+
+func (suite *AuthorizationServiceTestSuite) TestBoundToOULeavesASubjectWithoutAnOUNoGroups() {
+	t := suite.T()
+	entityService := entitymock.NewEntityServiceInterfaceMock(t)
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "unknown").
+		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, mock.Anything).
+		Return(map[string]*group.Group{"group1": {ID: "group1", OUID: "ou-1"}}, nil)
+	service := &authorizationService{entityService: entityService, groupService: groupService}
+
+	bounded, svcErr := service.boundToOU(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{
+			{Subject: providers.Subject{ID: "unknown", GroupIDs: []string{"group1"}}},
+		},
+	})
+
+	require.Nil(t, svcErr)
+	require.Empty(t, bounded.Evaluations[0].OUID)
+	require.Empty(t, bounded.Evaluations[0].Subject.GroupIDs)
+}
+
+func (suite *AuthorizationServiceTestSuite) TestBoundToOUKeepsTheGroupsOfASubjectKnownOnlyByRolesAndGroups() {
+	t := suite.T()
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, mock.Anything).
+		Return(map[string]*group.Group{"group1": {ID: "group1", OUID: "ou-1"}}, nil)
+	service := &authorizationService{groupService: groupService}
+	subject := providers.Subject{GroupIDs: []string{"group1", "missing"}, RoleIDs: []string{"mapped-role"}}
+
+	bounded, svcErr := service.boundToOU(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{{Subject: subject}},
+	})
+
+	require.Nil(t, svcErr)
+	require.Empty(t, bounded.Evaluations[0].OUID)
+	require.Equal(t, subject, bounded.Evaluations[0].Subject)
+}
+
+func (suite *AuthorizationServiceTestSuite) TestBoundToOUMapsLookupErrors() {
+	t := suite.T()
+	entityService := entitymock.NewEntityServiceInterfaceMock(t)
+	entityService.EXPECT().GetEntityProfile(mock.Anything, "user1").
+		Return((*providers.Entity)(nil), errors.New("store failed"))
+	service := &authorizationService{entityService: entityService}
+
+	_, svcErr := service.boundToOU(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{{Subject: providers.Subject{ID: "user1"}}},
+	})
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+
+	groupService := groupmock.NewGroupServiceInterfaceMock(t)
+	groupService.EXPECT().GetGroupsByIDs(mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError)
+	service = &authorizationService{groupService: groupService}
+
+	_, svcErr = service.boundToOU(context.Background(), providers.AccessEvaluationsRequest{
+		Evaluations: []providers.AccessEvaluationRequest{
+			{Subject: providers.Subject{GroupIDs: []string{"group1"}}, OUID: "ou-1"},
+		},
+	})
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func TestAuthorizationServiceResolveEngineUsesResourceServerConnection(t *testing.T) {

@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
@@ -35,7 +36,10 @@ import (
 // nolint:gosec // Test token, not a real credential
 const testJWTToken = "test-jwt-token-123"
 const testResourceURL = "https://mcp.example.com/mcp"
-const testEntityID = "agent-entity-123"
+const (
+	testEntityID     = "agent-entity-123"
+	testAppOwnerOUID = "app-owner-ou"
+)
 
 // Default target resource server resolved for requests without a resource parameter.
 const defaultRSID = "rs-1"
@@ -101,6 +105,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 
 	suite.oauthApp = &providers.OAuthClient{
 		ID:                      testEntityID,
+		OUID:                    testAppOwnerOUID,
 		ClientID:                testClientID,
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
@@ -110,10 +115,11 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 }
 
 // mockEvaluateAccessBatch stubs EvaluateAccessBatch, asserting each evaluation targets the given
-// resource server ID and returning the given authorized scopes as allowed.
+// resource server ID and organization unit, and returning the given authorized scopes as allowed.
 func mockEvaluateAccessBatch(
 	authzService *authzmock.AuthorizationProviderMock,
 	entityID string,
+	ouID string,
 	resourceServerID string,
 	requestedScopes []string,
 	authorizedScopes []string,
@@ -138,6 +144,7 @@ func mockEvaluateAccessBatch(
 			for i, scope := range requestedScopes {
 				evaluation := req.Evaluations[i]
 				if evaluation.Subject.ID != entityID ||
+					evaluation.OUID != ouID ||
 					len(evaluation.Subject.GroupIDs) != 0 ||
 					evaluation.ResourceServer.ID != resourceServerID ||
 					evaluation.Permission.Name != scope {
@@ -159,11 +166,12 @@ func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
 		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
 	} {
 		request := tokenservice.BuildAccessEvaluationsRequest(
-			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1",
+			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1", "ou-1",
 		)
 
 		assert.Len(t, request.Evaluations, 1)
 		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Category)
+		assert.Equal(t, "ou-1", request.Evaluations[0].OUID)
 	}
 }
 
@@ -249,7 +257,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 
 			// Mock authz service for non-OIDC scopes. No resource param -> default RS.
 			if len(tc.expectedScopes) > 0 {
-				mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+				mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
 					tc.expectedScopes, tc.expectedScopes)
 			}
 
@@ -346,7 +354,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_JWTGenerati
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
 		Return(nil, errors.New("JWT generation failed"))
@@ -361,6 +370,28 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_JWTGenerati
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
 
+// An OU-qualified request evaluates the client's roles and groups in its owner's organization unit,
+// not in the unit the request names.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_OUQualifiedRequestEvaluatesInOwnerOU() {
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "read",
+	}
+
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testAppOwnerOUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Return(nil, errors.New("stop after the evaluation"))
+
+	ctx := syscontext.WithAccessingOUID(context.Background(), "customer-ou")
+	_, errResp := suite.handler.HandleGrant(ctx, tokenRequest, suite.oauthApp)
+
+	assert.NotNil(suite.T(), errResp)
+	suite.mockAuthzService.AssertExpectations(suite.T())
+}
+
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAttributes() {
 	tokenRequest := &model.TokenRequest{
 		GrantType:    "client_credentials",
@@ -369,7 +400,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	expectedToken := testJWTToken
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -409,7 +441,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_TokenTiming
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	expectedToken := testJWTToken
 	now := time.Now().Unix()
@@ -458,7 +491,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ClientAttri
 		},
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, oauthAppWithOU.ID, oauthAppWithOU.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockOUService.On("GetOrganizationUnit", context.Background(), "ou-456").Return(
 		providers.OrganizationUnit{},
@@ -489,7 +523,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithResourc
 
 	// The explicit resource resolves to an RS whose ID and Identifier equal the resource URL;
 	// authz must be evaluated against that RS ID.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, testResourceURL,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, testResourceURL,
 		[]string{"read"}, []string{"read"})
 
 	var capturedAudiences []string
@@ -528,7 +562,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithoutReso
 	}
 
 	// No resource param -> default RS resolved via server-config; authz targets the default RS ID.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	var capturedAudiences []string
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -568,7 +603,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_PartialScop
 	}
 
 	// App is only authorized for "read" and "write" via its role assignments.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
 		[]string{"read", "write", "delete"}, []string{"read", "write"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -600,7 +635,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoAuthorize
 	}
 
 	// App has no role granting "admin:full".
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
 		[]string{"admin:full"}, []string{})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -833,7 +868,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ExplicitRes
 	}
 
 	// The evaluation carries the resolved RS ID (equal to the identifier per the default stub).
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, rsIdentifier,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, rsIdentifier,
 		[]string{"r1:s1"}, []string{"r1:s1"})
 
 	var capturedAudiences []string
@@ -877,7 +912,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_CollidingPe
 
 	// "shared:read" is a valid permission on RS-B (ValidatePermissions returns no invalid),
 	// but the app is not granted it there — the evaluation scoped to RS-B returns Decision:false.
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, rsBIdentifier,
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, rsBIdentifier,
 		[]string{"shared:read"}, []string{})
 
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -947,7 +982,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_DPoPProof_P
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
 		mock.Anything,
@@ -978,7 +1014,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoDPoPProof
 		Scope:        "read",
 	}
 
-	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, defaultRSID, []string{"read"}, []string{"read"})
+	mockEvaluateAccessBatch(suite.mockAuthzService, suite.oauthApp.ID, suite.oauthApp.OUID, defaultRSID,
+		[]string{"read"}, []string{"read"})
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
 		mock.Anything,

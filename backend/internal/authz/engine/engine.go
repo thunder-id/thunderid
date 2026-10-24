@@ -63,7 +63,9 @@ type AccessEvaluationRequest struct {
 	Subject        Subject
 	ResourceServer ResourceServer
 	Permission     Permission
-	Context        map[string]interface{}
+	// OUID is the organization unit the evaluation is bounded to. Empty when none could be resolved.
+	OUID    string
+	Context map[string]interface{}
 }
 
 // AccessEvaluationResponse represents a single fine-grained access evaluation response.

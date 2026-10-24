@@ -248,7 +248,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAuthorizedPermissions() {
 		"user1",
 		[]string{"group1"}, nil, "",
 
-		[]string{"perm2", "perm3"})
+		[]string{"perm2", "perm3"}, "")
 
 	suite.NoError(err)
 	suite.Equal([]string{"perm2"}, perms)
@@ -402,7 +402,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAllPermissionsForAssignees_Malf
 	// Bypass the typed Create so a malformed entry lands in the store.
 	suite.Require().NoError(suite.store.GenericFileBasedStore.Create("broken-role", "not a role"))
 
-	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user1", nil)
+	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user1", nil, "")
 
 	suite.Error(err, "a malformed declarative role must not be silently skipped")
 	suite.Nil(result)
@@ -420,11 +420,39 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAllPermissionsForAssignees_Enum
 		Assignments: []RoleAssignment{{ID: "user2", Type: assigneeTypeEntity}},
 	})
 
-	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user2", nil)
+	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user2", nil, "")
 
 	suite.NoError(err)
 	suite.Len(result, 1)
 	suite.Equal([]string{"system:user"}, result[0].Permissions)
+}
+
+// A non-empty OU counts only declarative roles owned by that organization unit.
+func (suite *RoleFileBasedStoreTestSuite) TestGetAllPermissionsForAssignees_CountsOnlyRolesInTheOU() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "own-ou-role",
+		Name: "Own OU",
+		OUID: "ou1",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"system:role"}},
+		},
+		Assignments: []RoleAssignment{{ID: "user3", Type: assigneeTypeEntity}},
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "other-ou-role",
+		Name: "Other OU",
+		OUID: "ou2",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"orders:admin"}},
+		},
+		Assignments: []RoleAssignment{{ID: "user3", Type: assigneeTypeEntity}},
+	})
+
+	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user3", nil, "ou1")
+
+	suite.NoError(err)
+	suite.Len(result, 1)
+	suite.Equal([]string{"system:role"}, result[0].Permissions)
 }
 
 // Declarative role permissions are immutable, so the cascade hooks report nothing and remove

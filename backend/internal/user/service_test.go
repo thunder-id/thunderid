@@ -334,6 +334,21 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 			expectedErr: &ErrorInvalidHandlePath,
 		},
 		{
+			name: "ReturnsUnauthorizedWhenResolvingTheOUIsRefused",
+			setup: func(t *testing.T) *userService {
+				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+				ouServiceMock.
+					On("GetOrganizationUnitByPath", mock.Anything, "root").
+					Return(oupkg.OrganizationUnit{}, &tidcommon.ErrorUnauthorized).
+					Once()
+
+				return &userService{
+					ouService: ouServiceMock,
+				}
+			},
+			expectedErr: &tidcommon.ErrorUnauthorized,
+		},
+		{
 			name: "ReturnsInvalidLimitWhenListingUsersFails",
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
@@ -3818,6 +3833,15 @@ func TestMapOUServiceError_UnmappedClientError(t *testing.T) {
 
 	require.NotNil(t, result)
 	require.Equal(t, tidcommon.InternalServerError.Code, result.Code)
+}
+
+// TestMapOUServiceError_Unauthorized verifies that an organization unit service refusal is passed
+// through as unauthorized rather than mapped to an internal server error.
+func TestMapOUServiceError_Unauthorized(t *testing.T) {
+	result := mapOUServiceError(context.Background(), &tidcommon.ErrorUnauthorized, log.GetLogger(),
+		"performing an operation", map[string]*tidcommon.ServiceError{})
+
+	require.Equal(t, &tidcommon.ErrorUnauthorized, result)
 }
 
 // TestUserDeclarativeYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML
