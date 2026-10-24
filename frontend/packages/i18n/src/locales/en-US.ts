@@ -3151,6 +3151,9 @@ const translations = {
     'edit.advanced.pkce.disabled': 'PKCE is not required. Consider enabling for public clients (SPAs, mobile apps).',
     'edit.advanced.pkce.requiresAuthorizationCode': 'PKCE applies only to the authorization code flow.',
     'edit.advanced.pkce.requiredForPublicClient': 'Always required for public clients.',
+    'edit.advanced.pkce.requiredForMetadataDocument':
+      'Always required for clients registered from a metadata document.',
+    'edit.advanced.publicClient.setByMetadataDocument': "Set by the client's metadata document.",
     'edit.advanced.publicClient.requiresAuthorizationCode':
       'Available only for clients using the authorization code flow.',
     'edit.advanced.publicClient.incompatibleWithClientCredentials': 'Not available for machine-to-machine clients.',
@@ -3164,7 +3167,9 @@ const translations = {
     'edit.advanced.tokenEndpointAuthMethod.hint':
       'Defines how the client authenticates at protected endpoints. Use a confidential method (for example, client_secret_basic, client_secret_post, or private_key_jwt) for confidential clients, and none for public clients.',
     'edit.advanced.tokenEndpointAuthMethod.lockedHint': 'Locked to "none" because the client is public.',
+    'edit.advanced.tokenEndpointAuthMethod.metadataDocumentLockedHint': "Set by the client's metadata document.",
     'edit.advanced.lockedByTemplate': 'Set by template',
+    'edit.advanced.lockedByMetadataDocument': "Set by the client's metadata document",
     'edit.advanced.certificate.intro': 'Configure certificates for client authentication and token encryption.',
     'edit.advanced.certificate.type.none': 'None',
     'edit.advanced.certificate.type.jwks': 'JWKS (inline JSON Web Key Set)',
@@ -3588,11 +3593,19 @@ const translations = {
     'edit.advanced.grantTypes.labels.tokenExchange': 'Token exchange',
     'edit.advanced.grantTypes.labels.jwtBearer': 'JWT bearer',
     'edit.advanced.grantTypes.requiredByIdJag': 'Required by identity assertions (ID-JAG)',
+    'edit.advanced.grantTypes.requiredByMetadataDocument': 'Required for a client registered from a metadata document',
+    'edit.advanced.grantTypes.requiresPrivateKeyJwt':
+      'Requires a metadata document that declares private key JWT authentication',
+    'edit.advanced.grantTypes.followsIdJag': 'Turned on and off with identity assertions (ID-JAG)',
+    'edit.advanced.grantTypes.metadataDocumentHint':
+      'Only the grant types a metadata document client can hold are offered. Token exchange and JWT bearer need a document that declares private key JWT authentication, and token exchange comes with identity assertions (ID-JAG).',
     'edit.advanced.idJag.title': 'Identity assertions (ID-JAG)',
     'edit.advanced.idJag.description':
       "Issue signed assertions of the signed-in user's identity that external services accept for token issuance.",
     'edit.advanced.idJag.publicClientGuard':
       'Identity assertions require a confidential client. Turn off public client to enable.',
+    'edit.advanced.idJag.metadataDocumentPublicClientGuard':
+      "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
     'edit.advanced.idJag.labels.allowedAudiences': 'Allowed audiences',
     'edit.advanced.idJag.allowedAudiences.placeholder': 'Type an audience and press Enter',
     'edit.advanced.idJag.allowedAudiences.error': 'Add at least one audience.',
@@ -3667,10 +3680,14 @@ const translations = {
     'cimd.preview.publishedBy': 'Published by {{host}}',
     'cimd.preview.redirectUris': 'Redirect URIs',
     'cimd.preview.signInType': 'Sign-in type',
+    'cimd.refetch.added': 'Added',
     'cimd.refetch.apply': 'Apply',
     'cimd.refetch.authChanged': 'The sign-in type changes from {{from}} to {{to}}.',
     'cimd.refetch.changed': 'The document has changed. Review the differences before applying them.',
+    'cimd.refetch.idJagTurnedOff':
+      'Identity assertions (ID-JAG) will be turned off because the document no longer declares private key JWT authentication.',
     'cimd.refetch.noChanges': 'The document matches what this application uses.',
+    'cimd.refetch.removed': 'Removed',
     'cimd.refetch.title': 'Re-fetch metadata document',
     'cimd.refetch.unchanged': 'The application is unchanged.',
     'cimd.refetch.updateDetails': 'Also update the name and links from the document',
@@ -3686,10 +3703,12 @@ const translations = {
     'errors.CIMD-1006':
       'Only public clients, and private key JWT clients with exactly one key source, can register from a metadata document.',
     'errors.CIMD-1007': "This document contains a client secret, which a metadata document can't carry safely.",
-    'errors.CIMD-1008': 'This client must use the authorization code grant, and can add only refresh tokens.',
+    'errors.CIMD-1008': 'This document must declare the authorization code grant, and this deployment must allow it.',
     'errors.CIMD-1010': "The request couldn't be read. Please try again.",
     'errors.CIMD-1011': "The document's jwks_uri must be an HTTPS URL on a public address.",
     'errors.CIMD-1013': "The document's inline key set is too large. Publish it at a jwks_uri instead.",
+    'errors.CIMD-1014':
+      "The document's inline key set must hold only public keys. A metadata document is public, so it can't carry private or symmetric keys.",
   },
 
   // ============================================================================

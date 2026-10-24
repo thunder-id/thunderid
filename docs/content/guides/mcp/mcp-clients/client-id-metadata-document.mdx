@@ -40,7 +40,18 @@ On **Which MCP client are you connecting?**, do one of the following:
 
 Open the application's **General** tab. A **CIMD** section shows the values taken from the document, read-only. Configure everything else, such as allowed user types and the sign-in flow, as you would for any other application.
 
-When the vendor changes its document, <ProductName /> does not pick up the change on its own. Click **Re-fetch document**, review the changes, click **Apply**, and then **Save**.
+When the vendor changes its document, <ProductName /> does not pick up the change on its own. Click **Re-fetch document**, review the changes, click **Apply**, and then **Save**. Re-fetching applies the authorization code and refresh token grant types the document declares, and keeps the other grant types the application already holds while the document's authentication method still allows them. If the document now makes the client public, re-fetching removes token exchange and JWT bearer and turns off identity assertions.
+
+## Use Identity Assertions (ID-JAG)
+
+A client whose document declares the `private_key_jwt` authentication method can use identity assertions (ID-JAG) with <ProductName /> in either direction:
+
+- **To request identity assertions** for an external authorization server, open the **Advanced** tab and turn on **Identity assertions (ID-JAG)**. This also adds the token exchange grant type, which such a client can use only to request identity assertions. See [Issue Identity Assertions (ID-JAG)](../../../protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions).
+- **To redeem identity assertions** from a trusted identity provider, open the **Advanced** tab and add the **JWT bearer** grant type. See [Accept Identity Assertions from an External IdP](../../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions).
+
+Registering the client never adds these grant types, even when its document declares them, so you choose them here. The client's ID is its document URL, so an identity assertion issued for it carries that URL as its `client_id`. An authorization server that also identifies the client by its document URL recognizes it without any client ID mapping.
+
+On the **Advanced** tab, **Client authentication method**, **Public client**, and **PKCE required** come from the document and cannot be changed. The only grant types offered are authorization code, which stays on, refresh token, JWT bearer, and token exchange, which comes and goes with identity assertions. A public client, whose document declares `none`, cannot use token exchange, JWT bearer, or identity assertions.
 
 ## Next Steps
 

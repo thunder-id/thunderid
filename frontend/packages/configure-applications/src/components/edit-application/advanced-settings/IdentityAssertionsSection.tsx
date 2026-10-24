@@ -126,6 +126,17 @@ export default function IdentityAssertionsSection({
       );
       return;
     }
+    // A metadata document client holds the token exchange grant only for identity assertions.
+    if (!checked && oauth2Config.clientIdMetadataDocument && grantTypes.includes(OAuth2GrantTypes.TOKEN_EXCHANGE)) {
+      onTokenConfigChange(
+        tokenUpdates,
+        applyGrantTypesChange(
+          oauth2Config,
+          grantTypes.filter((grant) => grant !== OAuth2GrantTypes.TOKEN_EXCHANGE),
+        ),
+      );
+      return;
+    }
 
     onTokenConfigChange(tokenUpdates);
   };
@@ -171,10 +182,17 @@ export default function IdentityAssertionsSection({
       headerAction={
         isPublicClient ? (
           <Tooltip
-            title={t(
-              'applications:edit.advanced.idJag.publicClientGuard',
-              'Identity assertions require a confidential client. Turn off public client to enable.',
-            )}
+            title={
+              oauth2Config.clientIdMetadataDocument
+                ? t(
+                    'applications:edit.advanced.idJag.metadataDocumentPublicClientGuard',
+                    "Identity assertions require a confidential client. This client's metadata document declares it as a public client.",
+                  )
+                : t(
+                    'applications:edit.advanced.idJag.publicClientGuard',
+                    'Identity assertions require a confidential client. Turn off public client to enable.',
+                  )
+            }
           >
             <span>{toggleSwitch}</span>
           </Tooltip>
