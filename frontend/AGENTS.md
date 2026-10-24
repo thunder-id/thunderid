@@ -61,7 +61,8 @@ UI: a page, dialog, form, table, card, shared component, or styling. The rules t
 ## Route Configuration — Never Hardcode a Path
 
 Every route destination is centralized in a per-app `RouteConfig` (`frontend/apps/console/src/configs/RouteConfig.ts`,
-`frontend/apps/gate/src/configs/RouteConfig.ts`) — never a literal path string scattered through app code.
+`frontend/apps/console-cp/src/configs/RouteConfig.ts`, `frontend/apps/gate/src/configs/RouteConfig.ts`), never a
+literal path string scattered through app code.
 
 - **Never** write `navigate('/some/path')`, ``navigate(`/some/${id}`)``, or `<Link to="/some/path">`. Always resolve the
   destination through `RouteConfig` (app-local code) or a package's `use<Domain>Routes()` hook (see below).
@@ -69,14 +70,15 @@ Every route destination is centralized in a per-app `RouteConfig` (`frontend/app
   `RouteConfig`/`ROUTE_SEGMENTS`, so the mounted route and every place that navigates to it share one source and can't
   drift apart. Read `frontend/apps/console/src/configs/RouteConfig.ts` directly — do not trust a copied route table,
   which goes stale.
-- A `@thunderid/configure-*` package must never hardcode or assume the host app's URL structure. Each package defines
-  its own `routes/types.ts` (a route-shape interface + defaults matching Console's current paths) and a
-  `use<Domain>Routes()` hook built on `@thunderid/contexts`'s `useRoutes`, which resolves the host-supplied path when
-  present and falls back to the package's own default otherwise. Components call this hook and build destinations from
-  its returned functions — never a literal string. This is what lets a package be mounted under a different URL by a
-  different host app without touching the package's code.
-- Adding a new route means updating `RouteConfig` (or a package's `routes/types.ts`) first, then consuming it — never
-  add a `navigate('/new/path')` call without registering the path there.
+- A `@thunderid/configure-*` package must never hardcode or assume the host app's URL structure. Each package that links
+  to or navigates between pages defines a `use<Domain>Routes()` hook in `hooks/use<Domain>Routes.ts`, next to its
+  route-shape interface and the defaults matching Console's current paths (for example `GroupRoutePaths` and
+  `defaultGroupRoutePaths` in `useGroupRoutes.ts`). The hook reads the host-supplied paths with `@thunderid/contexts`'s
+  `useRoutes` and falls back to the package's own defaults for any key the host does not supply. Components call this
+  hook and build destinations from its returned functions, never a literal string. This is what lets a package be
+  mounted under a different URL by a different host app without touching the package's code.
+- Adding a new route means updating `RouteConfig` (or a package's `use<Domain>Routes.ts`) first, then consuming it.
+  Never add a `navigate('/new/path')` call without registering the path there.
 
 ## Error Display
 
