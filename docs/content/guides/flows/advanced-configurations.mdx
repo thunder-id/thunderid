@@ -1621,6 +1621,7 @@ Checks whether the authenticated user has active consent records for the require
 3. If all consents are active, completes immediately: no prompt is needed.
 4. If any consents are missing, forwards the prompt data to the Consent View and awaits the user's decisions.
 5. After decisions are received, records them and makes `consentId` and `consented_attributes` available for Auth Assertion Generator.
+6. The Auth Assertion Generator includes only the attributes that the application requests and the user has consented to. An attribute the user approved earlier, but the application does not request now, is not included. If the user consents to no attributes, the assertion includes none.
 
 **Executor properties:**
 

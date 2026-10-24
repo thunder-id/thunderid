@@ -1012,11 +1012,12 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_GetUserGroupsFa
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithoutConsentedKey() {
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_EmptyConsentedAttributes() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID: "consent-123",
+			common.RuntimeKeyRequiredEssentialAttributes: "email name",
+			common.RuntimeKeyConsentedAttributes:         "",
 		},
 	}
 
@@ -1025,18 +1026,56 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentR
 	assert.Empty(suite.T(), result)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithConsentedKey() {
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentIDWithoutConsentedAttributes() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID:           "consent-123",
-			common.RuntimeKeyConsentedAttributes: "email name",
+			common.RuntimeKeyRequiredEssentialAttributes: "email name",
+			common.RuntimeKeyConsentID:                   "consent-123",
 		},
 	}
 
 	result := suite.executor.getRequiredUserAttributes(ctx)
 
 	assert.Equal(suite.T(), []string{"email", "name"}, result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentedAttributesIntersectRequested() {
+	suite.T().Run("runtime attributes", func(t *testing.T) {
+		ctx := &providers.NodeContext{
+			ExecutionID: "flow-123",
+			RuntimeData: map[string]string{
+				common.RuntimeKeyRequiredEssentialAttributes: "email",
+				common.RuntimeKeyRequiredOptionalAttributes:  "address name",
+				common.RuntimeKeyConsentID:                   "consent-123",
+				common.RuntimeKeyConsentedAttributes:         "phone email name",
+			},
+		}
+
+		result := suite.executor.getRequiredUserAttributes(ctx)
+
+		assert.Equal(t, []string{"email", "name"}, result)
+	})
+
+	suite.T().Run("application assertion attributes", func(t *testing.T) {
+		assertionAttrs := []string{"email", "address"}
+		ctx := &providers.NodeContext{
+			ExecutionID: "flow-123",
+			RuntimeData: map[string]string{
+				common.RuntimeKeyConsentedAttributes: "email phone",
+			},
+			Application: providers.Application{
+				InboundAuthProfile: providers.InboundAuthProfile{
+					Assertion: &inboundmodel.AssertionConfig{UserAttributes: assertionAttrs},
+				},
+			},
+		}
+
+		result := suite.executor.getRequiredUserAttributes(ctx)
+
+		assert.Equal(t, []string{"email"}, result)
+		assert.Equal(t, []string{"email", "address"}, assertionAttrs)
+	})
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeEssentialOnly() {
