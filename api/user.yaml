@@ -1116,7 +1116,7 @@ paths:
     get:
       tags:
         - User Sharing
-      summary: Resolve what an organization unit may do with the user
+      summary: Overlay rules for an organization unit
       description: |
         Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
         user, and which policies reached it.
