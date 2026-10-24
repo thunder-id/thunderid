@@ -230,7 +230,7 @@ Response classification:
 | 200, 204 | Delivered |
 | Connection error, timeout, 5xx | Retryable. The next attempt waits `retry_delay` doubled per attempt. After `max_attempts`, failed with reason `unreachable` or `server_error` |
 | 429 | Retryable. A parseable `Retry-After`, in either form RFC 9110 section 10.2.3 defines (delay-seconds or an HTTP date), sets the wait, bounded by the longest wait of the backoff schedule, `retry_delay` doubled `max_attempts` minus two times; otherwise the backoff schedule applies. Section 2.5 asks the OP to delay retransmission by an appropriate amount, and `Retry-After` is the relying party stating it. The bound keeps a hostile or misconfigured value from holding a delivery for longer than ThunderID would have waited anyway |
-| Any other 4xx, any 3xx | Failed immediately with reason `rejected`. Retrying a misconfigured or decommissioned endpoint only delays the record |
+| Any other status, including a 2xx other than 200 and 204, any 3xx and any other 4xx | Failed immediately with reason `rejected`. Section 2.8 requires 200 for a successful logout, so a 201 or 202 does not confirm one. Retrying a misconfigured or decommissioned endpoint only delays the record |
 
 A fresh token is minted per attempt, so a retry that lands after the previous token expired is still valid, a key rotation between attempts does not matter, and a relying party tracking token identifiers does not reject the retry as a replay.
 

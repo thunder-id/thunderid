@@ -1,0 +1,100 @@
+---
+title: Back-Channel Logout
+docType: reference
+displayed_sidebar: nextjsSdkSidebar
+description: Receive OpenID Connect back-channel logout notifications from {{ProductName}} in a Next.js route handler with backchannelLogout().
+---
+
+# Back-Channel Logout
+
+<ProductName /> posts a `logout_token` to the application when a Single Sign-On session it took part in ends, for example when the user signs out of another application or an administrator ends the session. The Next.js SDK receives it with `backchannelLogout()`. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout.mdx) for what <ProductName /> sends and how to register the URI.
+
+The session lives in a cookie that only the browser can delete, so the handler records the logout, and every later request that presents a matching session cookie is treated as signed out: by the server provider, the server actions, the middleware and the token refresh.
+
+## `backchannelLogout()`
+
+Creates the `POST` route handler. Mount it at the path registered as the application's back-channel logout URI.
+
+```ts title="app/api/auth/backchannel-logout/route.ts" showLineNumbers
+import { backchannelLogout } from '@thunderid/nextjs/server'
+
+export const { POST } = backchannelLogout()
+```
+
+### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `onLogout` | `(result: BackchannelLogoutResult) => void \| Promise<void>` | Called after the logout was recorded, with the `sid`, the `sub`, the token's `issuedAt` and `sessionsEnded`. Best effort: a failure is logged and the handler still answers `200` |
+| `store` | `LogoutRecordStore` | Where ended sessions are recorded. Defaults to the memory of the process. Pass the same store to [`thunderIDProxy()`](../middleware) |
+
+### Responses
+
+| Status | When |
+|--------|------|
+| `200` | The token is valid. Also when it names no session the application holds |
+| `400` | The request is not a form body with a `logout_token`, the body is over 16 kB, or the token fails validation |
+| `500` | The logout could not be recorded. <ProductName /> retries |
+
+Every response carries `Cache-Control: no-store`.
+
+### Validation
+
+The handler runs every check listed under [Validate the Token](../../../guides/protocols/oauth-oidc/backchannel-logout.mdx#validate-the-token) in the protocol guide, and refuses a replayed `jti`. A rejected token is logged by its error code only.
+
+## Requirements
+
+- **A client id.** The logout token is addressed to the client id, so the application must use the redirect-based flow with `NEXT_PUBLIC_THUNDERID_CLIENT_ID` set.
+- **Node.js runtime for the middleware.** The default record lives in the memory of the Node.js process. Middleware on the Edge runtime shares no memory with the route handler, so route protection in `thunderIDProxy()` does not see the record there. On Next.js 15, add `runtime: 'nodejs'` to the middleware's `config` export, or pass a shared `store` to both. Server components and server actions run on Node.js and see the record either way.
+- **A shared store for several instances.** <ProductName /> posts the notification to one instance only. Pass the same `LogoutRecordStore` to `backchannelLogout()` and `thunderIDProxy()`:
+
+```ts title="lib/logout-store.ts" showLineNumbers
+import Redis from 'ioredis'
+import type { LogoutRecordStore } from '@thunderid/node'
+
+const redis = new Redis(process.env.REDIS_URL)
+
+export const logoutStore: LogoutRecordStore = {
+  get: (key) => redis.get(key),
+  set: (key, value, ttlSeconds) => redis.set(key, value, 'EX', ttlSeconds).then(() => undefined),
+}
+```
+
+```ts title="app/api/auth/backchannel-logout/route.ts" showLineNumbers
+import { backchannelLogout } from '@thunderid/nextjs/server'
+import { logoutStore } from '@/lib/logout-store'
+
+export const { POST } = backchannelLogout({ store: logoutStore })
+```
+
+```ts title="middleware.ts" showLineNumbers
+import { thunderIDProxy } from '@thunderid/nextjs/server'
+import { logoutStore } from '@/lib/logout-store'
+
+export default thunderIDProxy(undefined, { backchannelLogout: { store: logoutStore } })
+
+export const config = {
+  runtime: 'nodejs',
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+## How the Session Is Matched
+
+- At sign-in, the session cookie records the `sid` of the ID token and the sign-in time. Both survive a token refresh.
+- A token with a `sid` ends exactly that session. A token with only a `sub` ends the subject's sessions that began before the token was issued, or within the ID token clock tolerance after it, so a user who signed in again after that stays signed in.
+- A record lives as long as the session cookie could, set by `THUNDERID_SESSION_COOKIE_EXPIRY_TIME`, then expires.
+
+## Notes
+
+- Ending the session is local. The handler does not call the revocation or end session endpoint.
+- An access token already handed to the browser or to another API stays valid until it expires.
+- An encrypted logout token, sent to a client configured for ID token encryption, is not supported.
+- An open browser tab notices the logout on its next request. Reloading the page, calling a server action or navigating all count.
+
+## Related
+
+- [Middleware](../middleware)
+- [Server Actions](../server-actions)
+- [Configuration](../configuration)
+- [`LoggedOutSessions` and `LogoutRecordStore`](../../node/apis/utilities/logged-out-sessions.mdx)

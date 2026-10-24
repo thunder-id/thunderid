@@ -1,0 +1,88 @@
+---
+displayed_sidebar: null
+title: handleBackchannelLogout()
+docType: reference
+description: Receive OpenID Connect back-channel logout notifications from {{ProductName}} with the handleBackchannelLogout() Express route handler.
+---
+
+# `handleBackchannelLogout()`
+
+The `handleBackchannelLogout()` function returns an Express route handler for the application's back-channel logout URI. <ProductName /> posts a `logout_token` to that URI when a Single Sign-On session the application took part in ends. The handler validates the token and ends the matching local sessions, so the next request that presents one is rejected by [`protect()`](../protect).
+
+## Signature
+
+```ts
+handleBackchannelLogout(): express.RequestHandler
+```
+
+## Import
+
+```js
+const {handleBackchannelLogout} = require('@thunderid/express');
+```
+
+## Prerequisites
+
+- Mount [`thunderID()`](../thunderid) before this handler
+- Register the handler's URL as the application's back-channel logout URI in <ProductName />, see [Back-Channel Logout](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx#register-a-back-channel-logout-uri)
+
+No body parser is needed. The handler parses the form body itself, with a 16 kB limit. No session cookie is needed: the token's signature is the authentication.
+
+## Usage
+
+```js title="index.js" showLineNumbers
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const {thunderID, handleBackchannelLogout} = require('@thunderid/express');
+
+const app = express();
+
+app.use(cookieParser());
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignInUrl: 'http://localhost:3000/login',
+  }),
+);
+
+app.post('/backchannel-logout', handleBackchannelLogout());
+```
+
+## Runtime Behavior
+
+1. Rejects any method other than `POST` with `405`, and any content type other than `application/x-www-form-urlencoded` with `400`.
+2. Validates the logout token with every check listed under [Validate the Token](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx#validate-the-token) in the protocol guide.
+3. Refuses a token whose `jti` was already handled.
+4. Ends the local sessions the token names. A `sid` ends the sessions that joined that <ProductName /> session. A `sub` without a `sid` ends that subject's sessions that began before the token was issued, or within the ID token clock tolerance after it.
+5. Calls `onBackchannelLogout` from [`ExpressClientConfig`](../../configuration/express-client-config), when set.
+
+Ending a session is local. The handler does not call the revocation or end session endpoint, and does not redirect.
+
+## Responses
+
+| Status | When |
+|---|---|
+| `200` | The token is valid. Also when it names no session the application holds, so a retried notification is harmless |
+| `400` | The request or the token is not valid |
+| `405` | The method is not `POST` |
+| `500` | The logout could not be recorded, or `thunderID()` was not mounted first. <ProductName /> retries |
+
+Every response carries `Cache-Control: no-store`.
+
+## Notes
+
+- The SDK records the `sid` and `sub` of each session's ID token at sign-in, in the same storage adapter as the session, so that a logout token can find it.
+- Sessions live in memory by default. A deployment with more than one instance needs a shared `storage` adapter, because <ProductName /> posts the notification to one instance only.
+- The `jti` replay check is kept in the process.
+- An access token the application already handed to a browser or to another service stays valid until it expires.
+- A rejected token is logged by its error code only. The token is never logged.
+- An encrypted logout token, sent to a client configured for ID token encryption, is not supported.
+
+## Related APIs
+
+- [`thunderID()`](../thunderid)
+- [`protect()`](../protect)
+- [`ExpressClientConfig`](../../configuration/express-client-config)
+- [Back-Channel Logout](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx)

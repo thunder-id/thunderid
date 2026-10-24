@@ -17,6 +17,7 @@ Error
     ├── ThunderIDAPIError
     └── ThunderIDRuntimeError
 ThunderIDAuthException  (separate — thrown by auth flow internals)
+└── InvalidLogoutTokenError
 ```
 
 ## `ThunderIDError`
@@ -150,6 +151,22 @@ Auth exception codes follow the pattern `JS-AUTH_CORE-<OPERATION>-<TYPE><INDEX>`
 | `-NE02` | Network error (fetch failed) |
 | `-HE03` | HTTP error (non-2xx response) |
 | `-IV02` | Invalid (resolution or parsing failure) |
+
+## `InvalidLogoutTokenError`
+
+Thrown by `handleBackchannelLogout()` in the Node SDK when a back-channel logout token is not valid or its `jti` was already handled. Extends `ThunderIDAuthException`, and its `code` names the check that failed. A logout handler answers `400` for it and a `5xx` for any other error, so <ProductName /> retries only when a retry can help. See [`handleBackchannelLogout(logoutToken)`](../../node/apis/clients/thunderid-node-client.mdx#handlebackchannellogoutlogouttoken).
+
+```ts
+import { InvalidLogoutTokenError } from '@thunderid/node'
+
+try {
+  await client.handleBackchannelLogout(logoutToken)
+} catch (err) {
+  if (err instanceof InvalidLogoutTokenError) {
+    console.error('Rejected logout token:', err.code)
+  }
+}
+```
 
 ## Catching All SDK Errors
 

@@ -64,6 +64,54 @@ await client.updateUserCredentials({ password: 'n3wP@ssword!' }, userId)
 This method collects only the new value, it does not verify the account's current value first. The self-service credential write path does not check the current value today.
 :::
 
+### `handleBackchannelLogout(logoutToken)`
+
+Handles an OpenID Connect back-channel logout. Validates the logout token <ProductName /> posted, then ends every local session it names. See [Back-Channel Logout](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx) for what the token contains and how <ProductName /> delivers it.
+
+```ts
+handleBackchannelLogout(logoutToken: string): Promise<BackchannelLogoutResult>
+```
+
+```ts title="routes/backchannel-logout.mjs" showLineNumbers
+import {InvalidLogoutTokenError} from '@thunderid/node'
+
+// Behind a POST route that parses an application/x-www-form-urlencoded body
+res.set('Cache-Control', 'no-store')
+try {
+  await client.handleBackchannelLogout(req.body.logout_token)
+  res.status(200).end()
+} catch (err) {
+  // 400 tells {{ProductName}} not to retry. A 5xx makes it retry.
+  res.status(err instanceof InvalidLogoutTokenError ? 400 : 500).end()
+}
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `logoutToken` | `string` | The raw `logout_token` form parameter |
+
+**Returns:** `Promise<BackchannelLogoutResult>`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `sid` | `string` (optional) | The session the token named |
+| `sub` | `string` (optional) | The subject the token named |
+| `issuedAt` | `number` | The token's `iat`, in seconds |
+| `sessionsEnded` | `number` | How many local sessions were ended. `0` when the token named no session held here, which is still a success |
+
+**Throws:** `InvalidLogoutTokenError` when the token is not valid or its `jti` was already handled. Answer `400` for it. Any other error means the logout could not be recorded; answer a `5xx`, so <ProductName /> retries.
+
+Behavior:
+
+- A token with a `sid` ends the sessions that joined that <ProductName /> session. A token with only a `sub` ends that subject's sessions that began before the token was issued, within the configured ID token clock tolerance.
+- The client records the `sid` and `sub` of the ID token against each session when `signIn()` completes, so a logout token can find it. The records live in the same storage adapter as the sessions and are removed when a session is cleared or its token revoked.
+- Ending a session is local. The method does not call the revocation or end session endpoint.
+- An access token the application already handed to a browser or to another service stays valid until it expires.
+- The `jti` replay check is kept in the process. Sessions and their records live in memory by default; a deployment with more than one instance needs a shared storage adapter.
+- An encrypted logout token is not supported.
+
 ## Related
 
 - [`ThunderIDNodeConfig`](../../config/thunderid-node-config): Configuration type for this client

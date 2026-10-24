@@ -339,7 +339,7 @@ this table already covers.
 | `tokenLifecycle` | Object | No | Platform default | Refresh timing and lifecycle behaviour. |
 | `allowedExternalUrls` | List | No | Empty | Origins the SDK may attach an access token to when tokens are held in isolated storage. Every entry MUST use HTTPS. See [Token attachment](#token-attachment) for how entries are matched. |
 | `session` | Object | No | Disabled | Browser SDKs only. Behaviour around the server's SSO session. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
-| `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. Turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler where the SDK mounts it, and the `store` that records ended sessions. An SDK that cannot receive the request MUST document the key as unsupported. |
+| `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. For an SDK that mounts the back-channel logout handler itself, turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler, and the `store` that records ended sessions. An SDK that exposes the handler for the application to mount takes the store on the handler instead and does not read this key. An SDK that cannot receive the request MUST document the key as unsupported. |
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
 
@@ -489,7 +489,9 @@ Requirements:
    logout, which tells the server to retry. Every response carries `Cache-Control: no-store`.
 3. A token with a `sid` ends the sessions bound to that `sid`. A token with only a `sub` ends
    every session of that subject that began before the token was issued, so a user who has
-   already signed in again is not signed out a second time. To make the first possible, the SDK
+   already signed in again is not signed out a second time. The cutoff is extended by the clock
+   tolerance the token was validated with, since the clocks may differ by that much and ending a
+   session that began just after the logout is the safer mistake. To make the first possible, the SDK
    MUST record the `sid` of the ID token against the session it creates at sign-in.
 4. Ending a session here is local. The SDK MUST NOT call the revocation or end session
    endpoint, which the server has already dealt with, and MUST NOT redirect.
@@ -1107,8 +1109,8 @@ session ended, so a user who signs out elsewhere is not left signed in to my app
   processes it, then that session ends and the next request that presents it is treated as
   unauthenticated.
 - **AC9.2:** Given a valid logout token with a `sub` and no `sid`, when the handler processes
-  it, then every session of that subject that began before the token was issued ends, and a
-  session that began afterwards is unaffected.
+  it, then every session of that subject that began before the token was issued, or within the
+  clock tolerance after it, ends, and a session that began later is unaffected.
 - **AC9.3:** Given a valid logout token that names no session the application holds, when the
   handler processes it, then it answers `200` and nothing changes.
 - **AC9.4:** Given a logout token with a signature that does not verify, an issuer or audience

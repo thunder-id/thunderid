@@ -72,6 +72,7 @@ These fields come from `StrictExpressClientConfig`.
 | `onSignOut` | `(res: express.Response) => void` | Called after a successful sign-out completion request |
 | `onError` | `(res: express.Response, exception: ThunderIDRuntimeError) => void` | Called when authentication-related work fails |
 | `onUnauthenticated` | `(res: express.Response) => void` | Intended callback for unauthenticated access handling |
+| `onBackchannelLogout` | `(result: BackchannelLogoutResult) => void \| Promise<void>` | Called after [`handleBackchannelLogout()`](../../middleware/handle-backchannel-logout) ended the SDK's sessions, with the `sid`, the `sub`, the token's `issuedAt` and `sessionsEnded`. Best effort: a failure is logged and the handler still answers `200` |
 
 :::note
 `protect()` accepts its own `onUnauthenticated` callback argument. The current `protect()` implementation does not read `config.onUnauthenticated`.

@@ -41,7 +41,7 @@ The SDK stores authentication state in signed, HttpOnly cookies:
 
 | Cookie | Purpose | Lifetime |
 |--------|---------|----------|
-| Session cookie | Stores access token, refresh token, user ID, and scopes | Configured via `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` |
+| Session cookie | Stores access token, refresh token, user ID, scopes, the `sid` of the ID token and the sign-in time | Configured via `THUNDERID_SESSION_COOKIE_EXPIRY_TIME` |
 | Temporary session cookie | Holds state during the OAuth flow | 15 minutes |
 
 ### Cookie Security Settings

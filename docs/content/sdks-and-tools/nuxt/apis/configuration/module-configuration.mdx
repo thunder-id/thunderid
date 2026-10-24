@@ -63,6 +63,7 @@ Secret values should be provided through environment variables rather than hardc
 | `platform` | `string` | ❌ | Platform identifier for the SDK |
 | `tokenRequest` | `object` | ❌ | Token endpoint request configuration |
 | `preferences` | `object` | ❌ | UI and behavior preferences |
+| `backchannelLogout` | `object` | ❌ | Receive back-channel logout notifications from <ProductName />. See [`backchannelLogout`](#backchannellogout) |
 
 ### `tokenRequest`
 
@@ -96,6 +97,47 @@ Controls which data is fetched server-side during SSR and hydrated into the clie
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `fetchUserProfile` | `boolean` | `true` | Fetch the user's profile on each SSR request and hydrate it into the client |
+
+### `backchannelLogout`
+
+<ProductName /> posts a `logout_token` to the application when a Single Sign-On session it took part in ends. With `backchannelLogout.enabled`, the module serves the route that receives it. Register that route's URL as the application's back-channel logout URI, see [Back-Channel Logout](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx#register-a-back-channel-logout-uri).
+
+```ts title="nuxt.config.ts" showLineNumbers
+export default defineNuxtConfig({
+  modules: ['@thunderid/nuxt'],
+  thunderid: {
+    backchannelLogout: { enabled: true },
+  },
+})
+```
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `enabled` | `boolean` | `false` | Serve the route. Off by default, because the route accepts unauthenticated requests |
+| `path` | `string` | `/api/auth/backchannel-logout` | Route of the handler |
+| `store` | `string` | Process memory | Name of a Nitro storage mount point that records ended sessions. Needed when more than one instance of the application runs |
+
+The route accepts a `POST` with an `application/x-www-form-urlencoded` body carrying one `logout_token`, at most 16 kB, with a declared `Content-Length`. It answers `200` for a valid token, including one that names no session the application holds, `400` for a request or token that is not valid, and `500` when the logout could not be recorded, which makes <ProductName /> retry. Every response carries `Cache-Control: no-store`. A rejected token is logged by its error code only.
+
+The session lives in a cookie that only the browser can delete, so the route records the logout, and [`useServerSession()`](../../server/use-server-session), [`requireServerSession()`](../../server/require-server-session), [`getValidAccessToken()`](../../server/get-valid-access-token) and the SSR plugin return no session for a matching cookie from then on. The session cookie records the `sid` of the ID token and the sign-in time, and keeps both across a token refresh. A token with a `sid` ends exactly that session; a token with only a `sub` ends the subject's sessions that began before the token was issued, or within the ID token clock tolerance after it.
+
+For several instances, name a [Nitro storage](https://nitro.build/guide/storage) mount point they share, since <ProductName /> posts the notification to one instance only:
+
+```ts title="nuxt.config.ts" showLineNumbers
+export default defineNuxtConfig({
+  modules: ['@thunderid/nuxt'],
+  thunderid: {
+    backchannelLogout: { enabled: true, store: 'redis' },
+  },
+  nitro: {
+    storage: { redis: { driver: 'redis', url: process.env.REDIS_URL } },
+  },
+})
+```
+
+:::note
+The logout token is addressed to the client id, so back-channel logout works with the redirect-based flow (`clientId` set). An access token already handed to the browser or to another API stays valid until it expires. An encrypted logout token, sent to a client configured for ID token encryption, is not supported.
+:::
 
 ## Advanced Configuration
 

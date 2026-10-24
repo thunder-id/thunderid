@@ -1,0 +1,95 @@
+---
+displayed_sidebar: null
+title: LoggedOutSessions
+docType: reference
+description: The record of sessions ended by back-channel logout that cookie-session SDKs consult, and the LogoutRecordStore interface a shared store implements.
+---
+
+# `LoggedOutSessions`
+
+`LoggedOutSessions` records the sessions a back-channel logout has ended, for an SDK that keeps its session in a cookie the server cannot delete. The Next.js and Nuxt SDKs write to it when a logout token arrives and consult it on every read of a session cookie. A framework client built on `ThunderIDNodeClient` that keeps sessions in cookies can use it the same way.
+
+## Import
+
+```ts
+import {LoggedOutSessions, InMemoryLogoutRecordStore} from '@thunderid/node'
+import type {LogoutRecordStore, PresentedSession} from '@thunderid/node'
+```
+
+## Usage
+
+```ts title="session.ts" showLineNumbers
+import {LoggedOutSessions} from '@thunderid/node'
+
+const loggedOut = new LoggedOutSessions()
+
+// When a logout token has been validated:
+await loggedOut.record({issuedAt: result.issuedAt, sid: result.sid, sub: result.sub}, cookieLifetimeSeconds)
+
+// On every request that presents a session cookie:
+if (await loggedOut.isLoggedOut({sid: payload.sid, startedAt: payload.signedInAt, sub: payload.sub})) {
+  // treat the request as signed out
+}
+```
+
+## Constructor
+
+```ts
+new LoggedOutSessions(store?: LogoutRecordStore)
+```
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `store` | `LogoutRecordStore` (optional) | Where records are kept. Defaults to `InMemoryLogoutRecordStore`, the memory of the current process |
+
+## Methods
+
+### `record(logout, ttlSeconds)`
+
+Records a logout.
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `logout.sid` | `string` (optional) | The session the token named. A record by `sid` ends exactly that session |
+| `logout.sub` | `string` (optional) | The subject the token named. Used only when the token has no `sid`. A record by `sub` ends the subject's sessions that began up to `clockTolerance` seconds after `issuedAt` |
+| `logout.issuedAt` | `number` | The token's `iat`, in seconds |
+| `logout.clockTolerance` | `number` (optional) | The clock tolerance the token was validated with, in seconds. Defaults to 60 |
+| `ttlSeconds` | `number` | How long the record is needed: the longest a matching session cookie could still be presented |
+
+### `isLoggedOut(session)`
+
+Returns `true` when a recorded logout ended the presented session.
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `session.sid` | `string` (optional) | The `sid` the session cookie carries |
+| `session.sub` | `string` (optional) | The subject of the session |
+| `session.startedAt` | `number` (optional) | When the session began, in seconds. A session with no start time counts as begun before any logout by `sub` |
+
+## `LogoutRecordStore`
+
+Two methods, so a shared store such as Redis fits directly (`SET key value EX ttl` and `GET key`).
+
+```ts
+interface LogoutRecordStore {
+  get(key: string): Promise<string | null | undefined>
+  set(key: string, value: string, ttlSeconds: number): Promise<void>
+}
+```
+
+| Method | Description |
+| :--- | :--- |
+| `get(key)` | Returns the stored value, or `null` or `undefined` when there is none |
+| `set(key, value, ttlSeconds)` | Stores the value. A store may drop it after `ttlSeconds`; the record carries its own expiry and is checked on read as well |
+
+Keys have the form `thunderid:logout:sid:<sid>` and `thunderid:logout:sub:<sub>`, with the identifier URL-encoded.
+
+### `InMemoryLogoutRecordStore`
+
+The default. Keeps records in a `Map` and drops expired ones as new ones arrive. Correct for one process; a deployment with more than one instance needs a shared store, because <ProductName /> posts the notification to one instance only.
+
+## Related
+
+- [Back-Channel Logout](../../../../guides/protocols/oauth-oidc/backchannel-logout.mdx)
+- [`backchannelLogout()` in the Next.js SDK](../../../nextjs/apis/backchannel-logout.mdx)
+- [`backchannelLogout` in the Nuxt module configuration](../../../nuxt/apis/configuration/module-configuration.mdx#backchannellogout)

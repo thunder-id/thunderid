@@ -31,6 +31,11 @@ const sidebar: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'sdks-and-tools/nextjs/apis/backchannel-logout',
+          label: 'Back-Channel Logout',
+        },
+        {
+          type: 'doc',
           id: 'sdks-and-tools/nextjs/apis/configuration',
           label: 'Configuration',
         },
