@@ -21,14 +21,16 @@ func TestRevocationModelTestSuite(t *testing.T) {
 // terminal reason revokes an artifact outright while a boundary reason only revokes what predates
 // the action — so each one is pinned explicitly rather than derived from the implementation.
 var allReasons = map[Reason]bool{
-	ReasonExplicit:                     false,
-	ReasonRefreshRotation:              false,
-	ReasonRefreshReplay:                false,
-	ReasonSessionLogout:                false,
-	ReasonCodeReplay:                   false,
-	ReasonExplicitTokenFamily:          false,
-	ReasonApplicationDeleted:           false,
-	ReasonUserDeleted:                  false,
+	ReasonExplicit:            false,
+	ReasonRefreshRotation:     false,
+	ReasonRefreshReplay:       false,
+	ReasonSessionLogout:       false,
+	ReasonCodeReplay:          false,
+	ReasonExplicitTokenFamily: false,
+	ReasonUserDeleted:         false,
+	// A deleted application revokes what it issued up to the deletion; one registered later under
+	// the same client id is a new application.
+	ReasonApplicationDeleted:           true,
 	ReasonApplicationSecretRegenerated: true,
 	ReasonRoleAssignmentRemoved:        true,
 	ReasonRolePermissionRemoved:        true,
@@ -61,7 +63,7 @@ func (s *RevocationModelTestSuite) TestIsBoundaryReasonUnknownIsTerminal() {
 // the former while the Resource Server cache classifies entries with the latter.
 func (s *RevocationModelTestSuite) TestBoundaryReasonsMatchesPredicate() {
 	boundary := BoundaryReasons()
-	s.Len(boundary, 9)
+	s.Len(boundary, 10)
 
 	for _, reason := range boundary {
 		s.True(IsBoundaryReason(reason), "%q is listed as boundary but not classified as one", reason)

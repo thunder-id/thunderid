@@ -584,7 +584,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is
 	// marked Secure unless the deployment is configured to serve over plain HTTP.
 	ssoTransport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: flowConfig.SecureCookies})
-	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider,
+	// The engine also returns the runner of its system flows, for the services that revoke before
+	// they write; none runs one yet.
+	flowExecService, _, err := flowexec.Initialize(mux, flowMgtService, actorProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")

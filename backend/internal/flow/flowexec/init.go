@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/systemflow"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -33,7 +34,7 @@ func Initialize(
 	serverConfigSvc serverConfigProvider,
 	ssoTransport session.HandleTransportInterface,
 	cfg flowconfig.Config,
-) (FlowExecServiceInterface, error) {
+) (FlowExecServiceInterface, systemflow.Runner, error) {
 	flowStore := newFlowStore(storeProvider)
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
@@ -49,7 +50,13 @@ func Initialize(
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)
 
-	return flowExecService, nil
+	// The system flows run on the same engine as the flows the API starts, so a service that revokes
+	// before it writes runs the very steps an administration flow would.
+	systemFlows, err := newSystemFlowRunner(flowEngine, graphBuilder, executorRegistry)
+	if err != nil {
+		return nil, nil, err
+	}
+	return flowExecService, systemFlows, nil
 }
 
 func registerRoutes(mux *http.ServeMux, handler *flowExecutionHandler) {

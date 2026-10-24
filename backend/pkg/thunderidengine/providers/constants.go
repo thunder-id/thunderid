@@ -47,6 +47,11 @@ const (
 	FlowTypeSignOut FlowType = "SIGNOUT"
 	// FlowTypeAdministration represents an administrator-designed operational flow.
 	FlowTypeAdministration FlowType = "ADMINISTRATION"
+	// FlowTypeSystem represents a flow the engine owns and a service runs in process before it writes
+	// a change, such as revoking what a deletion invalidates. It is defined in code, never stored or
+	// edited, never asks for input, and cannot be started through the flow execution API, so it is
+	// deliberately left out of ValidFlowTypes.
+	FlowTypeSystem FlowType = "SYSTEM"
 )
 
 // ValidFlowTypes is the set of supported flow types.

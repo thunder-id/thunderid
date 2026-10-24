@@ -7,17 +7,18 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with two broader scopes, so an operational event such as a sign-out or a user deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with three broader scopes, so an operational event such as a sign-out, a user deletion, or an application deletion can invalidate many tokens at once.
 
-Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The three scopes below differ only in what goes on that list.
+Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The four scopes below differ only in what goes on that list.
 
-## The Three Scopes
+## The Four Scopes
 
 | Scope | What it invalidates | Typical trigger |
 |---|---|---|
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **User** | Every token belonging to one user, by its `sub` | A user is deleted |
+| **Client** | Every token issued to one application, by its client ID | An application is deleted or its client secret is regenerated |
 
 A token is rejected if **any** of these matches.
 
@@ -96,6 +97,21 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 
 :::warning
 Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
+:::
+
+## Application Deletion and Secret Regeneration
+
+Deleting an application from the Console runs an administration flow that revokes every token issued to the application, detaches it from the sessions it took part in, and then removes the record. Regenerating its client secret from the Console runs one that revokes the tokens issued before the regeneration, and then replaces the secret.
+
+The revocation runs before the change, so its reach ends a little past the moment it runs, and a token issued while the change is being written is covered too:
+
+| Change | Revokes tokens issued up to | Effect after the change |
+|---|---|---|
+| Application deleted | 30 seconds past the revocation | An application registered later under the same client ID, as a rollback to a configuration version that still has it does, is a new application. The tokens it issues are valid once those 30 seconds have passed. |
+| Client secret regenerated | 5 seconds past the revocation | A token obtained with the new secret within those 5 seconds is revoked as well. A client that requests a token in the same moment it receives the new secret requests it again. |
+
+:::warning
+Deleting an application through the `DELETE /applications/{id}` API, or replacing its secret through `PUT /applications/{id}`, does not run these flows yet, so the tokens it issued stay valid until they expire.
 :::
 
 ## Where Revocation Is Enforced

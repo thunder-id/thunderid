@@ -94,7 +94,7 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 	assert.Equal(suite.T(), revokedAt, snapshot.AppKeys[0].RevokedAt)
 	assert.True(suite.T(), snapshot.AppKeys[0].Boundary)
 	assert.Equal(suite.T(), "client-2", snapshot.AppKeys[1].Value)
-	assert.False(suite.T(), snapshot.AppKeys[1].Boundary)
+	assert.True(suite.T(), snapshot.AppKeys[1].Boundary, "a deleted application revokes what predates its deletion")
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_Empty() {

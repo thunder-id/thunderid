@@ -283,3 +283,61 @@ var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 		DefaultValue: "Administrative flows require the system permission",
 	},
 }
+
+// ErrorUnknownSystemFlow is returned when a service asks for a system flow no operation defines.
+var ErrorUnknownSystemFlow = tidcommon.ServiceError{
+	Code: "FES-1020",
+	Type: tidcommon.ServerErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.unknown_system_flow",
+		DefaultValue: "No system flow is defined for the operation",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.unknown_system_flow_description",
+		DefaultValue: "The change was refused because the engine has no system flow for it",
+	},
+}
+
+// ErrorSystemFlowIncomplete is returned when a system flow stopped to ask for input, which a flow
+// that runs in process with no one to answer can never do.
+var ErrorSystemFlowIncomplete = tidcommon.ServiceError{
+	Code: "FES-1021",
+	Type: tidcommon.ServerErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_incomplete",
+		DefaultValue: "The system flow did not run to completion",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_incomplete_description",
+		DefaultValue: "A system flow asked for input, so the change was refused",
+	},
+}
+
+// ErrorSystemFlowFailed is returned when a system flow ended in failure without saying why.
+var ErrorSystemFlowFailed = tidcommon.ServiceError{
+	Code: "FES-1022",
+	Type: tidcommon.ServerErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_failed",
+		DefaultValue: "The system flow failed",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_failed_description",
+		DefaultValue: "A step of the system flow failed, so the change was refused",
+	},
+}
+
+// ErrorSystemFlowUnavailable is returned when this server registered only some executors and a step
+// of the operation's system flow is not among them, so the change it guards is refused.
+var ErrorSystemFlowUnavailable = tidcommon.ServiceError{
+	Code: "FES-1023",
+	Type: tidcommon.ServerErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_unavailable",
+		DefaultValue: "The system flow cannot run on this server",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.system_flow_unavailable_description",
+		DefaultValue: "A step of the system flow is not registered on this server, so the change was refused",
+	},
+}
