@@ -288,3 +288,8 @@ func (r *statusRecorder) Write(body []byte) (int, error) {
 	r.wroteHeader = true
 	return r.ResponseWriter.Write(body)
 }
+
+// Unwrap returns the wrapped ResponseWriter, so http.ResponseController reaches the connection.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}

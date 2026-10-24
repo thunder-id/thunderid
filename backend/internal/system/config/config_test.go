@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -1914,4 +1915,18 @@ func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {
 
 	suite.Equal(3, *base.AccountAccess.User.Default.Threshold)
 	suite.Equal("authentication_method", base.AccountAccess.User.LockGranularity)
+}
+
+// The apply and import timeouts are read in seconds, and an unset one leaves the server's write
+// timeout in place.
+func TestApplyAndImportTimeoutsAreSeconds(t *testing.T) {
+	if got := (GatewayConfig{ApplyTimeoutSeconds: 300}).ApplyTimeout(); got != 300*time.Second {
+		t.Errorf("apply timeout: got %v", got)
+	}
+	if got := (ImportConfig{TimeoutSeconds: 120}).Timeout(); got != 120*time.Second {
+		t.Errorf("import timeout: got %v", got)
+	}
+	if (GatewayConfig{}).ApplyTimeout() != 0 || (ImportConfig{}).Timeout() != 0 {
+		t.Error("an unset timeout should be zero, leaving the server's write timeout in place")
+	}
 }

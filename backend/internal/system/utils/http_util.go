@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -687,4 +688,14 @@ func WriteErrorResponse(ctx context.Context, w http.ResponseWriter, statusCode i
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write(b)
 	}
+}
+
+// ExtendWriteDeadline gives a request d from now to write its response, in place of the server's
+// write timeout, for a route known to run longer than the rest. A zero d leaves the server's timeout
+// in place. It fails when no writer between the handler and the connection lets the deadline through.
+func ExtendWriteDeadline(w http.ResponseWriter, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	return http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 }

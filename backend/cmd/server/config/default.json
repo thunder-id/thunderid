@@ -4,6 +4,11 @@
     "port": 8090,
     "http_only": false,
     "identifier": "default-deployment",
+    "timeouts": {
+      "read_header_seconds": 10,
+      "write_seconds": 10,
+      "idle_seconds": 120
+    },
     "security": {
       "jwks_cache_ttl": 300,
       "trusted_issuer": {
@@ -461,6 +466,10 @@
     "max_versions": 3,
     "allow_private_addresses": false,
     "removal_confirmation_threshold": 5,
-    "store": "composite"
+    "store": "composite",
+    "apply_timeout_seconds": 300
+  },
+  "import": {
+    "timeout_seconds": 120
   }
 }

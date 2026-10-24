@@ -9,6 +9,12 @@ server:
   {{- if .Values.configuration.server.identifier }}
   identifier: {{ .Values.configuration.server.identifier | quote }}
   {{- end }}
+  {{- with .Values.configuration.server.timeouts }}
+  timeouts:
+    read_header_seconds: {{ .readHeaderSeconds }}
+    write_seconds: {{ .writeSeconds }}
+    idle_seconds: {{ .idleSeconds }}
+  {{- end }}
   {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
     {{- with .Values.configuration.server.security }}
@@ -327,6 +333,12 @@ flow:
     - {{ . | quote }}
   {{- end }}
 {{- end }}
+
+import:
+  timeout_seconds: {{ .Values.configuration.import.timeoutSeconds }}
+
+gateway:
+  apply_timeout_seconds: {{ .Values.configuration.gateway.applyTimeoutSeconds }}
 
 direct_api:
   enabled: {{ .Values.configuration.directApi.enabled }}

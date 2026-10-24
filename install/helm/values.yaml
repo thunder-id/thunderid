@@ -143,6 +143,13 @@ configuration:
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
+    # HTTP server timeouts for every route, in seconds. writeSeconds bounds a request from the end of
+    # its headers until its response is written; a slow API has its own timeout instead (see
+    # import.timeoutSeconds), so this one can stay short.
+    timeouts:
+      readHeaderSeconds: 10
+      writeSeconds: 10
+      idleSeconds: 120
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
     # every JWKS consumer in the server (trusted issuer validation, federated OIDC
@@ -488,6 +495,19 @@ configuration:
       - "urn:ietf:params:oauth:grant-type:token-exchange"
       - "urn:openid:params:grant-type:ciba"
       - "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+  # Import API configuration.
+  # timeoutSeconds bounds an import request, in place of server.timeouts.writeSeconds. A control plane
+  # applies a configuration version through this API, so raise it when large applies time out.
+  import:
+    timeoutSeconds: 120
+
+  # Gateway configuration.
+  # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
+  # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
+  # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  gateway:
+    applyTimeoutSeconds: 300
 
   # Flow configuration
   flow:

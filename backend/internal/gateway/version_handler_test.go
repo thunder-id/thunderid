@@ -9,9 +9,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -22,6 +25,8 @@ type stubVersionService struct {
 	lastApp  ApplyRequest
 	forgot   string
 	captured CaptureRequest
+	// delay makes an apply or a revert take this long, as one waiting on a gateway's import does.
+	delay time.Duration
 }
 
 func (s *stubVersionService) Capture(_ context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
@@ -45,9 +50,11 @@ func (s *stubVersionService) Diff(_ context.Context, _, ref string) (*Diff, *tid
 func (s *stubVersionService) Apply(_ context.Context, _ string,
 	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	s.lastApp = req
+	time.Sleep(s.delay)
 	return &ApplyResult{}, s.err
 }
 func (s *stubVersionService) Revert(context.Context, string, RevertRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	time.Sleep(s.delay)
 	return &ApplyResult{}, s.err
 }
 func (s *stubVersionService) Forget(_ context.Context, id string) { s.forgot = id }
@@ -133,4 +140,30 @@ func TestRemovingAGatewayForgetsWhatItHeld(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, recorder.Code)
 	assert.Equal(t, "gw-1", stub.forgot)
+}
+
+// An apply or a revert runs longer than the server's write timeout allows other requests, and answers
+// within the gateway's apply timeout instead, through the change capture that wraps every route. The
+// stub's delay only has to outlast the server's 100 ms, which a slow machine makes it do all the more;
+// the apply timeout is an hour, so no pause can reach it.
+func TestApplyAndRevertAnswerWithinTheApplyTimeout(t *testing.T) {
+	config.ResetServerRuntime()
+	require.NoError(t, config.InitializeServerRuntime(t.TempDir(), &config.Config{
+		Gateway: config.GatewayConfig{ApplyTimeoutSeconds: 3600},
+	}))
+	t.Cleanup(config.ResetServerRuntime)
+
+	mux := http.NewServeMux()
+	registerVersionRoutes(mux, newVersionHandler(&stubVersionService{delay: 300 * time.Millisecond}))
+	server := httptest.NewUnstartedServer(NewChangeCapture().Middleware(mux))
+	server.Config.WriteTimeout = 100 * time.Millisecond
+	server.Start()
+	t.Cleanup(server.Close)
+
+	for _, path := range []string{"/gateways/gw-1/apply", "/gateways/gw-1/revert"} {
+		resp, err := server.Client().Post(server.URL+path, "application/json", nil)
+		require.NoError(t, err, "%s lost its connection at the server's write timeout", path)
+		assert.Equal(t, http.StatusOK, resp.StatusCode, path)
+		require.NoError(t, resp.Body.Close())
+	}
 }

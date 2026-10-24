@@ -213,6 +213,21 @@ type ServerConfig struct {
 	Identifier                 string         `yaml:"identifier" json:"identifier"`
 	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
 	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
+	Timeouts                   ServerTimeouts `yaml:"timeouts"   json:"timeouts"`
+}
+
+// ServerTimeouts bounds how long the HTTP server waits on a connection, in seconds. They apply to
+// every route; a route that needs longer to answer extends its own write deadline from its own key.
+type ServerTimeouts struct {
+	// ReadHeaderSeconds bounds reading a request's headers, which guards against clients that send
+	// them slowly to hold connections open.
+	ReadHeaderSeconds int `yaml:"read_header_seconds" json:"read_header_seconds"`
+	// WriteSeconds bounds a request from the end of its headers until the response is written. A
+	// route known to run longer, such as applying a configuration version or the import that applies
+	// it, extends its own deadline from its own key rather than raising this one for every route.
+	WriteSeconds int `yaml:"write_seconds" json:"write_seconds"`
+	// IdleSeconds bounds how long a kept-alive connection waits for its next request.
+	IdleSeconds int `yaml:"idle_seconds" json:"idle_seconds"`
 }
 
 // GateClientConfig holds the client configuration details.

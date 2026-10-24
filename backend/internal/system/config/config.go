@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
@@ -359,6 +360,30 @@ type GatewayConfig struct {
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
+	// ApplyTimeoutSeconds is how long a request to apply a version to a gateway, or to revert one,
+	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
+	// already running on that gateway and the gateway's own import.
+	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
+}
+
+// ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the
+// server's write timeout in place.
+func (c GatewayConfig) ApplyTimeout() time.Duration {
+	return time.Duration(c.ApplyTimeoutSeconds) * time.Second
+}
+
+// ImportConfig holds the configuration of the import API.
+type ImportConfig struct {
+	// TimeoutSeconds is how long an import request may take to answer, in place of the server's
+	// write timeout. An import writes every resource it carries, and the import a control plane
+	// sends to apply a version carries the whole configuration.
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
+}
+
+// Timeout reports how long an import request may take to answer; zero leaves the server's write
+// timeout in place.
+func (c ImportConfig) Timeout() time.Duration {
+	return time.Duration(c.TimeoutSeconds) * time.Second
 }
 
 // MaxGatewayCount reports how many gateways a deployment may register, defaulting to none when
@@ -727,6 +752,7 @@ func (c AuthZENPDPConfig) Validate() error {
 type Config struct {
 	Server                     engineconfig.ServerConfig         `yaml:"server"                json:"server"`
 	Gateway                    GatewayConfig                     `yaml:"gateway"               json:"gateway"`
+	Import                     ImportConfig                      `yaml:"import"                json:"import"`
 	AuthZENPDP                 AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	Log                        LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient                 engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
