@@ -206,6 +206,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/tokens-and-apis', label: 'Protect APIs'},
                 {type: 'doc', id: 'use-cases/b2c/sessions-and-logout', label: 'Sessions & Logout'},
                 {type: 'doc', id: 'use-cases/b2c/notification', label: 'Notification'},
+                {type: 'doc', id: 'use-cases/b2c/conditional-flows', label: 'Conditional Flows'},
                 {type: 'doc', id: 'use-cases/b2c/operations', label: 'Run & Observe'},
               ],
             },
