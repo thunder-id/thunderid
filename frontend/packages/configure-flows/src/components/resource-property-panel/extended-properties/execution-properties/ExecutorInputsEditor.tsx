@@ -6,6 +6,7 @@ import {
   Box,
   Checkbox,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   IconButton,
   MenuItem,
@@ -17,9 +18,12 @@ import {
 import {PlusIcon, Trash} from '@wso2/oxygen-ui-icons-react';
 import {memo, useCallback, useMemo, useReducer, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {INPUT_TYPES} from './constants';
+import {INPUT_TYPES, SENSITIVE_INPUT_TYPES} from './constants';
+import DraftTextField from './DraftTextField';
 import type {FlowNodeInput} from '../../../../models/responses';
+import {BOOLEAN_INPUT_TYPE, hasInvalidInputConfig, toBooleanDefault} from '../../../../utils/executorInputs';
 import generateResourceId from '../../../../utils/generateResourceId';
+import LabelWithTooltip from '../../LabelWithTooltip';
 import PanelActionButton from '../../PanelActionButton';
 
 /**
@@ -28,6 +32,10 @@ import PanelActionButton from '../../PanelActionButton';
 export interface ExecutorInputsEditorProps {
   inputs: FlowNodeInput[];
   onChange: (inputs: FlowNodeInput[]) => void;
+  /**
+   * Validation message for the inputs, shown under the title.
+   */
+  errorMessage?: string;
 }
 
 let nextId = 0;
@@ -52,6 +60,24 @@ const idsReducer = (prev: string[], requiredLength: number): string[] => {
   return prev.slice(0, requiredLength);
 };
 
+/**
+ * Drops the default and constant properties when they carry no value, when the input type is
+ * sensitive and cannot hold them, or when a boolean input's default is not a boolean, so a saved
+ * input lists only what is set.
+ */
+const normalizeInput = (input: FlowNodeInput): FlowNodeInput => {
+  const {default: defaultValue, constant, ...rest} = input;
+
+  if (SENSITIVE_INPUT_TYPES.has(input.type)) {
+    return rest;
+  }
+
+  const keepDefault =
+    Boolean(defaultValue) && (input.type !== BOOLEAN_INPUT_TYPE || toBooleanDefault(defaultValue) !== '');
+
+  return {...rest, ...(keepDefault ? {default: defaultValue} : {}), ...(constant ? {constant} : {})};
+};
+
 interface InputRowProps {
   input: FlowNodeInput;
   index: number;
@@ -60,7 +86,8 @@ interface InputRowProps {
 }
 
 /**
- * A single input card with type dropdown, identifier field, required checkbox, and remove action.
+ * A single input card with type dropdown, identifier field, default value, required and constant
+ * checkboxes, and a remove action.
  * Commits identifier to the parent only on blur to avoid input clobbering during fast typing.
  */
 const InputRow = memo(function InputRow({input, index, onUpdate, onRemove}: InputRowProps): ReactNode {
@@ -75,6 +102,9 @@ const InputRow = memo(function InputRow({input, index, onUpdate, onRemove}: Inpu
     setPrevIdentifier(input.identifier);
     setLocalIdentifier(input.identifier);
   }
+
+  const canHoldDefault = !SENSITIVE_INPUT_TYPES.has(input.type);
+  const invalid = hasInvalidInputConfig(input);
 
   return (
     <Box
@@ -131,16 +161,68 @@ const InputRow = memo(function InputRow({input, index, onUpdate, onRemove}: Inpu
             fullWidth
           />
         </div>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={input.required}
-              onChange={(_, checked) => onUpdate(index, 'required', checked)}
-              size="small"
+        {canHoldDefault && (
+          <div>
+            <FormLabel>
+              <LabelWithTooltip
+                label={t('flows:core.executions.inputs.defaultLabel')}
+                tooltip={t('flows:core.executions.inputs.defaultTooltip')}
+              />
+            </FormLabel>
+            {input.type === BOOLEAN_INPUT_TYPE ? (
+              <Select
+                value={toBooleanDefault(input.default)}
+                onChange={(e) => onUpdate(index, 'default', e.target.value)}
+                error={invalid}
+                size="small"
+                displayEmpty
+                fullWidth
+              >
+                <MenuItem value="">{t('flows:core.executions.inputs.defaultNotSet')}</MenuItem>
+                <MenuItem value="true">{t('flows:core.executions.inputs.defaultTrue')}</MenuItem>
+                <MenuItem value="false">{t('flows:core.executions.inputs.defaultFalse')}</MenuItem>
+              </Select>
+            ) : (
+              <DraftTextField
+                value={input.default ?? ''}
+                onCommit={(value) => onUpdate(index, 'default', value)}
+                placeholder={t('flows:core.executions.inputs.defaultPlaceholder')}
+                error={invalid}
+                size="small"
+                fullWidth
+              />
+            )}
+          </div>
+        )}
+        <Stack>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={input.required}
+                onChange={(_, checked) => onUpdate(index, 'required', checked)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.inputs.required')}
+          />
+          {canHoldDefault && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={input.constant === true}
+                  onChange={(_, checked) => onUpdate(index, 'constant', checked)}
+                  size="small"
+                />
+              }
+              label={
+                <LabelWithTooltip
+                  label={t('flows:core.executions.inputs.constant')}
+                  tooltip={t('flows:core.executions.inputs.constantTooltip')}
+                />
+              }
             />
-          }
-          label={t('flows:core.executions.inputs.required')}
-        />
+          )}
+        </Stack>
       </Stack>
     </Box>
   );
@@ -148,12 +230,17 @@ const InputRow = memo(function InputRow({input, index, onUpdate, onRemove}: Inpu
 
 /**
  * Dynamic list editor for configuring executor inputs.
- * Allows adding/removing input field definitions with type, identifier, and required flag.
+ * Allows adding/removing input field definitions with type, identifier, required flag, default value
+ * and constant flag.
  *
  * @param props - Props injected to the component.
  * @returns The ExecutorInputsEditor component.
  */
-function ExecutorInputsEditor({inputs: inputsProp, onChange}: ExecutorInputsEditorProps): ReactNode {
+function ExecutorInputsEditor({
+  inputs: inputsProp,
+  onChange,
+  errorMessage = undefined,
+}: ExecutorInputsEditorProps): ReactNode {
   const inputs = useMemo(() => (Array.isArray(inputsProp) ? inputsProp : []), [inputsProp]);
   const {t} = useTranslation();
 
@@ -172,7 +259,7 @@ function ExecutorInputsEditor({inputs: inputsProp, onChange}: ExecutorInputsEdit
   const handleUpdate = useCallback(
     (index: number, field: keyof FlowNodeInput, value: string | boolean) => {
       const updated = [...inputs];
-      updated[index] = {...updated[index], [field]: value};
+      updated[index] = normalizeInput({...updated[index], [field]: value});
       onChange(updated);
     },
     [inputs, onChange],
@@ -200,6 +287,7 @@ function ExecutorInputsEditor({inputs: inputsProp, onChange}: ExecutorInputsEdit
   return (
     <Stack gap={1.5}>
       <FormLabel>{t('flows:core.executions.inputs.title')}</FormLabel>
+      {errorMessage && <FormHelperText error>{errorMessage}</FormHelperText>}
       {inputs.length === 0 && <Alert severity="info">{t('flows:core.executions.inputs.empty')}</Alert>}
       {inputs.map((input, index) => (
         <InputRow key={syncedIds[index]} input={input} index={index} onUpdate={handleUpdate} onRemove={handleRemove} />

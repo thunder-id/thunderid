@@ -5,6 +5,7 @@ package core
 
 import (
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1111,4 +1112,212 @@ func (s *TaskExecutionNodeTestSuite) TestGetExecutionPolicy_WithEmptyMode() {
 	policy := node.GetExecutionPolicy()
 	s.NotNil(policy)
 	s.False(policy.SkipChallengeValidation)
+}
+
+// executeWithInputs runs a node with the given inputs and returns the user inputs the executor saw.
+func (s *TaskExecutionNodeTestSuite) executeWithInputs(inputs []providers.Input,
+	ctx *providers.NodeContext) map[string]string {
+	var seen map[string]string
+	mockExec := NewExecutorInterfaceMock(s.T())
+	mockExec.On("GetName").Return("test-executor").Once()
+	mockExec.On("Execute", mock.Anything).Run(func(_ mock.Arguments) {
+		seen = maps.Clone(ctx.UserInputs)
+	}).Return(&providers.ExecutorResponse{Status: providers.ExecComplete}, nil).Once()
+
+	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false)
+	execNode, _ := node.(ExecutorBackedNodeInterface)
+	execNode.SetInputs(inputs)
+	execNode.SetExecutor(mockExec)
+
+	_, err := node.Execute(ctx)
+	s.Nil(err)
+	return seen
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteResolvesInputValues() {
+	plain := providers.Input{Identifier: "locale", Type: providers.InputTypeText}
+	withDefault := providers.Input{Identifier: "locale", Type: providers.InputTypeText, Default: "en-US"}
+	constant := providers.Input{Identifier: "locale", Type: providers.InputTypeText, Default: "en-US", Constant: true}
+
+	cases := []struct {
+		name          string
+		input         providers.Input
+		userInputs    map[string]string
+		runtimeData   map[string]string
+		forwardedData map[string]interface{}
+		want          map[string]string
+	}{
+		{
+			name:       "input without a default is untouched",
+			input:      plain,
+			userInputs: map[string]string{},
+			want:       map[string]string{},
+		},
+		{
+			name:       "default fills a missing value",
+			input:      withDefault,
+			userInputs: map[string]string{},
+			want:       map[string]string{"locale": "en-US"},
+		},
+		{
+			name:       "default fills an empty value",
+			input:      withDefault,
+			userInputs: map[string]string{"locale": ""},
+			want:       map[string]string{"locale": "en-US"},
+		},
+		{
+			name:       "default is written into a nil user inputs map",
+			input:      withDefault,
+			userInputs: nil,
+			want:       map[string]string{"locale": "en-US"},
+		},
+		{
+			name:       "default keeps a submitted value",
+			input:      withDefault,
+			userInputs: map[string]string{"locale": "fr-FR"},
+			want:       map[string]string{"locale": "fr-FR"},
+		},
+		{
+			name:        "default keeps a runtime value",
+			input:       withDefault,
+			userInputs:  map[string]string{},
+			runtimeData: map[string]string{"locale": "fr-FR"},
+			want:        map[string]string{},
+		},
+		{
+			name:          "default keeps a forwarded value",
+			input:         withDefault,
+			userInputs:    map[string]string{},
+			forwardedData: map[string]interface{}{"locale": "fr-FR"},
+			want:          map[string]string{},
+		},
+		{
+			name:        "default keeps an external claim",
+			input:       withDefault,
+			userInputs:  map[string]string{},
+			runtimeData: externalIdentityData(map[string]interface{}{"locale": "fr-FR"}),
+			want:        map[string]string{},
+		},
+		{
+			name:       "constant replaces a submitted value",
+			input:      constant,
+			userInputs: map[string]string{"locale": "fr-FR"},
+			want:       map[string]string{"locale": "en-US"},
+		},
+		{
+			name:       "constant is written when nothing exists",
+			input:      constant,
+			userInputs: map[string]string{},
+			want:       map[string]string{"locale": "en-US"},
+		},
+		{
+			name:        "constant is written over a runtime value",
+			input:       constant,
+			userInputs:  map[string]string{},
+			runtimeData: map[string]string{"locale": "fr-FR"},
+			want:        map[string]string{"locale": "en-US"},
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			ctx := &providers.NodeContext{
+				ExecutionID:   "test-flow",
+				UserInputs:    tc.userInputs,
+				RuntimeData:   tc.runtimeData,
+				ForwardedData: tc.forwardedData,
+			}
+
+			seen := s.executeWithInputs([]providers.Input{tc.input}, ctx)
+
+			s.Equal(tc.want, seen)
+		})
+	}
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteDefaultsFillOnceWhileConstantsKeepReplacing() {
+	input := func(value string, constant bool) []providers.Input {
+		return []providers.Input{
+			{Identifier: "locale", Type: providers.InputTypeText, Default: value, Constant: constant},
+		}
+	}
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}}
+
+	steps := []struct {
+		name   string
+		inputs []providers.Input
+		want   string
+	}{
+		{"a default fills a missing value", input("D-A", false), "D-A"},
+		{"a later default does not replace it", input("D-B", false), "D-A"},
+		{"a constant replaces it", input("C-A", true), "C-A"},
+		{"a later constant replaces that one", input("C-B", true), "C-B"},
+		{"a later default does not replace a constant", input("D-C", false), "C-B"},
+	}
+	for _, step := range steps {
+		s.Equal(map[string]string{"locale": step.want}, s.executeWithInputs(step.inputs, ctx), step.name)
+	}
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteConstantWithoutDefaultFailsWithServerError() {
+	mockExec := NewExecutorInterfaceMock(s.T())
+	mockExec.On("GetName").Return("test-executor").Once()
+
+	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false)
+	execNode, _ := node.(ExecutorBackedNodeInterface)
+	execNode.SetInputs([]providers.Input{{Identifier: "locale", Type: providers.InputTypeText, Constant: true}})
+	execNode.SetExecutor(mockExec)
+
+	resp, err := node.Execute(&providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{}})
+
+	s.Nil(resp)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	mockExec.AssertNotCalled(s.T(), "Execute", mock.Anything)
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteWithoutNodeInputsLeavesUserInputs() {
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{"locale": "fr-FR"}}
+
+	seen := s.executeWithInputs(nil, ctx)
+
+	s.Equal(map[string]string{"locale": "fr-FR"}, seen)
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteConstantIsWrittenAgainOnReentryAfterFailure() {
+	var seen []map[string]string
+	ctx := &providers.NodeContext{ExecutionID: "test-flow", UserInputs: map[string]string{"locale": "fr-FR"}}
+
+	mockExec := NewExecutorInterfaceMock(s.T())
+	mockExec.On("GetName").Return("test-executor").Once()
+	record := func(_ mock.Arguments) { seen = append(seen, maps.Clone(ctx.UserInputs)) }
+	mockExec.On("Execute", mock.Anything).Run(record).Return(
+		&providers.ExecutorResponse{
+			Status: providers.ExecFailure,
+			Error:  &tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "failed"}},
+		}, nil,
+	).Once()
+	mockExec.On("Execute", mock.Anything).Run(record).Return(
+		&providers.ExecutorResponse{Status: providers.ExecComplete}, nil,
+	).Once()
+
+	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false)
+	execNode, _ := node.(ExecutorBackedNodeInterface)
+	execNode.SetOnFailure("prompt-locale")
+	execNode.SetInputs([]providers.Input{
+		{Identifier: "locale", Type: providers.InputTypeText, Default: "en-US", Constant: true},
+	})
+	execNode.SetExecutor(mockExec)
+
+	_, err := node.Execute(ctx)
+	s.Nil(err)
+	s.NotContains(ctx.UserInputs, "locale")
+
+	ctx.UserInputs["locale"] = "de-DE"
+	_, err = node.Execute(ctx)
+	s.Nil(err)
+
+	s.Require().Len(seen, 2)
+	s.Equal("en-US", seen[0]["locale"])
+	s.Equal("en-US", seen[1]["locale"])
 }

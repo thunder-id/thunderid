@@ -111,6 +111,66 @@ func (suite *ModelTestSuite) TestInput_IsSensitive() {
 	}
 }
 
+// ----- InputDefinition default and constant -----
+
+func (suite *ModelTestSuite) TestInputDefinition_IsSensitive() {
+	for _, typ := range []string{InputTypePassword, InputTypeOTP} {
+		assert.True(suite.T(), InputDefinition{Type: typ}.IsSensitive(), "expected %q to be sensitive", typ)
+	}
+
+	for _, typ := range []string{InputTypeText, InputTypeEmail, InputTypeBoolean, InputTypeSelect} {
+		assert.False(suite.T(), InputDefinition{Type: typ}.IsSensitive(), "expected %q to not be sensitive", typ)
+	}
+}
+
+func (suite *ModelTestSuite) TestInputDefinition_DefaultAndConstant_OmittedWhenUnset() {
+	def := InputDefinition{Type: InputTypeText, Identifier: "locale"}
+
+	jsonOut, err := json.Marshal(def)
+	suite.Require().NoError(err)
+	yamlOut, err := yaml.Marshal(def)
+	suite.Require().NoError(err)
+
+	for _, out := range []string{string(jsonOut), string(yamlOut)} {
+		assert.NotContains(suite.T(), out, "default")
+		assert.NotContains(suite.T(), out, "constant")
+	}
+}
+
+func (suite *ModelTestSuite) TestInputDefinition_DefaultAndConstant_RoundTrip() {
+	def := InputDefinition{Type: InputTypeText, Identifier: "locale", Default: "en-US", Constant: true}
+
+	jsonOut, err := json.Marshal(def)
+	suite.Require().NoError(err)
+	var fromJSON InputDefinition
+	suite.Require().NoError(json.Unmarshal(jsonOut, &fromJSON))
+	suite.Equal(def, fromJSON)
+
+	yamlOut, err := yaml.Marshal(def)
+	suite.Require().NoError(err)
+	var fromYAML InputDefinition
+	suite.Require().NoError(yaml.Unmarshal(yamlOut, &fromYAML))
+	suite.Equal(def, fromYAML)
+}
+
+func (suite *ModelTestSuite) TestInput_DefaultAndConstant_AreNotSerialized() {
+	out, err := json.Marshal(Input{Identifier: "locale", Type: InputTypeText, Default: "en-US", Constant: true})
+
+	suite.Require().NoError(err)
+	assert.NotContains(suite.T(), string(out), "en-US")
+	assert.NotContains(suite.T(), string(out), "constant")
+}
+
+func (suite *ModelTestSuite) TestInput_Value_IsSerializedOnlyWhenSet() {
+	withValue, err := json.Marshal(Input{Identifier: "department", Type: InputTypeText, Value: "Computer Science"})
+	suite.Require().NoError(err)
+	withoutValue, err := json.Marshal(Input{Identifier: "department", Type: InputTypeText})
+	suite.Require().NoError(err)
+
+	assert.Contains(suite.T(), string(withValue), `"value":"Computer Science"`)
+	assert.NotContains(suite.T(), string(withoutValue), "value")
+}
+
 // ----- Event -----
 
 func (suite *ModelTestSuite) TestEvent_WithStatus() {

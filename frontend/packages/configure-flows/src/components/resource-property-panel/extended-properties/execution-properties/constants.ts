@@ -226,7 +226,15 @@ export const INPUT_TYPES = [
   {value: 'PHONE_INPUT', translationKey: 'flows:core.executions.inputs.types.phone'},
   {value: 'CONSENT_INPUT', translationKey: 'flows:core.executions.inputs.types.consent'},
   {value: 'SELECT', translationKey: 'flows:core.executions.inputs.types.select'},
+  {value: 'BOOLEAN_INPUT', translationKey: 'flows:core.executions.inputs.types.boolean'},
 ] as const;
+
+/**
+ * Input types that cannot carry a default or constant value, since the value would be stored in the
+ * flow definition. Must stay in step with the sensitive input types in the backend
+ * (backend/pkg/thunderidengine/providers/model.go).
+ */
+export const SENSITIVE_INPUT_TYPES: ReadonlySet<string> = new Set(['PASSWORD_INPUT', 'OTP_INPUT']);
 
 /**
  * Executors that have fixed/programmatic inputs and should not show the input editor.

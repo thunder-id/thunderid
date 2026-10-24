@@ -11,6 +11,7 @@ import Notification, {NotificationType} from '../models/notification';
 import type {Resource} from '../models/resources';
 import {ExecutionTypes, StepTypes} from '../models/steps';
 import type {StepData} from '../models/steps';
+import {getExecutorInputs, hasInvalidInputConfig} from '../utils/executorInputs';
 
 /** Placeholder a flow template carries until a sender is assigned. */
 const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
@@ -23,6 +24,11 @@ export interface RequiredFieldRule {
   name: string;
   /** i18n key for the per-field error message. */
   errorMessageKey: string;
+  /**
+   * Replaces the non-empty check for a field that must also satisfy a condition. Returns true when the
+   * field is not configured correctly.
+   */
+  isInvalid?: (resource: Resource) => boolean;
 }
 
 /**
@@ -207,6 +213,18 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
   {
     match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.OTPExecutor,
     fields: [],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
+  // Executor inputs: every input's default and constant settings must be applicable
+  {
+    match: (r) => getExecutorInputs(r).length > 0,
+    fields: [
+      {
+        name: 'data.action.executor.inputs',
+        errorMessageKey: 'flows:core.validation.fields.executor.inputs',
+        isInvalid: (r) => getExecutorInputs(r).some(hasInvalidInputConfig),
+      },
+    ],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
   // OpenID4VP verify executor

@@ -1397,6 +1397,25 @@ components:
           type: boolean
           description: Whether this input is required
           example: true
+        default:
+          type: string
+          description: |
+            A value the flow supplies for the input. On an executor input it is written before the
+            executor runs, and only when the flow has no non-empty value for the input. On a prompt
+            input the person is still asked, and the prompt returns it as the input's value, and as
+            the meta component's value when the request sets verbose, so a client can show it
+            prefilled. For a constant input it is the fixed value. An empty default is never
+            written. Always a string, so a boolean default is "true" or "false". Not allowed on
+            PASSWORD_INPUT and OTP_INPUT inputs. A BOOLEAN_INPUT default must read as a boolean and
+            a NUMBER_INPUT default as a number. The default of any other type is not checked.
+          example: en-US
+        constant:
+          type: boolean
+          description: |
+            When true, default always replaces any existing value for the input at the node, and a
+            non-empty default is required. Supported on executor inputs only: a prompt input cannot
+            be constant. Not allowed on PASSWORD_INPUT and OTP_INPUT inputs.
+          example: true
 
     NodeAction:
       type: object

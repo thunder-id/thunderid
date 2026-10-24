@@ -65,9 +65,9 @@ describe('ExecutorInputsEditor', () => {
       render(<ExecutorInputsEditor inputs={twoInputs} onChange={mockOnChange} />);
 
       const textboxes = screen.getAllByRole('textbox');
-      expect(textboxes).toHaveLength(2);
+      expect(textboxes).toHaveLength(3);
       expect(textboxes[0]).toHaveValue('username');
-      expect(textboxes[1]).toHaveValue('password');
+      expect(textboxes[2]).toHaveValue('password');
     });
 
     it('should not render the info alert when inputs exist', () => {
@@ -86,9 +86,10 @@ describe('ExecutorInputsEditor', () => {
       render(<ExecutorInputsEditor inputs={twoInputs} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes).toHaveLength(2);
+      expect(checkboxes).toHaveLength(3);
       expect(checkboxes[0]).toBeChecked();
-      expect(checkboxes[1]).toBeChecked();
+      expect(checkboxes[1]).not.toBeChecked();
+      expect(checkboxes[2]).toBeChecked();
     });
 
     it('should render unchecked checkbox when required is false', () => {
@@ -96,7 +97,7 @@ describe('ExecutorInputsEditor', () => {
 
       render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      expect(screen.getByRole('checkbox')).not.toBeChecked();
+      expect(screen.getAllByRole('checkbox')[0]).not.toBeChecked();
     });
   });
 
@@ -180,7 +181,7 @@ describe('ExecutorInputsEditor', () => {
 
       render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      const textbox = screen.getByRole('textbox');
+      const textbox = screen.getAllByRole('textbox')[0];
       fireEvent.change(textbox, {target: {value: 'new_id'}});
       fireEvent.blur(textbox);
 
@@ -192,7 +193,7 @@ describe('ExecutorInputsEditor', () => {
 
       render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      const textbox = screen.getByRole('textbox');
+      const textbox = screen.getAllByRole('textbox')[0];
       fireEvent.blur(textbox);
 
       expect(mockOnChange).not.toHaveBeenCalled();
@@ -206,7 +207,7 @@ describe('ExecutorInputsEditor', () => {
 
       render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      await user.click(screen.getByRole('checkbox'));
+      await user.click(screen.getAllByRole('checkbox')[0]);
 
       expect(mockOnChange).toHaveBeenCalledWith([{type: 'TEXT_INPUT', identifier: 'field', required: false}]);
     });
@@ -217,9 +218,225 @@ describe('ExecutorInputsEditor', () => {
 
       render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      await user.click(screen.getByRole('checkbox'));
+      await user.click(screen.getAllByRole('checkbox')[0]);
 
       expect(mockOnChange).toHaveBeenCalledWith([{type: 'TEXT_INPUT', identifier: 'field', required: true}]);
+    });
+  });
+
+  describe('Default value and constant', () => {
+    const localeInput: FlowNodeInput = {type: 'TEXT_INPUT', identifier: 'locale', required: false};
+
+    it('should show the default value and constant controls without any expanding', () => {
+      render(<ExecutorInputsEditor inputs={[localeInput]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('textbox')).toHaveLength(2);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+      expect(screen.getByText('flows:core.executions.inputs.defaultLabel')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.inputs.constant')).toBeInTheDocument();
+    });
+
+    it.each<[string, {default: string; constant?: boolean}]>([
+      ['a default value', {default: 'en-US'}],
+      ['the constant flag', {default: 'en-US', constant: true}],
+    ])('should show the stored settings when the input has %s', (_label, extra) => {
+      render(<ExecutorInputsEditor inputs={[{...localeInput, ...extra}]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('textbox')[1]).toHaveValue('en-US');
+      expect(screen.getAllByRole('checkbox')[1]).toHaveProperty('checked', extra.constant === true);
+    });
+
+    it.each([
+      ['default value', 'flows:core.executions.inputs.defaultLabel', 'flows:core.executions.inputs.defaultTooltip'],
+      ['constant', 'flows:core.executions.inputs.constant', 'flows:core.executions.inputs.constantTooltip'],
+    ])('should explain the %s in a tooltip', async (_name, label, tooltip) => {
+      const user = userEvent.setup();
+
+      render(<ExecutorInputsEditor inputs={[localeInput]} onChange={mockOnChange} />);
+
+      await user.hover(screen.getByText(label));
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(tooltip);
+    });
+
+    it('should commit a typed default value on blur', () => {
+      render(<ExecutorInputsEditor inputs={[localeInput]} onChange={mockOnChange} />);
+
+      const defaultField = screen.getAllByRole('textbox')[1];
+      fireEvent.change(defaultField, {target: {value: 'en-US'}});
+      fireEvent.blur(defaultField);
+
+      expect(mockOnChange).toHaveBeenCalledWith([{...localeInput, default: 'en-US'}]);
+    });
+
+    it('should remove the default property when the field is cleared', () => {
+      render(<ExecutorInputsEditor inputs={[{...localeInput, default: 'en-US'}]} onChange={mockOnChange} />);
+
+      const defaultField = screen.getAllByRole('textbox')[1];
+      fireEvent.change(defaultField, {target: {value: ''}});
+      fireEvent.blur(defaultField);
+
+      expect(mockOnChange).toHaveBeenCalledWith([localeInput]);
+    });
+
+    it('should set the constant flag when the checkbox is checked', async () => {
+      const user = userEvent.setup();
+
+      render(<ExecutorInputsEditor inputs={[{...localeInput, default: 'en-US'}]} onChange={mockOnChange} />);
+
+      await user.click(screen.getAllByRole('checkbox')[1]);
+
+      expect(mockOnChange).toHaveBeenCalledWith([{...localeInput, default: 'en-US', constant: true}]);
+    });
+
+    it('should remove the constant property when the checkbox is unchecked', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <ExecutorInputsEditor inputs={[{...localeInput, default: 'en-US', constant: true}]} onChange={mockOnChange} />,
+      );
+
+      await user.click(screen.getAllByRole('checkbox')[1]);
+
+      expect(mockOnChange).toHaveBeenCalledWith([{...localeInput, default: 'en-US'}]);
+    });
+
+    it('should mark the default field invalid for a constant without a default value', () => {
+      render(<ExecutorInputsEditor inputs={[{...localeInput, constant: true}]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('textbox')[1]).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('should not mark the default field invalid for a constant with a default value', () => {
+      render(
+        <ExecutorInputsEditor inputs={[{...localeInput, default: 'en-US', constant: true}]} onChange={mockOnChange} />,
+      );
+
+      expect(screen.getAllByRole('textbox')[1]).toHaveAttribute('aria-invalid', 'false');
+    });
+
+    it('should show the validation message under the title', () => {
+      render(
+        <ExecutorInputsEditor
+          inputs={[localeInput]}
+          onChange={mockOnChange}
+          errorMessage="One or more inputs are not properly configured."
+        />,
+      );
+
+      expect(screen.getByText('One or more inputs are not properly configured.')).toBeInTheDocument();
+    });
+
+    it.each(['PASSWORD_INPUT', 'OTP_INPUT'])('should hide the default value and constant for %s', (type) => {
+      render(<ExecutorInputsEditor inputs={[{type, identifier: 'secret', required: true}]} onChange={mockOnChange} />);
+
+      expect(screen.queryByText('flows:core.executions.inputs.defaultLabel')).not.toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.constant')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('textbox')).toHaveLength(1);
+      expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    });
+
+    it('should drop the default and constant when the type changes to a sensitive type', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <ExecutorInputsEditor inputs={[{...localeInput, default: 'en-US', constant: true}]} onChange={mockOnChange} />,
+      );
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByText('flows:core.executions.inputs.types.password'));
+
+      expect(mockOnChange).toHaveBeenCalledWith([{type: 'PASSWORD_INPUT', identifier: 'locale', required: false}]);
+    });
+  });
+
+  describe('Boolean inputs', () => {
+    const delegatedInput: FlowNodeInput = {type: 'BOOLEAN_INPUT', identifier: 'delegated', required: false};
+
+    it('should offer the boolean type and show it for a boolean input', () => {
+      render(<ExecutorInputsEditor inputs={[delegatedInput]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('combobox')[0]).toHaveTextContent('flows:core.executions.inputs.types.boolean');
+    });
+
+    it('should pick the default from a list instead of typing it', () => {
+      render(<ExecutorInputsEditor inputs={[delegatedInput]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('textbox')).toHaveLength(1);
+      expect(screen.getAllByRole('combobox')).toHaveLength(2);
+      expect(screen.getAllByRole('combobox')[1]).toHaveTextContent('flows:core.executions.inputs.defaultNotSet');
+    });
+
+    it.each([
+      ['True', 'true'],
+      ['False', 'false'],
+    ])('should commit %s as the default', async (label, expected) => {
+      const user = userEvent.setup();
+
+      render(<ExecutorInputsEditor inputs={[delegatedInput]} onChange={mockOnChange} />);
+      await user.click(screen.getAllByRole('combobox')[1]);
+      await user.click(screen.getByRole('option', {name: `flows:core.executions.inputs.default${label}`}));
+
+      expect(mockOnChange).toHaveBeenCalledWith([{...delegatedInput, default: expected}]);
+    });
+
+    it('should remove the default when it is set back to not set', async () => {
+      const user = userEvent.setup();
+
+      render(<ExecutorInputsEditor inputs={[{...delegatedInput, default: 'true'}]} onChange={mockOnChange} />);
+      await user.click(screen.getAllByRole('combobox')[1]);
+      await user.click(screen.getByRole('option', {name: 'flows:core.executions.inputs.defaultNotSet'}));
+
+      expect(mockOnChange).toHaveBeenCalledWith([delegatedInput]);
+    });
+
+    it('should show a stored default that uses another accepted spelling', () => {
+      render(<ExecutorInputsEditor inputs={[{...delegatedInput, default: 'FALSE'}]} onChange={mockOnChange} />);
+
+      expect(screen.getAllByRole('combobox')[1]).toHaveTextContent('flows:core.executions.inputs.defaultFalse');
+    });
+
+    it('should accept false as a constant default', () => {
+      render(
+        <ExecutorInputsEditor
+          inputs={[{...delegatedInput, default: 'false', constant: true}]}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getAllByRole('combobox')[1]).not.toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('should drop a text default that is not a boolean when the type changes to boolean', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <ExecutorInputsEditor
+          inputs={[{type: 'TEXT_INPUT', identifier: 'locale', required: false, default: 'en-US'}]}
+          onChange={mockOnChange}
+        />,
+      );
+      await user.click(screen.getAllByRole('combobox')[0]);
+      await user.click(screen.getByRole('option', {name: 'flows:core.executions.inputs.types.boolean'}));
+
+      expect(mockOnChange).toHaveBeenCalledWith([{type: 'BOOLEAN_INPUT', identifier: 'locale', required: false}]);
+    });
+
+    it('should keep a boolean default when the type changes to boolean', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <ExecutorInputsEditor
+          inputs={[{type: 'TEXT_INPUT', identifier: 'delegated', required: false, default: 'true'}]}
+          onChange={mockOnChange}
+        />,
+      );
+      await user.click(screen.getAllByRole('combobox')[0]);
+      await user.click(screen.getByRole('option', {name: 'flows:core.executions.inputs.types.boolean'}));
+
+      expect(mockOnChange).toHaveBeenCalledWith([
+        {type: 'BOOLEAN_INPUT', identifier: 'delegated', required: false, default: 'true'},
+      ]);
     });
   });
 
@@ -229,12 +446,12 @@ describe('ExecutorInputsEditor', () => {
 
       const {rerender} = render(<ExecutorInputsEditor inputs={inputs} onChange={mockOnChange} />);
 
-      expect(screen.getByRole('textbox')).toHaveValue('initial');
+      expect(screen.getAllByRole('textbox')[0]).toHaveValue('initial');
 
       const updatedInputs: FlowNodeInput[] = [{type: 'TEXT_INPUT', identifier: 'updated', required: true}];
       rerender(<ExecutorInputsEditor inputs={updatedInputs} onChange={mockOnChange} />);
 
-      expect(screen.getByRole('textbox')).toHaveValue('updated');
+      expect(screen.getAllByRole('textbox')[0]).toHaveValue('updated');
     });
   });
 });

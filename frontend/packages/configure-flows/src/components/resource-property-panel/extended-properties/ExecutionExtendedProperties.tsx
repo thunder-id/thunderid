@@ -31,6 +31,7 @@ import SessionSignOutProperties from './execution-properties/SessionSignOutPrope
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
+import useResourceFieldError from '../../../hooks/useResourceFieldError';
 import type {FlowNodeInput} from '../../../models/responses';
 import {ExecutionTypes} from '../../../models/steps';
 import type {StepData} from '../../../models/steps';
@@ -65,6 +66,8 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     },
     [onChange, resource],
   );
+
+  const inputsError: string = useResourceFieldError(resource?.id, 'data.action.executor.inputs');
 
   if (!executorName) {
     return null;
@@ -165,7 +168,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
   return (
     <Stack gap={2}>
       {executorSpecificProperties}
-      {showInputsEditor && <ExecutorInputsEditor inputs={currentInputs} onChange={handleInputsChange} />}
+      {showInputsEditor && (
+        <ExecutorInputsEditor inputs={currentInputs} onChange={handleInputsChange} errorMessage={inputsError} />
+      )}
     </Stack>
   );
 }

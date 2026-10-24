@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -549,6 +549,171 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 			}
 		})
 	}
+}
+
+// authFlowNodesWithInputs returns the test authentication flow nodes with the given inputs on the
+// credentials executor.
+func authFlowNodesWithInputs(inputs ...InputDefinition) []NodeDefinition {
+	nodes := make([]NodeDefinition, len(testAuthFlow.Nodes))
+	copy(nodes, testAuthFlow.Nodes)
+	for i := range nodes {
+		if nodes[i].ID == "credentials_auth" {
+			nodes[i].Executor = &ExecutorDefinition{Name: nodes[i].Executor.Name, Inputs: inputs}
+		}
+	}
+	return nodes
+}
+
+// credentialsExecutorInputs returns the inputs of the credentials executor node of the flow.
+func credentialsExecutorInputs(flow *CompleteFlowDefinition) []InputDefinition {
+	for _, node := range flow.Nodes {
+		if node.ID == "credentials_auth" && node.Executor != nil {
+			return node.Executor.Inputs
+		}
+	}
+	return nil
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_InvalidInputDefaults() {
+	testCases := []struct {
+		name  string
+		input InputDefinition
+	}{
+		{
+			"constant without a default",
+			InputDefinition{Type: "TEXT_INPUT", Identifier: "locale", Constant: true},
+		},
+		{
+			"default on a password input",
+			InputDefinition{Type: "PASSWORD_INPUT", Identifier: "secret", Default: "x"},
+		},
+		{
+			"default that is not a boolean",
+			InputDefinition{Type: "BOOLEAN_INPUT", Identifier: "delegated", Default: "maybe"},
+		},
+		{
+			"unknown type with a default",
+			InputDefinition{Type: "UNSUPPORTED_TYPE", Identifier: "locale", Default: "en-US"},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			flowDef := FlowDefinition{
+				Name:     "Invalid Input Defaults Flow",
+				Handle:   generateUniqueHandle("invalid-input-defaults"),
+				FlowType: "AUTHENTICATION",
+				Nodes:    authFlowNodesWithInputs(tc.input),
+			}
+
+			suite.createFlowExpectError(flowDef, http.StatusBadRequest, "FLM-1024")
+		})
+	}
+}
+
+// promptFlowWithInput returns an authentication flow with a prompt that holds the given input.
+func promptFlowWithInput(input InputDefinition) FlowDefinition {
+	return FlowDefinition{
+		Name:     "Prompt Default Flow",
+		Handle:   generateUniqueHandle("prompt-default-flow"),
+		FlowType: "AUTHENTICATION",
+		Nodes: []NodeDefinition{
+			{ID: "START", Type: "START", OnSuccess: "prompt"},
+			{
+				ID:   "prompt",
+				Type: "PROMPT",
+				Prompts: []PromptDefinition{{
+					Inputs: []InputDefinition{input},
+					Action: &ActionDefinition{Ref: "submit", NextNode: "auth_assert"},
+				}},
+			},
+			{
+				ID:        "auth_assert",
+				Type:      "TASK_EXECUTION",
+				Executor:  &ExecutorDefinition{Name: "AuthAssertExecutor"},
+				OnSuccess: "END",
+			},
+			{ID: "END", Type: "END"},
+		},
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_PromptInputDefaultsAreKept() {
+	inputs := []InputDefinition{
+		{Type: "TEXT_INPUT", Identifier: "department", Default: "Computer Science"},
+		{Type: "BOOLEAN_INPUT", Identifier: "newsletter", Default: "true"},
+	}
+	flowDef := promptFlowWithInput(inputs[0])
+	flowDef.Nodes[1].Prompts[0].Inputs = inputs
+
+	created := suite.createFlow(flowDef)
+	suite.trackFlow(created.ID)
+
+	for _, flow := range []*CompleteFlowDefinition{created, suite.getFlow(created.ID)} {
+		suite.Require().Len(flow.Nodes, 4)
+		suite.Require().Len(flow.Nodes[1].Prompts, 1)
+		suite.Equal(inputs, flow.Nodes[1].Prompts[0].Inputs)
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_PromptInputWithInvalidDefaultsRejected() {
+	testCases := []struct {
+		name  string
+		input InputDefinition
+	}{
+		{
+			"constant with a default",
+			InputDefinition{Type: "TEXT_INPUT", Identifier: "faculty", Default: "Engineering", Constant: true},
+		},
+		{
+			"constant without a default",
+			InputDefinition{Type: "TEXT_INPUT", Identifier: "faculty", Constant: true},
+		},
+		{
+			"default on a password input",
+			InputDefinition{Type: "PASSWORD_INPUT", Identifier: "secret", Default: "x"},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.createFlowExpectError(promptFlowWithInput(tc.input), http.StatusBadRequest, "FLM-1024")
+		})
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptConstantRejected() {
+	flowDef := promptFlowWithInput(
+		InputDefinition{Type: "TEXT_INPUT", Identifier: "department", Default: "Computer Science"})
+	created := suite.createFlow(flowDef)
+	suite.trackFlow(created.ID)
+
+	flowDef.Nodes[1].Prompts[0].Inputs[0].Constant = true
+
+	suite.updateFlowExpectError(created.ID, flowDef, http.StatusBadRequest, "FLM-1024")
+}
+
+func (suite *FlowMgtAPITestSuite) TestFlow_ExecutorInputDefaultsAreKept() {
+	inputs := []InputDefinition{
+		{Type: "TEXT_INPUT", Identifier: "locale", Default: "en-US"},
+		{Type: "BOOLEAN_INPUT", Identifier: "delegated", Default: "true", Constant: true},
+	}
+	flowDef := FlowDefinition{
+		Name:     "Input Defaults Flow",
+		Handle:   generateUniqueHandle("input-defaults-flow"),
+		FlowType: "AUTHENTICATION",
+		Nodes:    authFlowNodesWithInputs(inputs...),
+	}
+
+	created := suite.createFlow(flowDef)
+	suite.trackFlow(created.ID)
+	suite.Equal(inputs, credentialsExecutorInputs(created))
+	suite.Equal(inputs, credentialsExecutorInputs(suite.getFlow(created.ID)))
+
+	updatedInputs := []InputDefinition{{Type: "TEXT_INPUT", Identifier: "locale", Default: "fr-FR", Constant: true}}
+	flowDef.Nodes = authFlowNodesWithInputs(updatedInputs...)
+	updated := suite.updateFlow(created.ID, flowDef)
+	suite.Equal(updatedInputs, credentialsExecutorInputs(updated))
 }
 
 func (suite *FlowMgtAPITestSuite) TestGetFlow_Success() {

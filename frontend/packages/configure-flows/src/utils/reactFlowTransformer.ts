@@ -4,6 +4,7 @@
 import type {Edge, Node} from '@xyflow/react';
 import generateResourceId from './generateResourceId';
 import {toApiInputType} from './inputTypeMapping';
+import {getPromptInputDefault} from './promptInputDefault';
 import VisualFlowConstants from '../constants/VisualFlowConstants';
 import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
@@ -72,6 +73,10 @@ interface FlowInput {
   type: string;
   identifier: string;
   required: boolean;
+  /** Value written to the flow when none is available, or always for a constant. */
+  default?: string;
+  /** Makes `default` replace any existing value. */
+  constant?: boolean;
 }
 
 /**
@@ -373,11 +378,14 @@ function extractPrompts(components: Element[], nodeId: string, edges: Edge[]): F
           identifier = component.id;
         }
 
+        const defaultValue = getPromptInputDefault(component);
+
         inputs.push({
           ref: component.id,
           type: toApiInputType(component.type),
           identifier,
           required: componentWithProps.required ?? false,
+          ...(defaultValue ? {default: defaultValue} : {}),
         });
       }
 
@@ -739,6 +747,21 @@ function createConsentDecisionsInput(): FlowInput {
 }
 
 /**
+ * Adds an executor's constant inputs to the inputs derived for it. A constant replaces a derived
+ * input with the same identifier.
+ */
+function withConstantInputs(inputs: FlowInput[], constants: FlowInput[]): FlowInput[] {
+  if (constants.length === 0) {
+    return inputs;
+  }
+
+  return [
+    ...inputs.filter((input) => !constants.some((constant) => constant.identifier === input.identifier)),
+    ...constants,
+  ];
+}
+
+/**
  * Collects inputs for TASK_EXECUTION nodes from their preceding PROMPT nodes.
  * This is done in a second pass after all nodes are transformed.
  * Returns a new array of flow nodes with inputs added where applicable.
@@ -756,11 +779,14 @@ function collectInputsForExecutionNodes(
       return flowNode;
     }
 
-    // If executor already has user-configured inputs, preserve them
-    if (flowNode.executor?.inputs && flowNode.executor.inputs.length > 0) {
+    // If executor already has user-configured inputs, preserve them. Constants alone do not count:
+    // they fix a value but do not say which inputs the executor takes from the preceding prompt.
+    const configuredInputs = flowNode.executor?.inputs ?? [];
+    if (configuredInputs.some((input) => !input.constant)) {
       return flowNode;
     }
 
+    const constants = configuredInputs.filter((input) => input.constant);
     const executorName = flowNode.executor?.name;
 
     // OAuth/OIDC executors get a standard 'code' input for OAuth callback
@@ -770,7 +796,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: executorName,
-          inputs: [createOAuthCodeInput()],
+          inputs: withConstantInputs([createOAuthCodeInput()], constants),
         },
       };
     }
@@ -784,7 +810,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: executorName,
-          inputs: [createConsentDecisionsInput()],
+          inputs: withConstantInputs([createConsentDecisionsInput()], constants),
         },
       };
     }
@@ -823,7 +849,7 @@ function collectInputsForExecutionNodes(
         executor: {
           ...flowNode.executor,
           name: flowNode.executor.name,
-          inputs,
+          inputs: withConstantInputs(inputs, constants),
         },
       };
     }

@@ -4,7 +4,7 @@
 import type {Edge, Node} from '@xyflow/react';
 import type {TFunction} from 'i18next';
 import get from 'lodash-es/get';
-import {createElement, type ReactElement} from 'react';
+import {createElement} from 'react';
 import {Trans} from 'react-i18next';
 import type {GraphValidationRule, RequiredFieldRule, ValidationRuleDefinition} from './validation-rules';
 import ValidationConstants from '../constants/ValidationConstants';
@@ -83,20 +83,28 @@ function applyRules(
     }
 
     // Required-field validation
-    const missingFields: RequiredFieldRule[] = rule.fields.filter((field) => !hasFieldValue(resource, field.name));
+    const invalidFields: RequiredFieldRule[] = rule.fields.filter((field) =>
+      field.isInvalid ? field.isInvalid(resource) : !hasFieldValue(resource, field.name),
+    );
 
-    if (missingFields.length > 0) {
+    if (invalidFields.length > 0) {
       const errorId = `${resource.id}_${ValidationConstants.REQUIRED_FIELD_ERROR_CODE}`;
-      const message: ReactElement = createElement(Trans, {
-        i18nKey: rule.generalMessageKey,
-        values: {id: resource.id},
-        components: {code: createElement('code')},
-      });
-      const notification = new Notification(errorId, message, NotificationType.ERROR);
+      // Several rules can apply to one resource, so their field messages join a single notification.
+      const notification =
+        notifications.get(errorId) ??
+        new Notification(
+          errorId,
+          createElement(Trans, {
+            i18nKey: rule.generalMessageKey,
+            values: {id: resource.id},
+            components: {code: createElement('code')},
+          }),
+          NotificationType.ERROR,
+        );
 
       notification.addResource(resource);
 
-      for (const field of missingFields) {
+      for (const field of invalidFields) {
         notification.addResourceFieldNotification(`${resource.id}_${field.name}`, t(field.errorMessageKey));
       }
 

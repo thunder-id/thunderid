@@ -33,6 +33,7 @@ A prompt entry can carry an action only, or both. The node collects all input va
 | `ref` | No | UI binding reference that links to a meta component by `id`. |
 | `type` | No | Field type: `text` (default), `password`, or `select`. |
 | `required` | No | When `true`, the field must be filled before the flow can advance. |
+| `default` | No | Value the prompt returns as the input's `value`. See [Default and Constant Input Values](#default-and-constant-input-values). |
 
 **Action**
 
@@ -229,7 +230,7 @@ A **TASK EXECUTION** node runs a named executor, a discrete unit of server-side 
 | `onFailure` | No | ID of the node to forward to when the executor reports a failure. The failure reason is stored in runtime data so the target node (typically a PROMPT) can display it. |
 | `onIncomplete` | No | ID of the PROMPT node to forward to when the executor needs additional user input. |
 
-When a node declares its own `inputs`, those replace the executor's defaults for that specific node instance. This lets the same executor be used in different parts of a flow with different field sets. See [Providing Inputs to the Executor](#providing-inputs-to-executor).
+When a node declares its own `inputs`, those replace the executor's defaults for that specific node instance. This lets the same executor be used in different parts of a flow with different field sets. See [Providing Inputs to the Executor](#providing-inputs-to-executor). An input can also carry a default or constant value. See [Default and Constant Input Values](#default-and-constant-input-values).
 
 Node-level `properties` are injected into runtime data before the executor runs, making them available to the executor and to placeholder resolution downstream. See [Executor Details and Configuration](#executor-details-and-configuration).
 
@@ -400,6 +401,7 @@ Executors do not collect inputs directly. All required inputs must already be av
 
 - **A View earlier in the flow**: user-provided data such as an email address or username.
 - **A previous executor's output**: data produced by an earlier step, such as a resolved user ID.
+- **The flow definition**: a `default` or `constant` value set on the input. See [Default and Constant Input Values](#default-and-constant-input-values).
 
 **What happens when an input is missing:** If a required input is missing, the executor may either trigger an `OnIncomplete` handler node or prompt the user for missing inputs.
 
@@ -424,9 +426,122 @@ When an executor forwards inputs dynamically to a PROMPT node via its `onIncompl
 | `NUMBER_INPUT` | A numeric input field. |
 | `DATE_INPUT` | A date picker field. |
 | `CONSENT_INPUT` | A consent checkbox field. |
+| `BOOLEAN_INPUT` | A checkbox that submits `true` or `false`. |
 | `HIDDEN` | A hidden field not rendered to the user. |
 | `SELECT` | A dropdown selection field. |
 | `OU_SELECT` | An organization unit selection field. |
+
+### Default and Constant Input Values
+
+An input can carry a value from the flow definition. Set `default` on an input in the `inputs` of a TASK EXECUTION node, or on an input of a PROMPT node. Set `constant` on an input of a TASK EXECUTION node only.
+
+| Property | Type | Description |
+|---|---|---|
+| `default` | string | Value the flow supplies when it has no value for the input. For a constant input, the fixed value. |
+| `constant` | boolean | When `true`, the flow always supplies `default`, even when a value already exists. Requires a non-empty `default`. Executor inputs only. |
+
+A value counts as existing when it comes from a submitted input, an earlier step or executor, or a claim asserted by an external identity provider. An executor input treats an empty value as missing. A prompt keeps an empty value the person submitted.
+
+**How the values combine**
+
+- A constant is always used. Each executor node that declares a constant for the input replaces the value when it runs, so when several nodes declare one, the last to run wins.
+- A default is used only when the flow has no value for the input. It never replaces an existing value, so the first node that supplies a value wins.
+- On an executor input, a default that applies is used without asking. On a prompt input, the prompt asks once and returns the default as the input's `value`, and the default is kept when the client leaves the input out of its submission.
+
+On an executor input, the node resolves these properties each time it runs, before the executor starts. The executor reads the supplied value the same way it reads a submitted one.
+
+| `default` | `constant` | Executor input behavior |
+|---|---|---|
+| Not set or empty | Not set or `false` | The input behaves as before. |
+| Set | Not set or `false` | The node keeps an existing value and supplies `default` only when none exists. |
+| Set | `true` | The node always supplies `default`, even when the flow already has a value. |
+| Not set or empty | `true` | Not valid. The flow is rejected when it is saved, and a running flow that reaches it fails with a server error. |
+
+On a prompt input, the prompt returns the default so a client can show it, and stores it so it still applies when the client leaves the input out.
+
+| `default` | Prompt input behavior |
+|---|---|
+| Not set or empty | The input behaves as before. |
+| Set | When no value exists, the prompt asks for the input once and returns `default` as the input's `value`. When the request sets `verbose`, the field's meta component also carries `default` as its `value`, so a client can show it prefilled. The default is also stored, so it is kept when the person leaves the field unchanged, and a later prompt for the same input skips it. When a value exists, the prompt does not ask and does not use `default`. |
+
+On the prompt shown again after a failed validation, the default is in the meta component's `value` but not in the input's `value`.
+
+:::warning
+A client shows a prompt default only if it reads `value`. The pages <ProductName /> hosts for sign-in, sign-up, and recovery, the Console onboarding pages, and the SDK components do not read it, so they show the field empty. The stored default still applies when the field is left out of the submission, so a person can end up with a value the screen never showed.
+:::
+
+A prompt input cannot be constant. The node applies a constant just before its executor starts, so set the constant on the input of the executor that uses the value. A flow with a constant prompt input is rejected when it is saved, and a running flow that reaches one fails with a server error.
+
+**Example**
+
+```json
+{
+  "id": "provision-student",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "ProvisioningExecutor",
+    "inputs": [
+      {
+        "identifier": "department",
+        "type": "TEXT_INPUT",
+        "required": false,
+        "default": "Computer Science"
+      },
+      {
+        "identifier": "faculty",
+        "type": "TEXT_INPUT",
+        "required": false,
+        "default": "Engineering",
+        "constant": true
+      }
+    ]
+  },
+  "onSuccess": "end"
+}
+```
+
+The department is `Computer Science` only when no value exists. The faculty is always `Engineering`, whatever value was supplied earlier.
+
+**Validation when a flow is saved**
+
+The server applies these checks when a flow is created, updated, imported, or loaded from a flow file. A flow that breaks one is rejected with error `FLM-1024` (Invalid input configuration). Inputs that set neither property are not checked, so a flow saved before these properties existed is not rejected for them.
+
+| Input | Rule |
+|---|---|
+| Prompt input | `constant` is rejected, with or without a `default`. |
+| Executor input | `constant: true` requires a non-empty `default`. |
+| `PASSWORD_INPUT`, `OTP_INPUT` | `default` and `constant` are both rejected. |
+| `BOOLEAN_INPUT` | The `default` must read as a boolean. Use `true` or `false`. |
+| `NUMBER_INPUT` | The `default` must be a number. |
+| Any other type | The `default` is not checked. For example, the server does not check that an `EMAIL_INPUT` default is an email address, that a `SELECT` default is one of its options, or that a default meets the input's `validation` rules. |
+
+**Rules**
+
+- Write the `default` as a string. In JSON, quote a boolean or number, as in `"true"`, because an unquoted `true` is rejected. In a YAML flow file, an unquoted `true` or `5` is read as the string.
+- The supplied value still passes the executor's own validation, such as the user type schema in Provisioning.
+- A client cannot set a constant. The server ignores a submitted value for an input the flow holds constant, without an error. An input counts as constant when a node sets `constant` on it and no other node lists the same input in its `inputs` without it. Other submitted inputs are accepted as before.
+- A node applies only its own configuration. Set the properties on each node that needs the value.
+- A constant is applied again each time the node runs, just before the executor starts, so a value submitted earlier cannot reach the executor in place of it.
+- When an executor forwards an input to a prompt that declares the same input, the prompt's own default applies and is returned as the input's `value`. An input the prompt does not declare is returned as the executor sent it. A default or constant on an executor input is applied before the executor asks, so a forwarded input rarely carries one.
+- If a client submits an empty value for a prompt input that has a default, the empty value is kept and the default is not applied again. A client that leaves the field out of the submission keeps the stored default.
+
+:::note
+An executor that prefers a value produced by an earlier executor keeps preferring it. Provisioning, for example, takes the organization unit only from earlier executor output, so a constant for the organization unit has no effect.
+:::
+
+:::warning
+The values are saved and exported with the flow definition. Do not use them for passwords, tokens, or other secrets.
+:::
+
+**In the Flow Builder**
+
+Each input in the executor's properties panel has a **Default value** field and a **Constant** checkbox. Hover the information icon next to either label for a short explanation. For a `BOOLEAN_INPUT`, pick the default from **Not set**, **True**, and **False** instead of typing it. Select **Constant** to make the default value mandatory. A constant without a default value marks the executor as not properly configured, and the flow cannot be saved until the input has one. The panel does not show these controls for Password and OTP inputs.
+
+The builder has no setting for the default of a prompt input. Set it through the API or a flow file. A `default` set that way on a Text, Email, Phone, Number, or Date prompt input is kept when the flow is saved in the builder, as long as the input's `ref` is the `id` of its field's meta component.
+
+:::warning
+The Flow Builder keeps a prompt input `default` only for Text, Email, Phone, Number, and Date fields. A `default` on any other prompt input is removed the next time the flow is saved in the builder.
+:::
 
 ### View and Executor Pairings
 

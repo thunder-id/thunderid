@@ -313,6 +313,8 @@ type InputDefinition struct {
 	Identifier string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
 	Required   bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
 	OneTimeUse bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	Default    string                     `json:"default,omitempty"    yaml:"default,omitempty"    jsonschema:"Value the flow supplies for the input when it has none. On a prompt input the person still sees it, prefilled. For a constant input, the fixed value."`
+	Constant   bool                       `json:"constant,omitempty"   yaml:"constant,omitempty"   jsonschema:"When true, Default always replaces any existing value for this input. Supported on executor inputs only and requires a non-empty Default."`
 	Validation []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
 }
 
@@ -1233,11 +1235,22 @@ type Input struct {
 	Validation  []ValidationRule `json:"validation,omitempty"`
 	// OneTimeUse indicates that the input can only be consumed once
 	OneTimeUse bool `json:"oneTimeUse,omitempty"`
+	// Default is written to the flow context for a missing input. It is kept out of responses.
+	Default string `json:"-"`
+	// Constant makes Default replace an existing value instead of only filling a missing one. Executor inputs only.
+	Constant bool `json:"-"`
+	// Value is the default a prompted input carries, so the client can show it prefilled.
+	Value string `json:"value,omitempty"`
 }
 
 // IsSensitive checks whether this input's type is considered sensitive.
 func (i Input) IsSensitive() bool {
 	return slices.Contains(sensitiveInputTypes, i.Type)
+}
+
+// IsSensitive checks whether this input definition's type is considered sensitive.
+func (d InputDefinition) IsSensitive() bool {
+	return slices.Contains(sensitiveInputTypes, d.Type)
 }
 
 // ValidationRule defines a single constraint on a flow input. CompiledRegex is

@@ -331,7 +331,8 @@ components:
           description: >-
             Input data for the flow. Supplying every required input here runs the flow to its
             terminal state in this single call; omitting them returns the inputs to supply on a
-            follow-up request.
+            follow-up request. A value sent for an input the flow holds constant is ignored
+            without an error.
           additionalProperties:
             type: string
           example: {
@@ -365,7 +366,9 @@ components:
           example: "credentials_auth"
         inputs:
           type: object
-          description: Input data provided for the flow step execution
+          description: >-
+            Input data provided for the flow step execution. A value sent for an input the flow
+            holds constant is ignored without an error.
           additionalProperties:
             type: string
           example: {
@@ -557,6 +560,15 @@ components:
           type: boolean
           description: Whether the input is required
           example: true
+        value:
+          type: string
+          description: >-
+            Default the flow author set for the input. A client can show the input
+            prefilled with it, and the person can change it. Present only for a
+            prompt input that has a default, and not on the prompt shown again after a
+            failed validation. The same default is the value of the field's meta
+            component when the request sets verbose.
+          example: "Computer Science"
         options:
           type: array
           items:

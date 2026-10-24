@@ -712,7 +712,7 @@ func (v *flowValidator) validateTaskExecutionNode(
 				})
 		}
 	}
-	return nil
+	return v.validateInputDefaults(node.ID, node.Executor.Inputs)
 }
 
 // validatePromptNode validates a PROMPT node by dispatching to the appropriate sub-validator.
@@ -764,20 +764,77 @@ func (v *flowValidator) validateInteractivePromptNode(node *providers.NodeDefini
 	return nil
 }
 
-// validateInputDefinitions validates input definitions for valid types and validation rules.
+// validateInputDefinitions validates prompt input definitions: no constants, valid types, validation rules
+// and defaults.
 func (v *flowValidator) validateInputDefinitions(
 	nodeID string, inputs []providers.InputDefinition,
 ) *tidcommon.ServiceError {
 	for _, input := range inputs {
-		if input.Type != "" && !providers.ValidInputTypes[input.Type] {
+		if input.Constant {
 			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
-				Key:          "error.flowmgtservice.invalid_input_type_description",
-				DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' has invalid type '{{param(type)}}'",
-				Params:       map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+				Key: "error.flowmgtservice.constant_input_not_allowed_on_prompt_description",
+				DefaultValue: "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be constant. " +
+					"Set the constant on the executor input that uses the value",
+				Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier},
 			})
+		}
+		if err := v.validateInputType(nodeID, input); err != nil {
+			return err
 		}
 		if err := v.validateValidationRules(nodeID, input.Identifier, input.Validation); err != nil {
 			return err
+		}
+	}
+	return v.validateInputDefaults(nodeID, inputs)
+}
+
+// validateInputType validates that an input's type, when set, is a known input type.
+func (v *flowValidator) validateInputType(nodeID string, input providers.InputDefinition) *tidcommon.ServiceError {
+	if input.Type != "" && !providers.ValidInputTypes[input.Type] {
+		return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_input_type_description",
+			DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' has invalid type '{{param(type)}}'",
+			Params:       map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+		})
+	}
+	return nil
+}
+
+// validateInputDefaults validates the default and constant settings of inputs.
+// Inputs that set neither are not checked.
+func (v *flowValidator) validateInputDefaults(
+	nodeID string, inputs []providers.InputDefinition,
+) *tidcommon.ServiceError {
+	for _, input := range inputs {
+		if input.Default == "" && !input.Constant {
+			continue
+		}
+		if input.Default == "" {
+			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.constant_input_missing_default_description",
+				DefaultValue: "Node '{{param(nodeID)}}': constant input '{{param(inputID)}}' " +
+					"must have a non-empty default",
+				Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier},
+			})
+		}
+		if err := v.validateInputType(nodeID, input); err != nil {
+			return err
+		}
+		if input.IsSensitive() {
+			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description",
+				DefaultValue: "Node '{{param(nodeID)}}': input '{{param(inputID)}}' of type '{{param(type)}}' " +
+					"cannot set default or constant",
+				Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+			})
+		}
+		if !isValidDefaultForType(input.Type, input.Default) {
+			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+				Key: "error.flowmgtservice.input_default_invalid_for_type_description",
+				DefaultValue: "Node '{{param(nodeID)}}': default of input '{{param(inputID)}}' " +
+					"is not a valid '{{param(type)}}' value",
+				Params: map[string]string{"nodeID": nodeID, "inputID": input.Identifier, "type": input.Type},
+			})
 		}
 	}
 	return nil

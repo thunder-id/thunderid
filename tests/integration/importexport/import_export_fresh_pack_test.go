@@ -403,6 +403,15 @@ func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
 					"name": "AuthAssertExecutor",
+					"inputs": []map[string]interface{}{
+						{
+							"identifier": "locale",
+							"type":       "TEXT_INPUT",
+							"required":   false,
+							"default":    "en-US",
+							"constant":   true,
+						},
+					},
 				},
 				"onSuccess": "end",
 			},
@@ -506,6 +515,20 @@ func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {
 	suite.True(seenTypes["flow"])
 	suite.True(seenTypes["theme"])
 	suite.True(seenTypes["layout"])
+
+	expectedInputs := []map[string]interface{}{{
+		"identifier": "locale",
+		"type":       "TEXT_INPUT",
+		"required":   false,
+		"default":    "en-US",
+		"constant":   true,
+	}}
+	for _, result := range importResp.Results {
+		if result.ResourceType == "flow" {
+			suite.Equal(expectedInputs, suite.flowExecutorInputs(result.ResourceID, "auth_assert"),
+				"the imported flow must keep the input default and constant")
+		}
+	}
 }
 
 // TestImportVCResourcesResolveOUHandle verifies runtime imports resolve a full
@@ -840,6 +863,34 @@ func (suite *ImportExportFreshPackSuite) assertNotFound(path string) {
 	defer resp.Body.Close()
 
 	suite.Equal(http.StatusNotFound, resp.StatusCode, "expected resource to be absent at %s", path)
+}
+
+// flowExecutorInputs returns the inputs of a flow node's executor, as the flow API reports them.
+func (suite *ImportExportFreshPackSuite) flowExecutorInputs(flowID, nodeID string) []map[string]interface{} {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/flows/"+flowID, nil)
+	suite.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var flow struct {
+		Nodes []struct {
+			ID       string `json:"id"`
+			Executor *struct {
+				Inputs []map[string]interface{} `json:"inputs"`
+			} `json:"executor"`
+		} `json:"nodes"`
+	}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&flow))
+
+	for _, node := range flow.Nodes {
+		if node.ID == nodeID && node.Executor != nil {
+			return node.Executor.Inputs
+		}
+	}
+	return nil
 }
 
 func (suite *ImportExportFreshPackSuite) resetToFreshPack() error {

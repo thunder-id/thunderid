@@ -464,6 +464,74 @@ describe('computeValidationNotifications', () => {
       expect(result.get('email-step-1_EMAIL_NO_SENDER')!.getType()).toBe(NotificationType.ERROR);
     });
 
+    const executorWithInputs = (inputs: Record<string, unknown>[], extra: Record<string, unknown> = {}) => [
+      createNode({
+        id: 'exec-step-1',
+        data: {action: {executor: {name: 'ProvisioningExecutor', inputs}}, ...extra} as unknown as StepData,
+      }),
+    ];
+    const inputsField = 'exec-step-1_data.action.executor.inputs';
+
+    it.each([
+      ['no default', {}],
+      ['an empty default', {default: ''}],
+    ])('should report a constant executor input with %s as an error', (_label, extra) => {
+      const nodes = executorWithInputs([
+        {type: 'TEXT_INPUT', identifier: 'locale', required: false, constant: true, ...extra},
+      ]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      const notification = result.get('exec-step-1_REQUIRED_FIELD_ERROR');
+      expect(notification?.getType()).toBe(NotificationType.ERROR);
+      expect(notification?.getResourceFieldNotification(inputsField)).toBe(
+        'flows:core.validation.fields.executor.inputs',
+      );
+    });
+
+    it.each([
+      ['a constant with a default', {constant: true, default: 'en-US'}],
+      ['a default that is not constant', {default: 'en-US'}],
+      ['neither', {}],
+    ])('should not report an executor input with %s', (_label, extra) => {
+      const nodes = executorWithInputs([{type: 'TEXT_INPUT', identifier: 'locale', required: false, ...extra}]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('exec-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
+    it('should not report an executor whose inputs are not a list', () => {
+      const nodes = executorWithInputs('invalid' as unknown as Record<string, unknown>[]);
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('exec-step-1_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
+
+    it('should report the inputs and another missing field of the same executor in one notification', () => {
+      const nodes = [
+        createNode({
+          id: 'sms-step-1',
+          data: {
+            action: {
+              executor: {
+                name: 'SMSExecutor',
+                inputs: [{type: 'TEXT_INPUT', identifier: 'locale', required: false, constant: true}],
+              },
+            },
+            properties: {},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      const notification = result.get('sms-step-1_REQUIRED_FIELD_ERROR');
+      expect(notification?.hasResourceFieldNotification('sms-step-1_data.properties.senderId')).toBe(true);
+      expect(notification?.hasResourceFieldNotification('sms-step-1_data.action.executor.inputs')).toBe(true);
+    });
+
     it('should not report an email executor with a provider selected', () => {
       const nodes = [
         createNode({

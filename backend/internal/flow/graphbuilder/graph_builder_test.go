@@ -493,6 +493,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 					Inputs: []providers.InputDefinition{
 						{Ref: "username", Type: "string", Identifier: "user", Required: true},
 						{Ref: "password", Type: "string", Identifier: "pass", Required: true},
+						{Ref: "locale", Type: "TEXT_INPUT", Identifier: "locale", Default: "en-US", Constant: true},
 					},
 				},
 			},
@@ -517,6 +518,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 	mockTaskNode.EXPECT().SetInputs([]providers.Input{
 		{Ref: "username", Type: "string", Identifier: "user", Required: true},
 		{Ref: "password", Type: "string", Identifier: "pass", Required: true},
+		{Ref: "locale", Type: "TEXT_INPUT", Identifier: "locale", Default: "en-US", Constant: true},
 	})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
@@ -1650,6 +1652,36 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 		}
 		rule := prompts[0].Inputs[0].Validation[0]
 		return rule.Type == providers.ValidationTypeRegex && rule.CompiledRegex != nil
+	}))
+
+	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})
+	s.Nil(err)
+}
+
+// Prompt inputs carry their default and constant settings to the runtime.
+func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_DefaultAndConstantCopied() {
+	nodeDef := &providers.NodeDefinition{
+		ID:   "prompt-1",
+		Type: "PROMPT",
+		Prompts: []providers.PromptDefinition{
+			{
+				Inputs: []providers.InputDefinition{
+					{Identifier: "department", Type: "TEXT_INPUT", Default: "Computer Science"},
+					{Identifier: "faculty", Type: "TEXT_INPUT", Default: "Engineering", Constant: true},
+				},
+				Action: &providers.ActionDefinition{Ref: "submit", NextNode: "next"},
+			},
+		},
+	}
+
+	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockPromptNode.EXPECT().SetPrompts(mock.MatchedBy(func(prompts []common.Prompt) bool {
+		if len(prompts) != 1 || len(prompts[0].Inputs) != 2 {
+			return false
+		}
+		department, faculty := prompts[0].Inputs[0], prompts[0].Inputs[1]
+		return department.Default == "Computer Science" && !department.Constant &&
+			faculty.Default == "Engineering" && faculty.Constant
 	}))
 
 	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})

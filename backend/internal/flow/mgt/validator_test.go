@@ -1195,6 +1195,34 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_LinkingWithoutOnIncomple
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 }
 
+// A constant on a prompt input is refused by the validation every save path shares: create, update,
+// import and a declarative flow file.
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_RejectsConstantPromptInput() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "prompt"},
+		{ID: "prompt", Type: string(common.NodeTypePrompt), Prompts: []providers.PromptDefinition{{
+			Inputs: []providers.InputDefinition{{
+				Type: providers.InputTypeText, Identifier: "faculty", Default: "Engineering", Constant: true,
+			}},
+			Action: &providers.ActionDefinition{NextNode: "end"},
+		}}},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+
+	err := s.v.ValidateFlowDefinition(context.Background(), &FlowDefinition{
+		Handle: "test-flow", Name: "Test Flow", FlowType: providers.FlowTypeRecovery, Nodes: nodes,
+	})
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+	s.Equal("error.flowmgtservice.constant_input_not_allowed_on_prompt_description", err.ErrorDescription.Key)
+
+	declarativeErr := validateFlowGraphWrapper(s.v)(&providers.CompleteFlowDefinition{
+		Handle: "test-flow", Name: "Test Flow", FlowType: providers.FlowTypeRecovery, Nodes: nodes,
+	})
+	s.Require().Error(declarativeErr)
+	s.Contains(declarativeErr.Error(), ErrorInvalidInputConfig.Code)
+}
+
 func (s *ValidatorTestSuite) TestValidateFlowDefinition_InvalidMetadata() {
 	fd := minimalValidFlow()
 	fd.Handle = ""
@@ -2182,4 +2210,141 @@ func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_LinkingFail
 			s.Equal("linking_error", err.ErrorDescription.Params["failureNodeID"])
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// default and constant inputs
+// ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateInputDefaults_Valid() {
+	inputs := []providers.InputDefinition{
+		{Type: providers.InputTypeText, Identifier: "locale", Default: "en-US"},
+		{Type: providers.InputTypeText, Identifier: "region", Default: "eu", Constant: true},
+		{Type: providers.InputTypeBoolean, Identifier: "delegated", Default: "true", Constant: true},
+		{Type: providers.InputTypeNumber, Identifier: "level", Default: "2.5"},
+		{Identifier: "untyped", Default: "x"},
+	}
+
+	s.Nil(s.v.validateInputDefaults("task", inputs))
+}
+
+func (s *ValidatorTestSuite) TestValidateInputDefaults_InputsWithoutDefaultOrConstantAreNotChecked() {
+	inputs := []providers.InputDefinition{
+		{Type: "UNSUPPORTED_TYPE", Identifier: "legacy"},
+		{Type: providers.InputTypePassword, Identifier: "password", Required: true},
+	}
+
+	s.Nil(s.v.validateInputDefaults("task", inputs))
+}
+
+func (s *ValidatorTestSuite) TestValidateInputDefaults_Rejected() {
+	cases := []struct {
+		name    string
+		input   providers.InputDefinition
+		wantKey string
+	}{
+		{
+			"constant without default",
+			providers.InputDefinition{Type: providers.InputTypeText, Identifier: "locale", Constant: true},
+			"error.flowmgtservice.constant_input_missing_default_description",
+		},
+		{
+			"unknown type",
+			providers.InputDefinition{Type: "UNSUPPORTED_TYPE", Identifier: "locale", Default: "en-US"},
+			"error.flowmgtservice.invalid_input_type_description",
+		},
+		{
+			"default on a password",
+			providers.InputDefinition{Type: providers.InputTypePassword, Identifier: "password", Default: "secret"},
+			"error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description",
+		},
+		{
+			"constant on an OTP",
+			providers.InputDefinition{
+				Type: providers.InputTypeOTP, Identifier: "otp", Default: "123456", Constant: true,
+			},
+			"error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description",
+		},
+		{
+			"default that is not a boolean",
+			providers.InputDefinition{Type: providers.InputTypeBoolean, Identifier: "delegated", Default: "maybe"},
+			"error.flowmgtservice.input_default_invalid_for_type_description",
+		},
+		{
+			"default that is not a number",
+			providers.InputDefinition{Type: providers.InputTypeNumber, Identifier: "level", Default: "high"},
+			"error.flowmgtservice.input_default_invalid_for_type_description",
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			err := s.v.validateInputDefaults("task", []providers.InputDefinition{tc.input})
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+			s.Equal(tc.wantKey, err.ErrorDescription.Key)
+			s.Equal("task", err.ErrorDescription.Params["nodeID"])
+			s.Equal(tc.input.Identifier, err.ErrorDescription.Params["inputID"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateInputDefinitions_PromptInputDefaultsAreChecked() {
+	valid := []providers.InputDefinition{
+		{Type: providers.InputTypeText, Identifier: "department", Default: "Computer Science"},
+		{Type: providers.InputTypeBoolean, Identifier: "newsletter", Default: "true"},
+	}
+	s.Nil(s.v.validateInputDefinitions("prompt", valid))
+
+	cases := []struct {
+		name    string
+		input   providers.InputDefinition
+		wantKey string
+	}{
+		{
+			"constant with a default",
+			providers.InputDefinition{
+				Type: providers.InputTypeText, Identifier: "faculty", Default: "Engineering", Constant: true,
+			},
+			"error.flowmgtservice.constant_input_not_allowed_on_prompt_description",
+		},
+		{
+			"constant without a default",
+			providers.InputDefinition{Type: providers.InputTypeText, Identifier: "faculty", Constant: true},
+			"error.flowmgtservice.constant_input_not_allowed_on_prompt_description",
+		},
+		{
+			"default on a password",
+			providers.InputDefinition{Type: providers.InputTypePassword, Identifier: "password", Default: "x"},
+			"error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description",
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			err := s.v.validateInputDefinitions("prompt", []providers.InputDefinition{tc.input})
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+			s.Equal(tc.wantKey, err.ErrorDescription.Key)
+			s.Equal(tc.input.Identifier, err.ErrorDescription.Params["inputID"])
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_ChecksExecutorInputDefaults() {
+	nodes := minimalValidNodes()
+	index, _ := buildNodeIndex(nodes)
+	node := &nodes[1]
+	node.Executor.Inputs = []providers.InputDefinition{
+		{Type: providers.InputTypeText, Identifier: "locale", Constant: true},
+	}
+
+	err := s.v.validateTaskExecutionNode(node, index)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+
+	node.Executor.Inputs[0].Default = "en-US"
+	s.Nil(s.v.validateTaskExecutionNode(node, index))
 }

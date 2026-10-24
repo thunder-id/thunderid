@@ -24,6 +24,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -3451,6 +3452,97 @@ func (s *ServiceTestSuite) TestLoadContextFromStore_GetFlowGraphError() {
 	result, svcErr := service.loadContextFromStore(context.Background(), "exec-1", log.GetLogger())
 	s.Nil(result)
 	s.NotNil(svcErr)
+}
+
+// ----- withoutConstantInputs -----
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_DropsOnlyConstants() {
+	graph := coremock.NewGraphInterfaceMock(s.T())
+	graph.EXPECT().IsConstantInput("username").Return(false)
+	graph.EXPECT().IsConstantInput("faculty").Return(true)
+
+	accepted := withoutConstantInputs(graph, map[string]string{"username": "alice", "faculty": "Arts"})
+
+	s.Equal(map[string]string{"username": "alice"}, accepted)
+}
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_WithoutAGraphKeepsEverything() {
+	inputs := map[string]string{"username": "alice"}
+
+	s.Equal(inputs, withoutConstantInputs(nil, inputs))
+}
+
+func (s *ServiceTestSuite) TestWithoutConstantInputs_NothingSubmitted() {
+	graph := coremock.NewGraphInterfaceMock(s.T())
+
+	s.Empty(withoutConstantInputs(graph, nil))
+}
+
+// graphWithConstantInput returns a graph whose only node holds the locale input constant.
+func (s *ServiceTestSuite) graphWithConstantInput(flowType providers.FlowType) core.GraphInterface {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("graph-1", flowType, 1)
+	node, err := flowFactory.CreateNode("node-1", string(flowcommon.NodeTypeTaskExecution),
+		map[string]interface{}{}, false, false)
+	s.Require().NoError(err)
+	node.(core.ExecutorBackedNodeInterface).SetInputs(
+		[]providers.Input{{Identifier: "locale", Default: "en-US", Constant: true}})
+	s.Require().NoError(graph.AddNode(node))
+	return graph
+}
+
+// A client that starts a flow cannot set an input the flow holds constant.
+func (s *ServiceTestSuite) TestLoadNewContext_IgnoresConstantInputs() {
+	security.InitSystemPermissions("")
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}),
+		"administration-1", "", "", true, "",
+		map[string]string{"subject": "user-1", "locale": "fr-FR"}, "", "", log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("user-1", engineCtx.UserInputs["subject"])
+	s.NotContains(engineCtx.UserInputs, "locale")
+}
+
+// A client that continues a flow cannot set an input the flow holds constant either.
+func (s *ServiceTestSuite) TestLoadPrevContext_IgnoresConstantInputs() {
+	t := s.T()
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	rawCtx := "{\"executionID\":\"exec-1\",\"appID\":\"app-1\",\"flowType\":\"ADMINISTRATION\"," +
+		"\"graphID\":\"graph-1\",\"currentNodeID\":\"node-1\",\"userInputs\":\"{}\"," +
+		"\"runtimeData\":\"{}\",\"executionHistory\":\"{}\"}"
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "exec-1").
+		Return(&FlowContextDB{ExecutionID: "exec-1", Context: rawCtx}, nil)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, mock.Anything).Return(&providers.CompleteFlowDefinition{}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	service := &flowExecService{
+		flowStore: mockStore, graphBuilder: mockGraphBuilder, flowProvider: mockFlowProvider, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadPrevContext(context.Background(), "exec-1", "",
+		map[string]string{"username": "alice", "locale": "fr-FR"}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("alice", engineCtx.UserInputs["username"])
+	s.NotContains(engineCtx.UserInputs, "locale")
 }
 
 // ----- firstPositiveExpiry -----
