@@ -437,8 +437,13 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		}}
 	}
 
+	var savedAttrs json.RawMessage
+	if updated != nil {
+		savedAttrs = updated.Attributes
+	}
+
 	resp := buildCompleteResponse(agentID, owner, clientID, clientSecret,
-		req.Type, req.Description, req.LogoURL, req.Attributes,
+		req.Type, req.Description, req.LogoURL, savedAttrs,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
